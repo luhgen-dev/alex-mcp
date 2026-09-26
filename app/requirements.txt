@@ -1,0 +1,4 @@
+mcp>=2,<3
+openai>=1.100
+requests>=2.32
+python-dateutil>=2.9
