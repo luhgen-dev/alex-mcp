@@ -1,0 +1,12 @@
+{
+  "name": "alex-mcp-whatsapp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "WhatsApp transport and pairing UI for Alex MCP",
+  "dependencies": {
+    "@whiskeysockets/baileys": "^7.0.0-rc14",
+    "pino": "^10.3.1",
+    "qrcode": "^1.5.4"
+  }
+}
