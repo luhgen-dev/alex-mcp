@@ -1,0 +1,44 @@
+name: "Alex MCP"
+version: "0.1.0"
+slug: "alex_mcp"
+description: "MCP-first household assistant — natural WhatsApp conversation, deterministic tools, receipts, reminders and memory"
+arch:
+  - amd64
+init: false
+startup: application
+boot: auto
+stage: experimental
+ingress: true
+ingress_port: 8099
+panel_icon: "mdi:robot-happy-outline"
+panel_title: "Alex MCP"
+map:
+  - data:rw
+options:
+  ai_provider: "grok"
+  grok_model: "grok-4.7"
+  gemini_model: "gemini-3.8-flash"
+  openai_model: "gpt-6-luna"
+  xai_api_key: ""
+  gemini_api_key: ""
+  openai_api_key: ""
+  husband_phone: ""
+  wife_phone: ""
+  timezone: "Asia/Kuala_Lumpur"
+  stt_provider: "auto"
+  ocr_enabled: true
+  context_turns: 8
+schema:
+  ai_provider: "list(grok|gemini|openai)"
+  grok_model: str
+  gemini_model: str
+  openai_model: str
+  xai_api_key: password
+  gemini_api_key: password
+  openai_api_key: password
+  husband_phone: str
+  wife_phone: str
+  timezone: str
+  stt_provider: "list(auto|xai|openai|gemini)"
+  ocr_enabled: bool
+  context_turns: "int(2,20)"
