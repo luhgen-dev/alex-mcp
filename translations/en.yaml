@@ -1,0 +1,40 @@
+configuration:
+  ai_provider:
+    name: AI brain
+    description: Choose the conversational/reasoning provider. The rest of Alex stays unchanged.
+  grok_model:
+    name: Grok model
+    description: xAI model used when AI brain is Grok.
+  gemini_model:
+    name: Gemini model
+    description: Google model used when AI brain is Gemini.
+  openai_model:
+    name: OpenAI model
+    description: OpenAI model used when AI brain is OpenAI.
+  xai_api_key:
+    name: xAI API key
+    description: Stored only in Home Assistant app options. Required for Grok and xAI speech-to-text.
+  gemini_api_key:
+    name: Gemini API key
+    description: Stored only in Home Assistant app options. Required only when Gemini is selected or used for speech-to-text.
+  openai_api_key:
+    name: OpenAI API key
+    description: Stored only in Home Assistant app options. Required only when OpenAI is selected or used for speech-to-text.
+  husband_phone:
+    name: Husband WhatsApp number
+    description: International format with country code, for example +60123456789.
+  wife_phone:
+    name: Wife WhatsApp number
+    description: International format with country code, for example +60123456789.
+  timezone:
+    name: Household timezone
+    description: IANA timezone used for reminders and date interpretation.
+  stt_provider:
+    name: Voice-note transcription
+    description: Auto prefers xAI, then OpenAI, then Gemini based on configured keys.
+  ocr_enabled:
+    name: Local receipt OCR
+    description: Extract receipt text locally before the AI sees it.
+  context_turns:
+    name: Conversation memory window
+    description: Number of recent turns supplied to the AI for natural follow-ups.
