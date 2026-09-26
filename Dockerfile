@@ -1,0 +1,40 @@
+ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base:3.20
+FROM $BUILD_FROM
+
+ARG BUILD_VERSION=0.1.0
+ARG BUILD_ARCH=amd64
+
+LABEL \
+  io.hass.version="$BUILD_VERSION" \
+  io.hass.type="addon" \
+  io.hass.arch="$BUILD_ARCH"
+
+RUN apk add --no-cache \
+      nodejs \
+      npm \
+      python3 \
+      py3-pip \
+      py3-virtualenv \
+      ffmpeg \
+      tesseract-ocr \
+      tesseract-ocr-data-eng \
+      poppler-utils
+
+WORKDIR /app
+
+COPY app/package.json ./
+RUN npm install --omit=dev
+
+COPY app/requirements.txt /tmp/requirements.txt
+RUN python3 -m venv /opt/alex-venv \
+ && /opt/alex-venv/bin/pip install --no-cache-dir --upgrade pip \
+ && /opt/alex-venv/bin/pip install --no-cache-dir -r /tmp/requirements.txt
+
+COPY app/ ./
+COPY rootfs/ /
+
+RUN chmod -R a+x /etc/services.d /etc/cont-init.d
+
+ENV PATH="/opt/alex-venv/bin:$PATH"
+ENV ALEX_DATA_DIR="/data"
+ENV PYTHONUNBUFFERED=1
