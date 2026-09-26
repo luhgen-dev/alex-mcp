@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.venv/
+node_modules/
+*.db
+*.db-wal
+*.db-shm
+secrets.env
+auth_session/
+media/
+.DS_Store
