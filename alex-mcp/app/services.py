@@ -575,7 +575,7 @@ def create_reminder(actor: ActorContext, task: str, due_local: str,
                     raise ValueError("target household member has no configured WhatsApp number")
                 conversation_id = phone.replace("+", "") + "@s.whatsapp.net"
 
-                space = "FAMILY_SHARED" if shared or actor.conversation_type == "GROUP" or target_user != actor.user_id or len(targets) > 1 else actor.private_space
+            space = "FAMILY_SHARED" if shared or actor.conversation_type == "GROUP" or target_user != actor.user_id or len(targets) > 1 else actor.private_space
             if space not in actor.allowed_spaces:
                 raise PermissionError("requested reminder space is not accessible")
 
@@ -886,7 +886,7 @@ def set_money_bucket(actor: ActorContext, name: str, amount: float,
     space = "FAMILY_SHARED" if shared or actor.conversation_type == "GROUP" else actor.private_space
     if space not in actor.allowed_spaces:
         raise PermissionError("requested bucket space is not accessible")
-    amount_minor = _minor(amount)
+    amount_minor = int((Decimal(str(amount)) * Decimal("100")).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
     conn = connect()
     try:
         row = conn.execute(
