@@ -276,6 +276,7 @@ def query_finances(actor: ActorContext, start_date: str | None = None, end_date:
         "net_outflow": net_outflow,
         "count": int(count_row["n"] if count_row else 0),
         "returned_records": len(records),
+        "latest_record": records[0] if records else None,
         "records": records,
     }
 
