@@ -331,6 +331,7 @@ CREATE TABLE IF NOT EXISTS plans (
     title TEXT NOT NULL,
     start_at_utc TEXT,
     end_at_utc TEXT,
+    time_known INTEGER NOT NULL DEFAULT 0 CHECK(time_known IN (0,1)),
     timezone_name TEXT NOT NULL,
     notes TEXT,
     status TEXT NOT NULL CHECK(status IN ('DRAFT','LOCKED','CONFIRMED','CANCELLED')) DEFAULT 'DRAFT',
