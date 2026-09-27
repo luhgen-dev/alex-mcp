@@ -155,12 +155,16 @@ def resolve_actor(phone: str, conversation_id: str, conversation_type: str,
         if not row:
             raise PermissionError("Sender is not configured as an Alex household user")
         user_id = row["user_id"]
-        spaces = tuple(r["space_id"] for r in conn.execute(
+        memberships = tuple(r["space_id"] for r in conn.execute(
             "SELECT space_id FROM memberships WHERE user_id=? ORDER BY space_id", (user_id,)
         ).fetchall())
         private = "HUSBAND_PVT" if user_id == "USR_HUSBAND" else "WIFE_PVT"
-        if private not in spaces:
-            raise PermissionError("Private space membership is missing")
+        if private not in memberships or "FAMILY_SHARED" not in memberships:
+            raise PermissionError("Required Alex space membership is missing")
+        # Channel origin is a structural read boundary, not an LLM choice.
+        # Family-group turns may see only FAMILY_SHARED. Private DMs may see
+        # the caller's private space plus FAMILY_SHARED.
+        spaces = ("FAMILY_SHARED",) if conversation_type == "GROUP" else memberships
         return ActorContext(
             user_id=user_id,
             phone=clean,
