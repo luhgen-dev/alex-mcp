@@ -1059,7 +1059,6 @@ class AlexCoreTests(unittest.TestCase):
         phase2.set_leave_record(
             with_action_key(dm, "group-leave-action"), "2026-11-11", "PLANNED"
         )
-        self.claim("group-agenda", "+60111111111", "agenda", "GROUP", "family@g.us")
         group = self.group_actor("group-agenda", "+60111111111")
         agenda = phase2.get_agenda(group, "2026-11-09", "2026-11-12")
         self.assertEqual(agenda["roster"], [])
