@@ -465,16 +465,23 @@ def planning_list_goals(actor: Actor) -> dict:
 
 
 @mcp.tool()
-def bills_list(actor: Actor, period: str | None = None) -> dict:
-    """List expected/paid/partial/deferred/unconfirmed/confirmed-unpaid recurring obligations."""
+def bills_list(actor: Actor, period: str | None = None,
+               as_of_date: str | None = None) -> dict:
+    """List expected/paid/partial/deferred/unconfirmed/confirmed-unpaid recurring obligations. as_of_date is YYYY-MM-DD; if omitted, current local date is used."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
     if period:
-        phase2_finance.ensure_obligation_instances(period, actor.phone, actor.conversation_type, "all")
-        phase2_finance.refresh_obligation_states(
-            period + "-28", actor.phone, actor.conversation_type, "all"
+        phase2_finance.ensure_obligation_instances(
+            period, actor.phone, actor.conversation_type, "all"
         )
+    effective_date = as_of_date or datetime.now(ZoneInfo(actor.timezone)).date().isoformat()
+    phase2_finance.refresh_obligation_states(
+        effective_date, actor.phone, actor.conversation_type, "all"
+    )
     return {"obligations": phase2_finance.list_obligations(
         actor.phone, actor.conversation_type, "all", period
-    )}
+    ), "as_of_date": effective_date}
 
 
 @mcp.tool()
