@@ -570,6 +570,15 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
         if tools:
             kwargs["tools"] = tools
             kwargs["tool_choice"] = "auto"
+        if provider == "grok":
+            # xAI recommends x-grok-conv-id for Chat Completions cache affinity.
+            # Hash the WhatsApp conversation id so provider metadata never gets
+            # the raw household phone/group identifier.
+            kwargs["extra_headers"] = {
+                "x-grok-conv-id": hashlib.sha256(
+                    actor.conversation_id.encode("utf-8")
+                ).hexdigest()[:32]
+            }
         response = client.chat.completions.create(**kwargs)
         usage = getattr(response, "usage", None)
         if usage:
