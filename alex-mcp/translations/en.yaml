@@ -38,3 +38,6 @@ configuration:
   context_turns:
     name: Conversation memory window
     description: Number of recent turns supplied to the AI for natural follow-ups.
+  reasoning_effort:
+    name: Reasoning effort
+    description: How deeply the selected AI should reason. Medium is the default balance for Alex.
