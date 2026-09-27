@@ -315,7 +315,13 @@ def confirm_plan(actor: ActorContext, plan_id: str,
     return result
 
 
-def share_plan(actor: ActorContext, plan_id: str) -> dict:
+def share_plan(actor: ActorContext, plan_id: str,
+               shared_notes: str | None = None) -> dict:
+    """Create a separate FAMILY_SHARED copy without promoting private notes.
+
+    Only title/dates/status are copied automatically. Notes are copied only when
+    the owner explicitly supplies family-safe shared_notes in this action.
+    """
     marks = ",".join("?" for _ in actor.allowed_spaces)
     conn = connect()
     try:
@@ -329,18 +335,27 @@ def share_plan(actor: ActorContext, plan_id: str) -> dict:
             return {"status": "already_shared", "plan_id": plan_id}
         copy_id = str(uuid.uuid4())
         action_key = f"{actor.action_key}:share:{plan_id}"
+        safe_notes = (shared_notes or "").strip() or None
         conn.execute(
             """INSERT OR IGNORE INTO plans(
                 plan_id,action_key,owner_id,space_id,title,start_at_utc,end_at_utc,
                 timezone_name,notes,status,source_plan_id
                ) VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
             (copy_id, action_key, actor.user_id, "FAMILY_SHARED", row["title"],
-             row["start_at_utc"], row["end_at_utc"], row["timezone_name"], row["notes"],
+             row["start_at_utc"], row["end_at_utc"], row["timezone_name"], safe_notes,
              row["status"], plan_id),
         )
         conn.commit()
-        copied = conn.execute("SELECT plan_id FROM plans WHERE action_key=?", (action_key,)).fetchone()
-        return {"status": "shared_copy_created", "plan_id": copied["plan_id"], "source_plan_id": plan_id}
+        copied = conn.execute(
+            "SELECT plan_id,notes FROM plans WHERE action_key=?", (action_key,)
+        ).fetchone()
+        return {
+            "status": "shared_copy_created",
+            "plan_id": copied["plan_id"],
+            "source_plan_id": plan_id,
+            "private_notes_copied": False,
+            "shared_notes": copied["notes"],
+        }
     finally:
         conn.close()
 
