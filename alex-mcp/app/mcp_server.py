@@ -103,9 +103,14 @@ def get_saved_item(item_id: str, actor: Actor) -> dict:
 @mcp.tool()
 def create_reminder(task: str, due_local: str, actor: Actor,
                     recurrence_rule: str | None = None, shared: bool = False,
-                    recipient: str = "me") -> dict:
-    """Create a durable reminder. recipient is me/spouse/husband/wife/both. due_local is ISO local datetime; recurrence_rule is an RFC 5545 RRULE such as FREQ=WEEKLY."""
-    return services.create_reminder(actor, task, due_local, recurrence_rule, shared, recipient)
+                    recipient: str = "me", presence_aware: bool = False,
+                    delivery_class: str = "routine",
+                    follow_up_after_hours: int = 24) -> dict:
+    """Create a durable reminder. recipient is me/spouse/husband/wife/both; routine reminders may use quiet/presence policy, while time_critical bypasses those deferrals."""
+    return services.create_reminder(
+        actor, task, due_local, recurrence_rule, shared, recipient,
+        presence_aware, delivery_class, follow_up_after_hours,
+    )
 
 
 @mcp.tool()
@@ -119,6 +124,12 @@ def update_reminder(reminder_id: str, status: str, actor: Actor,
                     new_due_local: str | None = None) -> dict:
     """Complete, cancel, acknowledge, reopen or defer a reminder. Provide new_due_local when rescheduling."""
     return services.update_reminder(actor, reminder_id, status, new_due_local)
+
+
+@mcp.tool()
+def reminder_history(reminder_id: str, actor: Actor) -> dict:
+    """Read the durable state-transition history for one authorized reminder."""
+    return services.reminder_history(actor, reminder_id)
 
 
 @mcp.tool()
