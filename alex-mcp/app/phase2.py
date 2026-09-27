@@ -284,6 +284,39 @@ def _roster_conflict(conn, actor: ActorContext, start_utc: str, end_utc: str | N
     return None
 
 
+
+def _diary_conflict(conn, actor: ActorContext, start_utc: str, end_utc: str | None,
+                    exclude_diary_id: str | None = None):
+    marks = ",".join("?" for _ in actor.allowed_spaces)
+    params = list(actor.allowed_spaces)
+    sql = f"""SELECT * FROM diary_events
+              WHERE space_id IN ({marks}) AND status='ACTIVE'"""
+    if exclude_diary_id:
+        sql += " AND diary_id!=?"
+        params.append(exclude_diary_id)
+    rows = conn.execute(sql, params).fetchall()
+    start = datetime.fromisoformat(start_utc)
+    end = datetime.fromisoformat(end_utc) if end_utc else start + timedelta(hours=1)
+    for row in rows:
+        rs = datetime.fromisoformat(row["start_at_utc"])
+        re = datetime.fromisoformat(row["end_at_utc"]) if row["end_at_utc"] else rs + timedelta(hours=1)
+        if start < re and end > rs:
+            return row
+    return None
+
+
+def _ticket_expired(row) -> bool:
+    if not row["expires_at_utc"]:
+        return False
+    try:
+        expiry = datetime.fromisoformat(row["expires_at_utc"])
+        if expiry.tzinfo is None:
+            expiry = expiry.replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc) > expiry.astimezone(timezone.utc)
+    except Exception:
+        return True
+
+
 def _recipient_targets(actor: ActorContext, recipient: str) -> list[str]:
     value = (recipient or "me").strip().lower()
     if value in {"me", "self", "myself"}:
@@ -375,31 +408,81 @@ def add_diary_event(actor: ActorContext, title: str, start_local: str,
         already = conn.execute("SELECT * FROM diary_events WHERE action_key=?", (actor.action_key,)).fetchone()
         if already:
             return {"status": "already_applied", **dict(already)}
-        pending = conn.execute("SELECT * FROM schedule_conflicts WHERE action_key=?", (actor.action_key,)).fetchone()
-        if pending and pending["status"] == "OPEN":
-            return {"status": "needs_choice", "conflict_id": pending["conflict_id"],
-                    "choices": {"1": "add event and create PLANNED leave",
-                                "2": "add event and keep the work clash",
-                                "3": "cancel"}}
+
+        pending = conn.execute(
+            "SELECT * FROM schedule_conflicts WHERE action_key=? AND status='OPEN'",
+            (actor.action_key,),
+        ).fetchone()
+        if pending:
+            if _ticket_expired(pending):
+                conn.execute(
+                    "UPDATE schedule_conflicts SET status='CANCELLED' WHERE conflict_id=?",
+                    (pending["conflict_id"],),
+                )
+                conn.commit()
+            else:
+                choices = (
+                    {"1": "add event and create PLANNED leave",
+                     "2": "add event and keep the work clash",
+                     "3": "cancel"}
+                    if pending["conflict_kind"] == "WORK"
+                    else {"1": "add event anyway", "2": "cancel"}
+                )
+                return {"status": "needs_choice", "conflict_id": pending["conflict_id"],
+                        "conflict_kind": pending["conflict_kind"], "choices": choices}
+
         roster = _roster_conflict(conn, actor, start_utc, end_utc)
         if roster:
             cid = str(uuid.uuid4())
+            expiry = (datetime.now(timezone.utc) + timedelta(hours=48)).isoformat()
             conn.execute(
                 """INSERT INTO schedule_conflicts(
                     conflict_id,action_key,owner_id,space_id,title,start_at_utc,end_at_utc,
-                    timezone_name,notes,reminder_minutes_before,roster_id
-                   ) VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+                    timezone_name,notes,reminder_minutes_before,roster_id,
+                    conflict_kind,expires_at_utc
+                   ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (cid, actor.action_key, actor.user_id, space, title[:240], start_utc, end_utc,
-                 actor.timezone, notes, reminder_minutes_before, roster["roster_id"]),
+                 actor.timezone, notes, reminder_minutes_before, roster["roster_id"],
+                 "WORK", expiry),
             )
             conn.commit()
             return {
-                "status": "needs_choice", "conflict_id": cid,
+                "status": "needs_choice", "conflict_id": cid, "conflict_kind": "WORK",
+                "expires_at_utc": expiry,
                 "message": "This clashes with your work roster.",
                 "choices": {"1": "add event and create PLANNED leave",
                             "2": "add event and keep the work clash",
                             "3": "cancel"},
             }
+
+        diary_clash = _diary_conflict(conn, actor, start_utc, end_utc)
+        if diary_clash:
+            cid = str(uuid.uuid4())
+            expiry = (datetime.now(timezone.utc) + timedelta(hours=48)).isoformat()
+            conn.execute(
+                """INSERT INTO schedule_conflicts(
+                    conflict_id,action_key,owner_id,space_id,title,start_at_utc,end_at_utc,
+                    timezone_name,notes,reminder_minutes_before,conflicting_diary_id,
+                    conflict_kind,expires_at_utc
+                   ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (cid, actor.action_key, actor.user_id, space, title[:240], start_utc, end_utc,
+                 actor.timezone, notes, reminder_minutes_before, diary_clash["diary_id"],
+                 "DIARY", expiry),
+            )
+            conn.commit()
+            return {
+                "status": "needs_choice", "conflict_id": cid, "conflict_kind": "DIARY",
+                "expires_at_utc": expiry,
+                "message": "This overlaps an existing diary event.",
+                "conflicting_event": {
+                    "diary_id": diary_clash["diary_id"],
+                    "title": diary_clash["title"],
+                    "start_at_utc": diary_clash["start_at_utc"],
+                    "end_at_utc": diary_clash["end_at_utc"],
+                },
+                "choices": {"1": "add event anyway", "2": "cancel"},
+            }
+
         result = _insert_diary(
             conn, actor, actor.action_key, title, start_utc, end_utc, notes, space,
             reminder_minutes_before, reminder_recipient,
@@ -409,11 +492,8 @@ def add_diary_event(actor: ActorContext, title: str, start_local: str,
     finally:
         conn.close()
 
-
 def resolve_diary_conflict(actor: ActorContext, conflict_id: str, choice: int,
                            reminder_recipient: str = "me") -> dict:
-    if int(choice) not in {1, 2, 3}:
-        raise ValueError("choice must be 1, 2 or 3")
     conn = connect()
     try:
         row = conn.execute(
@@ -422,7 +502,41 @@ def resolve_diary_conflict(actor: ActorContext, conflict_id: str, choice: int,
         ).fetchone()
         if not row:
             raise PermissionError("open conflict not found")
-        if int(choice) == 3:
+        if _ticket_expired(row):
+            conn.execute(
+                "UPDATE schedule_conflicts SET status='CANCELLED' WHERE conflict_id=?",
+                (conflict_id,),
+            )
+            conn.commit()
+            return {"status": "expired", "conflict_id": conflict_id}
+
+        choice = int(choice)
+        kind = row["conflict_kind"] or "WORK"
+        if kind == "DIARY":
+            if choice not in {1, 2}:
+                raise ValueError("diary conflict choice must be 1 or 2")
+            if choice == 2:
+                conn.execute(
+                    "UPDATE schedule_conflicts SET status='CANCELLED',choice=2 WHERE conflict_id=?",
+                    (conflict_id,),
+                )
+                conn.commit()
+                return {"status": "cancelled", "conflict_id": conflict_id}
+            result = _insert_diary(
+                conn, actor, f"{row['action_key']}:choice:1", row["title"],
+                row["start_at_utc"], row["end_at_utc"], row["notes"], row["space_id"],
+                row["reminder_minutes_before"], reminder_recipient,
+            )
+            conn.execute(
+                "UPDATE schedule_conflicts SET status='RESOLVED',choice=1 WHERE conflict_id=?",
+                (conflict_id,),
+            )
+            conn.commit()
+            return {"status": "resolved", "choice": 1, "diary": result, "leave": None}
+
+        if choice not in {1, 2, 3}:
+            raise ValueError("work conflict choice must be 1, 2 or 3")
+        if choice == 3:
             conn.execute(
                 "UPDATE schedule_conflicts SET status='CANCELLED',choice=3 WHERE conflict_id=?",
                 (conflict_id,),
@@ -431,12 +545,12 @@ def resolve_diary_conflict(actor: ActorContext, conflict_id: str, choice: int,
             return {"status": "cancelled", "conflict_id": conflict_id}
 
         result = _insert_diary(
-            conn, actor, f"{row['action_key']}:choice:{int(choice)}", row["title"],
+            conn, actor, f"{row['action_key']}:choice:{choice}", row["title"],
             row["start_at_utc"], row["end_at_utc"], row["notes"], row["space_id"],
             row["reminder_minutes_before"], reminder_recipient,
         )
         leave = None
-        if int(choice) == 1:
+        if choice == 1:
             leave_date = _local_date_from_utc(row["start_at_utc"], actor.timezone)
             portion = "FULL"
             existing_leave = conn.execute(
@@ -444,12 +558,12 @@ def resolve_diary_conflict(actor: ActorContext, conflict_id: str, choice: int,
                 (actor.user_id, leave_date, portion),
             ).fetchone()
             if existing_leave:
-                # Never downgrade CONFIRMED/TAKEN leave back to PLANNED.
                 leave_state = existing_leave["status"]
                 if leave_state == "CANCELLED":
                     conn.execute(
                         "UPDATE leave_records SET status='PLANNED',notes=?,updated_at_utc=? WHERE leave_id=?",
-                        (f"Planned automatically from diary conflict: {row['title']}", utc_now(), existing_leave["leave_id"]),
+                        (f"Planned automatically from diary conflict: {row['title']}",
+                         utc_now(), existing_leave["leave_id"]),
                     )
                     leave_state = "PLANNED"
                 leave = {"status": "existing", "leave_id": existing_leave["leave_id"],
@@ -460,23 +574,47 @@ def resolve_diary_conflict(actor: ActorContext, conflict_id: str, choice: int,
                     """INSERT INTO leave_records(
                         leave_id,action_key,owner_id,leave_date,portion,status,notes
                        ) VALUES(?,?,?,?,?,'PLANNED',?)""",
-                    (leave_id, f"{row['action_key']}:planned-leave", actor.user_id, leave_date, portion,
+                    (leave_id, f"{row['action_key']}:planned-leave", actor.user_id,
+                     leave_date, portion,
                      f"Planned automatically from diary conflict: {row['title']}"),
                 )
-                leave = {"status": "saved", "leave_id": leave_id, "leave_date": leave_date, "state": "PLANNED"}
+                leave = {"status": "saved", "leave_id": leave_id,
+                         "leave_date": leave_date, "state": "PLANNED"}
+
         conn.execute(
             "UPDATE schedule_conflicts SET status='RESOLVED',choice=? WHERE conflict_id=?",
-            (int(choice), conflict_id),
+            (choice, conflict_id),
         )
         conn.commit()
-        return {"status": "resolved", "choice": int(choice), "diary": result, "leave": leave}
+        return {"status": "resolved", "choice": choice, "diary": result, "leave": leave}
     finally:
         conn.close()
 
 
+def resolve_latest_diary_conflict(actor: ActorContext, choice: int,
+                                  reminder_recipient: str = "me") -> dict:
+    conn = connect()
+    try:
+        rows = conn.execute(
+            """SELECT * FROM schedule_conflicts
+               WHERE owner_id=? AND status='OPEN'
+               ORDER BY created_at_utc DESC""",
+            (actor.user_id,),
+        ).fetchall()
+        for row in rows:
+            if not _ticket_expired(row):
+                conflict_id = row["conflict_id"]
+                break
+        else:
+            raise ValueError("no active conflict choice is waiting")
+    finally:
+        conn.close()
+    return resolve_diary_conflict(actor, conflict_id, choice, reminder_recipient)
+
 def update_diary_event(actor: ActorContext, diary_id: str, status: str | None = None,
                        start_local: str | None = None, end_local: str | None = None,
-                       title: str | None = None, notes: str | None = None) -> dict:
+                       title: str | None = None, notes: str | None = None,
+                       linked_reminders: str = "ask") -> dict:
     marks = ",".join("?" for _ in actor.allowed_spaces)
     conn = connect()
     try:
@@ -491,34 +629,102 @@ def update_diary_event(actor: ActorContext, diary_id: str, status: str | None = 
             raise ValueError("diary status must be ACTIVE or CANCELLED")
         new_start = _to_utc(start_local, actor.timezone) if start_local else row["start_at_utc"]
         new_end = _to_utc(end_local, actor.timezone) if end_local else row["end_at_utc"]
+        links = conn.execute(
+            """SELECT r.* FROM reminders r JOIN diary_reminder_links l ON l.reminder_id=r.reminder_id
+               WHERE l.diary_id=? AND r.status NOT IN ('COMP','CANC')""", (diary_id,),
+        ).fetchall()
+
+        changing_time = new_start != row["start_at_utc"] or new_end != row["end_at_utc"]
+        cancelling = state == "CANCELLED" and row["status"] != "CANCELLED"
+        action = (linked_reminders or "ask").strip().lower()
+
+        if links and (changing_time or cancelling) and action == "ask":
+            return {
+                "status": "needs_reminder_choice",
+                "diary_id": diary_id,
+                "linked_reminder_count": len(links),
+                "change": "cancel" if cancelling else "reschedule",
+                "choices": (
+                    {"keep": "cancel diary but keep reminder(s)",
+                     "cancel": "cancel diary and reminder(s)"}
+                    if cancelling else
+                    {"keep": "move diary but keep reminder time(s)",
+                     "shift": "move diary and shift reminder(s) by same interval"}
+                ),
+            }
+
+        allowed_actions = {"ask", "keep"}
+        if cancelling:
+            allowed_actions.add("cancel")
+        if changing_time and not cancelling:
+            allowed_actions.add("shift")
+        if action not in allowed_actions:
+            raise ValueError(f"linked_reminders must be one of {sorted(allowed_actions)}")
+
+        if state == "ACTIVE" and changing_time:
+            roster = _roster_conflict(conn, actor, new_start, new_end)
+            diary_clash = _diary_conflict(conn, actor, new_start, new_end, exclude_diary_id=diary_id)
+            if roster or diary_clash:
+                return {
+                    "status": "needs_conflict_resolution",
+                    "diary_id": diary_id,
+                    "work_conflict": bool(roster),
+                    "diary_conflict": (
+                        {"diary_id": diary_clash["diary_id"], "title": diary_clash["title"]}
+                        if diary_clash else None
+                    ),
+                    "message": "The new time conflicts with an existing commitment. Confirm the conflict separately before moving it.",
+                }
+
         conn.execute(
             """UPDATE diary_events SET title=?,start_at_utc=?,end_at_utc=?,notes=?,status=?,updated_at_utc=?
                WHERE diary_id=?""",
             ((title or row["title"])[:240], new_start, new_end,
              notes if notes is not None else row["notes"], state, utc_now(), diary_id),
         )
-        links = conn.execute(
-            """SELECT r.* FROM reminders r JOIN diary_reminder_links l ON l.reminder_id=r.reminder_id
-               WHERE l.diary_id=?""", (diary_id,),
-        ).fetchall()
+
+        changed_reminders = 0
         for reminder in links:
-            if state == "CANCELLED":
-                conn.execute("UPDATE reminders SET status='CANC' WHERE reminder_id=?", (reminder["reminder_id"],))
-            elif start_local:
+            if cancelling and action == "cancel":
+                conn.execute(
+                    "UPDATE reminders SET status='CANC' WHERE reminder_id=?",
+                    (reminder["reminder_id"],),
+                )
+                conn.execute(
+                    """INSERT INTO reminder_events(
+                        event_id,reminder_id,event_type,previous_state,new_state,note
+                       ) VALUES(?,?,?,?,?,?)""",
+                    (str(uuid.uuid4()), reminder["reminder_id"], "CANCELLED",
+                     reminder["status"], "CANC", "linked diary cancelled"),
+                )
+                changed_reminders += 1
+            elif changing_time and action == "shift":
                 old_start = datetime.fromisoformat(row["start_at_utc"])
                 old_due = datetime.fromisoformat(reminder["due_at_utc"])
                 delta = old_start - old_due
                 new_due = datetime.fromisoformat(new_start) - delta
                 conn.execute(
-                    "UPDATE reminders SET due_at_utc=?,status='OPEN' WHERE reminder_id=?",
+                    """UPDATE reminders SET due_at_utc=?,status='OPEN',
+                       next_delivery_at_utc=NULL,defer_reason=NULL WHERE reminder_id=?""",
                     (new_due.isoformat(), reminder["reminder_id"]),
                 )
+                conn.execute(
+                    """INSERT INTO reminder_events(
+                        event_id,reminder_id,event_type,previous_state,new_state,
+                        previous_due_at_utc,new_due_at_utc,note
+                       ) VALUES(?,?,?,?,?,?,?,?)""",
+                    (str(uuid.uuid4()), reminder["reminder_id"], "RESCHEDULED",
+                     reminder["status"], "OPEN", reminder["due_at_utc"],
+                     new_due.isoformat(), "shifted with linked diary"),
+                )
+                changed_reminders += 1
+
         conn.commit()
         return {"status": "updated", "diary_id": diary_id, "state": state,
-                "linked_reminders_updated": len(links)}
+                "linked_reminders_updated": changed_reminders,
+                "linked_reminder_action": action}
     finally:
         conn.close()
-
 
 def check_spouse_availability(actor: ActorContext, start_local: str,
                               end_local: str | None = None) -> dict:
