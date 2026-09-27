@@ -6,6 +6,7 @@ import math
 import operator
 import re
 import uuid
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from datetime import datetime, time, timezone
 from zoneinfo import ZoneInfo
 
@@ -20,13 +21,16 @@ def _spaces_sql(actor: ActorContext) -> tuple[str, list[str]]:
     return marks, list(actor.allowed_spaces)
 
 
-def _minor(amount: float | int | None) -> int | None:
+def _minor(amount: float | int | str | Decimal | None) -> int | None:
     if amount is None:
         return None
-    value = float(amount)
-    if value <= 0:
+    try:
+        value = Decimal(str(amount))
+    except (InvalidOperation, ValueError):
+        raise ValueError("invalid monetary amount")
+    if not value.is_finite() or value <= 0:
         raise ValueError("amount must be greater than zero")
-    return int(round(value * 100))
+    return int((value * Decimal("100")).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 
 GENERIC_CATEGORIES = {
@@ -69,9 +73,15 @@ def _route(conn, actor: ActorContext, text: str, category: str | None) -> tuple[
     elif rule and rule["force_space_id"]:
         space = rule["force_space_id"]
     elif actor.media_ids:
-        # Financial documents/receipts sent for logging default household-shared,
-        # matching the established Alex rule. The tool is only called for money events.
-        space = "FAMILY_SHARED"
+        # Receipt/document media gets the established shared-finance default.
+        # AUDIO is merely the user's input transport and must not change privacy scope.
+        marks = ",".join("?" for _ in actor.media_ids)
+        media_rows = conn.execute(
+            f"SELECT media_type FROM media_objects WHERE media_id IN ({marks})",
+            list(actor.media_ids),
+        ).fetchall()
+        has_financial_document = any(r["media_type"] in ("IMAGE", "PDF") for r in media_rows)
+        space = "FAMILY_SHARED" if has_financial_document else actor.private_space
     else:
         space = actor.private_space
     if space not in actor.allowed_spaces:
@@ -507,33 +517,80 @@ def get_saved_item(actor: ActorContext, item_id: str) -> dict:
     finally:
         conn.close()
 
+def _active_user_phone(conn, user_id: str) -> str | None:
+    row = conn.execute(
+        "SELECT phone_number FROM user_phone_history WHERE user_id=? AND valid_to_utc IS NULL LIMIT 1",
+        (user_id,),
+    ).fetchone()
+    return row["phone_number"] if row else None
+
+
+def _reminder_targets(actor: ActorContext, recipient: str) -> list[str]:
+    value = (recipient or "me").strip().lower()
+    if value in {"me", "self", "myself"}:
+        return [actor.user_id]
+    if value in {"husband", "him"}:
+        return ["USR_HUSBAND"]
+    if value in {"wife", "her"}:
+        return ["USR_WIFE"]
+    if value in {"spouse", "partner"}:
+        return ["USR_WIFE" if actor.user_id == "USR_HUSBAND" else "USR_HUSBAND"]
+    if value in {"both", "both of us", "everyone"}:
+        return ["USR_HUSBAND", "USR_WIFE"]
+    raise ValueError("recipient must be me, spouse, husband, wife, or both")
+
+
 def create_reminder(actor: ActorContext, task: str, due_local: str,
-                    recurrence_rule: str | None = None, shared: bool = False) -> dict:
+                    recurrence_rule: str | None = None, shared: bool = False,
+                    recipient: str = "me") -> dict:
     if not actor.action_key:
         raise RuntimeError("missing deterministic action key")
     due_utc = _parse_event_time(due_local, actor.timezone)
     conn = connect()
     try:
-        existing = conn.execute("SELECT reminder_id,task_text,due_at_utc FROM reminders WHERE action_key=?", (actor.action_key,)).fetchone()
-        if existing:
-            return {"status": "already_created", **dict(existing)}
-        space = "FAMILY_SHARED" if shared else actor.private_space
-        rid = str(uuid.uuid4())
-        conn.execute(
-            """INSERT INTO reminders(
-                reminder_id,action_key,source_message_id,owner_id,space_id,conversation_id,
-                task_text,due_at_utc,timezone_name,recurrence_rule
-               ) VALUES(?,?,?,?,?,?,?,?,?,?)""",
-            (rid, actor.action_key, actor.source_message_id, actor.user_id, space,
-             actor.conversation_id, task[:500], due_utc, actor.timezone,
-             (recurrence_rule or "")[:500] or None),
-        )
+        targets = _reminder_targets(actor, recipient)
+        created = []
+        for target_user in targets:
+            action_key = actor.action_key if len(targets) == 1 else f"{actor.action_key}:{target_user}"
+            existing = conn.execute(
+                "SELECT reminder_id,task_text,due_at_utc,owner_id FROM reminders WHERE action_key=?",
+                (action_key,),
+            ).fetchone()
+            if existing:
+                created.append({"status": "already_created", **dict(existing)})
+                continue
+
+            if target_user == actor.user_id:
+                conversation_id = actor.conversation_id
+            else:
+                phone = _active_user_phone(conn, target_user)
+                if not phone:
+                    raise ValueError("target household member has no configured WhatsApp number")
+                conversation_id = phone.replace("+", "") + "@s.whatsapp.net"
+
+            space = "FAMILY_SHARED" if shared or target_user != actor.user_id or len(targets) > 1 else actor.private_space
+            if space not in actor.allowed_spaces:
+                raise PermissionError("requested reminder space is not accessible")
+
+            rid = str(uuid.uuid4())
+            conn.execute(
+                """INSERT INTO reminders(
+                    reminder_id,action_key,source_message_id,owner_id,space_id,conversation_id,
+                    task_text,due_at_utc,timezone_name,recurrence_rule
+                   ) VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                (rid, action_key, actor.source_message_id, target_user, space,
+                 conversation_id, task[:500], due_utc, actor.timezone,
+                 (recurrence_rule or "")[:500] or None),
+            )
+            created.append({
+                "status": "created", "reminder_id": rid, "task": task, "due_at_utc": due_utc,
+                "timezone": actor.timezone, "recurrence_rule": recurrence_rule,
+                "recipient_user_id": target_user, "space": space,
+            })
         conn.commit()
-        return {"status": "created", "reminder_id": rid, "task": task, "due_at_utc": due_utc,
-                "timezone": actor.timezone, "recurrence_rule": recurrence_rule}
+        return created[0] if len(created) == 1 else {"status": "created", "reminders": created}
     finally:
         conn.close()
-
 
 def list_reminders(actor: ActorContext, include_completed: bool = False, limit: int = 20) -> dict:
     marks, spaces = _spaces_sql(actor)
@@ -541,7 +598,7 @@ def list_reminders(actor: ActorContext, include_completed: bool = False, limit: 
     conn = connect()
     try:
         rows = conn.execute(
-            f"""SELECT reminder_id,task_text,due_at_utc,timezone_name,recurrence_rule,status
+            f"""SELECT reminder_id,owner_id,task_text,due_at_utc,timezone_name,recurrence_rule,status
                 FROM reminders WHERE space_id IN ({marks}) {states}
                 ORDER BY due_at_utc ASC LIMIT ?""",
             spaces + [max(1, min(50, int(limit)))],
@@ -693,6 +750,90 @@ def _eval(node):
     raise ValueError("unsupported expression")
 
 
+def add_shopping_item(actor: ActorContext, item: str, quantity: str | None = None,
+                      notes: str | None = None, shared: bool = True) -> dict:
+    """Add one item to a shopping list. Household-shared is the normal default."""
+    if not actor.action_key:
+        raise RuntimeError("missing deterministic action key")
+    clean_item = (item or "").strip()
+    if not clean_item:
+        raise ValueError("shopping item is required")
+    space = "FAMILY_SHARED" if shared else actor.private_space
+    if space not in actor.allowed_spaces:
+        raise PermissionError("requested shopping space is not accessible")
+    conn = connect()
+    try:
+        prior_action = conn.execute(
+            "SELECT item_id,item_name,quantity,notes,space_id,status FROM shopping_items WHERE action_key=?",
+            (actor.action_key,),
+        ).fetchone()
+        if prior_action:
+            return {"status": "already_applied", **dict(prior_action)}
+        duplicate = conn.execute(
+            """SELECT item_id,item_name,quantity,notes,space_id,status FROM shopping_items
+               WHERE space_id=? AND LOWER(item_name)=LOWER(?) AND status='OPEN'
+               ORDER BY created_at_utc DESC LIMIT 1""",
+            (space, clean_item),
+        ).fetchone()
+        if duplicate:
+            return {"status": "already_listed", **dict(duplicate)}
+        item_id = str(uuid.uuid4())
+        conn.execute(
+            """INSERT INTO shopping_items(
+                item_id,action_key,owner_id,space_id,item_name,quantity,notes
+               ) VALUES(?,?,?,?,?,?,?)""",
+            (item_id, actor.action_key, actor.user_id, space, clean_item[:200],
+             (quantity or "")[:100] or None, (notes or "")[:500] or None),
+        )
+        conn.commit()
+        return {"status": "added", "item_id": item_id, "item": clean_item[:200],
+                "quantity": quantity, "notes": notes, "space": space}
+    finally:
+        conn.close()
+
+
+def list_shopping_items(actor: ActorContext, include_purchased: bool = False, limit: int = 50) -> dict:
+    marks, spaces = _spaces_sql(actor)
+    status_clause = "" if include_purchased else " AND status='OPEN'"
+    conn = connect()
+    try:
+        rows = conn.execute(
+            f"""SELECT item_id,item_name,quantity,notes,status,space_id,created_at_utc,updated_at_utc
+                FROM shopping_items WHERE space_id IN ({marks}) {status_clause}
+                ORDER BY status='OPEN' DESC,created_at_utc ASC LIMIT ?""",
+            spaces + [max(1, min(100, int(limit)))],
+        ).fetchall()
+        return {"items": [dict(r) for r in rows]}
+    finally:
+        conn.close()
+
+
+def update_shopping_item(actor: ActorContext, item_id: str, status: str = "purchased",
+                         quantity: str | None = None, notes: str | None = None) -> dict:
+    resolved = {"open": "OPEN", "purchased": "PURCHASED", "bought": "PURCHASED",
+                "removed": "REMOVED", "remove": "REMOVED"}.get((status or "").strip().lower())
+    if not resolved:
+        raise ValueError("shopping status must be open, purchased, or removed")
+    marks, spaces = _spaces_sql(actor)
+    conn = connect()
+    try:
+        row = conn.execute(
+            f"SELECT * FROM shopping_items WHERE item_id=? AND space_id IN ({marks})",
+            [item_id] + spaces,
+        ).fetchone()
+        if not row:
+            raise PermissionError("shopping item not found in your accessible spaces")
+        conn.execute(
+            """UPDATE shopping_items SET status=?,quantity=?,notes=?,updated_at_utc=? WHERE item_id=?""",
+            (resolved, quantity if quantity is not None else row["quantity"],
+             notes if notes is not None else row["notes"], utc_now(), item_id),
+        )
+        conn.commit()
+        return {"status": "updated", "item_id": item_id, "state": resolved}
+    finally:
+        conn.close()
+
+
 def calculate(expression: str) -> dict:
     if len(expression) > 200:
         raise ValueError("expression too long")
@@ -738,7 +879,7 @@ def set_money_bucket(actor: ActorContext, name: str, amount: float,
     space = "FAMILY_SHARED" if shared else actor.private_space
     if space not in actor.allowed_spaces:
         raise PermissionError("requested bucket space is not accessible")
-    amount_minor = int(round(float(amount) * 100))
+    amount_minor = _minor(amount)
     conn = connect()
     try:
         row = conn.execute(
