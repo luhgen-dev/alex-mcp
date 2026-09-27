@@ -504,8 +504,8 @@ def set_goal(actor: ActorContext, name: str, target_amount: float | None = None,
     space = "FAMILY_SHARED" if shared else actor.private_space
     conn = connect()
     try:
-        row = conn.execute("SELECT * FROM savings_goals WHERE owner_id=? AND LOWER(goal_name)=LOWER(?)",
-                           (actor.user_id, name)).fetchone()
+        row = conn.execute("SELECT * FROM savings_goals WHERE space_id=? AND LOWER(goal_name)=LOWER(?)",
+                           (space, name)).fetchone()
         target_minor = _minor(target_amount) if target_amount is not None else (row["target_amount_minor"] if row else None)
         current_minor = _minor(current_amount) if current_amount is not None and current_amount > 0 else (
             0 if current_amount == 0 else (row["current_amount_minor"] if row else 0)
@@ -656,8 +656,8 @@ def set_money_bucket(actor: ActorContext, name: str, amount: float,
     conn = connect()
     try:
         row = conn.execute(
-            "SELECT bucket_id FROM money_buckets WHERE owner_id=? AND LOWER(bucket_name)=LOWER(?)",
-            (actor.user_id, name),
+            "SELECT bucket_id FROM money_buckets WHERE space_id=? AND LOWER(bucket_name)=LOWER(?)",
+            (space, name),
         ).fetchone()
         if row:
             bucket_id = row["bucket_id"]
