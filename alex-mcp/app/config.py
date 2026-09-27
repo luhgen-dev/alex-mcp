@@ -13,7 +13,7 @@ class Settings:
     ai_provider: str = "grok"
     grok_model: str = "grok-4.7"
     gemini_model: str = "gemini-3.8-flash"
-    openai_model: str = "gpt-6-luna"
+    openai_model: str = "gpt-5.6-luna"
     xai_api_key: str = ""
     gemini_api_key: str = ""
     openai_api_key: str = ""
