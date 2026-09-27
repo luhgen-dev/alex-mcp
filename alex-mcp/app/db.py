@@ -52,6 +52,12 @@ ROUTING_CATALOGUE = [
 ]
 
 
+def _ensure_column(conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:
+    existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    if column not in existing:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
 def initialize() -> None:
     os.makedirs(DATA_DIR, exist_ok=True)
     with open(SCHEMA_PATH, "r", encoding="utf-8") as f:
@@ -59,6 +65,10 @@ def initialize() -> None:
     conn = connect()
     try:
         conn.executescript(schema)
+        # Small additive migrations keep persistent /data safe across app updates.
+        _ensure_column(conn, "inbound_messages", "attempt_count", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(conn, "inbound_messages", "processing_started_at_utc", "TEXT")
+        _ensure_column(conn, "outbound_messages", "next_attempt_at_utc", "TEXT")
         conn.execute("BEGIN")
         conn.executemany("INSERT OR IGNORE INTO users(user_id,display_name) VALUES(?,?)", [
             ("USR_HUSBAND", "Husband"),
