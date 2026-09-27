@@ -207,6 +207,10 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
             "tool_choice": "auto",
             "reasoning_effort": settings.reasoning_effort,
         }
+        if provider == "grok":
+            # xAI recommends this on Chat Completions so a conversation is
+            # routed consistently and can benefit from prompt-cache hits.
+            kwargs["extra_headers"] = {"x-grok-conv-id": actor.conversation_id[:200]}
         response = client.chat.completions.create(**kwargs)
         usage = getattr(response, "usage", None)
         if usage:
