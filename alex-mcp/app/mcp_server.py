@@ -346,9 +346,16 @@ def get_agenda_range(phrase: str, actor: Actor, reference_date: str | None = Non
 
 
 @mcp.tool()
+def check_my_availability(start_local: str, actor: Actor,
+                          end_local: str | None = None) -> dict:
+    """Owner-only private availability check. Rejected in the family group and never publishable there."""
+    return phase2.check_my_availability(actor, start_local, end_local)
+
+
+@mcp.tool()
 def check_spouse_availability(start_local: str, actor: Actor,
                               end_local: str | None = None) -> dict:
-    """Privacy-preserving spouse availability check. Returns busy/no conflict only; never exposes spouse private schedule details."""
+    """Check only shared spouse commitments. Private spouse roster/Diary is never read; if no shared clash exists, returns private_check_required."""
     return phase2.check_spouse_availability(actor, start_local, end_local)
 
 
