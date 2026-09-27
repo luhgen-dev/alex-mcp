@@ -24,10 +24,10 @@ Actor = Annotated[ActorContext, Resolve(authenticated_actor)]
 
 @mcp.tool()
 def log_expense(description: str, actor: Actor, amount: float | None = None,
-                category: str | None = None, currency: str = "MYR",
+                category: str | None = None, currency: str | None = None,
                 event_date_local: str | None = None, reference: str | None = None,
                 event_type: str = "Expense") -> dict:
-    """Record an expense or income. Use null category/amount when genuinely unclear; Alex will request confirmation."""
+    """Record an expense or income. Currency must be explicitly known as MYR or SGD; never guess it. Use null category/amount when genuinely unclear."""
     return services.log_expense(actor, description, amount, category, currency, event_date_local, reference, event_type)
 
 
