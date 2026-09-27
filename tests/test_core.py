@@ -31,6 +31,14 @@ import services
 import ha
 import phase2
 import diagnostics
+import profile_config
+import phase2_finance
+import phase2_work
+import phase2_library
+import phase2_delegation
+import phase2_monitor
+import phase2_presence
+import brain
 from context import use_actor, with_action_key
 from mcp import Client
 from mcp_server import mcp
@@ -40,11 +48,24 @@ class AlexCoreTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         db.initialize()
+        profile_config.ensure_schema()
+        phase2_finance.ensure_schema()
+        phase2_work.ensure_schema()
+        phase2_library.ensure_schema()
+        phase2_delegation.ensure_schema()
 
     def setUp(self):
         conn = db.connect()
         try:
             for table in (
+                "alex_phase2_asset_documents", "alex_phase2_assets",
+                "alex_phase2_cash_allocations", "alex_phase2_cash_pool_allocations",
+                "alex_phase2_goal_contributions", "alex_phase2_goal_period_targets",
+                "alex_phase2_goal_baseline_versions", "alex_phase2_obligation_instances",
+                "alex_phase2_evidence_facts", "alex_phase2_cash_events",
+                "alex_phase2_cash_pools", "alex_phase2_plan_reserves", "alex_phase2_goals",
+                "alex_phase2_work_events", "alex_phase2_delegations",
+                "alex_profile_config_versions",
                 "tool_audit", "ai_usage", "diagnostic_runs", "monitor_notifications",
                 "outbound_messages", "conversation_turns", "selection_sets", "reminder_events",
                 "diary_reminder_links", "schedule_conflicts", "diary_events", "plans",
