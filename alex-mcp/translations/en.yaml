@@ -31,7 +31,10 @@ configuration:
     description: IANA timezone used for reminders and date interpretation.
   stt_provider:
     name: Voice-note transcription
-    description: Auto prefers xAI, then OpenAI, then Gemini based on configured keys.
+    description: Auto uses local Whisper first, then configured cloud fallbacks. Local Whisper uses no AI API tokens.
+  whisper_model:
+    name: Local Whisper model
+    description: Base is the default balance. Small uses more memory but can improve difficult multilingual voice notes.
   ocr_enabled:
     name: Local receipt OCR
     description: Extract receipt text locally before the AI sees it.
