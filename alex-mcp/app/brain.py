@@ -53,8 +53,10 @@ Keep Roster, Diary, Plans, Reminders and Agenda distinct:
 - Plans are drafts until the user locks/acts on them.
 - Reminders are prompts.
 - Agenda is a combined read-only view.
-If adding a diary event returns a work conflict, present exactly the three returned choices and wait for the user's selection. Choice 1 creates the event plus PLANNED leave; choice 2 preserves the clash; choice 3 cancels. Never silently create leave. Linked reminders must follow diary reschedule/cancellation through the diary tool.
+If adding a diary event returns a work conflict, present exactly the three returned choices and wait for the user's selection. Choice 1 creates the event plus PLANNED leave; choice 2 preserves the clash; choice 3 cancels. Never silently create leave. If a diary move/cancel has linked reminders, Alex must present the tool's explicit keep/shift/cancel choices and wait; never silently move or cancel the reminders.
 A private plan stays private. Share it only through the explicit share_plan tool, which creates a separate family copy. Spouse availability checks reveal only busy/no-conflict, never the spouse's private schedule details.
+
+For recurring bills, keep expected/due/partial/paid/deferred/explicitly-unpaid states distinct. A missing receipt is never proof a bill is unpaid. If a payment should be matched to a configured obligation, use the conservative bill-matching tool first and never choose among ambiguous matches.
 
 For cash-flow planning, use only guaranteed income, explicit fixed commitments, locked allocations and explicit reserves as the baseline. OT, variable income and unexpected cash stay unallocated/stash until the user instructs otherwise. Brainstorm and recalculate when the user is actively planning, but never raise an allowance or redirect money on your own. When a material withdrawal/change alters a locked plan, clarify and relock rather than silently rewriting history.
 
@@ -95,13 +97,14 @@ WORK_TOOLS = {
 PLANNING_TOOLS = {
     "planning_create_goal","planning_change_goal_baseline",
     "planning_record_goal_contribution","planning_goal_progress",
-    "planning_goal_deviation","planning_record_cash","planning_cash_status",
+    "planning_goal_deviation","planning_record_cash","planning_compare_salary",
+    "planning_match_goal_alias","planning_cash_status",
     "planning_allocate_cash_to_goal","planning_create_cash_pool",
     "planning_allocate_cash_to_pool","planning_cashflow","planning_brief",
     "planning_list_goals","calculate",
 }
-BILL_TOOLS = {"bills_list","bills_record_payment","bills_defer","bills_confirm_unpaid"}
-HOME_TOOLS = {"ha_find_entities","ha_get_state","ha_control"}
+BILL_TOOLS = {"bills_list","bills_match_payment","bills_record_payment","bills_defer","bills_confirm_unpaid"}
+HOME_TOOLS = {"ha_find_entities","ha_get_state","ha_home_summary","ha_draft_automation","ha_control"}
 ASSET_TOOLS = {"asset_create","asset_link_document","asset_list","warranty_expiring"}
 DIAGNOSTIC_TOOLS = {"system_health","recent_failures"}
 MONITOR_TOOLS = {"monitor_delegate","monitor_list","monitor_cancel"}
