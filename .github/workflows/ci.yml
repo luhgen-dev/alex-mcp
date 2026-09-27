@@ -18,10 +18,10 @@ jobs:
           python-version: "3.12"
 
       - name: Install Python dependencies
-        run: pip install -r app/requirements.txt
+        run: pip install -r alex-mcp/app/requirements.txt
 
       - name: Compile Python
-        run: python -m compileall -q app tests
+        run: python -m compileall -q alex-mcp/app tests
 
       - name: Run core tests
         run: python -m unittest discover -s tests -v
@@ -30,7 +30,7 @@ jobs:
         env:
           ALEX_DATA_DIR: /tmp/alex-mcp-selftest
           ALEX_OPTIONS_PATH: /tmp/alex-mcp-empty-options.json
-        run: python app/selftest.py
+        run: python alex-mcp/app/selftest.py
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -38,11 +38,11 @@ jobs:
           node-version: "22"
 
       - name: Install Node dependencies
-        working-directory: app
+        working-directory: alex-mcp/app
         run: npm install --omit=dev
 
       - name: Check WhatsApp bridge syntax
-        run: node --check app/connect.js
+        run: node --check alex-mcp/app/connect.js
 
   container:
     runs-on: ubuntu-latest
@@ -50,4 +50,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build Home Assistant app image
-        run: docker build --build-arg BUILD_FROM=ghcr.io/home-assistant/amd64-base:3.20 -t alex-mcp-ci .
+        run: docker build --build-arg BUILD_FROM=ghcr.io/home-assistant/amd64-base:3.20 -t alex-mcp-ci alex-mcp

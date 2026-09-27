@@ -22,7 +22,7 @@ with open(OPTIONS, "w", encoding="utf-8") as f:
       "context_turns": 8
     }""")
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "alex-mcp", "app"))
 
 import db
 import media
