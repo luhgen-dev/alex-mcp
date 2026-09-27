@@ -320,6 +320,16 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
             | {"get_agenda","work_schedule","planning_brief","bills_list"}
         )
 
+    # An explicit "save/remember this" attachment is memory-only unless the
+    # user also explicitly asked for a financial write. This closes the old
+    # Smoke-4 failure where saving a receipt could accidentally log an expense.
+    if "SAVED_MEMORY" in intents and "EXPENSE" not in intents:
+        selected -= {
+            "log_expense", "confirm_expense", "correct_expense",
+            "list_pending_expenses", "query_finances",
+            "bills_match_payment", "bills_record_payment",
+        }
+
     # Do not advertise superseded simple planning tools when the advanced
     # proven engine is available.
     selected -= LEGACY_SIMPLE_PLANNING
