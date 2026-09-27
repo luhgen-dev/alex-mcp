@@ -111,6 +111,11 @@ def sweep():
                            ) VALUES(lower(hex(randomblob(16))),?,?,?)""",
                         (row["context_id"], event_type, "confirmed by WhatsApp egress"),
                     )
+                elif row["context_kind"] == "MONITOR" and row["context_id"]:
+                    conn.execute(
+                        "UPDATE monitor_notifications SET delivered_at_utc=? WHERE candidate_key=?",
+                        (delivered, row["context_id"]),
+                    )
             elif permanent_error:
                 conn.execute(
                     """UPDATE outbound_messages SET delivery_status='FAILED',attempt_count=?,
