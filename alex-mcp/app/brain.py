@@ -308,6 +308,18 @@ async def _call_mcp(actor: ActorContext, tool_name: str, args: dict, action_key:
 
 async def respond(actor: ActorContext, user_text: str, media_context: list[str] | None = None,
                   vision_parts: list[dict] | None = None) -> tuple[str, list[dict]]:
+    # A deterministic no-write gate handles the small class of phrases that
+    # are genuinely ambiguous across household domains. This prevents a strong
+    # language model from confidently choosing a write the user never asked for.
+    preflight = phase2_intent.classify_write_intent(
+        user_text or "", has_media=bool(media_context or vision_parts)
+    )
+    if preflight.get("requires_clarification"):
+        question = str(preflight.get("question") or "What would you like me to do with that?")
+        add_turn(actor.user_id, actor.conversation_id, "user", (user_text or "").strip())
+        add_turn(actor.user_id, actor.conversation_id, "assistant", question)
+        return question, []
+
     settings = get_settings()
     provider = settings.ai_provider
     model = settings.model
