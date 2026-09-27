@@ -390,5 +390,20 @@ class AlexCoreTests(unittest.TestCase):
             ha.control("lock.front_door", "unlock")
 
 
+    def test_currency_is_never_silently_guessed(self):
+        self.claim("currency-amb", "+60111111111", "spent 10 for lunch")
+        actor = with_action_key(self.actor("currency-amb", "+60111111111"), "currency-amb-action")
+        result = services.log_expense(actor, "Lunch", 10, "food", currency=None)
+        self.assertEqual(result["status"], "clarification_required")
+        conn = db.connect()
+        try:
+            n = conn.execute(
+                "SELECT COUNT(*) AS n FROM financial_events WHERE source_message_id='currency-amb'"
+            ).fetchone()["n"]
+            self.assertEqual(n, 0)
+        finally:
+            conn.close()
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
