@@ -79,7 +79,7 @@ CORE_FINANCE = {
     "log_expense","confirm_expense","query_finances","list_pending_expenses",
     "correct_expense","find_receipts","get_receipt","calculate",
 }
-MEMORY_TOOLS = {"save_item","search_saved_items","get_saved_item"}
+MEMORY_TOOLS = {"save_item","search_saved_items","get_saved_item","remove_saved_item","resolve_numbered_choice"}
 REMINDER_TOOLS = {"create_reminder","list_reminders","update_reminder","reminder_history"}
 SHOPPING_TOOLS = {"add_shopping_item","list_shopping_items","update_shopping_item"}
 DIARY_TOOLS = {
@@ -121,7 +121,7 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
     # Exact numbered conflict answers are intentionally bound to the latest
     # owner-scoped persisted ticket rather than reconstructed by the model.
     if re.fullmatch(r"\s*[123]\s*", text):
-        selected.add("resolve_latest_diary_conflict")
+        selected |= {"resolve_latest_diary_conflict","resolve_numbered_choice"}
 
     try:
         read_intent = phase2_intent.classify_read_intent(text)
