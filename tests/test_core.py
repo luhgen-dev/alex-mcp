@@ -95,6 +95,69 @@ class AlexCoreTests(unittest.TestCase):
             "DIRECT_DM", mid, media_ids or [],
         )
 
+    def sync_phase2_fixture(self):
+        return profile_config.sync_options({
+            "income_profiles": [{
+                "id": "salary", "owner": "husband", "visibility": "private",
+                "name": "Base salary", "amount": 10000, "currency": "MYR",
+                "income_class": "fixed", "frequency": "monthly",
+                "payday_day": 25, "active": True,
+            }],
+            "roster_profiles": [{
+                "id": "main_roster", "owner": "husband", "visibility": "private",
+                "name": "Alternating roster", "cycle_start": "2026-09-21",
+                "pattern": "evening,morning", "day_start": "07:45",
+                "day_end": "16:15", "evening_start": "16:30",
+                "evening_end": "01:00", "active": True,
+            }],
+            "overtime_profiles": [{
+                "id": "standard_ot", "owner": "husband", "visibility": "private",
+                "name": "Standard overtime", "currency": "MYR",
+                "morning_pre_hours": 2, "morning_pre_start": "05:45",
+                "morning_weekend_standard_start": "04:45",
+                "morning_weekend_standard_end": "16:45",
+                "morning_weekend_low_start": "05:45",
+                "morning_weekend_low_end": "15:45",
+                "evening_post_hours": 2.75, "evening_post_start": "01:00",
+                "evening_post_end": "04:15", "evening_weekend_days": "saturday",
+                "evening_weekend_standard_start": "16:15",
+                "evening_weekend_standard_end": "04:15",
+                "evening_weekend_low_start": "16:15",
+                "evening_weekend_low_end": "23:59",
+                "sunday_override_allowed": True, "payout_days": "7,12",
+                "rate_formula": "", "active": True,
+            }],
+            "leave_balances": [
+                {"id": "annual_leave", "owner": "husband", "visibility": "private",
+                 "name": "Annual leave", "entitlement_days": 25, "remaining_days": 2,
+                 "as_of_date": "2026-09-26", "active": True},
+                {"id": "medical_leave", "owner": "husband", "visibility": "private",
+                 "name": "Medical leave", "entitlement_days": 26, "remaining_days": 8,
+                 "as_of_date": "2026-09-26", "active": True},
+            ],
+            "recurring_payments": [{
+                "id": "family_bill", "owner": "family", "visibility": "family",
+                "name": "Synthetic family bill", "amount_type": "fixed",
+                "amount": 1000, "currency": "MYR", "due_day": 5,
+                "frequency": "monthly", "active": True,
+            }],
+            "account_aliases": [{
+                "id": "europe", "owner": "husband", "visibility": "private",
+                "label": "Europe Savings", "purpose": "Europe", "active": True,
+            }],
+            "reminder_preferences": [{
+                "id": "default", "owner": "husband", "visibility": "private",
+                "name": "Default reminder policy", "bill_days_before": 3,
+                "follow_up_after_hours": 24, "quiet_start": "22:00",
+                "quiet_end": "06:00", "presence_aware": True, "active": True,
+            }],
+            "presence_mappings": [{
+                "id": "home", "owner": "husband", "visibility": "private",
+                "name": "Home presence", "person_entity": "person.husband",
+                "phone_tracker_entity": "", "home_zone": "home", "active": True,
+            }],
+        })
+
     def test_private_and_shared_space_isolation(self):
         self.claim("p1", "+60111111111", "coffee")
         husband = with_action_key(self.actor("p1", "+60111111111"), "a-private")
@@ -602,6 +665,181 @@ class AlexCoreTests(unittest.TestCase):
         self.assertIn(health["database"], {"ok", "problem"})
         self.assertIn("observed", health)
         self.assertNotIn("xai_api_key", str(health))
+
+
+    def test_advanced_goal_cash_and_obligation_lifecycle(self):
+        self.sync_phase2_fixture()
+        goal = phase2_finance.create_goal(
+            "Europe", 6000, 200, "+60111111111", visibility="private"
+        )
+        cash = phase2_finance.record_cash_event(
+            "OT", 1000, "2026-09-26", "+60111111111", visibility="private"
+        )
+        before = phase2_finance.cash_event_status(cash["cash_event_id"], "+60111111111")
+        self.assertEqual(before["unallocated"], 1000)
+        allocation = phase2_finance.allocate_cash_to_goal(
+            cash["cash_event_id"], goal["goal_id"], 350, "+60111111111",
+            contribution_date="2026-09-26",
+        )
+        self.assertEqual(allocation["remaining_unallocated"], 650)
+        self.assertFalse(allocation["baseline_changed"])
+        progress = phase2_finance.goal_progress(goal["goal_id"], "+60111111111")
+        self.assertEqual(progress["baseline_monthly"], 200)
+
+        deviation = phase2_finance.evaluate_goal_deviation(
+            goal["goal_id"], 100, "2026-09", "+60111111111"
+        )
+        self.assertEqual(deviation["status"], "BELOW_PLAN")
+        self.assertFalse(deviation["baseline_changed"])
+
+        phase2_finance.ensure_obligation_instances("2026-09", "+60111111111")
+        phase2_finance.refresh_obligation_states("2026-09-26", "+60111111111")
+        obligations = phase2_finance.list_obligations(
+            "+60111111111", period="2026-09"
+        )
+        self.assertEqual(len(obligations), 1)
+        self.assertEqual(obligations[0]["state"], "UNCONFIRMED_DUE")
+        partial = phase2_finance.record_obligation_payment(
+            obligations[0]["instance_id"], 500, "+60111111111"
+        )
+        self.assertEqual(partial["state"], "PARTIAL")
+        explicit = phase2_finance.confirm_obligation_unpaid(
+            obligations[0]["instance_id"], "+60111111111",
+            note="Owner explicitly confirmed"
+        )
+        self.assertEqual(explicit["state"], "CONFIRMED_UNPAID")
+
+    def test_advanced_work_ot_and_leave_rules_are_preserved(self):
+        self.sync_phase2_fixture()
+        self.assertEqual(
+            phase2_work.effective_shift("2026-09-26", "+60111111111")["shift"],
+            "evening",
+        )
+        self.assertEqual(
+            phase2_work.effective_shift("2026-09-28", "+60111111111")["shift"],
+            "morning",
+        )
+        phase2_work.record_work_event(
+            "ANNUAL_LEAVE", "2026-10-02", "+60111111111", units_days=1
+        )
+        saturday = phase2_work.effective_ot_for_date("2026-10-03", "+60111111111")
+        self.assertFalse(saturday["ot"])
+        self.assertEqual(
+            saturday["eligibility"]["reason"], "FRIDAY_ABSENCE_BLOCKS_WEEKEND_OT"
+        )
+        phase2_work.record_work_event(
+            "OT_WORKED", "2026-10-03", "+60111111111",
+            start_time="06:00", end_time="10:00", hours=4,
+            note="Observed actual work"
+        )
+        actual = phase2_work.effective_ot_for_date("2026-10-03", "+60111111111")
+        self.assertTrue(actual["ot"])
+        self.assertEqual(actual["kind"], "OT_WORKED")
+        self.assertEqual(actual["hours"], 4)
+        self.assertFalse(actual["eligibility"]["eligible"])
+        self.assertEqual(
+            phase2_work.next_ot_payout_dates("2026-09-26", "+60111111111", count=4),
+            ["2026-10-07", "2026-10-12", "2026-11-07", "2026-11-12"],
+        )
+
+    def test_asset_warranty_privacy_and_exact_document_reference(self):
+        self.sync_phase2_fixture()
+        asset = phase2_library.create_asset(
+            "Private device", "+60111111111", visibility="private",
+            warranty_end="2026-10-10"
+        )
+        phase2_library.link_document(
+            asset["asset_id"], "MANUAL", "media:manual1", "+60111111111"
+        )
+        owner = phase2_library.list_assets("+60111111111", include_documents=True)
+        wife = phase2_library.list_assets("+60222222222")
+        group = phase2_library.list_assets("+60111111111", "GROUP")
+        self.assertEqual(owner[0]["documents"][0]["evidence_ref"], "media:manual1")
+        self.assertEqual(wife, [])
+        self.assertEqual(group, [])
+
+        phase2_library.create_asset(
+            "Family appliance", "+60111111111", visibility="family",
+            warranty_end="2026-10-10"
+        )
+        due = phase2_library.warranties_expiring(
+            30, "2026-09-26", "+60111111111"
+        )
+        self.assertEqual([x["name"] for x in due], ["Family appliance"])
+
+    def test_monitoring_is_quiet_until_explicitly_delegated(self):
+        self.sync_phase2_fixture()
+        goal = phase2_finance.create_goal(
+            "Europe", 6000, 200, "+60111111111", visibility="private"
+        )
+        cash = phase2_finance.record_cash_event(
+            "OT", 400, "2026-09-26", "+60111111111", visibility="private"
+        )
+        self.assertEqual(phase2_monitor.bill_candidates("2026-09-26", "+60111111111"), [])
+        self.assertEqual(phase2_monitor.goal_candidates("2026-09", "+60111111111"), [])
+        self.assertEqual(phase2_monitor.ot_allocation_candidates("+60111111111"), [])
+
+        with self.assertRaises(PermissionError):
+            phase2_delegation.create_delegation(
+                "OT_GOAL_TRACK", "Europe", "+60111111111", "no-explicit",
+                explicit_user_instruction=False,
+            )
+        phase2_delegation.create_delegation(
+            "OT_GOAL_TRACK", "Europe", "+60111111111", "explicit",
+            explicit_user_instruction=True,
+        )
+        candidates = phase2_monitor.ot_allocation_candidates("+60111111111")
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0]["cash_event_id"], cash["cash_event_id"])
+        self.assertFalse(candidates[0]["automatic_allocation"])
+        self.assertEqual(candidates[0]["goal_id"], goal["goal_id"])
+
+    def test_quiet_hours_and_time_critical_policy(self):
+        self.sync_phase2_fixture()
+        pref = phase2_presence.owner_preference("+60111111111")
+        at_night = datetime(2026, 9, 26, 23, 0, tzinfo=timezone.utc)
+        routine = phase2_presence.delivery_decision(pref, "away", at_night, "routine")
+        urgent = phase2_presence.delivery_decision(pref, "away", at_night, "time_critical")
+        self.assertEqual(routine["decision"], "DEFER")
+        self.assertEqual(routine["reason"], "QUIET_HOURS")
+        self.assertEqual(urgent["decision"], "DELIVER")
+
+    def test_numbered_retrieval_resolves_exact_latest_item(self):
+        raw1 = base64.b64encode(b"receipt-one").decode("ascii")
+        raw2 = base64.b64encode(b"receipt-two").decode("ascii")
+        mids = []
+        for idx, raw in enumerate((raw1, raw2), 1):
+            mid = f"nr{idx}"
+            self.claim(mid, "+60111111111", "")
+            media_id = media.save_media(mid, "IMAGE", "image/jpeg", raw)
+            mids.append(media_id)
+            actor = with_action_key(self.actor(mid, "+60111111111", [media_id]), f"nr-action-{idx}")
+            services.log_expense(
+                actor, f"Recurring payment {idx}", 100, "utilities",
+                currency="MYR", reference=f"REF{idx:03d}"
+            )
+        self.claim("nrq", "+60111111111", "show receipts")
+        actor = self.actor("nrq", "+60111111111")
+        found = services.find_receipts(actor, amount=100)
+        self.assertEqual([x["choice"] for x in found["matches"]], [1, 2])
+        picked = services.resolve_numbered_choice(actor, 2)
+        self.assertEqual(picked["status"], "found")
+        self.assertEqual(picked["media_id"], found["matches"][1]["media_id"])
+
+    def test_selective_tool_exposure_is_small_and_relevant(self):
+        finance = brain._select_tool_names("how much did I spend this weekend?")
+        self.assertIn("query_finances", finance)
+        self.assertNotIn("ha_control", finance)
+        self.assertLessEqual(len(finance), 12)
+
+        home = brain._select_tool_names("turn off the living room light")
+        self.assertIn("ha_control", home)
+        self.assertNotIn("planning_create_goal", home)
+        self.assertLessEqual(len(home), 8)
+
+        casual = brain._select_tool_names("hello alex, how are you?")
+        self.assertEqual(casual, set())
+
 
 
 if __name__ == "__main__":
