@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.0
+- Added shared/private shopping-list MCP tools with duplicate guarding.
+- Added bounded Home Assistant entity lookup/state/control tools; sensitive domains are rejected deterministically.
+- Added spouse/both-recipient durable reminders using configured WhatsApp numbers.
+- Fixed voice-note media so audio does not force a private expense into the shared space.
+- Switched money minor-unit conversion to Decimal/ROUND_HALF_UP semantics.
+- Added recoverable failed/stale inbound processing without replaying completed messages.
+- Hardened document prompt-injection guidance and selective image vision.
+- Added local Tamil/Malay OCR language packs.
+- Corrected the OpenAI default model id to gpt-5.6-luna.
+- Enabled Home Assistant Core API access for the add-on.
+
 ## 0.1.0
 - Initial independent Alex MCP architecture.
 - Provider-neutral Grok/Gemini/OpenAI brain adapter.
