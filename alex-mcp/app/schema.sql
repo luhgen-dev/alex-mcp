@@ -187,6 +187,20 @@ CREATE TABLE IF NOT EXISTS reminders (
 
 CREATE INDEX IF NOT EXISTS idx_reminders_due ON reminders(status, due_at_utc);
 
+
+CREATE TABLE IF NOT EXISTS selection_sets (
+    selection_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    selection_kind TEXT NOT NULL CHECK(selection_kind IN ('RECEIPT','SAVED_ITEM')),
+    items_json TEXT NOT NULL,
+    created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at_utc TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_selection_context
+ON selection_sets(user_id,conversation_id,selection_kind,created_at_utc);
+
 CREATE TABLE IF NOT EXISTS reminder_events (
     event_id TEXT PRIMARY KEY,
     reminder_id TEXT NOT NULL,
