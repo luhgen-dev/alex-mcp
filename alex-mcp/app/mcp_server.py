@@ -207,6 +207,22 @@ def ha_get_state(entity_id: str, actor: Actor) -> dict:
 
 
 @mcp.tool()
+def ha_home_summary(actor: Actor) -> dict:
+    """Read Home Assistant states and produce a deterministic privacy-safe whole-home status summary."""
+    import ha
+    rows = ha.list_states()
+    return phase2_home.summarize_home(rows)
+
+
+@mcp.tool()
+def ha_draft_automation(name: str, trigger_yaml: str, action_yaml: str, actor: Actor,
+                        condition_yaml: str | None = None) -> dict:
+    """Return a draft Home Assistant automation proposal only. It never deploys or edits HA configuration."""
+    import ha
+    return ha.draft_automation(name, trigger_yaml, action_yaml, condition_yaml)
+
+
+@mcp.tool()
 def ha_control(entity_id: str, action: str, actor: Actor, value: float | None = None) -> dict:
     """Perform an explicitly requested low-risk Home Assistant action on lights, switches, fans, climate or media players, then verify state. Sensitive domains are rejected by the backend."""
     import ha
@@ -407,6 +423,22 @@ def planning_record_cash(event_type: str, amount: float, event_date: str, actor:
 
 
 @mcp.tool()
+def planning_compare_salary(cash_event_id: str, actor: Actor) -> dict:
+    """Compare an actual recorded salary payment with the configured fixed salary. A difference is reported; the baseline is never rewritten automatically."""
+    return phase2_finance.compare_actual_salary(
+        cash_event_id, actor.phone, actor.conversation_type
+    )
+
+
+@mcp.tool()
+def planning_match_goal_alias(alias_text: str, actor: Actor) -> dict:
+    """Conservatively resolve a configured non-sensitive account alias to one authorized goal."""
+    return phase2_finance.resolve_goal_from_alias(
+        alias_text, actor.phone, actor.conversation_type
+    )
+
+
+@mcp.tool()
 def planning_cash_status(cash_event_id: str, actor: Actor) -> dict:
     """Read how much of one cash event is still unallocated."""
     return phase2_finance.cash_event_status(cash_event_id, actor.phone, actor.conversation_type)
@@ -482,6 +514,14 @@ def bills_list(actor: Actor, period: str | None = None,
     return {"obligations": phase2_finance.list_obligations(
         actor.phone, actor.conversation_type, "all", period
     ), "as_of_date": effective_date}
+
+
+@mcp.tool()
+def bills_match_payment(label: str, amount: float, event_date: str, actor: Actor) -> dict:
+    """Conservatively match payment/receipt facts to exactly one authorized recurring obligation. Ambiguous matches are returned, never guessed."""
+    return phase2_finance.resolve_obligation_from_evidence(
+        label, amount, event_date, actor.phone, actor.conversation_type, "all"
+    )
 
 
 @mcp.tool()
