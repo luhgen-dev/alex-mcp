@@ -399,6 +399,27 @@ def planning_create_goal(name: str, target_amount: float, baseline_monthly: floa
 
 
 @mcp.tool()
+def planning_lock_goal(goal_id: str, actor: Actor) -> dict:
+    """Lock/activate a draft goal after explicit owner approval."""
+    return phase2_finance.lock_goal(goal_id, actor.phone, actor.conversation_type)
+
+
+@mcp.tool()
+def planning_reopen_goal(goal_id: str, actor: Actor) -> dict:
+    """Reopen a completed/cancelled/paused goal only after explicit owner instruction."""
+    return phase2_finance.reopen_goal(goal_id, actor.phone, actor.conversation_type)
+
+
+@mcp.tool()
+def planning_set_period_target(goal_id: str, period: str, amount: float, actor: Actor,
+                               reason: str | None = None) -> dict:
+    """Set a one-period goal target such as 'RM100 is enough this month' without changing future recurring baseline."""
+    return phase2_finance.set_goal_period_target(
+        goal_id, period, amount, actor.phone, actor.conversation_type, reason
+    )
+
+
+@mcp.tool()
 def planning_change_goal_baseline(goal_id: str, new_monthly_amount: float, actor: Actor,
                                   effective_from_period: str | None = None,
                                   reason: str | None = None) -> dict:
@@ -490,11 +511,75 @@ def planning_create_cash_pool(name: str, actor: Actor, currency: str = "MYR",
 
 
 @mcp.tool()
+def planning_cash_pool_balance(pool_id: str, actor: Actor) -> dict:
+    """Read the exact balance of one authorized stash/cash pool."""
+    return phase2_finance.cash_pool_balance(pool_id, actor.phone, actor.conversation_type)
+
+
+@mcp.tool()
 def planning_allocate_cash_to_pool(cash_event_id: str, pool_id: str, amount: float,
                                    actor: Actor) -> dict:
     """Allocate explicit extra cash to a stash/pool after user instruction."""
     return phase2_finance.allocate_cash_to_pool(
         cash_event_id, pool_id, amount, actor.phone, actor.conversation_type,
+    )
+
+
+@mcp.tool()
+def planning_add_reserve(name: str, monthly_amount: float, actor: Actor,
+                         currency: str = "MYR", shared: bool = False) -> dict:
+    """Add an explicit monthly reserve/allowance to the baseline only because the user asked to reserve it."""
+    return phase2_finance.add_plan_reserve(
+        name, monthly_amount, actor.phone, actor.conversation_type,
+        "family" if shared or actor.conversation_type == "GROUP" else "private",
+        currency,
+    )
+
+
+@mcp.tool()
+def planning_update_reserve(reserve_id: str, actor: Actor,
+                            monthly_amount: float | None = None,
+                            name: str | None = None,
+                            active: bool | None = None) -> dict:
+    """Change, enable or disable a reserve only after explicit owner instruction."""
+    return phase2_finance.update_plan_reserve(
+        reserve_id, actor.phone, actor.conversation_type,
+        monthly_amount, name, active,
+    )
+
+
+@mcp.tool()
+def planning_list_reserves(actor: Actor, include_inactive: bool = False) -> dict:
+    """List authorized explicit planning reserves/allowances."""
+    return {"reserves": phase2_finance.list_plan_reserves(
+        actor.phone, actor.conversation_type, "all", include_inactive
+    )}
+
+
+@mcp.tool()
+def planning_baseline(actor: Actor, currency: str = "MYR",
+                      reveal_inputs: bool = False) -> dict:
+    """Read deterministic baseline capacity. Raw private income is included in output only when the owner explicitly asks to reveal it."""
+    return phase2_finance.baseline_plan(
+        actor.phone, actor.conversation_type, "all", reveal_inputs, currency
+    )
+
+
+@mcp.tool()
+def planning_income_outlook(period: str, actor: Actor, currency: str = "MYR",
+                            reveal_sources: bool = False) -> dict:
+    """Read confirmed/expected/possible income for a period. OT remains possible/unknown until observed."""
+    return phase2_finance.income_outlook(
+        period, actor.phone, actor.conversation_type, "all", reveal_sources, currency
+    )
+
+
+@mcp.tool()
+def planning_goal_projection(goal_id: str, actor: Actor,
+                             from_period: str | None = None) -> dict:
+    """Project a goal using its approved baseline only; one-off extra contributions do not rewrite future baseline."""
+    return phase2_finance.goal_projection(
+        goal_id, actor.phone, actor.conversation_type, from_period
     )
 
 
