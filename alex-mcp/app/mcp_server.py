@@ -291,9 +291,9 @@ def confirm_plan(plan_id: str, actor: Actor, add_to_diary: bool = True,
 
 
 @mcp.tool()
-def share_plan(plan_id: str, actor: Actor) -> dict:
-    """Explicitly publish a private plan as a separate FAMILY_SHARED copy; the private source remains intact."""
-    return phase2.share_plan(actor, plan_id)
+def share_plan(plan_id: str, actor: Actor, shared_notes: str | None = None) -> dict:
+    """Publish a private plan as a separate FAMILY_SHARED copy. Private notes are never copied automatically; provide shared_notes only when the owner explicitly wants those family-safe notes shared."""
+    return phase2.share_plan(actor, plan_id, shared_notes)
 
 
 @mcp.tool()
