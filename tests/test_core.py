@@ -840,18 +840,42 @@ class AlexCoreTests(unittest.TestCase):
         self.assertEqual(picked["media_id"], found["matches"][1]["media_id"])
 
     def test_selective_tool_exposure_is_small_and_relevant(self):
+        cases = [
+            ("how much did I spend this weekend?", "query_finances"),
+            ("turn off the living room light", "ha_control"),
+            ("remind me tomorrow at 9 to pay TNB", "create_reminder"),
+            ("show me the receipt reference ABC123", "find_receipts"),
+            ("I got RM500 extra cash, allocate RM300 to Europe goal", "planning_allocate_cash_to_goal"),
+            ("my electricity bill is paid, match this payment", "bills_match_payment"),
+            ("what shift am I working next week?", "work_schedule"),
+            ("move my dentist appointment to Friday 3pm", "update_diary_event"),
+            ("save this photo as my keys photo", "save_item"),
+            ("monitor my Europe goal", "monitor_delegate"),
+        ]
+        for utterance, required in cases:
+            selected = brain._select_tool_names(utterance, ["attachment"] if "this photo" in utterance else None)
+            self.assertIn(required, selected, (utterance, selected))
+            self.assertLessEqual(len(selected), brain.TOOL_EXPOSURE_MAX, (utterance, selected))
+
         finance = brain._select_tool_names("how much did I spend this weekend?")
-        self.assertIn("query_finances", finance)
         self.assertNotIn("ha_control", finance)
-        self.assertLessEqual(len(finance), 12)
 
         home = brain._select_tool_names("turn off the living room light")
-        self.assertIn("ha_control", home)
         self.assertNotIn("planning_create_goal", home)
-        self.assertLessEqual(len(home), 8)
 
         casual = brain._select_tool_names("hello alex, how are you?")
         self.assertEqual(casual, set())
+
+        # Bare numeric replies must keep both persisted-choice resolvers available.
+        numbered = brain._select_tool_names("2")
+        self.assertIn("resolve_latest_diary_conflict", numbered)
+        self.assertIn("resolve_numbered_choice", numbered)
+        self.assertLessEqual(len(numbered), brain.TOOL_EXPOSURE_MAX)
+
+        # Tamil input still receives a bounded, useful tool surface.
+        tamil = brain._select_tool_names("நாளைக்கு 9 மணிக்கு பில் கட்ட நினைவூட்டு")
+        self.assertLessEqual(len(tamil), brain.TOOL_EXPOSURE_MAX)
+        self.assertTrue(tamil)
 
 
 
