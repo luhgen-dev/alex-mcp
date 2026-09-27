@@ -18,6 +18,8 @@ RUN apk add --no-cache \
       ffmpeg \
       tesseract-ocr \
       tesseract-ocr-data-eng \
+      tesseract-ocr-data-msa \
+      tesseract-ocr-data-tam \
       poppler-utils \
       whisper.cpp
 
