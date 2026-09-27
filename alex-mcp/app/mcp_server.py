@@ -15,10 +15,11 @@ import phase2_library
 import phase2_delegation
 import phase2_monitor
 import phase2_home
+import phase2_reports
 
 mcp = MCPServer(
     "Alex Household Tools",
-    version="0.2.0",
+    version="0.3.0",
     instructions="Deterministic household tools. Identity and permissions are injected by Alex and are never model-controlled.",
 )
 
@@ -775,6 +776,75 @@ def monitor_cancel(delegation_id: str, actor: Actor) -> dict:
     return phase2_delegation.close_delegation(
         delegation_id, actor.phone, actor.conversation_type, "CANCELLED"
     )
+
+
+@mcp.tool()
+def report_snapshot(actor: Actor, period: str | None = None,
+                    include_raw_income: bool = False) -> dict:
+    """Build a privacy-scoped household/finance/work snapshot. Raw private income is never exposed in a family group."""
+    if include_raw_income and actor.conversation_type == "GROUP":
+        raise PermissionError("raw private income cannot be requested from the family group")
+    return phase2_reports.build_snapshot(
+        actor.phone, actor.conversation_type, "all", period,
+        include_raw_income=include_raw_income, include_assets=True, include_leave=True,
+    )
+
+
+@mcp.tool()
+def report_export(format: str, actor: Actor, period: str | None = None,
+                  include_raw_income: bool = False) -> dict:
+    """Create a local privacy-scoped PDF/CSV/JSON report and return it as a WhatsApp document attachment."""
+    import os
+    from pathlib import Path
+    from config import DATA_DIR
+
+    fmt = (format or "").strip().lower()
+    if fmt not in {"pdf", "csv", "json"}:
+        raise ValueError("format must be pdf, csv or json")
+    if include_raw_income and actor.conversation_type == "GROUP":
+        raise PermissionError("raw private income cannot be exported from the family group")
+
+    snapshot = phase2_reports.build_snapshot(
+        actor.phone, actor.conversation_type, "all", period,
+        include_raw_income=include_raw_income, include_assets=True, include_leave=True,
+    )
+    out_dir = Path(DATA_DIR) / "reports"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    safe_period = (period or "current").replace("/", "-").replace("..", "-")
+    path = out_dir / f"alex-{safe_period}.{fmt}"
+    if fmt == "pdf":
+        payload = phase2_reports.minimal_pdf(snapshot)
+        path.write_bytes(payload)
+        mime = "application/pdf"
+    elif fmt == "csv":
+        payload = phase2_reports.finance_csv(snapshot)
+        path.write_text(payload, encoding="utf-8")
+        mime = "text/csv"
+    else:
+        payload = phase2_reports.snapshot_json(snapshot)
+        path.write_text(payload, encoding="utf-8")
+        mime = "application/json"
+    return {
+        "status": "ready",
+        "format": fmt,
+        "period": period,
+        "_attachments": [{"path": os.fspath(path), "kind": "DOCUMENT", "mime_type": mime}],
+    }
+
+
+@mcp.tool()
+def report_payload(target: str, actor: Actor, period: str | None = None) -> dict:
+    """Return a privacy-safe structured payload for a future Google Sheets or TV handoff; this tool never uploads externally."""
+    target_name = (target or "").strip().lower()
+    snapshot = phase2_reports.build_snapshot(
+        actor.phone, actor.conversation_type, "all", period,
+        include_raw_income=False, include_assets=True, include_leave=True,
+    )
+    if target_name in {"sheets", "google_sheets", "google sheets"}:
+        return {"target": "google_sheets", "rows": phase2_reports.google_sheets_rows(snapshot)}
+    if target_name in {"tv", "dashboard"}:
+        return {"target": "tv", "payload": phase2_reports.tv_payload(snapshot)}
+    raise ValueError("target must be google_sheets or tv")
 
 
 @mcp.tool()
