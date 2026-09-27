@@ -444,6 +444,7 @@ CREATE TABLE IF NOT EXISTS ai_usage (
     output_tokens INTEGER NOT NULL DEFAULT 0,
     tool_rounds INTEGER NOT NULL DEFAULT 0,
     latency_ms INTEGER,
+    estimated_cost_usd REAL,
     created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(source_message_id) REFERENCES inbound_messages(message_id)
 );
