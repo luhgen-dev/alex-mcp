@@ -77,6 +77,32 @@ def _tool_to_openai(tool) -> dict:
     }
 
 
+DISCOVERY_TOOL_NAME = "discover_alex_tools"
+DISCOVERY_TOOL = {
+    "type": "function",
+    "function": {
+        "name": DISCOVERY_TOOL_NAME,
+        "description": (
+            "Use only when the user's meaning clearly needs Alex household data or an action "
+            "but the currently available tools do not cover it. Rewrite the user's intended "
+            "task as a short clear English intent so Alex can load the correct narrow tool set. "
+            "Do not use for casual conversation."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "intent": {
+                    "type": "string",
+                    "description": "Short normalized description of what the user wants Alex to know or do."
+                }
+            },
+            "required": ["intent"],
+            "additionalProperties": False,
+        },
+    },
+}
+
+
 CORE_FINANCE = {
     "log_expense","confirm_expense","query_finances","list_pending_expenses",
     "correct_expense","find_receipts","get_receipt","calculate",
@@ -300,13 +326,23 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
     return _cap_tool_names(selected, text, media_context)
 
 
-async def _tool_specs(user_text: str, media_context: list[str] | None = None) -> list[dict]:
-    wanted = _select_tool_names(user_text, media_context)
+async def _tool_specs_for_names(wanted: set[str]) -> list[dict]:
     if not wanted:
         return []
     async with Client(mcp) as client:
         result = await client.list_tools()
         return [_tool_to_openai(t) for t in result.tools if t.name in wanted]
+
+
+async def _tool_specs(user_text: str, media_context: list[str] | None = None) -> list[dict]:
+    wanted = _select_tool_names(user_text, media_context)
+    specs = await _tool_specs_for_names(wanted)
+    # The discovery tool is a tiny safety valve for typo-heavy, incomplete,
+    # Tanglish or otherwise novel phrasing. It lets the LLM normalize intent
+    # without exposing Alex's full MCP catalog or adding a separate classifier call.
+    if len(specs) < TOOL_EXPOSURE_MAX:
+        specs.append(DISCOVERY_TOOL)
+    return specs[:TOOL_EXPOSURE_MAX]
 
 
 def _client():
@@ -493,6 +529,24 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                     args = {}
             except json.JSONDecodeError:
                 args = {}
+
+            if name == DISCOVERY_TOOL_NAME:
+                normalized = str(args.get("intent") or "").strip()
+                discovered = _select_tool_names(normalized, media_context)
+                discovered_specs = await _tool_specs_for_names(discovered)
+                # Keep the discovery valve available in case the first normalized
+                # description was still too vague, while never exceeding six schemas.
+                tools = discovered_specs[:TOOL_EXPOSURE_MAX - 1] + [DISCOVERY_TOOL]
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": call.id,
+                    "content": json.dumps({
+                        "status": "tools_loaded",
+                        "normalized_intent": normalized,
+                        "tool_names": [x["function"]["name"] for x in discovered_specs[:TOOL_EXPOSURE_MAX - 1]],
+                    }, ensure_ascii=False, separators=(",", ":")),
+                })
+                continue
 
             signature = name + "|" + json.dumps(args, sort_keys=True, ensure_ascii=False)
             occurrence[signature] = occurrence.get(signature, 0) + 1
