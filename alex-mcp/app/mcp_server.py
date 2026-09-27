@@ -9,6 +9,12 @@ from context import ActorContext, current_actor
 import services
 import phase2
 import diagnostics
+import phase2_finance
+import phase2_work
+import phase2_library
+import phase2_delegation
+import phase2_monitor
+import phase2_home
 
 mcp = MCPServer(
     "Alex Household Tools",
@@ -305,6 +311,281 @@ def system_health(actor: Actor, hours: int = 24) -> dict:
 def recent_failures(actor: Actor, hours: int = 24, limit: int = 20) -> dict:
     """Explain recent observed Alex failures from durable logs/audits. Return observed facts only, not invented causes."""
     return diagnostics.recent_failures(actor, hours, limit)
+
+
+@mcp.tool()
+def planning_create_goal(name: str, target_amount: float, baseline_monthly: float, actor: Actor,
+                         currency: str = "MYR", target_date: str | None = None,
+                         status: str = "ACTIVE", shared: bool = False) -> dict:
+    """Create a goal with a recurring baseline. One-off contributions never silently change this baseline."""
+    return phase2_finance.create_goal(
+        name, target_amount, baseline_monthly, actor.phone, actor.conversation_type,
+        "family" if shared or actor.conversation_type == "GROUP" else "private",
+        currency, target_date, status,
+    )
+
+
+@mcp.tool()
+def planning_change_goal_baseline(goal_id: str, new_monthly_amount: float, actor: Actor,
+                                  effective_from_period: str | None = None,
+                                  reason: str | None = None) -> dict:
+    """Change a recurring goal baseline prospectively. Earlier periods remain unchanged."""
+    return phase2_finance.set_goal_baseline(
+        goal_id, new_monthly_amount, actor.phone, actor.conversation_type,
+        effective_from_period, reason,
+    )
+
+
+@mcp.tool()
+def planning_record_goal_contribution(goal_id: str, amount: float, contribution_date: str,
+                                      actor: Actor, contribution_kind: str = "ONE_OFF",
+                                      source_cash_event_id: str | None = None) -> dict:
+    """Record an actual goal contribution without changing its recurring plan."""
+    return phase2_finance.record_goal_contribution(
+        goal_id, amount, contribution_date, actor.phone, actor.conversation_type,
+        contribution_kind, source_cash_event_id, actor.source_message_id,
+    )
+
+
+@mcp.tool()
+def planning_goal_progress(goal_id: str, actor: Actor) -> dict:
+    """Read goal target, actual funding, remaining amount and recurring baseline."""
+    return phase2_finance.goal_progress(goal_id, actor.phone, actor.conversation_type)
+
+
+@mcp.tool()
+def planning_goal_deviation(goal_id: str, actual_amount: float, period: str, actor: Actor) -> dict:
+    """Compare an actual contribution with that period's approved plan; never change the plan automatically."""
+    return phase2_finance.evaluate_goal_deviation(
+        goal_id, actual_amount, period, actor.phone, actor.conversation_type,
+    )
+
+
+@mcp.tool()
+def planning_record_cash(event_type: str, amount: float, event_date: str, actor: Actor,
+                         currency: str = "MYR", description: str | None = None,
+                         shared: bool = False) -> dict:
+    """Record salary/OT/bonus/refund/other cash. Variable cash starts UNALLOCATED."""
+    return phase2_finance.record_cash_event(
+        event_type, amount, event_date, actor.phone, actor.conversation_type,
+        "family" if shared or actor.conversation_type == "GROUP" else "private",
+        currency, description, actor.source_message_id,
+    )
+
+
+@mcp.tool()
+def planning_cash_status(cash_event_id: str, actor: Actor) -> dict:
+    """Read how much of one cash event is still unallocated."""
+    return phase2_finance.cash_event_status(cash_event_id, actor.phone, actor.conversation_type)
+
+
+@mcp.tool()
+def planning_allocate_cash_to_goal(cash_event_id: str, goal_id: str, amount: float,
+                                   actor: Actor, contribution_date: str | None = None) -> dict:
+    """Allocate explicit extra cash to a goal only after the user instructs Alex to do so."""
+    return phase2_finance.allocate_cash_to_goal(
+        cash_event_id, goal_id, amount, actor.phone, actor.conversation_type,
+        contribution_date,
+    )
+
+
+@mcp.tool()
+def planning_create_cash_pool(name: str, actor: Actor, currency: str = "MYR",
+                              shared: bool = False) -> dict:
+    """Create a stash/cash pool without allocating any money into it."""
+    return phase2_finance.create_cash_pool(
+        name, actor.phone, actor.conversation_type,
+        "family" if shared or actor.conversation_type == "GROUP" else "private",
+        currency,
+    )
+
+
+@mcp.tool()
+def planning_allocate_cash_to_pool(cash_event_id: str, pool_id: str, amount: float,
+                                   actor: Actor) -> dict:
+    """Allocate explicit extra cash to a stash/pool after user instruction."""
+    return phase2_finance.allocate_cash_to_pool(
+        cash_event_id, pool_id, amount, actor.phone, actor.conversation_type,
+    )
+
+
+@mcp.tool()
+def planning_cashflow(period: str, actor: Actor, currency: str = "MYR") -> dict:
+    """Read a dated monthly forecast. OT/variable income remains separate from guaranteed baseline."""
+    return phase2_finance.cashflow_forecast(
+        period, actor.phone, actor.conversation_type, "all", currency,
+    )
+
+
+@mcp.tool()
+def planning_brief(actor: Actor, currency: str = "MYR") -> dict:
+    """Read a privacy-scoped baseline planning brief. Does not recommend allowance changes."""
+    return phase2_finance.planning_brief(
+        actor.phone, actor.conversation_type, "all", currency,
+    )
+
+
+@mcp.tool()
+def planning_list_goals(actor: Actor) -> dict:
+    """List authorized advanced goals and their current plan state."""
+    return {"goals": phase2_finance.list_goals(actor.phone, actor.conversation_type, "all")}
+
+
+@mcp.tool()
+def bills_list(actor: Actor, period: str | None = None) -> dict:
+    """List expected/paid/partial/deferred/unconfirmed/confirmed-unpaid recurring obligations."""
+    if period:
+        phase2_finance.ensure_obligation_instances(period, actor.phone, actor.conversation_type, "all")
+        phase2_finance.refresh_obligation_states(
+            period + "-28", actor.phone, actor.conversation_type, "all"
+        )
+    return {"obligations": phase2_finance.list_obligations(
+        actor.phone, actor.conversation_type, "all", period
+    )}
+
+
+@mcp.tool()
+def bills_record_payment(instance_id: str, amount: float, actor: Actor,
+                         note: str | None = None) -> dict:
+    """Record an actual payment against one exact obligation instance; supports partial payment."""
+    return phase2_finance.record_obligation_payment(
+        instance_id, amount, actor.phone, actor.conversation_type, note,
+    )
+
+
+@mcp.tool()
+def bills_defer(instance_id: str, new_due_date: str, actor: Actor,
+                note: str | None = None) -> dict:
+    """Defer one exact obligation; history remains intact."""
+    return phase2_finance.defer_obligation(
+        instance_id, new_due_date, actor.phone, actor.conversation_type, note,
+    )
+
+
+@mcp.tool()
+def bills_confirm_unpaid(instance_id: str, actor: Actor, note: str | None = None) -> dict:
+    """Mark one obligation explicitly confirmed unpaid. Missing evidence alone never means unpaid."""
+    return phase2_finance.confirm_obligation_unpaid(
+        instance_id, actor.phone, actor.conversation_type, note,
+    )
+
+
+@mcp.tool()
+def work_schedule(start_date: str, end_date: str, actor: Actor) -> dict:
+    """Read repeating roster, explicit shift exceptions and effective OT over a date range."""
+    return phase2_work.work_summary(start_date, end_date, actor.phone, actor.conversation_type)
+
+
+@mcp.tool()
+def work_day(on_date: str, actor: Actor) -> dict:
+    """Read a natural historical/current work-day brief without inventing attendance."""
+    return phase2_work.historical_work_day(on_date, actor.phone, actor.conversation_type)
+
+
+@mcp.tool()
+def work_record_event(event_type: str, event_date: str, actor: Actor,
+                      shift_code: str | None = None, start_time: str | None = None,
+                      end_time: str | None = None, hours: float | None = None,
+                      units_days: float | None = None, work_scope: str | None = None,
+                      manager_override: bool = False, note: str | None = None,
+                      shared: bool = False) -> dict:
+    """Record leave/MC/shift-swap or OT offered/pending/planned/worked/unavailable as a dated fact."""
+    return phase2_work.record_work_event(
+        event_type, event_date, actor.phone, actor.conversation_type,
+        "family" if shared or actor.conversation_type == "GROUP" else "private",
+        shift_code, start_time, end_time, hours, units_days, work_scope,
+        manager_override, note, actor.source_message_id,
+    )
+
+
+@mcp.tool()
+def work_ot_status(on_date: str, actor: Actor) -> dict:
+    """Read explicit/default OT state; offered/pending are never treated as worked income."""
+    return phase2_work.ot_status_for_date(on_date, actor.phone, actor.conversation_type)
+
+
+@mcp.tool()
+def work_leave_balance(leave_id: str, actor: Actor, as_of_date: str | None = None) -> dict:
+    """Read annual/medical leave from configured snapshot plus later TAKEN/recorded events."""
+    return phase2_work.leave_balance(leave_id, actor.phone, actor.conversation_type, as_of_date)
+
+
+@mcp.tool()
+def work_departure_plan(on_date: str, actor: Actor, travel_minutes: int | None = None,
+                        prep_minutes: int = 30, arrival_buffer_minutes: int = 10) -> dict:
+    """Calculate leave-home/alarm candidates from real roster plus supplied travel duration. Never invent route time or create an alarm."""
+    return phase2_home.shift_departure_plan(
+        on_date, actor.phone, actor.conversation_type,
+        travel_minutes, prep_minutes, arrival_buffer_minutes,
+    )
+
+
+@mcp.tool()
+def asset_create(name: str, actor: Actor, category: str | None = None,
+                 brand: str | None = None, model: str | None = None,
+                 serial_number: str | None = None, purchase_date: str | None = None,
+                 warranty_end: str | None = None, note: str | None = None,
+                 shared: bool = True) -> dict:
+    """Create household asset metadata such as appliance/warranty records."""
+    return phase2_library.create_asset(
+        name, actor.phone, actor.conversation_type,
+        "family" if shared or actor.conversation_type == "GROUP" else "private",
+        category, brand, model, serial_number, purchase_date, warranty_end, note,
+    )
+
+
+@mcp.tool()
+def asset_link_document(asset_id: str, document_type: str, evidence_ref: str,
+                        actor: Actor, note: str | None = None) -> dict:
+    """Link an already-preserved receipt/warranty/manual evidence reference to an authorized asset."""
+    return phase2_library.link_document(
+        asset_id, document_type, evidence_ref, actor.phone, actor.conversation_type,
+        actor.source_message_id, note,
+    )
+
+
+@mcp.tool()
+def asset_list(actor: Actor, include_documents: bool = False) -> dict:
+    """List authorized household/private assets without leaking another person's private assets."""
+    return {"assets": phase2_library.list_assets(
+        actor.phone, actor.conversation_type, "all", include_documents
+    )}
+
+
+@mcp.tool()
+def warranty_expiring(within_days: int, as_of_date: str, actor: Actor) -> dict:
+    """Find warranties expiring within a deterministic date window."""
+    return {"warranties": phase2_library.warranties_expiring(
+        within_days, as_of_date, actor.phone, actor.conversation_type, "all"
+    )}
+
+
+@mcp.tool()
+def monitor_delegate(delegation_type: str, subject: str, actor: Actor,
+                     shared: bool = False) -> dict:
+    """Enable one proactive monitor only after an explicit user instruction. Quiet by default otherwise."""
+    return phase2_delegation.create_delegation(
+        delegation_type, subject, actor.phone, actor.source_message_id,
+        actor.conversation_type,
+        "family" if shared or actor.conversation_type == "GROUP" else "private",
+        None, True,
+    )
+
+
+@mcp.tool()
+def monitor_list(actor: Actor, delegation_type: str | None = None) -> dict:
+    """List active user-authorized proactive monitoring delegations."""
+    return {"delegations": phase2_delegation.active_delegations(
+        actor.phone, actor.conversation_type, delegation_type
+    )}
+
+
+@mcp.tool()
+def monitor_cancel(delegation_id: str, actor: Actor) -> dict:
+    """Cancel one explicit monitoring delegation."""
+    return phase2_delegation.close_delegation(
+        delegation_id, actor.phone, actor.conversation_type, "CANCELLED"
+    )
 
 
 @mcp.tool()
