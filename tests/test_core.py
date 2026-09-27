@@ -621,7 +621,7 @@ class AlexCoreTests(unittest.TestCase):
         finally:
             conn.close()
 
-    def test_spouse_availability_hides_private_details(self):
+    def test_spouse_availability_never_reads_private_schedule(self):
         self.claim("wife-roster", "+60222222222", "work")
         wife = with_action_key(self.actor("wife-roster", "+60222222222"), "wife-roster-a")
         phase2.set_work_roster(wife, "2026-10-10", "Secret named shift")
@@ -629,8 +629,10 @@ class AlexCoreTests(unittest.TestCase):
         self.claim("hus-check", "+60111111111", "is she free")
         husband = self.actor("hus-check", "+60111111111")
         result = phase2.check_spouse_availability(husband, "2026-10-10T12:00:00+08:00")
-        self.assertEqual(result["availability"], "busy")
+        self.assertEqual(result["availability"], "private_check_required")
+        self.assertFalse(result["private_schedule_read"])
         self.assertEqual(result["privacy"], "details_hidden")
+        self.assertNotIn("secret", str(result).lower())
         self.assertNotIn("shift", str(result).lower())
 
     def test_agenda_combines_life_work_leave_and_reminders(self):
