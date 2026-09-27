@@ -38,6 +38,7 @@ import phase2_library
 import phase2_delegation
 import phase2_monitor
 import phase2_presence
+import phase2_reports
 import brain
 from context import use_actor, with_action_key
 from mcp import Client
@@ -883,6 +884,141 @@ class AlexCoreTests(unittest.TestCase):
         tamil = brain._select_tool_names("நாளைக்கு 9 மணிக்கு பில் கட்ட நினைவூட்டு")
         self.assertLessEqual(len(tamil), brain.TOOL_EXPOSURE_MAX)
         self.assertTrue(tamil)
+
+
+
+    def test_explicit_saved_receipt_intent_does_not_expose_finance_write(self):
+        selected = brain._select_tool_names(
+            "Save this as my BSNC Leasing payment receipt",
+            ["OCR: BSNC Leasing MYR 621.00 Reference 63144508"],
+        )
+        self.assertIn("save_item", selected)
+        self.assertNotIn("log_expense", selected)
+        self.assertNotIn("bills_record_payment", selected)
+
+        compound = brain._select_tool_names(
+            "Save this and log the expense RM621",
+            ["OCR: BSNC Leasing MYR 621.00"],
+        )
+        self.assertIn("save_item", compound)
+        self.assertIn("log_expense", compound)
+
+    def test_latest_named_expense_is_deterministic(self):
+        old_time = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+        new_time = datetime.now(timezone.utc).isoformat()
+        for mid, key, amount, when in (
+            ("latest-old", "latest-old-action", 4.0, old_time),
+            ("latest-new", "latest-new-action", 8.5, new_time),
+        ):
+            self.claim(mid, "+60111111111", "coffee")
+            actor = with_action_key(self.actor(mid, "+60111111111"), key)
+            services.log_expense(
+                actor, "coffee", amount, "food", currency="MYR",
+                event_date_local=when,
+            )
+        self.claim("latest-query", "+60111111111", "coffee just now")
+        result = services.query_finances(
+            self.actor("latest-query", "+60111111111"), search="coffee"
+        )
+        self.assertEqual(result["latest_record"]["amount"], 8.5)
+        self.assertEqual(result["spending_totals"]["MYR"], 12.5)
+
+    def test_one_period_goal_target_does_not_rewrite_baseline(self):
+        self.sync_phase2_fixture()
+        goal = phase2_finance.create_goal(
+            "Europe", 6000, 200, "+60111111111", visibility="private"
+        )
+        phase2_finance.set_goal_period_target(
+            goal["goal_id"], "2026-09", 100, "+60111111111",
+            reason="Owner says RM100 is enough this month",
+        )
+        september = phase2_finance.evaluate_goal_deviation(
+            goal["goal_id"], 100, "2026-09", "+60111111111"
+        )
+        progress = phase2_finance.goal_progress(goal["goal_id"], "+60111111111")
+        self.assertEqual(september["status"], "ON_PLAN")
+        self.assertEqual(progress["baseline_monthly"], 200)
+
+    def test_reserve_and_stash_are_explicit_owner_actions(self):
+        self.sync_phase2_fixture()
+        reserve = phase2_finance.add_plan_reserve(
+            "Shopping allowance", 300, "+60111111111", visibility="private"
+        )
+        listed = phase2_finance.list_plan_reserves("+60111111111")
+        self.assertTrue(any(r["reserve_id"] == reserve["reserve_id"] for r in listed))
+
+        cash = phase2_finance.record_cash_event(
+            "BONUS", 500, "2026-09-27", "+60111111111", visibility="private"
+        )
+        pool = phase2_finance.create_cash_pool(
+            "Stash", "+60111111111", visibility="private"
+        )
+        before = phase2_finance.cash_event_status(cash["cash_event_id"], "+60111111111")
+        self.assertEqual(before["allocation_state"], "UNALLOCATED")
+        phase2_finance.allocate_cash_to_pool(
+            cash["cash_event_id"], pool["pool_id"], 200, "+60111111111"
+        )
+        balance = phase2_finance.cash_pool_balance(pool["pool_id"], "+60111111111")
+        self.assertEqual(balance["balance"], 200)
+        after = phase2_finance.cash_event_status(cash["cash_event_id"], "+60111111111")
+        self.assertEqual(after["unallocated"], 300)
+
+    def test_report_exports_are_privacy_scoped_and_local(self):
+        self.sync_phase2_fixture()
+        snapshot = phase2_reports.build_snapshot(
+            "+60111111111", "DIRECT_DM", "all", "2026-09",
+            include_raw_income=False,
+        )
+        self.assertIsNone(snapshot["baseline_plan"]["fixed_income_monthly"])
+        pdf = phase2_reports.minimal_pdf(snapshot)
+        self.assertTrue(pdf.startswith(b"%PDF-1.4"))
+        csv = phase2_reports.finance_csv(snapshot)
+        self.assertIsInstance(csv, str)
+        self.assertTrue(csv.strip())
+
+    def test_home_assistant_low_risk_control_is_verified(self):
+        states = [
+            {"entity_id": "light.living_room", "state": "on",
+             "attributes": {"friendly_name": "Living Room Light"}}
+        ]
+        calls = []
+
+        def fake_request(method, path, payload=None):
+            calls.append((method, path, payload))
+            if path == "/states":
+                return states
+            if path == "/states/light.living_room":
+                return {
+                    "entity_id": "light.living_room", "state": "off",
+                    "attributes": {"friendly_name": "Living Room Light"},
+                    "last_changed": "2026-09-27T00:00:00+00:00",
+                }
+            if path == "/services/light/turn_off":
+                return []
+            raise AssertionError((method, path, payload))
+
+        with patch.object(ha, "_request", side_effect=fake_request):
+            found = ha.find_entities("living room", "light")
+            self.assertEqual(found["matches"][0]["entity_id"], "light.living_room")
+            controlled = ha.control("light.living_room", "turn_off")
+        self.assertEqual(controlled["status"], "executed_and_verified")
+        self.assertEqual(controlled["state_after"]["state"], "off")
+        self.assertTrue(any(path == "/services/light/turn_off" for _, path, _ in calls))
+
+    def test_cost_estimator_and_budget_settings_are_conservative(self):
+        self.assertEqual(brain._estimate_cost("grok", "grok-4.7", 1_000_000, 1_000_000), 8.0)
+        self.assertEqual(brain._estimate_cost("gemini", "gemini-3.8-flash", 1_000_000, 1_000_000), 4.5)
+        self.assertEqual(brain._estimate_cost("openai", "gpt-5.6-luna", 1_000_000, 1_000_000), 1.4)
+        self.assertIsNone(brain._estimate_cost("grok", "custom-unknown-model", 1000, 1000))
+
+    def test_typo_heavy_request_has_discovery_safety_valve(self):
+        async def exercise():
+            specs = await brain._tool_specs("alx plz remidn me tmrw 9 pay elctrcity")
+            names = [x["function"]["name"] for x in specs]
+            self.assertIn(brain.DISCOVERY_TOOL_NAME, names)
+            self.assertLessEqual(len(names), brain.TOOL_EXPOSURE_MAX)
+
+        asyncio.run(exercise())
 
 
 
