@@ -398,11 +398,32 @@ def resolve_diary_conflict(actor: ActorContext, conflict_id: str, choice: int,
         leave = None
         if int(choice) == 1:
             leave_date = _local_date_from_utc(row["start_at_utc"], actor.timezone)
-            leave_actor = replace(actor, action_key=f"{row['action_key']}:planned-leave")
-            leave = set_leave_record(
-                leave_actor, leave_date, status="PLANNED",
-                notes=f"Planned automatically from diary conflict: {row['title']}",
-            )
+            portion = "FULL"
+            existing_leave = conn.execute(
+                "SELECT * FROM leave_records WHERE owner_id=? AND leave_date=? AND portion=?",
+                (actor.user_id, leave_date, portion),
+            ).fetchone()
+            if existing_leave:
+                # Never downgrade CONFIRMED/TAKEN leave back to PLANNED.
+                leave_state = existing_leave["status"]
+                if leave_state == "CANCELLED":
+                    conn.execute(
+                        "UPDATE leave_records SET status='PLANNED',notes=?,updated_at_utc=? WHERE leave_id=?",
+                        (f"Planned automatically from diary conflict: {row['title']}", utc_now(), existing_leave["leave_id"]),
+                    )
+                    leave_state = "PLANNED"
+                leave = {"status": "existing", "leave_id": existing_leave["leave_id"],
+                         "leave_date": leave_date, "state": leave_state}
+            else:
+                leave_id = str(uuid.uuid4())
+                conn.execute(
+                    """INSERT INTO leave_records(
+                        leave_id,action_key,owner_id,leave_date,portion,status,notes
+                       ) VALUES(?,?,?,?,?,'PLANNED',?)""",
+                    (leave_id, f"{row['action_key']}:planned-leave", actor.user_id, leave_date, portion,
+                     f"Planned automatically from diary conflict: {row['title']}"),
+                )
+                leave = {"status": "saved", "leave_id": leave_id, "leave_date": leave_date, "state": "PLANNED"}
         conn.execute(
             "UPDATE schedule_conflicts SET status='RESOLVED',choice=? WHERE conflict_id=?",
             (int(choice), conflict_id),
