@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 import uuid
-from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from zoneinfo import ZoneInfo
 
 from context import ActorContext
 from db import connect, utc_now
-import services
 
 
 def _to_dt(value: str, tz_name: str) -> datetime:
@@ -286,6 +284,29 @@ def _roster_conflict(conn, actor: ActorContext, start_utc: str, end_utc: str | N
     return None
 
 
+def _recipient_targets(actor: ActorContext, recipient: str) -> list[str]:
+    value = (recipient or "me").strip().lower()
+    if value in {"me", "self", "myself"}:
+        return [actor.user_id]
+    if value in {"husband", "him"}:
+        return ["USR_HUSBAND"]
+    if value in {"wife", "her"}:
+        return ["USR_WIFE"]
+    if value in {"spouse", "partner"}:
+        return ["USR_WIFE" if actor.user_id == "USR_HUSBAND" else "USR_HUSBAND"]
+    if value in {"both", "both of us", "everyone"}:
+        return ["USR_HUSBAND", "USR_WIFE"]
+    raise ValueError("reminder recipient must be me, spouse, husband, wife, or both")
+
+
+def _active_phone(conn, user_id: str) -> str | None:
+    row = conn.execute(
+        "SELECT phone_number FROM user_phone_history WHERE user_id=? AND valid_to_utc IS NULL LIMIT 1",
+        (user_id,),
+    ).fetchone()
+    return row["phone_number"] if row else None
+
+
 def _insert_diary(conn, actor: ActorContext, action_key: str, title: str, start_utc: str,
                   end_utc: str | None, notes: str | None, space: str,
                   reminder_minutes_before: int | None = None,
@@ -302,23 +323,42 @@ def _insert_diary(conn, actor: ActorContext, action_key: str, title: str, start_
         (diary_id, action_key, actor.user_id, space, title[:240], start_utc, end_utc,
          actor.timezone, notes),
     )
-    reminder_id = None
+
+    reminder_ids: list[str] = []
     if reminder_minutes_before is not None:
         mins = max(0, min(60 * 24 * 30, int(reminder_minutes_before)))
-        due = datetime.fromisoformat(start_utc) - timedelta(minutes=mins)
-        linked_actor = replace(actor, action_key=f"{action_key}:linked-reminder")
-        reminder = services.create_reminder(
-            linked_actor, title, due.astimezone(ZoneInfo(actor.timezone)).isoformat(),
-            recurrence_rule=None, shared=(space == "FAMILY_SHARED"), recipient=reminder_recipient,
-        )
-        reminder_id = reminder.get("reminder_id")
-        if reminder_id:
+        due_utc = (datetime.fromisoformat(start_utc) - timedelta(minutes=mins)).isoformat()
+        targets = _recipient_targets(actor, reminder_recipient)
+        for target_user in targets:
+            if target_user == actor.user_id:
+                conversation_id = actor.conversation_id
+            else:
+                phone = _active_phone(conn, target_user)
+                if not phone:
+                    raise ValueError("target household member has no configured WhatsApp number")
+                conversation_id = phone.replace("+", "") + "@s.whatsapp.net"
+            reminder_space = "FAMILY_SHARED" if space == "FAMILY_SHARED" or target_user != actor.user_id or len(targets) > 1 else actor.private_space
+            if reminder_space not in actor.allowed_spaces:
+                raise PermissionError("linked reminder would cross the active privacy boundary")
+            reminder_id = str(uuid.uuid4())
+            reminder_key = f"{action_key}:linked-reminder:{target_user}"
             conn.execute(
-                "INSERT OR IGNORE INTO diary_reminder_links(diary_id,reminder_id) VALUES(?,?)",
+                """INSERT INTO reminders(
+                    reminder_id,action_key,source_message_id,owner_id,space_id,conversation_id,
+                    task_text,due_at_utc,timezone_name
+                   ) VALUES(?,?,?,?,?,?,?,?,?)""",
+                (reminder_id, reminder_key, actor.source_message_id, target_user, reminder_space,
+                 conversation_id, title[:500], due_utc, actor.timezone),
+            )
+            conn.execute(
+                "INSERT INTO diary_reminder_links(diary_id,reminder_id) VALUES(?,?)",
                 (diary_id, reminder_id),
             )
+            reminder_ids.append(reminder_id)
+
     return {"status": "created", "diary_id": diary_id, "space": space,
-            "linked_reminder_id": reminder_id}
+            "linked_reminder_id": reminder_ids[0] if len(reminder_ids) == 1 else None,
+            "linked_reminder_ids": reminder_ids}
 
 
 def add_diary_event(actor: ActorContext, title: str, start_local: str,
