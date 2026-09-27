@@ -488,8 +488,15 @@ class AlexCoreTests(unittest.TestCase):
         rid = created["linked_reminder_id"]
         self.assertTrue(rid)
 
-        moved = phase2.update_diary_event(
+        ask_move = phase2.update_diary_event(
             actor, created["diary_id"], start_local="2026-10-05T12:00:00+08:00"
+        )
+        self.assertEqual(ask_move["status"], "needs_reminder_choice")
+        self.assertEqual(set(ask_move["choices"]), {"keep", "shift"})
+
+        moved = phase2.update_diary_event(
+            actor, created["diary_id"], start_local="2026-10-05T12:00:00+08:00",
+            linked_reminders="shift",
         )
         self.assertEqual(moved["linked_reminders_updated"], 1)
         conn = db.connect()
@@ -500,7 +507,12 @@ class AlexCoreTests(unittest.TestCase):
         finally:
             conn.close()
 
-        phase2.update_diary_event(actor, created["diary_id"], status="CANCELLED")
+        ask_cancel = phase2.update_diary_event(actor, created["diary_id"], status="CANCELLED")
+        self.assertEqual(ask_cancel["status"], "needs_reminder_choice")
+        self.assertEqual(set(ask_cancel["choices"]), {"keep", "cancel"})
+        phase2.update_diary_event(
+            actor, created["diary_id"], status="CANCELLED", linked_reminders="cancel"
+        )
         conn = db.connect()
         try:
             self.assertEqual(conn.execute(
