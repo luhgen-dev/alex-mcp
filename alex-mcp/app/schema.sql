@@ -329,7 +329,7 @@ CREATE TABLE IF NOT EXISTS plans (
     end_at_utc TEXT,
     timezone_name TEXT NOT NULL,
     notes TEXT,
-    status TEXT NOT NULL CHECK(status IN ('DRAFT','LOCKED','CANCELLED')) DEFAULT 'DRAFT',
+    status TEXT NOT NULL CHECK(status IN ('DRAFT','LOCKED','CONFIRMED','CANCELLED')) DEFAULT 'DRAFT',
     source_plan_id TEXT,
     created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -338,6 +338,15 @@ CREATE TABLE IF NOT EXISTS plans (
     FOREIGN KEY(source_plan_id) REFERENCES plans(plan_id)
 );
 CREATE INDEX IF NOT EXISTS idx_plans_space_time ON plans(space_id,start_at_utc,status);
+
+CREATE TABLE IF NOT EXISTS plan_diary_links (
+    plan_id TEXT PRIMARY KEY,
+    diary_id TEXT NOT NULL UNIQUE,
+    created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(plan_id) REFERENCES plans(plan_id),
+    FOREIGN KEY(diary_id) REFERENCES diary_events(diary_id)
+);
+
 
 CREATE TABLE IF NOT EXISTS schedule_conflicts (
     conflict_id TEXT PRIMARY KEY,
@@ -352,6 +361,7 @@ CREATE TABLE IF NOT EXISTS schedule_conflicts (
     reminder_minutes_before INTEGER,
     roster_id TEXT,
     conflicting_diary_id TEXT,
+    source_plan_id TEXT,
     conflict_kind TEXT NOT NULL DEFAULT 'WORK' CHECK(conflict_kind IN ('WORK','DIARY')),
     expires_at_utc TEXT,
     status TEXT NOT NULL CHECK(status IN ('OPEN','RESOLVED','CANCELLED')) DEFAULT 'OPEN',
