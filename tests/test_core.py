@@ -374,6 +374,19 @@ class AlexCoreTests(unittest.TestCase):
         }
         self.assertEqual(db.claim_inbound(payload), "CLAIMED")
         db.fail_inbound("retry1", "temporary failure")
+        # Immediate Node transport retry is suppressed.
+        self.assertEqual(db.claim_inbound(payload), "DUPLICATE")
+        conn = db.connect()
+        try:
+            stale = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+            conn.execute(
+                "UPDATE inbound_messages SET processing_started_at_utc=? WHERE message_id='retry1'",
+                (stale,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        # A genuinely stale provider redelivery can recover the same message id.
         self.assertEqual(db.claim_inbound(payload), "CLAIMED")
         conn = db.connect()
         try:
