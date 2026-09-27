@@ -69,7 +69,7 @@ class AlexCoreTests(unittest.TestCase):
                 "alex_profile_config_versions",
                 "tool_audit", "ai_usage", "diagnostic_runs", "monitor_notifications",
                 "outbound_messages", "conversation_turns", "selection_sets", "reminder_events",
-                "diary_reminder_links", "schedule_conflicts", "diary_events", "plans",
+                "diary_reminder_links", "plan_diary_links", "schedule_conflicts", "diary_events", "plans",
                 "leave_records", "work_roster", "cashflow_baselines",
                 "event_media_links", "financial_event_corrections", "financial_events",
                 "saved_items", "shopping_items", "reminders", "savings_goals", "money_buckets",
