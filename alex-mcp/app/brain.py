@@ -14,7 +14,7 @@ from openai import OpenAI
 
 from config import get_settings
 from context import ActorContext, use_actor, with_action_key
-from db import add_turn, connect, recent_turns, record_usage
+from db import add_turn, connect, recent_turns, record_usage, current_month_ai_cost
 from mcp_server import mcp
 import phase2_intent
 
@@ -65,6 +65,29 @@ For Home Assistant, never invent an entity_id. Find the entity first when needed
 
 Use local calculator/tool results instead of mental arithmetic when exactness matters. Keep normal WhatsApp replies short and natural; provide detail when requested.
 """
+
+
+# Approximate standard public API token prices in USD per 1M tokens for the
+# shipped default models. This is telemetry/guardrail data, not billing truth.
+# Custom model IDs intentionally return None instead of inventing a price.
+_DEFAULT_MODEL_PRICES = {
+    ("grok", "grok-4.7"): (2.00, 6.00),
+    ("gemini", "gemini-3.8-flash"): (0.75, 3.75),
+    ("openai", "gpt-5.6-luna"): (0.20, 1.20),
+}
+
+
+def _estimate_cost(provider: str, model: str, input_tokens: int,
+                   output_tokens: int) -> float | None:
+    rates = _DEFAULT_MODEL_PRICES.get((provider, model))
+    if not rates:
+        return None
+    in_rate, out_rate = rates
+    return round(
+        (max(0, int(input_tokens)) * in_rate
+         + max(0, int(output_tokens)) * out_rate) / 1_000_000,
+        8,
+    )
 
 
 def _tool_to_openai(tool) -> dict:
@@ -516,6 +539,21 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
     else:
         messages.append({"role": "user", "content": current})
 
+    # Optional owner-configured budget guard. Zero means disabled. The safety
+    # multiplier deliberately makes the guard conservative without changing
+    # normal Alex behavior for users who leave it disabled.
+    if settings.monthly_ai_budget_usd > 0:
+        month_cost = current_month_ai_cost()
+        guarded = month_cost * settings.budget_safety_multiplier
+        if guarded >= settings.monthly_ai_budget_usd:
+            final = (
+                "Alex's optional monthly AI budget guard is reached. "
+                "No AI request was sent. You can raise or disable the limit in Alex MCP → Configuration."
+            )
+            add_turn(actor.user_id, actor.conversation_id, "user", current or "[attachment]")
+            add_turn(actor.user_id, actor.conversation_id, "assistant", final)
+            return final, []
+
     client = _client()
     attachments: list[dict] = []
     input_tokens = output_tokens = 0
@@ -543,7 +581,10 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
         if not tool_calls:
             final = _content_text(msg.content).strip() or "Done."
             elapsed = int((time.monotonic() - started) * 1000)
-            record_usage(actor.source_message_id, provider, model, input_tokens, output_tokens, tool_rounds, elapsed)
+            record_usage(
+                actor.source_message_id, provider, model, input_tokens, output_tokens,
+                tool_rounds, elapsed, _estimate_cost(provider, model, input_tokens, output_tokens)
+            )
             add_turn(actor.user_id, actor.conversation_id, "user", current or "[attachment]")
             add_turn(actor.user_id, actor.conversation_id, "assistant", final)
             return final, attachments
@@ -599,7 +640,10 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
 
     final = "I couldn't complete that safely after several tool steps. Nothing else was changed."
     elapsed = int((time.monotonic() - started) * 1000)
-    record_usage(actor.source_message_id, provider, model, input_tokens, output_tokens, tool_rounds, elapsed)
+    record_usage(
+        actor.source_message_id, provider, model, input_tokens, output_tokens,
+        tool_rounds, elapsed, _estimate_cost(provider, model, input_tokens, output_tokens)
+    )
     add_turn(actor.user_id, actor.conversation_id, "user", current or "[attachment]")
     add_turn(actor.user_id, actor.conversation_id, "assistant", final)
     return final, attachments
