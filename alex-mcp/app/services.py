@@ -196,13 +196,14 @@ def query_finances(actor: ActorContext, start_date: str | None = None, end_date:
     finally:
         conn.close()
 
-    totals: dict[str, float] = {}
+    spending_totals: dict[str, float] = {}
+    income_totals: dict[str, float] = {}
     records = []
     tz = ZoneInfo(actor.timezone)
     for r in rows:
-        sign = 1 if r["event_type"] == "Expense" else -1
         amount = (r["amount_minor"] or 0) / 100
-        totals[r["currency"]] = round(totals.get(r["currency"], 0) + sign * amount, 2)
+        target = spending_totals if r["event_type"] == "Expense" else income_totals
+        target[r["currency"]] = round(target.get(r["currency"], 0) + amount, 2)
         try:
             local = datetime.fromisoformat(r["event_date_utc"]).astimezone(tz).isoformat()
         except Exception:
@@ -212,7 +213,18 @@ def query_finances(actor: ActorContext, start_date: str | None = None, end_date:
             "currency": r["currency"], "category": r["category"], "description": r["description"],
             "date_local": local, "reference": r["reference_text"],
         })
-    return {"totals": totals, "count": len(records), "records": records}
+    currencies = set(spending_totals) | set(income_totals)
+    net_outflow = {
+        cur: round(spending_totals.get(cur, 0) - income_totals.get(cur, 0), 2)
+        for cur in currencies
+    }
+    return {
+        "spending_totals": spending_totals,
+        "income_totals": income_totals,
+        "net_outflow": net_outflow,
+        "count": len(records),
+        "records": records,
+    }
 
 
 def correct_expense(actor: ActorContext, event_id: str, amount: float | None = None,
@@ -567,3 +579,91 @@ def calculate(expression: str) -> dict:
     if isinstance(value, complex) or not math.isfinite(float(value)):
         raise ValueError("invalid numeric result")
     return {"expression": expression, "result": value}
+
+
+def list_pending_expenses(actor: ActorContext, limit: int = 10) -> dict:
+    """Return unresolved money records so conversational clarifications can bind safely."""
+    marks, spaces = _spaces_sql(actor)
+    conn = connect()
+    try:
+        rows = conn.execute(
+            f"""SELECT event_id,event_type,category,amount_minor,currency,event_date_utc,
+                       description,reference_text,space_id
+                FROM financial_events
+                WHERE status='PENDING_HUMAN_REVIEW' AND space_id IN ({marks})
+                ORDER BY created_at_utc DESC LIMIT ?""",
+            spaces + [max(1, min(25, int(limit)))],
+        ).fetchall()
+        return {"pending": [
+            {
+                "event_id": r["event_id"], "type": r["event_type"],
+                "amount": r["amount_minor"]/100 if r["amount_minor"] is not None else None,
+                "currency": r["currency"], "category": r["category"],
+                "description": r["description"], "reference": r["reference_text"],
+                "event_date_utc": r["event_date_utc"],
+            }
+            for r in rows
+        ]}
+    finally:
+        conn.close()
+
+
+def set_money_bucket(actor: ActorContext, name: str, amount: float,
+                     currency: str = "MYR", notes: str | None = None,
+                     shared: bool = False) -> dict:
+    """Set an allocation/budget/stash bucket to an explicit amount supplied by the user."""
+    if amount < 0:
+        raise ValueError("bucket amount cannot be negative")
+    space = "FAMILY_SHARED" if shared else actor.private_space
+    if space not in actor.allowed_spaces:
+        raise PermissionError("requested bucket space is not accessible")
+    amount_minor = int(round(float(amount) * 100))
+    conn = connect()
+    try:
+        row = conn.execute(
+            "SELECT bucket_id FROM money_buckets WHERE owner_id=? AND LOWER(bucket_name)=LOWER(?)",
+            (actor.user_id, name),
+        ).fetchone()
+        if row:
+            bucket_id = row["bucket_id"]
+            conn.execute(
+                """UPDATE money_buckets SET amount_minor=?,currency=?,notes=?,space_id=?,updated_at_utc=?
+                   WHERE bucket_id=?""",
+                (amount_minor, currency.upper(), notes, space, utc_now(), bucket_id),
+            )
+        else:
+            bucket_id = str(uuid.uuid4())
+            conn.execute(
+                """INSERT INTO money_buckets(
+                    bucket_id,owner_id,space_id,bucket_name,amount_minor,currency,notes
+                   ) VALUES(?,?,?,?,?,?,?)""",
+                (bucket_id, actor.user_id, space, name[:200], amount_minor, currency.upper(), notes),
+            )
+        conn.commit()
+        return {
+            "status": "saved", "bucket_id": bucket_id, "name": name,
+            "amount": amount_minor / 100, "currency": currency.upper(), "space": space,
+        }
+    finally:
+        conn.close()
+
+
+def list_money_buckets(actor: ActorContext) -> dict:
+    marks, spaces = _spaces_sql(actor)
+    conn = connect()
+    try:
+        rows = conn.execute(
+            f"""SELECT bucket_id,bucket_name,amount_minor,currency,notes,space_id,updated_at_utc
+                FROM money_buckets WHERE space_id IN ({marks})
+                ORDER BY updated_at_utc DESC""", spaces,
+        ).fetchall()
+        return {"buckets": [
+            {
+                "bucket_id": r["bucket_id"], "name": r["bucket_name"],
+                "amount": r["amount_minor"]/100, "currency": r["currency"],
+                "notes": r["notes"], "space": r["space_id"],
+            }
+            for r in rows
+        ]}
+    finally:
+        conn.close()
