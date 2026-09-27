@@ -318,7 +318,7 @@ def find_receipts(actor: ActorContext, query: str | None = None, amount: float |
               FROM media_objects m
               JOIN event_media_links l ON l.media_id=m.media_id
               JOIN financial_events f ON f.event_id=l.event_id
-              WHERE f.status='ACTIVE' AND f.space_id IN ({marks})
+              WHERE f.status IN ('ACTIVE','PENDING_HUMAN_REVIEW') AND f.space_id IN ({marks})
                 AND m.media_type IN ('IMAGE','PDF')"""
     params: list = spaces[:]
     if amount is not None:
@@ -360,7 +360,7 @@ def get_receipt(actor: ActorContext, media_id: str) -> dict:
                 FROM media_objects m
                 JOIN event_media_links l ON l.media_id=m.media_id
                 JOIN financial_events f ON f.event_id=l.event_id
-                WHERE m.media_id=? AND f.space_id IN ({marks}) AND f.status='ACTIVE'
+                WHERE m.media_id=? AND f.space_id IN ({marks}) AND f.status IN ('ACTIVE','PENDING_HUMAN_REVIEW')
                 LIMIT 1""",
             [media_id] + spaces,
         ).fetchone()
@@ -420,6 +420,35 @@ def search_saved_items(actor: ActorContext, query: str, limit: int = 10) -> dict
     finally:
         conn.close()
 
+
+
+def get_saved_item(actor: ActorContext, item_id: str) -> dict:
+    """Retrieve one explicitly saved memory and its original attachment when present."""
+    marks, spaces = _spaces_sql(actor)
+    conn = connect()
+    try:
+        row = conn.execute(
+            f"""SELECT s.item_id,s.title,s.content,s.tags,s.created_at_utc,s.media_id,
+                       m.local_path,m.mime_type,m.media_type
+                FROM saved_items s
+                LEFT JOIN media_objects m ON m.media_id=s.media_id
+                WHERE s.item_id=? AND s.space_id IN ({marks}) LIMIT 1""",
+            [item_id] + spaces,
+        ).fetchone()
+        if not row:
+            raise PermissionError("saved item not found in your accessible spaces")
+        result = {
+            "status": "found", "item_id": row["item_id"], "title": row["title"],
+            "content": row["content"], "tags": row["tags"], "created_at_utc": row["created_at_utc"],
+        }
+        if row["local_path"]:
+            result["_attachments"] = [{
+                "path": row["local_path"], "mime_type": row["mime_type"],
+                "kind": "IMAGE" if row["media_type"] == "IMAGE" else "DOCUMENT",
+            }]
+        return result
+    finally:
+        conn.close()
 
 def create_reminder(actor: ActorContext, task: str, due_local: str,
                     recurrence_rule: str | None = None, shared: bool = False) -> dict:
