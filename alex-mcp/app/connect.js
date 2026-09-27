@@ -16,6 +16,7 @@ const DATA_DIR = process.env.ALEX_DATA_DIR || '/data';
 const AUTH_DIR = path.join(DATA_DIR, 'whatsapp_auth');
 const OPTIONS_FILE = path.join(DATA_DIR, 'options.json');
 const SELFTEST_FILE = path.join(DATA_DIR, 'selftest.json');
+const GROUP_FILE = path.join(DATA_DIR, 'family_group.json');
 const INGRESS_URL = 'http://127.0.0.1:5001/ingress';
 const EGRESS_PORT = 5002;
 const UI_PORT = 8099;
@@ -57,6 +58,22 @@ function allowedNumbers() {
 function isWhitelisted(phone) {
   const clean = cleanNumber(phone);
   return clean.length > 0 && allowedNumbers().includes(clean);
+}
+
+function getFamilyGroupJid() {
+  try {
+    const data = JSON.parse(fs.readFileSync(GROUP_FILE, 'utf8'));
+    return data.group_jid || null;
+  } catch (_err) {
+    return null;
+  }
+}
+
+function setFamilyGroupJid(groupJid) {
+  fs.writeFileSync(GROUP_FILE, JSON.stringify({
+    group_jid: groupJid,
+    paired_at: new Date().toISOString(),
+  }, null, 2), 'utf8');
 }
 
 function unwrapMessage(message) {
@@ -157,13 +174,32 @@ async function forwardToPython(payload) {
 async function handleIncoming(message) {
   if (!message || !message.key || message.key.fromMe) return;
   const remoteJid = message.key.remoteJid || '';
-  if (!remoteJid || remoteJid.endsWith('@g.us')) return;
+  if (!remoteJid) return;
+  const isGroup = remoteJid.endsWith('@g.us');
 
-  const senderJid = await resolveSenderJid(message, remoteJid);
+  let rawSenderJid = isGroup ? (message.key.participant || '') : remoteJid;
+  if (!rawSenderJid) return;
+  const senderJid = await resolveSenderJid(message, rawSenderJid);
   const senderPhone = cleanNumber(senderJid.split('@')[0].split(':')[0]);
   if (!isWhitelisted(senderPhone)) return;
 
   const rawText = extractText(message).trim();
+
+  if (isGroup && /^alex\s+set\s+family\s+group$/i.test(rawText)) {
+    setFamilyGroupJid(remoteJid);
+    if (currentSock) {
+      await currentSock.sendMessage(remoteJid, {
+        text: '✅ This is now Alex’s Family Shared group. Private DM data will stay private unless you explicitly share it.'
+      });
+    }
+    return;
+  }
+
+  if (isGroup) {
+    const familyGroup = getFamilyGroupJid();
+    if (!familyGroup || familyGroup !== remoteJid) return;
+  }
+
   const media = detectMedia(message);
   if (!rawText && !media.type) return;
 
@@ -178,7 +214,7 @@ async function handleIncoming(message) {
     message_id: message.key.id,
     provider: 'WHATSAPP',
     conversation_id: remoteJid,
-    conversation_type: 'DIRECT_DM',
+    conversation_type: isGroup ? 'GROUP' : 'DIRECT_DM',
     sender_phone: '+' + senderPhone,
     text: rawText,
     quoted_message_id: extractQuotedId(message),
@@ -336,6 +372,7 @@ function safeStatus() {
       configured_numbers: allowedNumbers().length,
       ai_provider: provider,
       api_key_present: keyPresent,
+      family_group_paired: Boolean(getFamilyGroupJid()),
     },
     selftest: readSelftest(),
   };
@@ -354,14 +391,14 @@ const UI_HTML = [
 '</style></head><body><main>',
 '<h1>Alex MCP</h1><div class="muted">Setup and WhatsApp pairing</div>',
 '<div class="card"><h2>WhatsApp</h2><div id="wa">Checking…</div><img id="qr" style="display:none"><p class="muted">On your phone: WhatsApp → Linked devices → Link a device, then scan the QR.</p><button onclick="resetPairing()">Reset / pair again</button></div>',
-'<div class="card"><h2>Configuration</h2><div id="cfg">Checking…</div><p class="muted">API keys and phone numbers are entered in the Home Assistant Configuration tab. No source-code editing is required.</p></div>',
+'<div class="card"><h2>Configuration</h2><div id="cfg">Checking…</div><p class="muted">API keys and phone numbers are entered in the Home Assistant Configuration tab. To bind the shared family group, send <code>alex set family group</code> once from that group. No source-code editing is required.</p></div>',
 '<div class="card"><h2>Core diagnostics</h2><div id="diag">Checking…</div></div>',
 '<script>',
 'async function load(){try{const r=await fetch("./status");const s=await r.json();',
 'const w=s.whatsapp||{};const q=document.getElementById("qr");',
 'document.getElementById("wa").innerHTML="<b>Status:</b> "+esc(w.status||"unknown")+(w.linked_user?"<br><span class=ok>Connected as "+esc(w.linked_user)+"</span>":"")+(w.last_error?"<br><span class=bad>"+esc(w.last_error)+"</span>":"");',
 'if(w.qr_data_url){q.src=w.qr_data_url;q.style.display="block"}else{q.style.display="none"}',
-'const c=s.setup||{};document.getElementById("cfg").innerHTML="<b>AI:</b> "+esc(c.ai_provider||"")+(c.api_key_present?" <span class=ok>✓ key present</span>":" <span class=warn>— API key not set</span>")+"<br><b>Household numbers configured:</b> "+esc(String(c.configured_numbers||0))+"/2";',
+'const c=s.setup||{};document.getElementById("cfg").innerHTML="<b>AI:</b> "+esc(c.ai_provider||"")+(c.api_key_present?" <span class=ok>✓ key present</span>":" <span class=warn>— API key not set</span>")+"<br><b>Household numbers configured:</b> "+esc(String(c.configured_numbers||0))+"/2<br><b>Family group:</b> "+(c.family_group_paired?"<span class=ok>paired ✓</span>":"<span class=warn>not paired</span>");',
 'const d=s.selftest;if(d){document.getElementById("diag").innerHTML="<span class="+(d.failed===0?"ok":"bad")+">"+d.passed+" passed, "+d.failed+" failed</span>"}else{document.getElementById("diag").textContent="Not run yet"}',
 '}catch(e){document.getElementById("wa").textContent="Status unavailable: "+e}}',
 'function esc(x){const e=document.createElement("div");e.textContent=String(x);return e.innerHTML}',
