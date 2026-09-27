@@ -63,6 +63,7 @@ For recurring bills, keep expected/due/partial/paid/deferred/explicitly-unpaid s
 For cash-flow planning, use only guaranteed income, explicit fixed commitments, locked allocations and explicit reserves as the baseline. OT, variable income and unexpected cash stay unallocated/stash until the user instructs otherwise. Brainstorm and recalculate when the user is actively planning, but never raise an allowance or redirect money on your own. When a material withdrawal/change alters a locked plan, clarify and relock rather than silently rewriting history.
 
 For Home Assistant, never invent an entity_id. Find the entity first when needed. Only call a control tool when the user clearly asked for that device action; do not turn a discussion or suggestion into a device action. The backend will reject sensitive domains and unsafe services.
+If a tool returns previous_attempt_uncertain, never repeat that mutation automatically. Explain that the prior attempt may already have happened and verify the relevant state first or ask the user before a fresh retry.
 
 Use local calculator/tool results instead of mental arithmetic when exactness matters. Keep normal WhatsApp replies short and natural; provide detail when requested.
 """
@@ -469,6 +470,100 @@ def _action_key(actor: ActorContext, tool_name: str, args: dict, occurrence: int
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+READ_ONLY_TOOLS = {
+    "query_finances","list_pending_expenses","find_receipts","get_receipt",
+    "search_saved_items","get_saved_item","list_reminders","reminder_history",
+    "list_shopping_items","ha_find_entities","ha_get_state","ha_home_summary",
+    "ha_home_report","ha_draft_automation","list_work_roster","list_leave_records",
+    "list_plans","get_agenda","get_agenda_range","check_my_availability",
+    "check_spouse_availability","get_cashflow_baseline","system_health",
+    "recent_failures","planning_goal_progress","planning_goal_deviation",
+    "planning_cash_status","planning_cash_pool_balance","planning_cashflow",
+    "planning_brief","planning_list_goals","planning_list_reserves",
+    "planning_baseline","planning_income_outlook","planning_goal_projection",
+    "planning_compare_salary","planning_match_goal_alias","bills_list",
+    "bills_match_payment","work_schedule","work_day","work_ot_status",
+    "work_leave_balance","work_departure_plan","asset_list","warranty_expiring",
+    "monitor_list","report_snapshot","report_payload","calculate",
+    "list_goals","get_leave_balance","list_money_buckets",
+}
+
+
+def _is_mutating_tool(name: str) -> bool:
+    return name not in READ_ONLY_TOOLS and name != DISCOVERY_TOOL_NAME
+
+
+def _claim_mutating_action(action_key: str, tool_name: str):
+    """Return (mode, cached_result, cached_attachments).
+
+    STARTED is intentionally treated as uncertain instead of blindly retrying:
+    the process might have crashed after the external/database side effect but
+    before its completion marker was written.
+    """
+    conn = connect()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            """SELECT state,result_json,attachments_json FROM tool_execution_claims
+               WHERE action_key=?""",
+            (action_key,),
+        ).fetchone()
+        if row:
+            conn.commit()
+            if row["state"] == "COMPLETED":
+                return (
+                    "CACHED",
+                    json.loads(row["result_json"] or "{}"),
+                    json.loads(row["attachments_json"] or "[]"),
+                )
+            return ("UNCERTAIN", None, None)
+        conn.execute(
+            """INSERT INTO tool_execution_claims(action_key,tool_name,state)
+               VALUES(?,?,'STARTED')""",
+            (action_key, tool_name),
+        )
+        conn.commit()
+        return ("EXECUTE", None, None)
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def _complete_mutating_action(action_key: str, result: dict,
+                              attachments: list[dict]) -> None:
+    conn = connect()
+    try:
+        conn.execute(
+            """UPDATE tool_execution_claims
+               SET state='COMPLETED',result_json=?,attachments_json=?,
+                   completed_at_utc=CURRENT_TIMESTAMP
+               WHERE action_key=?""",
+            (
+                json.dumps(result, ensure_ascii=False, sort_keys=True),
+                json.dumps(attachments, ensure_ascii=False, sort_keys=True),
+                action_key,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _mark_mutating_uncertain(action_key: str) -> None:
+    conn = connect()
+    try:
+        conn.execute(
+            """UPDATE tool_execution_claims SET state='UNCERTAIN'
+               WHERE action_key=? AND state='STARTED'""",
+            (action_key,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def _audit(actor: ActorContext, tool_name: str, args: dict, result: dict,
            ok: bool, latency_ms: int, action_key: str) -> None:
     conn = connect()
@@ -491,16 +586,39 @@ def _audit(actor: ActorContext, tool_name: str, args: dict, result: dict,
 
 
 async def _call_mcp(actor: ActorContext, tool_name: str, args: dict, action_key: str) -> tuple[dict, list[dict]]:
+    mutating = _is_mutating_tool(tool_name)
+    if mutating:
+        mode, cached, cached_attachments = _claim_mutating_action(action_key, tool_name)
+        if mode == "CACHED":
+            return cached or {}, cached_attachments or []
+        if mode == "UNCERTAIN":
+            return {
+                "status": "previous_attempt_uncertain",
+                "message": (
+                    "A previous attempt may already have changed data or a device. "
+                    "Do not repeat it automatically. Verify state or ask the user before trying again."
+                ),
+            }, []
+
     scoped = with_action_key(actor, action_key)
     started = time.monotonic()
-    with use_actor(scoped):
-        async with Client(mcp) as client:
-            result = await client.call_tool(tool_name, args)
-    elapsed = int((time.monotonic() - started) * 1000)
-    data = _unwrap_tool_result(result)
-    clean, attachments = _strip_internal(data)
-    _audit(actor, tool_name, args, clean, not bool(result.is_error), elapsed, action_key)
-    return clean, attachments
+    try:
+        with use_actor(scoped):
+            async with Client(mcp) as client:
+                result = await client.call_tool(tool_name, args)
+        elapsed = int((time.monotonic() - started) * 1000)
+        data = _unwrap_tool_result(result)
+        clean, attachments = _strip_internal(data)
+        if result.is_error and mutating:
+            _mark_mutating_uncertain(action_key)
+        elif mutating:
+            _complete_mutating_action(action_key, clean, attachments)
+        _audit(actor, tool_name, args, clean, not bool(result.is_error), elapsed, action_key)
+        return clean, attachments
+    except Exception:
+        if mutating:
+            _mark_mutating_uncertain(action_key)
+        raise
 
 
 async def respond(actor: ActorContext, user_text: str, media_context: list[str] | None = None,
