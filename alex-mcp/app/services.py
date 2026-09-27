@@ -331,10 +331,10 @@ def _store_selection(conn, actor: ActorContext, kind: str, ids: list[str]) -> st
     expires = (datetime.now(timezone.utc) + timedelta(hours=48)).isoformat()
     conn.execute(
         """INSERT INTO selection_sets(
-            selection_id,user_id,conversation_id,selection_kind,items_json,expires_at_utc
-           ) VALUES(?,?,?,?,?,?)""",
+            selection_id,user_id,conversation_id,selection_kind,items_json,created_at_utc,expires_at_utc
+           ) VALUES(?,?,?,?,?,?,?)""",
         (selection_id, actor.user_id, actor.conversation_id, kind,
-         json.dumps(ids, ensure_ascii=False), expires),
+         json.dumps(ids, ensure_ascii=False), utc_now(), expires),
     )
     return selection_id
 
