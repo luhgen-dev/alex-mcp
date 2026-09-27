@@ -87,6 +87,12 @@ def search_saved_items(query: str, actor: Actor, limit: int = 10) -> dict:
 
 
 @mcp.tool()
+def get_saved_item(item_id: str, actor: Actor) -> dict:
+    """Retrieve one explicitly saved item, including its original attachment when it had one."""
+    return services.get_saved_item(actor, item_id)
+
+
+@mcp.tool()
 def create_reminder(task: str, due_local: str, actor: Actor,
                     recurrence_rule: str | None = None, shared: bool = False) -> dict:
     """Create a durable reminder. due_local must be an ISO local datetime with offset or a local ISO datetime."""
