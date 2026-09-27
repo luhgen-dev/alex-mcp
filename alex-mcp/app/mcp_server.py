@@ -10,7 +10,7 @@ import services
 
 mcp = MCPServer(
     "Alex Household Tools",
-    version="0.1.0",
+    version="0.2.0",
     instructions="Deterministic household tools. Identity and permissions are injected by Alex and are never model-controlled.",
 )
 
@@ -94,9 +94,10 @@ def get_saved_item(item_id: str, actor: Actor) -> dict:
 
 @mcp.tool()
 def create_reminder(task: str, due_local: str, actor: Actor,
-                    recurrence_rule: str | None = None, shared: bool = False) -> dict:
-    """Create a durable reminder. due_local must be an ISO local datetime with offset or a local ISO datetime."""
-    return services.create_reminder(actor, task, due_local, recurrence_rule, shared)
+                    recurrence_rule: str | None = None, shared: bool = False,
+                    recipient: str = "me") -> dict:
+    """Create a durable reminder. recipient is me/spouse/husband/wife/both. due_local is ISO local datetime; recurrence_rule is an RFC 5545 RRULE such as FREQ=WEEKLY."""
+    return services.create_reminder(actor, task, due_local, recurrence_rule, shared, recipient)
 
 
 @mcp.tool()
@@ -138,6 +139,47 @@ def set_leave_balance(balance_days: float, actor: Actor, as_of_date: str | None 
                       notes: str | None = None) -> dict:
     """Store/update leave balance only when the user explicitly provides the value."""
     return services.set_leave(actor, balance_days, as_of_date, notes)
+
+
+@mcp.tool()
+def add_shopping_item(item: str, actor: Actor, quantity: str | None = None,
+                      notes: str | None = None, shared: bool = True) -> dict:
+    """Add an item to the shopping list. Shared household list is the default; use shared=false only when the user clearly asks for a private list."""
+    return services.add_shopping_item(actor, item, quantity, notes, shared)
+
+
+@mcp.tool()
+def list_shopping_items(actor: Actor, include_purchased: bool = False, limit: int = 50) -> dict:
+    """List shopping items visible to the authenticated household user."""
+    return services.list_shopping_items(actor, include_purchased, limit)
+
+
+@mcp.tool()
+def update_shopping_item(item_id: str, actor: Actor, status: str = "purchased",
+                         quantity: str | None = None, notes: str | None = None) -> dict:
+    """Mark a shopping item purchased/open/removed or update its quantity/notes. Do not mark purchased unless the user indicates it."""
+    return services.update_shopping_item(actor, item_id, status, quantity, notes)
+
+
+@mcp.tool()
+def ha_find_entities(query: str, actor: Actor, domain: str | None = None, limit: int = 20) -> dict:
+    """Find actual Home Assistant entity IDs by friendly name/entity id before answering or acting. Read-only."""
+    import ha
+    return ha.find_entities(query, domain, limit)
+
+
+@mcp.tool()
+def ha_get_state(entity_id: str, actor: Actor) -> dict:
+    """Read the current state and attributes of one exact Home Assistant entity."""
+    import ha
+    return ha.get_state(entity_id)
+
+
+@mcp.tool()
+def ha_control(entity_id: str, action: str, actor: Actor, value: float | None = None) -> dict:
+    """Perform an explicitly requested low-risk Home Assistant action on lights, switches, fans, climate or media players, then verify state. Sensitive domains are rejected by the backend."""
+    import ha
+    return ha.control(entity_id, action, value)
 
 
 @mcp.tool()
