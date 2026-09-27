@@ -7,7 +7,7 @@ import operator
 import re
 import uuid
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
-from datetime import datetime, time, timezone
+from datetime import datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from dateutil.rrule import rrulestr
@@ -326,6 +326,19 @@ def correct_expense(actor: ActorContext, event_id: str, amount: float | None = N
         conn.close()
 
 
+def _store_selection(conn, actor: ActorContext, kind: str, ids: list[str]) -> str:
+    selection_id = str(uuid.uuid4())
+    expires = (datetime.now(timezone.utc) + timedelta(hours=48)).isoformat()
+    conn.execute(
+        """INSERT INTO selection_sets(
+            selection_id,user_id,conversation_id,selection_kind,items_json,expires_at_utc
+           ) VALUES(?,?,?,?,?,?)""",
+        (selection_id, actor.user_id, actor.conversation_id, kind,
+         json.dumps(ids, ensure_ascii=False), expires),
+    )
+    return selection_id
+
+
 def find_receipts(actor: ActorContext, query: str | None = None, amount: float | None = None,
                   start_date: str | None = None, end_date: str | None = None, limit: int = 10) -> dict:
     """Find linked receipts plus the caller's own preserved-but-unlinked media."""
@@ -399,7 +412,10 @@ def find_receipts(actor: ActorContext, query: str | None = None, amount: float |
                     "currency": None, "description": "Saved receipt/media awaiting ledger linkage",
                     "event_date_utc": r["created_at_utc"], "reference": None, "linked": False,
                 })
-        return {"matches": matches}
+        if matches:
+            _store_selection(conn, actor, "RECEIPT", [m["media_id"] for m in matches])
+            conn.commit()
+        return {"matches": [{**m, "choice": i + 1} for i, m in enumerate(matches)]}
     finally:
         conn.close()
 
@@ -490,10 +506,13 @@ def search_saved_items(actor: ActorContext, query: str, limit: int = 10) -> dict
                 ORDER BY created_at_utc DESC LIMIT ?""",
             spaces + [needle, needle, needle, max(1, min(25, int(limit)))],
         ).fetchall()
-        return {"matches": [dict(r) for r in rows]}
+        matches = [dict(r) for r in rows]
+        if matches:
+            _store_selection(conn, actor, "SAVED_ITEM", [m["item_id"] for m in matches])
+            conn.commit()
+        return {"matches": [{**m, "choice": i + 1} for i, m in enumerate(matches)]}
     finally:
         conn.close()
-
 
 
 def get_saved_item(actor: ActorContext, item_id: str) -> dict:
@@ -523,6 +542,58 @@ def get_saved_item(actor: ActorContext, item_id: str) -> dict:
         return result
     finally:
         conn.close()
+
+
+def remove_saved_item(actor: ActorContext, item_id: str) -> dict:
+    """Soft-remove the explicit-memory index; original archived media is retained."""
+    marks, spaces = _spaces_sql(actor)
+    conn = connect()
+    try:
+        row = conn.execute(
+            f"SELECT item_id,media_id FROM saved_items WHERE item_id=? AND space_id IN ({marks})",
+            [item_id] + spaces,
+        ).fetchone()
+        if not row:
+            raise PermissionError("saved item not found in your accessible spaces")
+        # The media archive is evidence and remains. Only the user's explicit
+        # memory index is removed.
+        conn.execute("DELETE FROM saved_items WHERE item_id=?", (item_id,))
+        conn.commit()
+        return {"status": "removed", "item_id": item_id,
+                "original_media_retained": bool(row["media_id"])}
+    finally:
+        conn.close()
+
+
+def resolve_numbered_choice(actor: ActorContext, choice: int) -> dict:
+    """Resolve the newest unexpired receipt/saved-memory numbered list."""
+    index = int(choice)
+    if index < 1:
+        raise ValueError("choice must be 1 or greater")
+    conn = connect()
+    try:
+        rows = conn.execute(
+            """SELECT * FROM selection_sets
+               WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
+               ORDER BY created_at_utc DESC LIMIT 10""",
+            (actor.user_id, actor.conversation_id, utc_now()),
+        ).fetchall()
+        if not rows:
+            raise ValueError("no numbered receipt or saved-memory list is waiting")
+        latest = rows[0]
+        ids = json.loads(latest["items_json"])
+        if index > len(ids):
+            raise ValueError("choice is outside the latest numbered list")
+        target = ids[index - 1]
+        kind = latest["selection_kind"]
+    finally:
+        conn.close()
+    if kind == "RECEIPT":
+        return get_receipt(actor, target)
+    if kind == "SAVED_ITEM":
+        return get_saved_item(actor, target)
+    raise ValueError("unsupported numbered choice type")
+
 
 def _active_user_phone(conn, user_id: str) -> str | None:
     row = conn.execute(
