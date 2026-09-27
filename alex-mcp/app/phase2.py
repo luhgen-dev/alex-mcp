@@ -26,6 +26,18 @@ def _to_utc(value: str, tz_name: str) -> str:
     return _to_dt(value, tz_name).astimezone(timezone.utc).isoformat()
 
 
+def _row_get(row, key: str, default=None):
+    if row is None:
+        return default
+    try:
+        return row[key]
+    except (KeyError, IndexError, TypeError):
+        try:
+            return row.get(key, default)
+        except AttributeError:
+            return default
+
+
 def _has_explicit_time(value: str | None) -> bool:
     raw = str(value or "").strip()
     # ISO date-only input is a valid all-day/date-known item, not midnight.
@@ -719,10 +731,10 @@ def add_diary_event(actor: ActorContext, title: str, start_local: str,
         heads_up.extend(_leave_heads_up(conn, actor, local_date))
 
         roster = _roster_conflict(conn, actor, start_utc, end_utc) if candidate_time_known else None
-        if roster and roster.get("time_known") is False:
+        if roster and _row_get(roster, "time_known") is False:
             heads_up.append({
                 "kind": "WORK_SAME_DAY",
-                "shift": roster.get("shift"),
+                "shift": _row_get(roster, "shift"),
                 "time_known": False,
             })
             roster = None
@@ -750,7 +762,7 @@ def add_diary_event(actor: ActorContext, title: str, start_local: str,
                     conflict_kind,expires_at_utc,source_plan_id
                    ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (cid, actor.action_key, actor.user_id, space, title[:240], start_utc, end_utc,
-                 actor.timezone, notes, reminder_minutes_before, roster.get("roster_id"),
+                 actor.timezone, notes, reminder_minutes_before, _row_get(roster, "roster_id"),
                  "WORK", expiry, source_plan_id),
             )
             conn.commit()
@@ -1015,7 +1027,7 @@ def update_diary_event(actor: ActorContext, diary_id: str, status: str | None = 
 
         if state == "ACTIVE" and changing_time:
             roster = _roster_conflict(conn, actor, new_start, new_end) if new_time_known else None
-            if roster and roster.get("time_known") is False:
+            if roster and _row_get(roster, "time_known") is False:
                 roster = None
             diary_clash = _diary_conflict(
                 conn, actor, new_start, new_end,
