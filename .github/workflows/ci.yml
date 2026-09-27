@@ -50,4 +50,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build Home Assistant app image
-        run: docker build --build-arg BUILD_FROM=ghcr.io/home-assistant/amd64-base:3.20 -t alex-mcp-ci alex-mcp
+        run: docker build --build-arg BUILD_FROM=ghcr.io/home-assistant/base:3.24 -t alex-mcp-ci alex-mcp
+
+      - name: Verify local media binaries
+        run: |
+          docker run --rm --entrypoint /bin/sh alex-mcp-ci -c 'command -v ffmpeg && command -v tesseract && command -v pdftotext && command -v whisper-cli'
