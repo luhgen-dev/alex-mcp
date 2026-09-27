@@ -47,6 +47,12 @@ def query_finances(actor: Actor, start_date: str | None = None, end_date: str | 
 
 
 @mcp.tool()
+def list_pending_expenses(actor: Actor, limit: int = 10) -> dict:
+    """List unresolved money records when the user is answering a previous clarification."""
+    return services.list_pending_expenses(actor, limit)
+
+
+@mcp.tool()
 def correct_expense(event_id: str, actor: Actor, amount: float | None = None,
                     description: str | None = None, category: str | None = None,
                     event_date_local: str | None = None, reason: str | None = None) -> dict:
@@ -132,3 +138,16 @@ def set_leave_balance(balance_days: float, actor: Actor, as_of_date: str | None 
 def calculate(expression: str) -> dict:
     """Perform exact local arithmetic instead of estimating in language."""
     return services.calculate(expression)
+
+
+@mcp.tool()
+def set_money_bucket(name: str, amount: float, actor: Actor, currency: str = "MYR",
+                     notes: str | None = None, shared: bool = False) -> dict:
+    """Set a named allowance, allocation, stash or planning bucket to the exact amount the user supplied. Never invent or increase it without instruction."""
+    return services.set_money_bucket(actor, name, amount, currency, notes, shared)
+
+
+@mcp.tool()
+def list_money_buckets(actor: Actor) -> dict:
+    """Read the user's current named allowances, allocations and stash amounts for planning."""
+    return services.list_money_buckets(actor)
