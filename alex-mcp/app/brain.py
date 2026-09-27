@@ -86,7 +86,7 @@ REMINDER_TOOLS = {"create_reminder","list_reminders","update_reminder","reminder
 SHOPPING_TOOLS = {"add_shopping_item","list_shopping_items","update_shopping_item"}
 DIARY_TOOLS = {
     "add_diary_event","resolve_diary_conflict","resolve_latest_diary_conflict",
-    "update_diary_event","get_agenda","check_spouse_availability",
+    "update_diary_event","get_agenda","get_agenda_range","check_spouse_availability",
     "create_plan","list_plans","update_plan","share_plan",
     "set_leave_record","list_leave_records",
 }
@@ -135,7 +135,7 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
     if read_intent.get("intent") == "ROSTER":
         selected |= WORK_TOOLS
     if read_intent.get("intent") == "AGENDA":
-        selected |= {"get_agenda","list_reminders","work_schedule","list_plans"}
+        selected |= {"get_agenda_range","get_agenda","list_reminders","work_schedule","list_plans"}
 
     intents = set(write_intent.get("intents") or [])
     if write_intent.get("intent"):
