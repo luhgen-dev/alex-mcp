@@ -8,6 +8,8 @@ from zoneinfo import ZoneInfo
 
 from context import ActorContext
 from db import connect, utc_now
+import phase2_work
+import profile_config
 
 
 def _to_dt(value: str, tz_name: str) -> datetime:
@@ -359,8 +361,50 @@ def _roster_conflict(conn, actor: ActorContext, start_utc: str, end_utc: str | N
         re = datetime.fromisoformat(row["end_at_utc"])
         if start < re and end > rs:
             return row
-    return None
 
+    # The mature Phase-2 roster profile is authoritative when configured.
+    # In a family-group turn this lookup intentionally returns no private
+    # profile, so a private work clash is never disclosed in group.
+    try:
+        shift = phase2_work.effective_shift(
+            local_date, actor.phone, actor.conversation_type
+        )
+        if shift.get("shift") == "off":
+            return None
+        records = profile_config.authorized_records(
+            actor.phone, actor.conversation_type, kind="roster",
+            requested_scope="private",
+        )
+        active = [r for r in records if r["payload"].get("active", True)]
+        if len(active) != 1:
+            return None
+        payload = active[0]["payload"]
+        if shift["shift"] == "morning":
+            start_clock = payload.get("day_start")
+            end_clock = payload.get("day_end")
+        else:
+            start_clock = payload.get("evening_start")
+            end_clock = payload.get("evening_end")
+        if not start_clock or not end_clock:
+            # We know it is a work day but not exact hours: conservative
+            # same-day conflict rather than inventing a time.
+            return {"roster_id": None, "source": "PROFILE", "shift": shift["shift"],
+                    "work_date": local_date, "time_known": False}
+
+        zone = ZoneInfo(actor.timezone)
+        rs_local = datetime.fromisoformat(f"{local_date}T{start_clock}:00").replace(tzinfo=zone)
+        re_local = datetime.fromisoformat(f"{local_date}T{end_clock}:00").replace(tzinfo=zone)
+        if re_local <= rs_local:
+            re_local += timedelta(days=1)
+        rs = rs_local.astimezone(timezone.utc)
+        re = re_local.astimezone(timezone.utc)
+        if start < re and end > rs:
+            return {"roster_id": None, "source": "PROFILE", "shift": shift["shift"],
+                    "work_date": local_date, "start_at_utc": rs.isoformat(),
+                    "end_at_utc": re.isoformat(), "time_known": True}
+    except (ValueError, PermissionError):
+        pass
+    return None
 
 
 def _diary_conflict(conn, actor: ActorContext, start_utc: str, end_utc: str | None,
