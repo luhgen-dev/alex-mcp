@@ -346,6 +346,10 @@ def share_plan(actor: ActorContext, plan_id: str) -> dict:
 
 
 def _roster_conflict(conn, actor: ActorContext, start_utc: str, end_utc: str | None):
+    # A family-group planning turn may not inspect an individual's private
+    # work roster, even to reveal only the existence of a clash.
+    if actor.conversation_type == "GROUP":
+        return None
     local_date = _local_date_from_utc(start_utc, actor.timezone)
     rows = conn.execute(
         """SELECT * FROM work_roster WHERE owner_id=? AND work_date=?
@@ -882,40 +886,67 @@ def update_diary_event(actor: ActorContext, diary_id: str, status: str | None = 
     finally:
         conn.close()
 
+def check_my_availability(actor: ActorContext, start_local: str,
+                          end_local: str | None = None) -> dict:
+    """Owner-only private availability check; never callable from family group."""
+    if actor.conversation_type == "GROUP":
+        raise PermissionError("private availability checks are not allowed in the family group")
+    start_utc = _to_utc(start_local, actor.timezone)
+    end_utc = _to_utc(end_local, actor.timezone) if end_local else (
+        datetime.fromisoformat(start_utc) + timedelta(hours=1)
+    ).isoformat()
+    conn = connect()
+    try:
+        roster = _roster_conflict(conn, actor, start_utc, end_utc)
+        diary = _diary_conflict(conn, actor, start_utc, end_utc)
+        return {
+            "availability": "busy" if roster or diary else "no_conflict_found",
+            "has_work_conflict": bool(roster),
+            "has_diary_conflict": bool(diary),
+            "output_space": actor.private_space,
+            "may_be_posted_to_group": False,
+            "privacy": "owner_only",
+        }
+    finally:
+        conn.close()
+
+
 def check_spouse_availability(actor: ActorContext, start_local: str,
                               end_local: str | None = None) -> dict:
+    """Check only shared facts; never inspect the spouse's private roster/Diary."""
     spouse = "USR_WIFE" if actor.user_id == "USR_HUSBAND" else "USR_HUSBAND"
     start_utc = _to_utc(start_local, actor.timezone)
     end_utc = _to_utc(end_local, actor.timezone) if end_local else (
         datetime.fromisoformat(start_utc) + timedelta(hours=1)
     ).isoformat()
-    local_date = _local_date_from_utc(start_utc, actor.timezone)
     conn = connect()
     try:
-        busy = False
-        roster = conn.execute(
-            """SELECT 1 FROM work_roster WHERE owner_id=? AND work_date=?
-               AND status IN ('PLANNED','CONFIRMED') LIMIT 1""",
-            (spouse, local_date),
-        ).fetchone()
-        if roster:
-            busy = True
-        if not busy:
-            rows = conn.execute(
-                """SELECT start_at_utc,end_at_utc FROM diary_events
-                   WHERE owner_id=? AND status='ACTIVE'""", (spouse,),
-            ).fetchall()
-            start = datetime.fromisoformat(start_utc)
-            end = datetime.fromisoformat(end_utc)
-            for row in rows:
-                rs = datetime.fromisoformat(row["start_at_utc"])
-                re = datetime.fromisoformat(row["end_at_utc"]) if row["end_at_utc"] else rs + timedelta(hours=1)
-                if start < re and end > rs:
-                    busy = True
-                    break
-        return {"spouse": "wife" if spouse == "USR_WIFE" else "husband",
-                "date": local_date, "availability": "busy" if busy else "no_conflict_found",
-                "privacy": "details_hidden"}
+        rows = conn.execute(
+            """SELECT start_at_utc,end_at_utc FROM diary_events
+               WHERE owner_id=? AND space_id='FAMILY_SHARED' AND status='ACTIVE'""",
+            (spouse,),
+        ).fetchall()
+        start_dt = datetime.fromisoformat(start_utc)
+        end_dt = datetime.fromisoformat(end_utc)
+        shared_busy = False
+        for row in rows:
+            rs = datetime.fromisoformat(row["start_at_utc"])
+            re = datetime.fromisoformat(row["end_at_utc"]) if row["end_at_utc"] else rs + timedelta(hours=1)
+            if start_dt < re and end_dt > rs:
+                shared_busy = True
+                break
+        return {
+            "spouse": "wife" if spouse == "USR_WIFE" else "husband",
+            "shared_conflict": shared_busy,
+            "availability": "busy_from_shared_data" if shared_busy else "private_check_required",
+            "private_schedule_read": False,
+            "privacy": "details_hidden",
+            "message": (
+                "A shared commitment conflicts with that time."
+                if shared_busy else
+                "No shared conflict is visible. The spouse's private availability cannot be read from this conversation."
+            ),
+        }
     finally:
         conn.close()
 
