@@ -1,0 +1,53 @@
+name: Alex MCP CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies
+        run: pip install -r app/requirements.txt
+
+      - name: Compile Python
+        run: python -m compileall -q app tests
+
+      - name: Run core tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Run structural self-test
+        env:
+          ALEX_DATA_DIR: /tmp/alex-mcp-selftest
+          ALEX_OPTIONS_PATH: /tmp/alex-mcp-empty-options.json
+        run: python app/selftest.py
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Node dependencies
+        working-directory: app
+        run: npm install --omit=dev
+
+      - name: Check WhatsApp bridge syntax
+        run: node --check app/connect.js
+
+  container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Home Assistant app image
+        run: docker build --build-arg BUILD_FROM=ghcr.io/home-assistant/amd64-base:3.20 -t alex-mcp-ci .
