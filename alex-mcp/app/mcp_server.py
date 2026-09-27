@@ -329,6 +329,13 @@ def get_agenda(start_date: str, end_date: str, actor: Actor,
 
 
 @mcp.tool()
+def get_agenda_range(phrase: str, actor: Actor, reference_date: str | None = None,
+                     include_plans: bool = True) -> dict:
+    """Resolve today/tomorrow/this week/next week/next 7 days deterministically and return the combined agenda."""
+    return phase2.get_agenda_range(actor, phrase, reference_date, include_plans)
+
+
+@mcp.tool()
 def check_spouse_availability(start_local: str, actor: Actor,
                               end_local: str | None = None) -> dict:
     """Privacy-preserving spouse availability check. Returns busy/no conflict only; never exposes spouse private schedule details."""
