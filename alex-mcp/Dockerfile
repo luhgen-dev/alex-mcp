@@ -6,7 +6,7 @@ ARG BUILD_ARCH=amd64
 
 LABEL \
   io.hass.version="$BUILD_VERSION" \
-  io.hass.type="addon" \
+  io.hass.type="app" \
   io.hass.arch="$BUILD_ARCH"
 
 RUN apk add --no-cache \
