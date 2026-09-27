@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from zoneinfo import ZoneInfo
 
@@ -762,6 +762,48 @@ def check_spouse_availability(actor: ActorContext, start_local: str,
                 "privacy": "details_hidden"}
     finally:
         conn.close()
+
+
+def resolve_date_range(phrase: str, timezone_name: str,
+                       reference_date: str | None = None) -> dict:
+    """Resolve common household date ranges deterministically."""
+    if reference_date:
+        today = date.fromisoformat(str(reference_date)[:10])
+    else:
+        today = datetime.now(ZoneInfo(timezone_name)).date()
+    low = " ".join(str(phrase or "").casefold().split())
+
+    if low in {"today", "tdy"} or " today" in " " + low:
+        start = end = today
+    elif "tomorrow" in low or low == "tmr":
+        start = end = today + timedelta(days=1)
+    elif "next week" in low:
+        this_monday = today - timedelta(days=today.weekday())
+        start = this_monday + timedelta(days=7)
+        end = start + timedelta(days=6)
+    elif "this week" in low:
+        start = today - timedelta(days=today.weekday())
+        end = start + timedelta(days=6)
+    elif "next 7 days" in low or "next seven days" in low:
+        start = today
+        end = today + timedelta(days=6)
+    else:
+        # Exact ISO date/range is also deterministic.
+        match = re.search(r"(\d{4}-\d{2}-\d{2})(?:\s*(?:to|through|until|-)\s*(\d{4}-\d{2}-\d{2}))?", low)
+        if not match:
+            raise ValueError("Use today, tomorrow, this week, next week, next 7 days, or an ISO date/range")
+        start = date.fromisoformat(match.group(1))
+        end = date.fromisoformat(match.group(2)) if match.group(2) else start
+    return {"start_date": start.isoformat(), "end_date": end.isoformat()}
+
+
+def get_agenda_range(actor: ActorContext, phrase: str,
+                     reference_date: str | None = None,
+                     include_plans: bool = True) -> dict:
+    window = resolve_date_range(phrase, actor.timezone, reference_date)
+    result = get_agenda(actor, window["start_date"], window["end_date"], include_plans)
+    result["resolved_from"] = phrase
+    return result
 
 
 def get_agenda(actor: ActorContext, start_date: str, end_date: str,
