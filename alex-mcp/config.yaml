@@ -30,6 +30,8 @@ options:
   ocr_enabled: true
   context_turns: 8
   reasoning_effort: "medium"
+  monthly_ai_budget_usd: 0.0
+  budget_safety_multiplier: 2.0
   income_profiles: []
   roster_profiles: []
   overtime_profiles: []
@@ -54,6 +56,8 @@ schema:
   ocr_enabled: bool
   context_turns: "int(2,20)"
   reasoning_effort: "list(low|medium|high)"
+  monthly_ai_budget_usd: "float(0,)"
+  budget_safety_multiplier: "float(1,10)"
   income_profiles:
     - id: str
       owner: "list(husband|wife)"
