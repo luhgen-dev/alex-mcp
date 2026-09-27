@@ -266,9 +266,12 @@ def list_leave_records(actor: Actor, start_date: str | None = None,
 @mcp.tool()
 def create_plan(title: str, actor: Actor, start_local: str | None = None,
                 end_local: str | None = None, notes: str | None = None,
-                shared: bool = False, locked: bool = False) -> dict:
-    """Create a draft life plan. DM defaults private; group/shared is family. Plans are not diary commitments until explicitly made so."""
-    return phase2.create_plan(actor, title, start_local, end_local, notes, shared, locked)
+                shared: bool = False, locked: bool = False,
+                time_known: bool | None = None) -> dict:
+    """Create a draft life plan. If the user gave a date but no clock time, set time_known=false; never invent midnight. DM defaults private; group/shared is family."""
+    return phase2.create_plan(
+        actor, title, start_local, end_local, notes, shared, locked, time_known
+    )
 
 
 @mcp.tool()
@@ -305,10 +308,13 @@ def share_plan(plan_id: str, actor: Actor, shared_notes: str | None = None) -> d
 def add_diary_event(title: str, start_local: str, actor: Actor,
                     end_local: str | None = None, notes: str | None = None,
                     shared: bool = False, reminder_minutes_before: int | None = None,
-                    reminder_recipient: str = "me") -> dict:
-    """Add a real-life diary commitment. If it clashes with the user's work roster, no event is written until the user chooses 1/2/3."""
-    return phase2.add_diary_event(actor, title, start_local, end_local, notes, shared,
-                                  reminder_minutes_before, reminder_recipient)
+                    reminder_recipient: str = "me",
+                    time_known: bool | None = None) -> dict:
+    """Add a real-life diary commitment. If user supplied only a date, set time_known=false so same-day items become a heads-up rather than an invented midnight conflict. Exact work/Diary overlaps require user choice."""
+    return phase2.add_diary_event(
+        actor, title, start_local, end_local, notes, shared,
+        reminder_minutes_before, reminder_recipient, time_known=time_known
+    )
 
 
 @mcp.tool()
