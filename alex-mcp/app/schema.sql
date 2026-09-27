@@ -177,6 +177,22 @@ CREATE TABLE IF NOT EXISTS savings_goals (
     FOREIGN KEY(space_id) REFERENCES spaces(space_id)
 );
 
+CREATE TABLE IF NOT EXISTS money_buckets (
+    bucket_id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL,
+    space_id TEXT NOT NULL,
+    bucket_name TEXT NOT NULL,
+    amount_minor INTEGER NOT NULL CHECK(amount_minor >= 0),
+    currency TEXT NOT NULL DEFAULT 'MYR',
+    notes TEXT,
+    updated_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(owner_id, bucket_name),
+    FOREIGN KEY(owner_id) REFERENCES users(user_id),
+    FOREIGN KEY(space_id) REFERENCES spaces(space_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_money_buckets_owner ON money_buckets(owner_id, updated_at_utc);
+
 CREATE TABLE IF NOT EXISTS leave_state (
     user_id TEXT PRIMARY KEY,
     balance_days REAL,
