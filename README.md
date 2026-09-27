@@ -1,5 +1,9 @@
 # Alex MCP
 
-Provider-neutral, MCP-first household assistant for Home Assistant and WhatsApp.
+A clean, separate MCP-first rebuild of Alex for Home Assistant + WhatsApp.
 
-This repository is intentionally separate from `alex-jarvis`. It reuses proven domain concepts while replacing conversational orchestration with an MCP-first tool architecture.
+**Design rule:** AI understands and thinks; deterministic tools know and do; MCP connects them; Alex is the entire system.
+
+This repository intentionally remains separate from `alex-jarvis` so both architectures can be tested side-by-side.
+
+See [DOCS.md](DOCS.md) for setup.
