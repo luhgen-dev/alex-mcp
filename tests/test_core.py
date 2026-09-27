@@ -4,6 +4,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from datetime import datetime, timedelta, timezone
 
 TEST_DIR = tempfile.mkdtemp(prefix="alex-mcp-tests-")
@@ -175,6 +176,22 @@ class AlexCoreTests(unittest.TestCase):
         buckets = services.list_money_buckets(actor)
         self.assertEqual(len(buckets["buckets"]), 1)
         self.assertEqual(buckets["buckets"][0]["name"], "UK trip")
+
+    def test_auto_stt_prefers_local_whisper(self):
+        self.claim("voice1", "+60111111111", "")
+        raw = base64.b64encode(b"dummy-voice-bytes").decode("ascii")
+        media_id = media.save_media("voice1", "AUDIO", "audio/ogg", raw)
+        with patch.object(media, "_local_whisper", return_value="வணக்கம் alex") as local, \
+             patch.object(media, "_gemini_stt") as gemini, \
+             patch.object(media, "_openai_stt") as openai_stt, \
+             patch.object(media, "_xai_stt") as xai:
+            text = media.transcribe_audio(media_id)
+        self.assertEqual(text, "வணக்கம் alex")
+        local.assert_called_once()
+        gemini.assert_not_called()
+        openai_stt.assert_not_called()
+        xai.assert_not_called()
+        self.assertEqual(media.get_media(media_id)["transcript_text"], "வணக்கம் alex")
 
     def test_nonfinancial_image_is_available_to_model_vision(self):
         self.claim("img1", "+60111111111", "what is this?")
