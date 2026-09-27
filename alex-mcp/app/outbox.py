@@ -62,6 +62,21 @@ def sweep():
         ).fetchall()
         for row in rows:
             permanent_error = False
+            # Reminder rows are cancellable while still queued. Never deliver a
+            # stale reminder after the user completed/cancelled it.
+            if row["context_kind"] in ("REMINDER_INITIAL", "REMINDER_FOLLOWUP") and row["context_id"]:
+                reminder = conn.execute(
+                    "SELECT status FROM reminders WHERE reminder_id=?",
+                    (row["context_id"],),
+                ).fetchone()
+                if not reminder or reminder["status"] in ("COMP", "CANC"):
+                    conn.execute(
+                        """UPDATE outbound_messages SET delivery_status='FAILED',
+                           attempt_count=attempt_count+1,last_error='cancelled_before_delivery',
+                           next_attempt_at_utc=NULL WHERE outbound_id=?""",
+                        (row["outbound_id"],),
+                    )
+                    continue
             try:
                 payload = _payload(row)
                 ok, detail = _send(payload)
@@ -71,11 +86,31 @@ def sweep():
                 ok, detail = False, str(exc)
             attempts = int(row["attempt_count"] or 0) + 1
             if ok:
+                delivered = _now()
                 conn.execute(
                     """UPDATE outbound_messages SET delivery_status='SENT',attempt_count=?,
                        delivered_at_utc=?,last_error=NULL,next_attempt_at_utc=NULL WHERE outbound_id=?""",
-                    (attempts, _now(), row["outbound_id"]),
+                    (attempts, delivered, row["outbound_id"]),
                 )
+                if row["context_kind"] in ("REMINDER_INITIAL", "REMINDER_FOLLOWUP") and row["context_id"]:
+                    if row["context_kind"] == "REMINDER_INITIAL":
+                        conn.execute(
+                            "UPDATE reminders SET last_fired_at_utc=? WHERE reminder_id=?",
+                            (delivered, row["context_id"]),
+                        )
+                        event_type = "DELIVERED"
+                    else:
+                        conn.execute(
+                            "UPDATE reminders SET last_follow_up_at_utc=? WHERE reminder_id=?",
+                            (delivered, row["context_id"]),
+                        )
+                        event_type = "FOLLOW_UP_DELIVERED"
+                    conn.execute(
+                        """INSERT INTO reminder_events(
+                            event_id,reminder_id,event_type,note
+                           ) VALUES(lower(hex(randomblob(16))),?,?,?)""",
+                        (row["context_id"], event_type, "confirmed by WhatsApp egress"),
+                    )
             elif permanent_error:
                 conn.execute(
                     """UPDATE outbound_messages SET delivery_status='FAILED',attempt_count=?,
