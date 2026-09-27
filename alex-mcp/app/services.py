@@ -107,11 +107,18 @@ def _local_bound(date_text: str, tz_name: str, end: bool = False) -> str:
 
 
 def log_expense(actor: ActorContext, description: str, amount: float | None = None,
-                category: str | None = None, currency: str = "MYR",
+                category: str | None = None, currency: str | None = None,
                 event_date_local: str | None = None, reference: str | None = None,
                 event_type: str = "Expense") -> dict:
     if not actor.action_key:
         raise RuntimeError("missing deterministic action key")
+    resolved_currency = (currency or "").strip().upper()
+    if resolved_currency not in {"MYR", "SGD"}:
+        return {
+            "status": "clarification_required",
+            "missing": ["currency"],
+            "message": "Ask whether this expense was MYR or SGD. Nothing was logged yet.",
+        }
     conn = connect()
     try:
         existing = conn.execute("SELECT * FROM financial_events WHERE action_key=?", (actor.action_key,)).fetchone()
@@ -139,7 +146,7 @@ def log_expense(actor: ActorContext, description: str, amount: float | None = No
                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (event_id, actor.action_key, actor.source_message_id, space, actor.user_id, actor.user_id,
              "Income" if event_type.lower() == "income" else "Expense",
-             resolved_category, amount_minor, currency.upper(),
+             resolved_category, amount_minor, resolved_currency,
              _parse_event_time(event_date_local, actor.timezone), actor.timezone,
              description.strip()[:300], (reference or "")[:300] or None, status),
         )
@@ -150,7 +157,7 @@ def log_expense(actor: ActorContext, description: str, amount: float | None = No
             "status": "logged" if status == "ACTIVE" else "needs_confirmation",
             "event_id": event_id,
             "amount": amount_minor / 100 if amount_minor is not None else None,
-            "currency": currency.upper(),
+            "currency": resolved_currency,
             "description": description.strip()[:300],
             "category": resolved_category,
             "space": space,
@@ -210,7 +217,7 @@ def query_finances(actor: ActorContext, start_date: str | None = None, end_date:
         params.append(category)
     if currency:
         where += " AND currency=?"
-        params.append(currency.upper())
+        params.append(resolved_currency)
     if search:
         where += " AND (LOWER(description) LIKE ? OR LOWER(COALESCE(reference_text,'')) LIKE ?)"
         needle = f"%{search.lower()}%"
@@ -657,7 +664,7 @@ def set_goal(actor: ActorContext, name: str, target_amount: float | None = None,
             conn.execute(
                 """UPDATE savings_goals SET target_amount_minor=?,current_amount_minor=?,currency=?,
                    target_date=?,notes=?,space_id=?,action_key=?,updated_at_utc=? WHERE goal_id=?""",
-                (target_minor, current_minor, currency.upper(), target_date or row["target_date"],
+                (target_minor, current_minor, resolved_currency, target_date or row["target_date"],
                  notes if notes is not None else row["notes"], space, actor.action_key or row["action_key"],
                  utc_now(), row["goal_id"]),
             )
@@ -670,12 +677,12 @@ def set_goal(actor: ActorContext, name: str, target_amount: float | None = None,
                     currency,target_date,notes
                    ) VALUES(?,?,?,?,?,?,?,?,?,?)""",
                 (gid, actor.action_key or str(uuid.uuid4()), actor.user_id, space, name[:200],
-                 target_minor, current_minor, currency.upper(), target_date, notes),
+                 target_minor, current_minor, resolved_currency, target_date, notes),
             )
         conn.commit()
         return {"status": "saved", "goal_id": gid, "name": name,
                 "target_amount": target_minor/100 if target_minor else None,
-                "current_amount": current_minor/100, "currency": currency.upper()}
+                "current_amount": current_minor/100, "currency": resolved_currency}
     finally:
         conn.close()
 
@@ -891,7 +898,7 @@ def set_money_bucket(actor: ActorContext, name: str, amount: float,
             conn.execute(
                 """UPDATE money_buckets SET amount_minor=?,currency=?,notes=?,space_id=?,updated_at_utc=?
                    WHERE bucket_id=?""",
-                (amount_minor, currency.upper(), notes, space, utc_now(), bucket_id),
+                (amount_minor, resolved_currency, notes, space, utc_now(), bucket_id),
             )
         else:
             bucket_id = str(uuid.uuid4())
@@ -899,12 +906,12 @@ def set_money_bucket(actor: ActorContext, name: str, amount: float,
                 """INSERT INTO money_buckets(
                     bucket_id,owner_id,space_id,bucket_name,amount_minor,currency,notes
                    ) VALUES(?,?,?,?,?,?,?)""",
-                (bucket_id, actor.user_id, space, name[:200], amount_minor, currency.upper(), notes),
+                (bucket_id, actor.user_id, space, name[:200], amount_minor, resolved_currency, notes),
             )
         conn.commit()
         return {
             "status": "saved", "bucket_id": bucket_id, "name": name,
-            "amount": amount_minor / 100, "currency": currency.upper(), "space": space,
+            "amount": amount_minor / 100, "currency": resolved_currency, "space": space,
         }
     finally:
         conn.close()
