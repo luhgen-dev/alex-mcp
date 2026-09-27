@@ -311,7 +311,9 @@ def correct_expense(actor: ActorContext, event_id: str, amount: float | None = N
 
 def find_receipts(actor: ActorContext, query: str | None = None, amount: float | None = None,
                   start_date: str | None = None, end_date: str | None = None, limit: int = 10) -> dict:
+    """Find linked receipts plus the caller's own preserved-but-unlinked media."""
     marks, spaces = _spaces_sql(actor)
+    bounded = max(1, min(25, int(limit)))
     sql = f"""SELECT DISTINCT m.media_id,m.media_type,m.mime_type,m.created_at_utc,
                      f.event_id,f.amount_minor,f.currency,f.event_date_utc,f.description,
                      f.reference_text,m.ocr_text
@@ -336,22 +338,57 @@ def find_receipts(actor: ActorContext, query: str | None = None, amount: float |
                       OR LOWER(COALESCE(m.ocr_text,'')) LIKE ?)"""
         params.extend([needle, needle, needle])
     sql += " ORDER BY f.event_date_utc DESC LIMIT ?"
-    params.append(max(1, min(25, int(limit))))
+    params.append(bounded)
+
     conn = connect()
     try:
-        rows = conn.execute(sql, params).fetchall()
-        return {"matches": [
+        linked = conn.execute(sql, params).fetchall()
+        matches = [
             {"media_id": r["media_id"], "event_id": r["event_id"],
-             "amount": (r["amount_minor"] or 0)/100, "currency": r["currency"],
-             "description": r["description"], "event_date_utc": r["event_date_utc"],
-             "reference": r["reference_text"]}
-            for r in rows
-        ]}
+             "amount": (r["amount_minor"]/100 if r["amount_minor"] is not None else None),
+             "currency": r["currency"], "description": r["description"],
+             "event_date_utc": r["event_date_utc"], "reference": r["reference_text"],
+             "linked": True}
+            for r in linked
+        ]
+
+        remaining = bounded - len(matches)
+        if remaining > 0:
+            orphan_sql = """SELECT m.media_id,m.created_at_utc,m.ocr_text
+                            FROM media_objects m
+                            JOIN inbound_messages i ON i.message_id=m.source_message_id
+                            WHERE i.sender_phone=? AND m.media_type IN ('IMAGE','PDF')
+                              AND NOT EXISTS (
+                                  SELECT 1 FROM event_media_links l WHERE l.media_id=m.media_id
+                              )"""
+            orphan_params: list = [actor.phone]
+            if start_date:
+                orphan_sql += " AND m.created_at_utc>=?"
+                orphan_params.append(_local_bound(start_date, actor.timezone, False))
+            if end_date:
+                orphan_sql += " AND m.created_at_utc<=?"
+                orphan_params.append(_local_bound(end_date, actor.timezone, True))
+            if query:
+                orphan_sql += " AND LOWER(COALESCE(m.ocr_text,'')) LIKE ?"
+                orphan_params.append(f"%{query.lower()}%")
+            if amount is not None:
+                orphan_sql += " AND COALESCE(m.ocr_text,'') LIKE ?"
+                orphan_params.append(f"%{float(amount):.2f}%")
+            orphan_sql += " ORDER BY m.created_at_utc DESC LIMIT ?"
+            orphan_params.append(remaining)
+            for r in conn.execute(orphan_sql, orphan_params).fetchall():
+                matches.append({
+                    "media_id": r["media_id"], "event_id": None, "amount": None,
+                    "currency": None, "description": "Saved receipt/media awaiting ledger linkage",
+                    "event_date_utc": r["created_at_utc"], "reference": None, "linked": False,
+                })
+        return {"matches": matches}
     finally:
         conn.close()
 
 
 def get_receipt(actor: ActorContext, media_id: str) -> dict:
+    """Return the original receipt file when linked to an accessible event or preserved from this user's own message."""
     marks, spaces = _spaces_sql(actor)
     conn = connect()
     try:
@@ -360,22 +397,42 @@ def get_receipt(actor: ActorContext, media_id: str) -> dict:
                 FROM media_objects m
                 JOIN event_media_links l ON l.media_id=m.media_id
                 JOIN financial_events f ON f.event_id=l.event_id
-                WHERE m.media_id=? AND f.space_id IN ({marks}) AND f.status IN ('ACTIVE','PENDING_HUMAN_REVIEW')
+                WHERE m.media_id=? AND f.space_id IN ({marks})
+                  AND f.status IN ('ACTIVE','PENDING_HUMAN_REVIEW')
                 LIMIT 1""",
             [media_id] + spaces,
         ).fetchone()
-        if not row:
-            raise PermissionError("receipt not found in your accessible spaces")
+        if row:
+            return {
+                "status": "found", "media_id": media_id, "event_id": row["event_id"],
+                "description": row["description"],
+                "amount": (row["amount_minor"]/100 if row["amount_minor"] is not None else None),
+                "currency": row["currency"], "event_date_utc": row["event_date_utc"],
+                "_attachments": [{"path": row["local_path"], "mime_type": row["mime_type"],
+                                  "kind": "IMAGE" if row["media_type"] == "IMAGE" else "DOCUMENT"}],
+            }
+
+        orphan = conn.execute(
+            """SELECT m.* FROM media_objects m
+               JOIN inbound_messages i ON i.message_id=m.source_message_id
+               WHERE m.media_id=? AND i.sender_phone=?
+                 AND m.media_type IN ('IMAGE','PDF')
+                 AND NOT EXISTS (
+                     SELECT 1 FROM event_media_links l WHERE l.media_id=m.media_id
+                 ) LIMIT 1""",
+            (media_id, actor.phone),
+        ).fetchone()
+        if not orphan:
+            raise PermissionError("receipt not found in your accessible data")
         return {
-            "status": "found", "media_id": media_id, "event_id": row["event_id"],
-            "description": row["description"], "amount": (row["amount_minor"] or 0)/100,
-            "currency": row["currency"], "event_date_utc": row["event_date_utc"],
-            "_attachments": [{"path": row["local_path"], "mime_type": row["mime_type"],
-                              "kind": "IMAGE" if row["media_type"] == "IMAGE" else "DOCUMENT"}],
+            "status": "found_unlinked", "media_id": media_id, "event_id": None,
+            "description": "Saved receipt/media awaiting ledger linkage",
+            "amount": None, "currency": None, "event_date_utc": orphan["created_at_utc"],
+            "_attachments": [{"path": orphan["local_path"], "mime_type": orphan["mime_type"],
+                              "kind": "IMAGE" if orphan["media_type"] == "IMAGE" else "DOCUMENT"}],
         }
     finally:
         conn.close()
-
 
 def save_item(actor: ActorContext, title: str, content: str, tags: str | None = None,
               shared: bool = False) -> dict:
