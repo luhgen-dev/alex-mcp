@@ -28,6 +28,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "alex-mcp", "ap
 import db
 import media
 import services
+import ha
 from context import use_actor, with_action_key
 from mcp import Client
 from mcp_server import mcp
@@ -44,7 +45,7 @@ class AlexCoreTests(unittest.TestCase):
             for table in (
                 "tool_audit", "ai_usage", "outbound_messages", "conversation_turns",
                 "event_media_links", "financial_event_corrections", "financial_events",
-                "saved_items", "reminders", "savings_goals", "money_buckets", "leave_state", "media_objects",
+                "saved_items", "shopping_items", "reminders", "savings_goals", "money_buckets", "leave_state", "media_objects",
                 "inbound_messages",
             ):
                 conn.execute(f"DELETE FROM {table}")
@@ -323,6 +324,70 @@ class AlexCoreTests(unittest.TestCase):
             self.assertEqual(row["amount_minor"], 950)
         finally:
             conn.close()
+
+
+    def test_audio_media_does_not_force_private_expense_shared(self):
+        self.claim("audio-route", "+60111111111", "")
+        raw = base64.b64encode(b"dummy-audio").decode("ascii")
+        media_id = media.save_media("audio-route", "AUDIO", "audio/ogg", raw)
+        actor = with_action_key(self.actor("audio-route", "+60111111111", [media_id]), "audio-route-action")
+        result = services.log_expense(actor, "Coffee", 5, "food")
+        self.assertEqual(result["space"], "HUSBAND_PVT")
+
+    def test_shared_shopping_list_and_duplicate_guard(self):
+        self.claim("shop1", "+60111111111", "add detergent")
+        h = with_action_key(self.actor("shop1", "+60111111111"), "shop-action")
+        first = services.add_shopping_item(h, "Detergent")
+        self.assertEqual(first["status"], "added")
+
+        self.claim("shop2", "+60222222222", "shopping list")
+        w = with_action_key(self.actor("shop2", "+60222222222"), "shop-action-wife")
+        listed = services.list_shopping_items(w)
+        self.assertEqual(len(listed["items"]), 1)
+        duplicate = services.add_shopping_item(w, "detergent")
+        self.assertEqual(duplicate["status"], "already_listed")
+
+    def test_reminder_can_target_spouse_without_code_changes(self):
+        self.claim("rem-spouse", "+60111111111", "remind my wife")
+        actor = with_action_key(self.actor("rem-spouse", "+60111111111"), "rem-spouse-action")
+        due = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+        created = services.create_reminder(actor, "Renew road tax", due, recipient="wife")
+        self.assertEqual(created["recipient_user_id"], "USR_WIFE")
+        conn = db.connect()
+        try:
+            row = conn.execute(
+                "SELECT owner_id,space_id,conversation_id FROM reminders WHERE reminder_id=?",
+                (created["reminder_id"],),
+            ).fetchone()
+            self.assertEqual(row["owner_id"], "USR_WIFE")
+            self.assertEqual(row["space_id"], "FAMILY_SHARED")
+            self.assertEqual(row["conversation_id"], "60222222222@s.whatsapp.net")
+        finally:
+            conn.close()
+
+    def test_failed_inbound_message_can_be_reclaimed(self):
+        payload = {
+            "message_id": "retry1", "provider": "WHATSAPP",
+            "conversation_id": "60111111111@s.whatsapp.net",
+            "conversation_type": "DIRECT_DM", "sender_phone": "+60111111111",
+            "text": "test",
+        }
+        self.assertEqual(db.claim_inbound(payload), "CLAIMED")
+        db.fail_inbound("retry1", "temporary failure")
+        self.assertEqual(db.claim_inbound(payload), "CLAIMED")
+        conn = db.connect()
+        try:
+            row = conn.execute(
+                "SELECT attempt_count,processing_state FROM inbound_messages WHERE message_id='retry1'"
+            ).fetchone()
+            self.assertEqual(row["attempt_count"], 2)
+            self.assertEqual(row["processing_state"], "PROCESSING")
+        finally:
+            conn.close()
+
+    def test_sensitive_home_assistant_domains_are_rejected_before_network(self):
+        with self.assertRaises(PermissionError):
+            ha.control("lock.front_door", "unlock")
 
 
 if __name__ == "__main__":
