@@ -189,15 +189,22 @@ def claim_inbound(payload: dict) -> str:
             state = existing["processing_state"]
             if state == "COMPLETED":
                 return "DUPLICATE"
-            if state == "PROCESSING" and existing["processing_started_at_utc"]:
+            if existing["processing_started_at_utc"]:
                 try:
                     started = datetime.fromisoformat(existing["processing_started_at_utc"].replace("Z", "+00:00"))
                     if started.tzinfo is None:
                         started = started.replace(tzinfo=timezone.utc)
-                    if (now - started).total_seconds() < 120:
+                    age = (now - started).total_seconds()
+                    if state == "PROCESSING" and age < 120:
+                        return "DUPLICATE"
+                    # The Node bridge retries non-2xx responses immediately. A
+                    # short FAILED cooldown makes those transport retries no-op
+                    # while still allowing a genuinely stale redelivery later.
+                    if state == "FAILED" and age < 30:
                         return "DUPLICATE"
                 except Exception:
-                    pass
+                    if state in {"PROCESSING", "FAILED"}:
+                        return "DUPLICATE"
             conn.execute(
                 """UPDATE inbound_messages SET processing_state='PROCESSING',
                    attempt_count=attempt_count+1,processing_started_at_utc=?,last_error=NULL
