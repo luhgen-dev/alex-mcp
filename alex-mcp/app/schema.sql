@@ -171,7 +171,14 @@ CREATE TABLE IF NOT EXISTS reminders (
     timezone_name TEXT NOT NULL,
     recurrence_rule TEXT,
     status TEXT NOT NULL CHECK(status IN ('OPEN','DUE','ACK','DEFERRED','COMP','CANC')) DEFAULT 'OPEN',
+    presence_aware INTEGER NOT NULL DEFAULT 0 CHECK(presence_aware IN (0,1)),
+    delivery_class TEXT NOT NULL DEFAULT 'routine' CHECK(delivery_class IN ('routine','time_critical')),
+    follow_up_after_hours INTEGER NOT NULL DEFAULT 24 CHECK(follow_up_after_hours >= 0),
+    acknowledged_at_utc TEXT,
     last_fired_at_utc TEXT,
+    last_follow_up_at_utc TEXT,
+    next_delivery_at_utc TEXT,
+    defer_reason TEXT,
     created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(source_message_id) REFERENCES inbound_messages(message_id),
     FOREIGN KEY(owner_id) REFERENCES users(user_id),
@@ -179,6 +186,23 @@ CREATE TABLE IF NOT EXISTS reminders (
 );
 
 CREATE INDEX IF NOT EXISTS idx_reminders_due ON reminders(status, due_at_utc);
+
+CREATE TABLE IF NOT EXISTS reminder_events (
+    event_id TEXT PRIMARY KEY,
+    reminder_id TEXT NOT NULL,
+    event_type TEXT NOT NULL CHECK(event_type IN (
+        'CREATED','DUE','DELIVERED','ACKNOWLEDGED','DEFERRED','RESCHEDULED',
+        'FOLLOW_UP_DELIVERED','COMPLETED','CANCELLED'
+    )),
+    previous_state TEXT,
+    new_state TEXT,
+    previous_due_at_utc TEXT,
+    new_due_at_utc TEXT,
+    note TEXT,
+    created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(reminder_id) REFERENCES reminders(reminder_id)
+);
+CREATE INDEX IF NOT EXISTS idx_reminder_events ON reminder_events(reminder_id,created_at_utc);
 
 CREATE TABLE IF NOT EXISTS savings_goals (
     goal_id TEXT PRIMARY KEY,
@@ -354,6 +378,8 @@ CREATE TABLE IF NOT EXISTS outbound_messages (
     text_body TEXT,
     local_path TEXT,
     mime_type TEXT,
+    context_kind TEXT,
+    context_id TEXT,
     delivery_status TEXT NOT NULL CHECK(delivery_status IN ('PENDING','SENT','FAILED')) DEFAULT 'PENDING',
     attempt_count INTEGER NOT NULL DEFAULT 0,
     last_error TEXT,
