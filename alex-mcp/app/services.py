@@ -460,7 +460,7 @@ def save_item(actor: ActorContext, title: str, content: str, tags: str | None = 
         existing = conn.execute("SELECT item_id FROM saved_items WHERE action_key=?", (actor.action_key,)).fetchone()
         if existing:
             return {"status": "already_saved", "item_id": existing["item_id"]}
-        space = "FAMILY_SHARED" if shared else actor.private_space
+        space = "FAMILY_SHARED" if shared or actor.conversation_type == "GROUP" else actor.private_space
         if space not in actor.allowed_spaces:
             raise PermissionError("requested memory space is not accessible")
         item_id = str(uuid.uuid4())
@@ -575,7 +575,7 @@ def create_reminder(actor: ActorContext, task: str, due_local: str,
                     raise ValueError("target household member has no configured WhatsApp number")
                 conversation_id = phone.replace("+", "") + "@s.whatsapp.net"
 
-            space = "FAMILY_SHARED" if shared or target_user != actor.user_id or len(targets) > 1 else actor.private_space
+                space = "FAMILY_SHARED" if shared or actor.conversation_type == "GROUP" or target_user != actor.user_id or len(targets) > 1 else actor.private_space
             if space not in actor.allowed_spaces:
                 raise PermissionError("requested reminder space is not accessible")
 
@@ -651,7 +651,7 @@ def set_goal(actor: ActorContext, name: str, target_amount: float | None = None,
              current_amount: float | None = None, currency: str = "MYR",
              target_date: str | None = None, notes: str | None = None,
              shared: bool = False) -> dict:
-    space = "FAMILY_SHARED" if shared else actor.private_space
+    space = "FAMILY_SHARED" if shared or actor.conversation_type == "GROUP" else actor.private_space
     conn = connect()
     try:
         row = conn.execute("SELECT * FROM savings_goals WHERE space_id=? AND LOWER(goal_name)=LOWER(?)",
@@ -883,7 +883,7 @@ def set_money_bucket(actor: ActorContext, name: str, amount: float,
     """Set an allocation/budget/stash bucket to an explicit amount supplied by the user."""
     if amount < 0:
         raise ValueError("bucket amount cannot be negative")
-    space = "FAMILY_SHARED" if shared else actor.private_space
+    space = "FAMILY_SHARED" if shared or actor.conversation_type == "GROUP" else actor.private_space
     if space not in actor.allowed_spaces:
         raise PermissionError("requested bucket space is not accessible")
     amount_minor = _minor(amount)
