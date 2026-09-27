@@ -7,6 +7,8 @@ from mcp.server.mcpserver import Resolve
 
 from context import ActorContext, current_actor
 import services
+import phase2
+import diagnostics
 
 mcp = MCPServer(
     "Alex Household Tools",
@@ -180,6 +182,129 @@ def ha_control(entity_id: str, action: str, actor: Actor, value: float | None = 
     """Perform an explicitly requested low-risk Home Assistant action on lights, switches, fans, climate or media players, then verify state. Sensitive domains are rejected by the backend."""
     import ha
     return ha.control(entity_id, action, value)
+
+
+@mcp.tool()
+def set_work_roster(work_date: str, shift_name: str, actor: Actor,
+                    start_local: str | None = None, end_local: str | None = None,
+                    notes: str | None = None, status: str = "CONFIRMED") -> dict:
+    """Store the user's work roster. Roster means work schedule, not personal diary."""
+    return phase2.set_work_roster(actor, work_date, shift_name, start_local, end_local, notes, status)
+
+
+@mcp.tool()
+def list_work_roster(actor: Actor, start_date: str | None = None,
+                     end_date: str | None = None, limit: int = 60) -> dict:
+    """Read only the authenticated user's work roster."""
+    return phase2.list_work_roster(actor, start_date, end_date, limit)
+
+
+@mcp.tool()
+def set_leave_record(leave_date: str, actor: Actor, status: str = "PLANNED",
+                     portion: str = "FULL", notes: str | None = None) -> dict:
+    """Store leave lifecycle: PLANNED -> CONFIRMED -> TAKEN. Never infer confirmed leave from a plan."""
+    return phase2.set_leave_record(actor, leave_date, status, portion, notes)
+
+
+@mcp.tool()
+def list_leave_records(actor: Actor, start_date: str | None = None,
+                       end_date: str | None = None, include_cancelled: bool = False) -> dict:
+    """Read the authenticated user's planned/confirmed/taken leave records."""
+    return phase2.list_leave_records(actor, start_date, end_date, include_cancelled)
+
+
+@mcp.tool()
+def create_plan(title: str, actor: Actor, start_local: str | None = None,
+                end_local: str | None = None, notes: str | None = None,
+                shared: bool = False, locked: bool = False) -> dict:
+    """Create a draft life plan. DM defaults private; group/shared is family. Plans are not diary commitments until explicitly made so."""
+    return phase2.create_plan(actor, title, start_local, end_local, notes, shared, locked)
+
+
+@mcp.tool()
+def list_plans(actor: Actor, include_cancelled: bool = False, limit: int = 50) -> dict:
+    """List accessible draft/locked plans."""
+    return phase2.list_plans(actor, include_cancelled, limit)
+
+
+@mcp.tool()
+def update_plan(plan_id: str, actor: Actor, status: str | None = None,
+                title: str | None = None, start_local: str | None = None,
+                end_local: str | None = None, notes: str | None = None) -> dict:
+    """Update a plan or mark it DRAFT, LOCKED or CANCELLED. Do not silently rewrite the user's baseline intent."""
+    return phase2.update_plan(actor, plan_id, status, title, start_local, end_local, notes)
+
+
+@mcp.tool()
+def share_plan(plan_id: str, actor: Actor) -> dict:
+    """Explicitly publish a private plan as a separate FAMILY_SHARED copy; the private source remains intact."""
+    return phase2.share_plan(actor, plan_id)
+
+
+@mcp.tool()
+def add_diary_event(title: str, start_local: str, actor: Actor,
+                    end_local: str | None = None, notes: str | None = None,
+                    shared: bool = False, reminder_minutes_before: int | None = None,
+                    reminder_recipient: str = "me") -> dict:
+    """Add a real-life diary commitment. If it clashes with the user's work roster, no event is written until the user chooses 1/2/3."""
+    return phase2.add_diary_event(actor, title, start_local, end_local, notes, shared,
+                                  reminder_minutes_before, reminder_recipient)
+
+
+@mcp.tool()
+def resolve_diary_conflict(conflict_id: str, choice: int, actor: Actor,
+                           reminder_recipient: str = "me") -> dict:
+    """Resolve a diary-vs-work conflict: 1=add event + PLANNED leave, 2=add event and keep clash, 3=cancel."""
+    return phase2.resolve_diary_conflict(actor, conflict_id, choice, reminder_recipient)
+
+
+@mcp.tool()
+def update_diary_event(diary_id: str, actor: Actor, status: str | None = None,
+                       start_local: str | None = None, end_local: str | None = None,
+                       title: str | None = None, notes: str | None = None) -> dict:
+    """Reschedule/cancel a diary event. Linked reminders move or cancel with it."""
+    return phase2.update_diary_event(actor, diary_id, status, start_local, end_local, title, notes)
+
+
+@mcp.tool()
+def get_agenda(start_date: str, end_date: str, actor: Actor,
+               include_plans: bool = True) -> dict:
+    """Combined read-only agenda: diary + reminders + own work roster + own leave + accessible plans."""
+    return phase2.get_agenda(actor, start_date, end_date, include_plans)
+
+
+@mcp.tool()
+def check_spouse_availability(start_local: str, actor: Actor,
+                              end_local: str | None = None) -> dict:
+    """Privacy-preserving spouse availability check. Returns busy/no conflict only; never exposes spouse private schedule details."""
+    return phase2.check_spouse_availability(actor, start_local, end_local)
+
+
+@mcp.tool()
+def set_cashflow_baseline(currency: str, actor: Actor, guaranteed_income: float = 0,
+                          fixed_commitments: float = 0, locked_allocations: float = 0,
+                          reserves: float = 0, notes: str | None = None) -> dict:
+    """Store only the user's explicit guaranteed-income baseline. OT/variable/extra cash is excluded and stays unallocated unless instructed."""
+    return phase2.set_cashflow_baseline(actor, currency, guaranteed_income, fixed_commitments,
+                                        locked_allocations, reserves, notes)
+
+
+@mcp.tool()
+def get_cashflow_baseline(currency: str, actor: Actor) -> dict:
+    """Read the user's deterministic cash-flow baseline without recommending allowance changes."""
+    return phase2.get_cashflow_baseline(actor, currency)
+
+
+@mcp.tool()
+def system_health(actor: Actor, hours: int = 24) -> dict:
+    """Read sanitized Alex health/diagnostic facts: DB, failed messages, outbound queue, tool errors and usage. No secrets."""
+    return diagnostics.system_health(actor, hours)
+
+
+@mcp.tool()
+def recent_failures(actor: Actor, hours: int = 24, limit: int = 20) -> dict:
+    """Explain recent observed Alex failures from durable logs/audits. Return observed facts only, not invented causes."""
+    return diagnostics.recent_failures(actor, hours, limit)
 
 
 @mcp.tool()
