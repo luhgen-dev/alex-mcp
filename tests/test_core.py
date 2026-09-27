@@ -762,10 +762,21 @@ class AlexCoreTests(unittest.TestCase):
             "Family appliance", "+60111111111", visibility="family",
             warranty_end="2026-10-10"
         )
-        due = phase2_library.warranties_expiring(
+        owner_due = phase2_library.warranties_expiring(
             30, "2026-09-26", "+60111111111"
         )
-        self.assertEqual([x["name"] for x in due], ["Family appliance"])
+        wife_due = phase2_library.warranties_expiring(
+            30, "2026-09-26", "+60222222222"
+        )
+        group_due = phase2_library.warranties_expiring(
+            30, "2026-09-26", "+60111111111", "GROUP"
+        )
+        self.assertEqual(
+            {x["name"] for x in owner_due},
+            {"Family appliance", "Private device"},
+        )
+        self.assertEqual([x["name"] for x in wife_due], ["Family appliance"])
+        self.assertEqual([x["name"] for x in group_due], ["Family appliance"])
 
     def test_monitoring_is_quiet_until_explicitly_delegated(self):
         self.sync_phase2_fixture()
