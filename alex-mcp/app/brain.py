@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import time
 import uuid
 from datetime import datetime
@@ -15,6 +16,7 @@ from config import get_settings
 from context import ActorContext, use_actor, with_action_key
 from db import add_turn, connect, recent_turns, record_usage
 from mcp_server import mcp
+import phase2_intent
 
 SYSTEM_PROMPT = """You are Alex, one household assistant.
 
@@ -73,10 +75,130 @@ def _tool_to_openai(tool) -> dict:
     }
 
 
-async def _tool_specs() -> list[dict]:
+CORE_FINANCE = {
+    "log_expense","confirm_expense","query_finances","list_pending_expenses",
+    "correct_expense","find_receipts","get_receipt","calculate",
+}
+MEMORY_TOOLS = {"save_item","search_saved_items","get_saved_item"}
+REMINDER_TOOLS = {"create_reminder","list_reminders","update_reminder","reminder_history"}
+SHOPPING_TOOLS = {"add_shopping_item","list_shopping_items","update_shopping_item"}
+DIARY_TOOLS = {
+    "add_diary_event","resolve_diary_conflict","resolve_latest_diary_conflict",
+    "update_diary_event","get_agenda","check_spouse_availability",
+    "create_plan","list_plans","update_plan","share_plan",
+    "set_leave_record","list_leave_records",
+}
+WORK_TOOLS = {
+    "work_schedule","work_day","work_record_event","work_ot_status",
+    "work_leave_balance","work_departure_plan","list_work_roster",
+}
+PLANNING_TOOLS = {
+    "planning_create_goal","planning_change_goal_baseline",
+    "planning_record_goal_contribution","planning_goal_progress",
+    "planning_goal_deviation","planning_record_cash","planning_cash_status",
+    "planning_allocate_cash_to_goal","planning_create_cash_pool",
+    "planning_allocate_cash_to_pool","planning_cashflow","planning_brief",
+    "planning_list_goals","calculate",
+}
+BILL_TOOLS = {"bills_list","bills_record_payment","bills_defer","bills_confirm_unpaid"}
+HOME_TOOLS = {"ha_find_entities","ha_get_state","ha_control"}
+ASSET_TOOLS = {"asset_create","asset_link_document","asset_list","warranty_expiring"}
+DIAGNOSTIC_TOOLS = {"system_health","recent_failures"}
+MONITOR_TOOLS = {"monitor_delegate","monitor_list","monitor_cancel"}
+LEGACY_SIMPLE_PLANNING = {
+    "set_goal","list_goals","set_cashflow_baseline","get_cashflow_baseline",
+    "set_money_bucket","list_money_buckets","get_leave_balance","set_leave_balance",
+    "set_work_roster",
+}
+
+
+def _select_tool_names(user_text: str, media_context: list[str] | None = None) -> set[str]:
+    text = (user_text or "").strip()
+    low = text.casefold()
+    selected: set[str] = set()
+    has_media = bool(media_context)
+
+    # Exact numbered conflict answers are intentionally bound to the latest
+    # owner-scoped persisted ticket rather than reconstructed by the model.
+    if re.fullmatch(r"\s*[123]\s*", text):
+        selected.add("resolve_latest_diary_conflict")
+
+    try:
+        read_intent = phase2_intent.classify_read_intent(text)
+        write_intent = phase2_intent.classify_write_intent(text, has_media=has_media)
+    except Exception:
+        read_intent, write_intent = {}, {}
+
+    if read_intent.get("intent") == "ROSTER":
+        selected |= WORK_TOOLS
+    if read_intent.get("intent") == "AGENDA":
+        selected |= {"get_agenda","list_reminders","work_schedule","list_plans"}
+
+    intents = set(write_intent.get("intents") or [])
+    if write_intent.get("intent"):
+        intents.add(write_intent["intent"])
+    if "DIARY" in intents or "PLAN" in intents:
+        selected |= DIARY_TOOLS
+    if "REMINDER" in intents:
+        selected |= REMINDER_TOOLS
+    if "EXPENSE" in intents:
+        selected |= CORE_FINANCE
+    if "OBLIGATION" in intents:
+        selected |= BILL_TOOLS | {"query_finances"}
+    if "SAVED_MEMORY" in intents:
+        selected |= MEMORY_TOOLS
+
+    if has_media:
+        selected |= CORE_FINANCE | MEMORY_TOOLS
+        if re.search(r"warrant|manual|serial|appliance|product", low):
+            selected |= ASSET_TOOLS
+
+    if re.search(r"\b(?:spent|spend|expense|paid|payment|transaction|receipt|duitnow|bank|how much|total|breakdown|refund)\b", low):
+        selected |= CORE_FINANCE
+    if re.search(r"\b(?:bill|bills|due|overdue|instalment|installment|obligation|tnb|water bill|electricity|unifi|insurance|road tax)\b", low):
+        selected |= BILL_TOOLS | {"query_finances","find_receipts"}
+    if re.search(r"\b(?:goal|goals|saving|savings|budget|cashflow|cash flow|stash|allowance|salary|income|bonus|extra cash|allocate|allocation|reserve)\b", low):
+        selected |= PLANNING_TOOLS | BILL_TOOLS
+    if re.search(r"\b(?:roster|shift|working|work schedule|overtime|\bot\b|mc|medical leave|annual leave|leave balance|swap shift)\b", low):
+        selected |= WORK_TOOLS | {"set_leave_record","list_leave_records"}
+    if re.search(r"\b(?:diary|agenda|appointment|wedding|party|meeting|event|schedule|holiday|vacation|trip|plan)\b", low):
+        selected |= DIARY_TOOLS
+    if re.search(r"\b(?:remind|reminder|reminders|notify|due today|later|snooze|acknowledge)\b", low):
+        selected |= REMINDER_TOOLS
+    if re.search(r"\b(?:shopping list|grocery list|add .*list|buy|bought item|detergent)\b", low):
+        selected |= SHOPPING_TOOLS
+    if re.search(r"\b(?:remember|saved|save this|find .*photo|find .*image|show .*document|keys photo|invitation)\b", low):
+        selected |= MEMORY_TOOLS
+    if re.search(r"\b(?:warranty|warranties|manual|serial number|appliance|asset)\b", low):
+        selected |= ASSET_TOOLS | MEMORY_TOOLS
+    if re.search(r"\b(?:light|switch|fan|thermostat|climate|media player|home assistant|turn on|turn off|state of)\b", low):
+        selected |= HOME_TOOLS
+    if re.search(r"\b(?:why didn't|why did not|health|diagnostic|failed|failure|error|offline|didn't reply|did not reply)\b", low):
+        selected |= DIAGNOSTIC_TOOLS
+    if re.search(r"\b(?:monitor|track this|watch this|proactive|follow this)\b", low):
+        selected |= MONITOR_TOOLS
+
+    # Tamil script: favor coverage over a false-negative router. It is still a
+    # much smaller catalog than advertising every MCP tool on every turn.
+    if re.search(r"[\u0B80-\u0BFF]", text):
+        selected |= (
+            CORE_FINANCE | REMINDER_TOOLS | MEMORY_TOOLS | SHOPPING_TOOLS
+            | {"get_agenda","work_schedule","planning_brief","bills_list"}
+        )
+
+    # Do not advertise superseded simple planning tools when the advanced
+    # proven engine is available.
+    selected -= LEGACY_SIMPLE_PLANNING
+    return selected
+
+
+async def _tool_specs(user_text: str, media_context: list[str] | None = None) -> list[dict]:
+    wanted = _select_tool_names(user_text, media_context)
+    if not wanted:
+        return []
     async with Client(mcp) as client:
         result = await client.list_tools()
-        return [_tool_to_openai(t) for t in result.tools]
+        return [_tool_to_openai(t) for t in result.tools if t.name in wanted]
 
 
 def _client():
@@ -186,7 +308,7 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
     settings = get_settings()
     provider = settings.ai_provider
     model = settings.model
-    tools = await _tool_specs()
+    tools = await _tool_specs(user_text, media_context)
 
     messages: list[dict] = [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -218,14 +340,11 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
         kwargs = {
             "model": model,
             "messages": messages,
-            "tools": tools,
-            "tool_choice": "auto",
             "reasoning_effort": settings.reasoning_effort,
         }
-        if provider == "grok":
-            # xAI recommends this on Chat Completions so a conversation is
-            # routed consistently and can benefit from prompt-cache hits.
-            kwargs["extra_headers"] = {"x-grok-conv-id": actor.conversation_id[:200]}
+        if tools:
+            kwargs["tools"] = tools
+            kwargs["tool_choice"] = "auto"
         response = client.chat.completions.create(**kwargs)
         usage = getattr(response, "usage", None)
         if usage:
