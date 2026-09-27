@@ -237,7 +237,8 @@ def list_leave_records(actor: ActorContext, start_date: str | None = None,
 
 def create_plan(actor: ActorContext, title: str, start_local: str | None = None,
                 end_local: str | None = None, notes: str | None = None,
-                shared: bool = False, locked: bool = False) -> dict:
+                shared: bool = False, locked: bool = False,
+                time_known: bool | None = None) -> dict:
     if not actor.action_key:
         raise RuntimeError("missing deterministic action key")
     space = _space(actor, shared)
@@ -250,16 +251,22 @@ def create_plan(actor: ActorContext, title: str, start_local: str | None = None,
         conn.execute(
             """INSERT INTO plans(
                 plan_id,action_key,owner_id,space_id,title,start_at_utc,end_at_utc,
-                timezone_name,notes,status
-               ) VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                time_known,timezone_name,notes,status
+               ) VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
             (pid, actor.action_key, actor.user_id, space, title[:240],
              _to_utc(start_local, actor.timezone) if start_local else None,
              _to_utc(end_local, actor.timezone) if end_local else None,
+             1 if (
+                 (_has_explicit_time(start_local) if time_known is None else bool(time_known))
+                 and start_local
+             ) else 0,
              actor.timezone, notes, "LOCKED" if locked else "DRAFT"),
         )
         conn.commit()
+        created = conn.execute("SELECT time_known FROM plans WHERE plan_id=?", (pid,)).fetchone()
         return {"status": "saved", "plan_id": pid, "title": title[:240],
-                "state": "LOCKED" if locked else "DRAFT", "space": space}
+                "state": "LOCKED" if locked else "DRAFT", "space": space,
+                "time_known": bool(created["time_known"])}
     finally:
         conn.close()
 
@@ -272,7 +279,7 @@ def list_plans(actor: ActorContext, include_cancelled: bool = False, limit: int 
     conn = connect()
     try:
         rows = conn.execute(
-            f"""SELECT plan_id,title,start_at_utc,end_at_utc,notes,status,space_id
+            f"""SELECT plan_id,title,start_at_utc,end_at_utc,time_known,notes,status,space_id
                 FROM plans WHERE {where} ORDER BY COALESCE(start_at_utc,created_at_utc) LIMIT ?""",
             list(actor.allowed_spaces) + [max(1, min(100, int(limit)))],
         ).fetchall()
@@ -296,13 +303,15 @@ def update_plan(actor: ActorContext, plan_id: str, status: str | None = None,
         state = row["status"] if status is None else status.upper()
         if state not in {"DRAFT", "LOCKED", "CONFIRMED", "CANCELLED"}:
             raise ValueError("plan status must be DRAFT, LOCKED, CONFIRMED or CANCELLED")
+        new_start = _to_utc(start_local, actor.timezone) if start_local else row["start_at_utc"]
+        new_end = _to_utc(end_local, actor.timezone) if end_local else row["end_at_utc"]
+        new_time_known = _has_explicit_time(start_local) if start_local is not None else bool(row["time_known"])
         conn.execute(
-            """UPDATE plans SET title=?,start_at_utc=?,end_at_utc=?,notes=?,status=?,updated_at_utc=?
-               WHERE plan_id=?""",
+            """UPDATE plans SET title=?,start_at_utc=?,end_at_utc=?,time_known=?,
+               notes=?,status=?,updated_at_utc=? WHERE plan_id=?""",
             (
-                (title or row["title"])[:240],
-                _to_utc(start_local, actor.timezone) if start_local else row["start_at_utc"],
-                _to_utc(end_local, actor.timezone) if end_local else row["end_at_utc"],
+                (title or row["title"])[:240], new_start, new_end,
+                1 if new_time_known else 0,
                 notes if notes is not None else row["notes"],
                 state, utc_now(), plan_id,
             ),
@@ -374,6 +383,7 @@ def confirm_plan(actor: ActorContext, plan_id: str,
         reminder_minutes_before=reminder_minutes_before,
         reminder_recipient=reminder_recipient,
         source_plan_id=plan_id,
+        time_known=bool(row["time_known"]),
     )
     if result.get("status") == "needs_choice":
         conn = connect()
@@ -414,11 +424,11 @@ def share_plan(actor: ActorContext, plan_id: str,
         conn.execute(
             """INSERT OR IGNORE INTO plans(
                 plan_id,action_key,owner_id,space_id,title,start_at_utc,end_at_utc,
-                timezone_name,notes,status,source_plan_id
-               ) VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+                time_known,timezone_name,notes,status,source_plan_id
+               ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
             (copy_id, action_key, actor.user_id, "FAMILY_SHARED", row["title"],
-             row["start_at_utc"], row["end_at_utc"], row["timezone_name"], safe_notes,
-             row["status"], plan_id),
+             row["start_at_utc"], row["end_at_utc"], row["time_known"],
+             row["timezone_name"], safe_notes, row["status"], plan_id),
         )
         conn.commit()
         copied = conn.execute(
@@ -1226,7 +1236,7 @@ def get_agenda(actor: ActorContext, start_date: str, end_date: str,
         plans = []
         if include_plans:
             plans = [dict(r) for r in conn.execute(
-                f"""SELECT plan_id AS id,title,start_at_utc,end_at_utc,status,space_id,'PLAN' AS kind
+                f"""SELECT plan_id AS id,title,start_at_utc,end_at_utc,time_known,status,space_id,'PLAN' AS kind
                     FROM plans WHERE space_id IN ({marks}) AND status!='CANCELLED'
                       AND (start_at_utc IS NULL OR start_at_utc BETWEEN ? AND ?)
                     ORDER BY COALESCE(start_at_utc,created_at_utc)""",
