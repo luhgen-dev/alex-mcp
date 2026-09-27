@@ -5,7 +5,7 @@ import json
 import os
 import time
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from db import connect
 
@@ -52,29 +52,45 @@ def _payload(row) -> dict:
 def sweep():
     conn = connect()
     try:
+        now_iso = _now()
         rows = conn.execute(
-            """SELECT * FROM outbound_messages WHERE delivery_status='PENDING'
-               ORDER BY created_at_utc,rowid LIMIT 10"""
+            """SELECT * FROM outbound_messages
+               WHERE delivery_status='PENDING'
+                 AND (next_attempt_at_utc IS NULL OR next_attempt_at_utc<=?)
+               ORDER BY created_at_utc,rowid LIMIT 10""",
+            (now_iso,),
         ).fetchall()
         for row in rows:
+            permanent_error = False
             try:
                 payload = _payload(row)
                 ok, detail = _send(payload)
+            except FileNotFoundError as exc:
+                ok, detail, permanent_error = False, str(exc), True
             except Exception as exc:
                 ok, detail = False, str(exc)
             attempts = int(row["attempt_count"] or 0) + 1
             if ok:
                 conn.execute(
                     """UPDATE outbound_messages SET delivery_status='SENT',attempt_count=?,
-                       delivered_at_utc=?,last_error=NULL WHERE outbound_id=?""",
+                       delivered_at_utc=?,last_error=NULL,next_attempt_at_utc=NULL WHERE outbound_id=?""",
                     (attempts, _now(), row["outbound_id"]),
                 )
-            else:
-                status = "FAILED" if attempts >= 5 else "PENDING"
+            elif permanent_error:
                 conn.execute(
-                    """UPDATE outbound_messages SET delivery_status=?,attempt_count=?,last_error=?
-                       WHERE outbound_id=?""",
-                    (status, attempts, detail[:1000], row["outbound_id"]),
+                    """UPDATE outbound_messages SET delivery_status='FAILED',attempt_count=?,
+                       last_error=?,next_attempt_at_utc=NULL WHERE outbound_id=?""",
+                    (attempts, detail[:1000], row["outbound_id"]),
+                )
+            else:
+                # Transport/network outages must not silently consume a reminder.
+                # Keep the durable row pending and back off locally without AI/token use.
+                delay = min(300, 2 ** min(attempts, 8))
+                next_try = (datetime.now(timezone.utc) + timedelta(seconds=delay)).isoformat()
+                conn.execute(
+                    """UPDATE outbound_messages SET delivery_status='PENDING',attempt_count=?,
+                       last_error=?,next_attempt_at_utc=? WHERE outbound_id=?""",
+                    (attempts, detail[:1000], next_try, row["outbound_id"]),
                 )
         conn.commit()
     finally:
