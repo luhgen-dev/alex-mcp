@@ -33,6 +33,8 @@ For bank-transfer/payment receipts, never invent a spending purpose from a perso
 
 For reminders, convert the user's intended local date/time into an ISO local datetime. Do not silently choose a materially different date. For normal conversational follow-ups, use context naturally.
 
+When you previously asked the user to clarify a pending financial item and their next message answers that question, use list_pending_expenses to recover the exact pending event before confirming it. Never guess an event id.
+
 For money planning, follow the user's allocations and goals. Do not tell the user to raise an allowance or redirect money unless they explicitly ask for analysis or suggestions.
 
 Use local calculator/tool results instead of mental arithmetic when exactness matters. Keep normal WhatsApp replies short and natural; provide detail when requested.
@@ -156,7 +158,8 @@ async def _call_mcp(actor: ActorContext, tool_name: str, args: dict, action_key:
     return clean, attachments
 
 
-async def respond(actor: ActorContext, user_text: str, media_context: list[str] | None = None) -> tuple[str, list[dict]]:
+async def respond(actor: ActorContext, user_text: str, media_context: list[str] | None = None,
+                  vision_parts: list[dict] | None = None) -> tuple[str, list[dict]]:
     settings = get_settings()
     provider = settings.ai_provider
     model = settings.model
@@ -175,7 +178,11 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
         current = (current + "\n\n" + suffix).strip()
     if not current:
         current = "I sent an attachment."
-    messages.append({"role": "user", "content": current})
+    if vision_parts:
+        current_content = [{"type": "text", "text": current}] + list(vision_parts)
+        messages.append({"role": "user", "content": current_content})
+    else:
+        messages.append({"role": "user", "content": current})
 
     client = _client()
     attachments: list[dict] = []
@@ -190,6 +197,7 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
             "messages": messages,
             "tools": tools,
             "tool_choice": "auto",
+            "reasoning_effort": settings.reasoning_effort,
         }
         if provider == "grok":
             kwargs["extra_headers"] = {"x-grok-conv-id": actor.conversation_id[:200]}
