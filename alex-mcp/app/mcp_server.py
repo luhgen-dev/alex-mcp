@@ -276,11 +276,21 @@ def resolve_diary_conflict(conflict_id: str, choice: int, actor: Actor,
 
 
 @mcp.tool()
+def resolve_latest_diary_conflict(choice: int, actor: Actor,
+                                  reminder_recipient: str = "me") -> dict:
+    """Resolve the latest unexpired owner-scoped diary conflict ticket. This is the safe handler for a later bare '1', '2' or '3' reply."""
+    return phase2.resolve_latest_diary_conflict(actor, choice, reminder_recipient)
+
+
+@mcp.tool()
 def update_diary_event(diary_id: str, actor: Actor, status: str | None = None,
                        start_local: str | None = None, end_local: str | None = None,
-                       title: str | None = None, notes: str | None = None) -> dict:
-    """Reschedule/cancel a diary event. Linked reminders move or cancel with it."""
-    return phase2.update_diary_event(actor, diary_id, status, start_local, end_local, title, notes)
+                       title: str | None = None, notes: str | None = None,
+                       linked_reminders: str = "ask") -> dict:
+    """Reschedule/cancel a diary event. If linked reminders exist, keep/shift/cancel must be explicit."""
+    return phase2.update_diary_event(
+        actor, diary_id, status, start_local, end_local, title, notes, linked_reminders
+    )
 
 
 @mcp.tool()
