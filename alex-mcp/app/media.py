@@ -178,16 +178,41 @@ def transcribe_audio(media_id: str) -> str:
     raise RuntimeError("No speech-to-text provider is configured")
 
 
-def process_payload_media(payload: dict) -> tuple[list[str], list[str]]:
+def _looks_like_financial_document(text: str) -> bool:
+    lowered = (text or "").lower()
+    markers = (
+        "receipt", "payment", "paid", "amount", "total", "subtotal", "balance",
+        "transfer", "duitnow", "bank", "reference", "ref no", "transaction",
+        "myr", "sgd", "rm ", "invoice",
+    )
+    score = sum(1 for marker in markers if marker in lowered)
+    has_amount = bool(re.search(r"(?:rm|myr|sgd|s\\$|\\$)?\\s*\\d+[.,]\\d{2}", lowered))
+    return score >= 2 or (score >= 1 and has_amount)
+
+
+def process_payload_media(payload: dict) -> tuple[list[str], list[str], list[dict]]:
+    """Persist media first, cheaply extract text, and use model vision only when OCR is insufficient/non-financial."""
     media_ids: list[str] = []
     context_lines: list[str] = []
+    vision_parts: list[dict] = []
 
     if payload.get("image_data"):
-        mid = save_media(payload["message_id"], "IMAGE", payload.get("image_mime_type") or "image/jpeg", payload["image_data"])
+        mime = payload.get("image_mime_type") or "image/jpeg"
+        mid = save_media(payload["message_id"], "IMAGE", mime, payload["image_data"])
         media_ids.append(mid)
         text = extract_text(mid)
         if text:
             context_lines.append("Local OCR from attached image:\n" + text[:12000])
+
+        caption = (payload.get("text") or "").strip()
+        # Receipts/payment slips with useful OCR stay local to save multimodal tokens.
+        # General photos, unreadable receipts, or non-financial images are shown to the model.
+        needs_vision = not _looks_like_financial_document(text)
+        if needs_vision:
+            vision_parts.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:{mime};base64,{payload['image_data']}"},
+            })
 
     if payload.get("pdf_data"):
         mid = save_media(payload["message_id"], "PDF", "application/pdf", payload["pdf_data"])
@@ -203,4 +228,4 @@ def process_payload_media(payload: dict) -> tuple[list[str], list[str]]:
         if text:
             context_lines.append("Voice-note transcript:\n" + text[:12000])
 
-    return media_ids, context_lines
+    return media_ids, context_lines, vision_parts
