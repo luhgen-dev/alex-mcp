@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import time
 import uuid
+import json
+import os
+import hashlib
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -10,6 +13,7 @@ from dateutil.rrule import rrulestr
 from db import connect, utc_now
 import ha
 import phase2_presence
+import phase2_monitor
 
 
 def _owner_phone(conn, user_id: str) -> str | None:
@@ -190,10 +194,119 @@ def fire_due():
         conn.close()
 
 
+
+_last_monitor_hour = None
+
+
+def _family_group_jid() -> str | None:
+    path = os.path.join(os.environ.get("ALEX_DATA_DIR", "/data"), "family_group.json")
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f).get("group_jid")
+    except Exception:
+        return None
+
+
+def _conversation_for_space(conn, owner_id: str, space_id: str) -> str | None:
+    if space_id == "FAMILY_SHARED":
+        return _family_group_jid()
+    phone = _owner_phone(conn, owner_id)
+    return phone.replace("+", "") + "@s.whatsapp.net" if phone else None
+
+
+def _candidate_text(candidate: dict) -> str:
+    kind = candidate.get("kind")
+    if kind == "BILL_FOLLOW_UP":
+        return (
+            f"📌 Alex check-in: {candidate.get('name')} is {candidate.get('state')}"
+            + (f", due {candidate.get('due_date')}." if candidate.get("due_date") else ".")
+        )
+    if kind == "GOAL_BELOW_PLAN":
+        return (
+            f"📌 Alex check-in: {candidate.get('name')} is below the {candidate.get('period')} "
+            f"plan by {candidate.get('remaining_for_period'):.2f}. I haven't changed the plan."
+        )
+    if kind == "OT_ALLOCATION_AVAILABLE":
+        return (
+            f"📌 Alex check-in: {candidate.get('currency')} {candidate.get('unallocated'):.2f} "
+            f"from OT is still unallocated for {candidate.get('goal_name')}. "
+            "I haven't moved it anywhere."
+        )
+    return "📌 Alex has an update from a monitor you explicitly enabled."
+
+
+def _candidate_key(candidate: dict) -> str:
+    stable = {
+        k: candidate.get(k) for k in sorted(candidate)
+        if k not in {"created_at_utc", "updated_at_utc"}
+    }
+    raw = json.dumps(stable, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def run_delegated_monitors():
+    global _last_monitor_hour
+    now = datetime.now(timezone.utc)
+    hour_key = now.strftime("%Y-%m-%dT%H")
+    if _last_monitor_hour == hour_key:
+        return
+    _last_monitor_hour = hour_key
+
+    conn = connect()
+    try:
+        users = conn.execute(
+            """SELECT u.user_id,p.phone_number FROM users u
+               JOIN user_phone_history p ON p.user_id=u.user_id
+               WHERE p.valid_to_utc IS NULL"""
+        ).fetchall()
+        for user in users:
+            phone = user["phone_number"]
+            try:
+                candidates = []
+                candidates.extend(phase2_monitor.bill_candidates(now.date().isoformat(), phone, "DIRECT_DM"))
+                candidates.extend(phase2_monitor.goal_candidates(now.strftime("%Y-%m"), phone, "DIRECT_DM"))
+                candidates.extend(phase2_monitor.ot_allocation_candidates(phone, "DIRECT_DM"))
+            except Exception as exc:
+                print(f"[Alex MCP monitor] candidate error for {user['user_id']}: {exc}", flush=True)
+                continue
+
+            for candidate in candidates:
+                key = _candidate_key(candidate)
+                seen = conn.execute(
+                    "SELECT 1 FROM monitor_notifications WHERE candidate_key=?",
+                    (key,),
+                ).fetchone()
+                if seen:
+                    continue
+                conversation = _conversation_for_space(
+                    conn, user["user_id"], candidate.get("space") or "HUSBAND_PVT"
+                )
+                if not conversation:
+                    continue
+                conn.execute(
+                    """INSERT INTO outbound_messages(
+                        outbound_id,conversation_id,kind,text_body,context_kind,context_id
+                       ) VALUES(?,?, 'TEXT', ?, 'MONITOR', ?)""",
+                    (str(uuid.uuid4()), conversation, _candidate_text(candidate), key),
+                )
+                conn.execute(
+                    """INSERT INTO monitor_notifications(
+                        candidate_key,delegation_id,owner_id,candidate_kind,payload_json
+                       ) VALUES(?,?,?,?,?)""",
+                    (key, candidate.get("delegation_id") or "", user["user_id"],
+                     candidate.get("kind") or "UNKNOWN",
+                     json.dumps(candidate, ensure_ascii=False, sort_keys=True)),
+                )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def main():
     while True:
         try:
             fire_due()
+            run_delegated_monitors()
         except Exception as exc:
             print(f"[Alex MCP scheduler] {exc}", flush=True)
         time.sleep(15)
