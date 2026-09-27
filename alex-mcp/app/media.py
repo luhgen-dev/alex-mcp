@@ -7,6 +7,7 @@ import mimetypes
 import os
 import re
 import subprocess
+import tempfile
 import uuid
 
 import requests
@@ -16,6 +17,9 @@ from config import DATA_DIR, get_settings
 from db import connect
 
 MEDIA_DIR = os.path.join(DATA_DIR, "media")
+MODEL_DIR = os.path.join(DATA_DIR, "models")
+WHISPER_MODELS = {"tiny", "base", "small"}
+WHISPER_MODEL_URL = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-{model}.bin"
 
 
 def _safe_ext(mime_type: str, media_type: str) -> str:
@@ -106,9 +110,92 @@ def extract_text(media_id: str) -> str:
             text = (p.stdout or "").strip()
         except Exception:
             text = ""
+
+        # Image-only/scanned PDFs have no text layer. Fall back to local OCR
+        # rather than paying the conversational model to inspect the whole PDF.
+        if not text and settings.ocr_enabled:
+            pages = []
+            try:
+                with tempfile.TemporaryDirectory(prefix="alex-pdf-") as tmp:
+                    prefix = os.path.join(tmp, "page")
+                    subprocess.run(
+                        ["pdftoppm", "-f", "1", "-l", "5", "-jpeg", "-r", "180", path, prefix],
+                        capture_output=True, text=True, timeout=45, check=True,
+                    )
+                    for name in sorted(os.listdir(tmp)):
+                        if not name.lower().endswith((".jpg", ".jpeg")):
+                            continue
+                        page_path = os.path.join(tmp, name)
+                        ocr = subprocess.run(
+                            ["tesseract", page_path, "stdout", "-l", "eng", "--psm", "6"],
+                            capture_output=True, text=True, timeout=30,
+                        )
+                        if (ocr.stdout or "").strip():
+                            pages.append((ocr.stdout or "").strip())
+                text = "\n\n".join(pages)
+            except Exception:
+                text = ""
+
         _update_text(media_id, "ocr_text", text)
         return text
     return ""
+
+
+def _ensure_whisper_model(model_name: str) -> str:
+    model = (model_name or "base").strip().lower()
+    if model not in WHISPER_MODELS:
+        raise ValueError(f"Unsupported local Whisper model: {model}")
+    os.makedirs(MODEL_DIR, exist_ok=True)
+    path = os.path.join(MODEL_DIR, f"ggml-{model}.bin")
+    if os.path.isfile(path) and os.path.getsize(path) > 1024 * 1024:
+        return path
+
+    part = path + ".part"
+    try:
+        with requests.get(
+            WHISPER_MODEL_URL.format(model=model),
+            stream=True,
+            timeout=(15, 180),
+            allow_redirects=True,
+        ) as response:
+            response.raise_for_status()
+            with open(part, "wb") as out:
+                for chunk in response.iter_content(chunk_size=1024 * 1024):
+                    if chunk:
+                        out.write(chunk)
+        if os.path.getsize(part) < 1024 * 1024:
+            raise RuntimeError("Downloaded Whisper model is unexpectedly small")
+        os.replace(part, path)
+        return path
+    except Exception:
+        try:
+            if os.path.exists(part):
+                os.remove(part)
+        except OSError:
+            pass
+        raise
+
+
+def _local_whisper(path: str, model_name: str) -> str:
+    model_path = _ensure_whisper_model(model_name)
+    with tempfile.TemporaryDirectory(prefix="alex-whisper-") as tmp:
+        wav_path = os.path.join(tmp, "voice.wav")
+        prefix = os.path.join(tmp, "transcript")
+        subprocess.run(
+            ["ffmpeg", "-nostdin", "-loglevel", "error", "-y", "-i", path,
+             "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", wav_path],
+            capture_output=True, text=True, timeout=90, check=True,
+        )
+        subprocess.run(
+            ["whisper-cli", "-m", model_path, "-f", wav_path, "-l", "auto",
+             "-nt", "-otxt", "-of", prefix, "-np"],
+            capture_output=True, text=True, timeout=180, check=True,
+        )
+        output_path = prefix + ".txt"
+        if not os.path.isfile(output_path):
+            raise RuntimeError("Local Whisper did not produce a transcript")
+        with open(output_path, "r", encoding="utf-8", errors="replace") as transcript:
+            return transcript.read().strip()
 
 
 def _xai_stt(path: str, mime: str, key: str) -> str:
@@ -116,7 +203,7 @@ def _xai_stt(path: str, mime: str, key: str) -> str:
         response = requests.post(
             "https://api.x.ai/v1/stt",
             headers={"Authorization": f"Bearer {key}"},
-            data=[("model", "grok-voice-transcribe-2.0"), ("format", "true")],
+            data=[("model", "grok-voice-transcribe-2.0")],
             files={"file": (os.path.basename(path), f, mime or "audio/ogg")},
             timeout=90,
         )
@@ -156,11 +243,15 @@ def transcribe_audio(media_id: str) -> str:
         return ""
     settings = get_settings()
     requested = settings.stt_provider
-    order = [requested] if requested != "auto" else ["xai", "openai", "gemini"]
+    # Local multilingual Whisper is first by default: it keeps voice-note
+    # transcription off the conversational AI bill and supports Tamil.
+    order = [requested] if requested != "auto" else ["local_whisper", "gemini", "openai", "xai"]
     last_error = None
     for provider in order:
         try:
-            if provider == "xai" and settings.xai_api_key:
+            if provider == "local_whisper":
+                text = _local_whisper(row["local_path"], settings.whisper_model)
+            elif provider == "xai" and settings.xai_api_key:
                 text = _xai_stt(row["local_path"], row["mime_type"], settings.xai_api_key)
             elif provider == "openai" and settings.openai_api_key:
                 text = _openai_stt(row["local_path"], settings.openai_api_key)
