@@ -67,7 +67,7 @@ class AlexCoreTests(unittest.TestCase):
                 "alex_phase2_cash_pools", "alex_phase2_plan_reserves", "alex_phase2_goals",
                 "alex_phase2_work_events", "alex_phase2_delegations",
                 "alex_profile_config_versions",
-                "tool_audit", "ai_usage", "diagnostic_runs", "monitor_notifications",
+                "tool_audit", "tool_execution_claims", "ai_usage", "diagnostic_runs", "monitor_notifications",
                 "outbound_messages", "conversation_turns", "selection_sets", "reminder_events",
                 "diary_reminder_links", "plan_diary_links", "schedule_conflicts", "diary_events", "plans",
                 "leave_records", "work_roster", "cashflow_baselines",
@@ -1110,6 +1110,66 @@ class AlexCoreTests(unittest.TestCase):
             self.assertEqual(row["time_known"], 0)
         finally:
             conn.close()
+
+
+
+    def test_mutating_mcp_action_is_cached_at_most_once(self):
+        self.claim("atmost1", "+60111111111", "log lunch")
+        actor = self.actor("atmost1", "+60111111111")
+        key = brain._action_key(
+            actor, "log_expense",
+            {"description": "Lunch", "amount": 9.5, "category": "food", "currency": "MYR"},
+            1,
+        )
+
+        async def exercise():
+            args = {"description": "Lunch", "amount": 9.5, "category": "food", "currency": "MYR"}
+            first, _ = await brain._call_mcp(actor, "log_expense", args, key)
+            second, _ = await brain._call_mcp(actor, "log_expense", args, key)
+            return first, second
+
+        first, second = asyncio.run(exercise())
+        self.assertEqual(first["event_id"], second["event_id"])
+        conn = db.connect()
+        try:
+            self.assertEqual(
+                conn.execute(
+                    "SELECT COUNT(*) FROM financial_events WHERE source_message_id='atmost1'"
+                ).fetchone()[0],
+                1,
+            )
+            claim = conn.execute(
+                "SELECT state FROM tool_execution_claims WHERE action_key=?", (key,)
+            ).fetchone()
+            self.assertEqual(claim["state"], "COMPLETED")
+        finally:
+            conn.close()
+
+    def test_uncertain_mutation_is_not_replayed(self):
+        self.claim("uncertain1", "+60111111111", "turn off light")
+        actor = self.actor("uncertain1", "+60111111111")
+        key = "uncertain-action-key"
+        conn = db.connect()
+        try:
+            conn.execute(
+                """INSERT INTO tool_execution_claims(action_key,tool_name,state)
+                   VALUES(?,?,'UNCERTAIN')""",
+                (key, "ha_control"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        async def exercise():
+            with patch.object(ha, "control", side_effect=AssertionError("must not replay")):
+                return await brain._call_mcp(
+                    actor, "ha_control",
+                    {"entity_id": "light.living_room", "action": "turn_off"},
+                    key,
+                )
+
+        result, _ = asyncio.run(exercise())
+        self.assertEqual(result["status"], "previous_attempt_uncertain")
 
 
 
