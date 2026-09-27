@@ -159,7 +159,7 @@ PLANNING_TOOLS = {
     "planning_cashflow","planning_brief","planning_list_goals","calculate",
 }
 BILL_TOOLS = {"bills_list","bills_match_payment","bills_record_payment","bills_defer","bills_confirm_unpaid"}
-HOME_TOOLS = {"ha_find_entities","ha_get_state","ha_home_summary","ha_draft_automation","ha_control"}
+HOME_TOOLS = {"ha_find_entities","ha_get_state","ha_home_summary","ha_home_report","ha_draft_automation","ha_control"}
 ASSET_TOOLS = {"asset_create","asset_link_document","asset_list","warranty_expiring"}
 DIAGNOSTIC_TOOLS = {"system_health","recent_failures"}
 MONITOR_TOOLS = {"monitor_delegate","monitor_list","monitor_cancel"}
@@ -247,6 +247,7 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
         "ha_get_state": (r"state|is .* on|status", 108),
         "ha_control": (r"turn on|turn off|toggle|set .*%|set temperature|play|pause", 125),
         "ha_home_summary": (r"home status|house status|what's on|whats on", 112),
+        "ha_home_report": (r"home.*report|house.*report|status.*image|status.*card", 120),
         "ha_draft_automation": (r"automation|automate|when .* then", 112),
         "asset_create": (r"warranty|asset|appliance|serial|bought.*device", 105),
         "asset_link_document": (r"warranty|manual|receipt.*asset|link.*document", 108),
