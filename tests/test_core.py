@@ -1022,5 +1022,51 @@ class AlexCoreTests(unittest.TestCase):
 
 
 
+    def test_taken_leave_materializes_history_but_planned_leave_does_not(self):
+        self.sync_phase2_fixture()
+        self.claim("leave-plan", "+60111111111", "plan leave")
+        base = self.actor("leave-plan", "+60111111111")
+        planned = phase2.set_leave_record(
+            with_action_key(base, "leave-plan-action"),
+            "2026-10-02", status="PLANNED", end_date="2026-10-03",
+            leave_type="ANNUAL_LEAVE",
+        )
+        self.assertEqual(planned["materialized_days"], 0)
+        self.assertTrue(phase2_work.effective_ot_for_date("2026-10-03", "+60111111111")["ot"])
+
+        taken = phase2.set_leave_record(
+            with_action_key(base, "leave-taken-action"),
+            "2026-10-02", status="TAKEN", end_date="2026-10-03",
+            leave_type="ANNUAL_LEAVE",
+        )
+        self.assertEqual(taken["materialized_days"], 2)
+        blocked = phase2_work.effective_ot_for_date("2026-10-03", "+60111111111")
+        self.assertFalse(blocked["ot"])
+
+        repeat = phase2.set_leave_record(
+            with_action_key(base, "leave-taken-repeat"),
+            "2026-10-02", status="TAKEN", end_date="2026-10-03",
+            leave_type="ANNUAL_LEAVE",
+        )
+        self.assertEqual(repeat["materialized_days"], 0)
+
+    def test_family_agenda_never_contains_private_roster_or_leave(self):
+        self.claim("group-roster-setup", "+60111111111", "work")
+        dm = self.actor("group-roster-setup", "+60111111111")
+        phase2.set_work_roster(
+            with_action_key(dm, "group-roster-action"), "2026-11-10", "Private Shift"
+        )
+        phase2.set_leave_record(
+            with_action_key(dm, "group-leave-action"), "2026-11-11", "PLANNED"
+        )
+        self.claim("group-agenda", "+60111111111", "agenda", "GROUP", "family@g.us")
+        group = self.group_actor("group-agenda", "+60111111111")
+        agenda = phase2.get_agenda(group, "2026-11-09", "2026-11-12")
+        self.assertEqual(agenda["roster"], [])
+        self.assertEqual(agenda["leave"], [])
+        self.assertNotIn("Private Shift", str(agenda))
+
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
