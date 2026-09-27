@@ -438,6 +438,19 @@ CREATE TABLE IF NOT EXISTS ai_usage (
     FOREIGN KEY(source_message_id) REFERENCES inbound_messages(message_id)
 );
 
+
+CREATE TABLE IF NOT EXISTS monitor_notifications (
+    candidate_key TEXT PRIMARY KEY,
+    delegation_id TEXT NOT NULL,
+    owner_id TEXT NOT NULL,
+    candidate_kind TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    queued_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    delivered_at_utc TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_monitor_owner
+ON monitor_notifications(owner_id,queued_at_utc);
+
 CREATE TABLE IF NOT EXISTS diagnostic_runs (
     run_id TEXT PRIMARY KEY,
     run_type TEXT NOT NULL,
