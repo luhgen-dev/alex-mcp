@@ -190,6 +190,70 @@ class AlexCoreTests(unittest.TestCase):
         self.assertEqual(len(vision_parts), 1)
         self.assertTrue(vision_parts[0]["image_url"]["url"].startswith("data:image/jpeg;base64,"))
 
+    def test_aggregates_ignore_record_display_limit(self):
+        self.claim("sum1", "+60111111111", "many expenses")
+        base = self.actor("sum1", "+60111111111")
+        for i in range(25):
+            actor = with_action_key(base, f"sum-{i}")
+            services.log_expense(actor, f"Lunch {i}", 10, "food")
+        result = services.query_finances(base, category="food", limit=5)
+        self.assertEqual(result["count"], 25)
+        self.assertEqual(result["returned_records"], 5)
+        self.assertEqual(result["spending_totals"]["MYR"], 250.0)
+
+    def test_generic_p2p_category_guess_is_rejected(self):
+        self.claim("p2p1", "+60111111111", "sent RM50")
+        actor = with_action_key(self.actor("p2p1", "+60111111111"), "p2p-action")
+        result = services.log_expense(
+            actor, "Transfer to PRIYA", 50, "groceries", reference="BANKREF"
+        )
+        self.assertEqual(result["status"], "needs_confirmation")
+        self.assertIsNone(result["category"])
+        self.assertEqual(result["pending_reason"], "purpose_or_category_unclear")
+
+    def test_unlinked_original_receipt_is_still_retrievable_by_sender(self):
+        self.claim("orphan1", "+60111111111", "")
+        raw = base64.b64encode(b"orphan-receipt-bytes").decode("ascii")
+        media_id = media.save_media("orphan1", "IMAGE", "image/jpeg", raw)
+        actor = self.actor("orphan1", "+60111111111")
+        found = services.find_receipts(actor, limit=10)
+        self.assertTrue(any(x["media_id"] == media_id and not x["linked"] for x in found["matches"]))
+        receipt = services.get_receipt(actor, media_id)
+        self.assertEqual(receipt["status"], "found_unlinked")
+        self.assertTrue(os.path.isfile(receipt["_attachments"][0]["path"]))
+
+        self.claim("orphan-wife", "+60222222222", "find")
+        wife = self.actor("orphan-wife", "+60222222222")
+        with self.assertRaises(PermissionError):
+            services.get_receipt(wife, media_id)
+
+    def test_explicit_saved_media_can_be_retrieved(self):
+        self.claim("memimg1", "+60111111111", "save this")
+        raw = base64.b64encode(b"saved-photo-bytes").decode("ascii")
+        media_id = media.save_media("memimg1", "IMAGE", "image/jpeg", raw)
+        actor = with_action_key(self.actor("memimg1", "+60111111111", [media_id]), "memimg-action")
+        saved = services.save_item(actor, "Parking", "Level 4 Bay 18", "car")
+        item = services.get_saved_item(actor, saved["item_id"])
+        self.assertEqual(item["status"], "found")
+        self.assertEqual(item["content"], "Level 4 Bay 18")
+        self.assertEqual(item["_attachments"][0]["path"], media.get_media(media_id)["local_path"])
+
+    def test_shared_goal_and_bucket_are_single_household_records(self):
+        self.claim("sg1", "+60111111111", "trip goal")
+        h = with_action_key(self.actor("sg1", "+60111111111"), "goal-h")
+        goal = services.set_goal(h, "Family trip", target_amount=5000, current_amount=1000, shared=True)
+        services.set_money_bucket(h, "Trip spending", 800, shared=True)
+
+        self.claim("sg2", "+60222222222", "update trip")
+        w = with_action_key(self.actor("sg2", "+60222222222"), "goal-w")
+        updated = services.set_goal(w, "Family trip", current_amount=1500, shared=True)
+        services.set_money_bucket(w, "Trip spending", 900, shared=True)
+        self.assertEqual(goal["goal_id"], updated["goal_id"])
+        self.assertEqual(services.list_goals(w)["goals"][0]["current_amount"], 1500)
+        buckets = services.list_money_buckets(w)["buckets"]
+        self.assertEqual(len(buckets), 1)
+        self.assertEqual(buckets[0]["amount"], 900)
+
     def test_reminder_scheduler_is_durable(self):
         self.claim("rem1", "+60111111111", "remind me")
         actor = with_action_key(self.actor("rem1", "+60111111111"), "reminder-action")
