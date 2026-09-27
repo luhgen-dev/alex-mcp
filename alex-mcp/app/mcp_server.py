@@ -247,9 +247,13 @@ def list_work_roster(actor: Actor, start_date: str | None = None,
 
 @mcp.tool()
 def set_leave_record(leave_date: str, actor: Actor, status: str = "PLANNED",
-                     portion: str = "FULL", notes: str | None = None) -> dict:
-    """Store leave lifecycle: PLANNED -> CONFIRMED -> TAKEN. Never infer confirmed leave from a plan."""
-    return phase2.set_leave_record(actor, leave_date, status, portion, notes)
+                     portion: str = "FULL", notes: str | None = None,
+                     end_date: str | None = None,
+                     leave_type: str = "ANNUAL_LEAVE") -> dict:
+    """Store owner-private leave lifecycle. PLANNED/CONFIRMED do not count as historical absence; only TAKEN materializes dated annual/medical leave into the work engine."""
+    return phase2.set_leave_record(
+        actor, leave_date, status, portion, notes, end_date, leave_type
+    )
 
 
 @mcp.tool()
