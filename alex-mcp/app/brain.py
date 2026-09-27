@@ -80,10 +80,12 @@ def _client():
 
 def _runtime_context(actor: ActorContext) -> str:
     now = datetime.now(ZoneInfo(actor.timezone))
+    channel = "the Family Shared WhatsApp group" if actor.conversation_type == "GROUP" else "a private WhatsApp DM"
     return (
         f"Runtime context: current local datetime is {now.isoformat()}; "
-        f"timezone={actor.timezone}; conversation is a private WhatsApp DM. "
-        "Authenticated identity and privacy spaces are enforced below MCP and are not model-controlled."
+        f"timezone={actor.timezone}; conversation is {channel}. "
+        "Authenticated identity and privacy spaces are enforced below MCP and are not model-controlled. "
+        "Never reveal private-space facts in the Family Shared group."
     )
 
 
