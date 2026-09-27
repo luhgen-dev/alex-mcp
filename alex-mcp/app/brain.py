@@ -219,7 +219,7 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
             final = _content_text(msg.content).strip() or "Done."
             elapsed = int((time.monotonic() - started) * 1000)
             record_usage(actor.source_message_id, provider, model, input_tokens, output_tokens, tool_rounds, elapsed)
-            add_turn(actor.user_id, actor.conversation_id, "user", user_text or "[attachment]")
+            add_turn(actor.user_id, actor.conversation_id, "user", current or "[attachment]")
             add_turn(actor.user_id, actor.conversation_id, "assistant", final)
             return final, attachments
 
@@ -257,6 +257,6 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
     final = "I couldn't complete that safely after several tool steps. Nothing else was changed."
     elapsed = int((time.monotonic() - started) * 1000)
     record_usage(actor.source_message_id, provider, model, input_tokens, output_tokens, tool_rounds, elapsed)
-    add_turn(actor.user_id, actor.conversation_id, "user", user_text or "[attachment]")
+    add_turn(actor.user_id, actor.conversation_id, "user", current or "[attachment]")
     add_turn(actor.user_id, actor.conversation_id, "assistant", final)
     return final, attachments
