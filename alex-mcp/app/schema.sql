@@ -304,6 +304,7 @@ CREATE TABLE IF NOT EXISTS diary_events (
     title TEXT NOT NULL,
     start_at_utc TEXT NOT NULL,
     end_at_utc TEXT,
+    time_known INTEGER NOT NULL DEFAULT 1 CHECK(time_known IN (0,1)),
     timezone_name TEXT NOT NULL,
     notes TEXT,
     status TEXT NOT NULL CHECK(status IN ('ACTIVE','CANCELLED')) DEFAULT 'ACTIVE',
