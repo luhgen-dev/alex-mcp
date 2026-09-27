@@ -25,6 +25,8 @@ class Settings:
     ocr_enabled: bool = True
     context_turns: int = 8
     reasoning_effort: str = "medium"
+    monthly_ai_budget_usd: float = 0.0
+    budget_safety_multiplier: float = 2.0
 
     @property
     def model(self) -> str:
@@ -68,6 +70,14 @@ def get_settings() -> Settings:
         clean["context_turns"] = max(2, min(20, int(clean.get("context_turns", 8))))
     except (TypeError, ValueError):
         clean["context_turns"] = 8
+    try:
+        clean["monthly_ai_budget_usd"] = max(0.0, float(clean.get("monthly_ai_budget_usd", 0.0)))
+    except (TypeError, ValueError):
+        clean["monthly_ai_budget_usd"] = 0.0
+    try:
+        clean["budget_safety_multiplier"] = max(1.0, min(10.0, float(clean.get("budget_safety_multiplier", 2.0))))
+    except (TypeError, ValueError):
+        clean["budget_safety_multiplier"] = 2.0
     return Settings(**clean)
 
 
