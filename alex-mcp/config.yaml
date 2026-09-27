@@ -1,5 +1,5 @@
 name: "Alex MCP"
-version: "0.1.0"
+version: "0.2.0"
 slug: "alex_mcp"
 description: "MCP-first household assistant — natural WhatsApp conversation, deterministic tools, receipts, reminders and memory"
 arch:
@@ -9,6 +9,7 @@ startup: application
 boot: auto
 ingress: true
 ingress_port: 8099
+homeassistant_api: true
 panel_icon: "mdi:robot-happy-outline"
 panel_title: "Alex MCP"
 map:
@@ -17,7 +18,7 @@ options:
   ai_provider: "grok"
   grok_model: "grok-4.7"
   gemini_model: "gemini-3.8-flash"
-  openai_model: "gpt-6-luna"
+  openai_model: "gpt-5.6-luna"
   xai_api_key: ""
   gemini_api_key: ""
   openai_api_key: ""
