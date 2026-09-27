@@ -246,6 +246,7 @@ CREATE TABLE IF NOT EXISTS outbound_messages (
     delivery_status TEXT NOT NULL CHECK(delivery_status IN ('PENDING','SENT','FAILED')) DEFAULT 'PENDING',
     attempt_count INTEGER NOT NULL DEFAULT 0,
     last_error TEXT,
+    next_attempt_at_utc TEXT,
     created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     delivered_at_utc TEXT,
     FOREIGN KEY(source_message_id) REFERENCES inbound_messages(message_id)
