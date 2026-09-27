@@ -35,6 +35,9 @@ jobs:
       - name: Run Phase 3 stress harness
         run: python alex-mcp/app/stress_test.py
 
+      - name: Run final parity architecture audit
+        run: python alex-mcp/app/final_audit.py
+
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
