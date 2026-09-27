@@ -216,6 +216,26 @@ def ha_home_summary(actor: Actor) -> dict:
 
 
 @mcp.tool()
+def ha_home_report(actor: Actor) -> dict:
+    """Render a deterministic local PNG whole-home status card and return it as a WhatsApp image attachment."""
+    from pathlib import Path
+    from config import DATA_DIR
+    import ha
+
+    summary = phase2_home.summarize_home(ha.list_states())
+    payload = phase2_home.render_home_report_png(summary)
+    out_dir = Path(DATA_DIR) / "reports"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / "alex-home-status.png"
+    path.write_bytes(payload)
+    return {
+        "status": "ready",
+        "summary": summary,
+        "_attachments": [{"path": str(path), "kind": "IMAGE", "mime_type": "image/png"}],
+    }
+
+
+@mcp.tool()
 def ha_draft_automation(name: str, trigger_yaml: str, action_yaml: str, actor: Actor,
                         condition_yaml: str | None = None) -> dict:
     """Return a draft Home Assistant automation proposal only. It never deploys or edits HA configuration."""
