@@ -1098,20 +1098,28 @@ def get_agenda(actor: ActorContext, start_date: str, end_date: str,
                 ORDER BY due_at_utc""",
             list(actor.allowed_spaces) + [start_utc, end_utc],
         ).fetchall()]
-        roster = [dict(r) for r in conn.execute(
-            """SELECT roster_id AS id,shift_name AS title,start_at_utc,end_at_utc,status,
-                      work_date,'ROSTER' AS kind
-               FROM work_roster WHERE owner_id=? AND work_date BETWEEN ? AND ?
-                 AND status!='CANCELLED' ORDER BY work_date""",
-            (actor.user_id, start_date, end_date),
-        ).fetchall()]
-        leave = [dict(r) for r in conn.execute(
-            """SELECT leave_id AS id,leave_date AS title,NULL AS start_at_utc,NULL AS end_at_utc,
-                      status,portion,'LEAVE' AS kind
-               FROM leave_records WHERE owner_id=? AND leave_date BETWEEN ? AND ?
-                 AND status!='CANCELLED' ORDER BY leave_date""",
-            (actor.user_id, start_date, end_date),
-        ).fetchall()]
+        if actor.conversation_type == "GROUP":
+            # Roster and leave lifecycle are owner-private work facts. A family
+            # Agenda must never reveal even the existence of those private facts.
+            roster = []
+            leave = []
+        else:
+            roster = [dict(r) for r in conn.execute(
+                """SELECT roster_id AS id,shift_name AS title,start_at_utc,end_at_utc,status,
+                          work_date,'ROSTER' AS kind
+                   FROM work_roster WHERE owner_id=? AND work_date BETWEEN ? AND ?
+                     AND status!='CANCELLED' ORDER BY work_date""",
+                (actor.user_id, start_date, end_date),
+            ).fetchall()]
+            leave = [dict(r) for r in conn.execute(
+                """SELECT leave_id AS id,leave_date AS title,
+                          COALESCE(end_date,leave_date) AS end_date,NULL AS start_at_utc,
+                          status,portion,leave_type,'LEAVE' AS kind
+                   FROM leave_records WHERE owner_id=?
+                     AND COALESCE(end_date,leave_date)>=? AND leave_date<=?
+                     AND status!='CANCELLED' ORDER BY leave_date""",
+                (actor.user_id, start_date, end_date),
+            ).fetchall()]
         plans = []
         if include_plans:
             plans = [dict(r) for r in conn.execute(
