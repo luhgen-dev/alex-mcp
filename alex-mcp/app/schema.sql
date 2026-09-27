@@ -8,6 +8,8 @@ CREATE TABLE IF NOT EXISTS inbound_messages (
     sender_phone TEXT NOT NULL,
     raw_text TEXT NOT NULL DEFAULT '',
     processing_state TEXT NOT NULL CHECK(processing_state IN ('RECEIVED','PROCESSING','COMPLETED','FAILED')) DEFAULT 'RECEIVED',
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    processing_started_at_utc TEXT,
     cached_response TEXT,
     last_error TEXT,
     received_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -137,6 +139,25 @@ CREATE TABLE IF NOT EXISTS saved_items (
 );
 
 CREATE INDEX IF NOT EXISTS idx_saved_owner_date ON saved_items(owner_id, created_at_utc);
+
+
+CREATE TABLE IF NOT EXISTS shopping_items (
+    item_id TEXT PRIMARY KEY,
+    action_key TEXT NOT NULL UNIQUE,
+    owner_id TEXT NOT NULL,
+    space_id TEXT NOT NULL,
+    item_name TEXT NOT NULL,
+    quantity TEXT,
+    notes TEXT,
+    status TEXT NOT NULL CHECK(status IN ('OPEN','PURCHASED','REMOVED')) DEFAULT 'OPEN',
+    created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(owner_id) REFERENCES users(user_id),
+    FOREIGN KEY(space_id) REFERENCES spaces(space_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_shopping_space_status
+ON shopping_items(space_id, status, created_at_utc);
 
 CREATE TABLE IF NOT EXISTS reminders (
     reminder_id TEXT PRIMARY KEY,
