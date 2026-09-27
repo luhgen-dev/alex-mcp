@@ -24,6 +24,7 @@ const logger = pino({ level: process.env.ALEX_LOG_LEVEL || 'silent' });
 let currentSock = null;
 let cachedVersion = null;
 let starting = false;
+let manualReset = false;
 let pairing = {
   status: 'starting',
   qrDataUrl: null,
@@ -134,15 +135,23 @@ async function resolveSenderJid(message, remoteJid) {
 }
 
 async function forwardToPython(payload) {
-  const response = await fetch(INGRESS_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error('Python ingress returned ' + response.status + ': ' + body.slice(0, 300));
+  let lastError = null;
+  for (let attempt = 1; attempt <= 4; attempt += 1) {
+    try {
+      const response = await fetch(INGRESS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (response.ok) return;
+      const body = await response.text();
+      lastError = new Error('Python ingress returned ' + response.status + ': ' + body.slice(0, 300));
+    } catch (err) {
+      lastError = err;
+    }
+    await new Promise(resolve => setTimeout(resolve, attempt * 400));
   }
+  throw lastError || new Error('Python ingress unavailable');
 }
 
 async function handleIncoming(message) {
@@ -250,13 +259,15 @@ async function startWhatsApp() {
           linkedUser: loggedOut ? null : pairing.linkedUser,
           lastError: lastDisconnect && lastDisconnect.error ? String(lastDisconnect.error).slice(0, 300) : null,
         });
-        setTimeout(async function() {
-          if (loggedOut) {
-            try { fs.rmSync(AUTH_DIR, { recursive: true, force: true }); } catch (_err) {}
-          }
-          starting = false;
-          await startWhatsApp();
-        }, 1500);
+        if (!manualReset) {
+          setTimeout(async function() {
+            if (loggedOut) {
+              try { fs.rmSync(AUTH_DIR, { recursive: true, force: true }); } catch (_err) {}
+            }
+            starting = false;
+            await startWhatsApp();
+          }, 1500);
+        }
       }
     });
 
@@ -284,6 +295,7 @@ async function startWhatsApp() {
 }
 
 async function resetPairing() {
+  manualReset = true;
   touch({ status: 'resetting', qrDataUrl: null, linkedUser: null, lastError: null });
   try {
     if (currentSock) {
@@ -293,6 +305,7 @@ async function resetPairing() {
     fs.rmSync(AUTH_DIR, { recursive: true, force: true });
   } catch (_err) {}
   starting = false;
+  manualReset = false;
   await startWhatsApp();
 }
 
@@ -351,7 +364,7 @@ const UI_HTML = [
 'const c=s.setup||{};document.getElementById("cfg").innerHTML="<b>AI:</b> "+esc(c.ai_provider||"")+(c.api_key_present?" <span class=ok>✓ key present</span>":" <span class=warn>— API key not set</span>")+"<br><b>Household numbers configured:</b> "+esc(String(c.configured_numbers||0))+"/2";',
 'const d=s.selftest;if(d){document.getElementById("diag").innerHTML="<span class="+(d.failed===0?"ok":"bad")+">"+d.passed+" passed, "+d.failed+" failed</span>"}else{document.getElementById("diag").textContent="Not run yet"}',
 '}catch(e){document.getElementById("wa").textContent="Status unavailable: "+e}}',
-'function esc(x){return String(x).replace(/[&<>"\\x27]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\\"":"&quot;","\\x27":"&#39;"}[c]})}',
+'function esc(x){const e=document.createElement("div");e.textContent=String(x);return e.innerHTML}',
 'async function resetPairing(){if(!confirm("Reset WhatsApp pairing and generate a new QR?"))return;await fetch("./reset",{method:"POST"});setTimeout(load,800)}',
 'load();setInterval(load,2000);',
 '</script></main></body></html>'
