@@ -423,6 +423,16 @@ CREATE TABLE IF NOT EXISTS outbound_messages (
 
 CREATE INDEX IF NOT EXISTS idx_outbound_pending ON outbound_messages(delivery_status, created_at_utc);
 
+CREATE TABLE IF NOT EXISTS tool_execution_claims (
+    action_key TEXT PRIMARY KEY,
+    tool_name TEXT NOT NULL,
+    state TEXT NOT NULL CHECK(state IN ('STARTED','COMPLETED','UNCERTAIN')),
+    result_json TEXT,
+    attachments_json TEXT,
+    started_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at_utc TEXT
+);
+
 CREATE TABLE IF NOT EXISTS tool_audit (
     audit_id TEXT PRIMARY KEY,
     action_key TEXT NOT NULL,
