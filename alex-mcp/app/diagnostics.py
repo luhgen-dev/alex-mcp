@@ -48,7 +48,8 @@ def system_health(actor, hours: int = 24) -> dict:
         usage = conn.execute(
             """SELECT COUNT(*) AS calls,COALESCE(SUM(input_tokens),0) AS input_tokens,
                       COALESCE(SUM(output_tokens),0) AS output_tokens,
-                      COALESCE(AVG(latency_ms),0) AS avg_latency
+                      COALESCE(AVG(latency_ms),0) AS avg_latency,
+                      COALESCE(SUM(estimated_cost_usd),0) AS estimated_cost
                FROM ai_usage WHERE created_at_utc>=?""",
             (cutoff,),
         ).fetchone()
@@ -75,6 +76,7 @@ def system_health(actor, hours: int = 24) -> dict:
                 "input_tokens": int(usage["input_tokens"] or 0),
                 "output_tokens": int(usage["output_tokens"] or 0),
                 "average_ai_latency_ms": round(float(usage["avg_latency"] or 0), 1),
+                "estimated_ai_cost_usd": round(float(usage["estimated_cost"] or 0), 6),
                 "last_completed_message_at": last_completed["completed_at_utc"] if last_completed else None,
             },
             "note": "These are observed local facts only. A cause must not be claimed unless supported by a recorded error.",
