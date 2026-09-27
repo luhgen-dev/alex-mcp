@@ -31,6 +31,8 @@ No API key, phone number, provider or pairing credential is stored in source cod
 
 The chosen AI is used for natural-language understanding, reasoning, tool selection and final wording.
 
+Alex MCP also exposes a shared shopping list and a bounded Home Assistant tool surface. Home Assistant entity lookup/state reads are allowed; device writes are limited to explicitly requested low-risk actions on lights, switches, fans, climate and media players. Locks, alarm panels, covers, scripts, scenes, automations and other sensitive domains are rejected by the backend.
+
 ## Provider switching
 
 Changing Grok ↔ Gemini ↔ OpenAI is an app setting. The MCP tools and household database do not change.
@@ -54,6 +56,9 @@ Use ordinary language such as:
 - "Remind me Wednesday at 9am to pay electricity."
 - "Save this for me."
 - "How much did I spend over the weekend?"
+- "Add detergent to the shopping list."
+- "Remind my wife Friday at 9am to renew road tax."
+- "Turn off the living room light."
 
 ## Privacy
 
