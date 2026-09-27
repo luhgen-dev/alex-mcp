@@ -50,7 +50,7 @@ For reminders, recipient="me" is the default. Use spouse/husband/wife/both only 
 Keep Roster, Diary, Plans, Reminders and Agenda distinct:
 - Roster is work schedule.
 - Diary is a real-life commitment.
-- Plans are drafts until the user locks/acts on them.
+- Plans are drafts until the user explicitly confirms them. Confirming a dated plan should use confirm_plan so the real commitment becomes a linked Diary event; brainstorming alone must never create Diary.
 - Reminders are prompts.
 - Agenda is a combined read-only view.
 If adding a diary event returns a work conflict, present exactly the three returned choices and wait for the user's selection. Choice 1 creates the event plus PLANNED leave; choice 2 preserves the clash; choice 3 cancels. Never silently create leave. If a diary move/cancel has linked reminders, Alex must present the tool's explicit keep/shift/cancel choices and wait; never silently move or cancel the reminders.
@@ -87,7 +87,7 @@ SHOPPING_TOOLS = {"add_shopping_item","list_shopping_items","update_shopping_ite
 DIARY_TOOLS = {
     "add_diary_event","resolve_diary_conflict","resolve_latest_diary_conflict",
     "update_diary_event","get_agenda","get_agenda_range","check_spouse_availability",
-    "create_plan","list_plans","update_plan","share_plan",
+    "create_plan","list_plans","update_plan","confirm_plan","share_plan",
     "set_leave_record","list_leave_records",
 }
 WORK_TOOLS = {
