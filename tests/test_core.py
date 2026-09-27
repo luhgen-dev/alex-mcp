@@ -72,7 +72,7 @@ class AlexCoreTests(unittest.TestCase):
     def test_private_and_shared_space_isolation(self):
         self.claim("p1", "+60111111111", "coffee")
         husband = with_action_key(self.actor("p1", "+60111111111"), "a-private")
-        result = services.log_expense(husband, "Coffee", 8.50, "food")
+        result = services.log_expense(husband, "Coffee", 8.50, "food", currency="MYR")
         self.assertEqual(result["space"], "HUSBAND_PVT")
 
         self.claim("q-wife", "+60222222222", "how much")
@@ -81,15 +81,15 @@ class AlexCoreTests(unittest.TestCase):
 
         self.claim("s1", "+60111111111", "TNB")
         husband_shared = with_action_key(self.actor("s1", "+60111111111"), "a-shared")
-        shared = services.log_expense(husband_shared, "TNB electricity bill", 120.00, None)
+        shared = services.log_expense(husband_shared, "TNB electricity bill", 120.00, None, currency="MYR")
         self.assertEqual(shared["space"], "FAMILY_SHARED")
         self.assertEqual(services.query_finances(wife, search="TNB")["count"], 1)
 
     def test_idempotent_action_key(self):
         self.claim("i1", "+60111111111", "lunch 10")
         actor = with_action_key(self.actor("i1", "+60111111111"), "same-action")
-        first = services.log_expense(actor, "Lunch", 10, "food")
-        second = services.log_expense(actor, "Lunch", 10, "food")
+        first = services.log_expense(actor, "Lunch", 10, "food", currency="MYR")
+        second = services.log_expense(actor, "Lunch", 10, "food", currency="MYR")
         self.assertEqual(first["event_id"], second["event_id"])
         conn = db.connect()
         try:
@@ -102,7 +102,7 @@ class AlexCoreTests(unittest.TestCase):
     def test_append_only_correction(self):
         self.claim("c1", "+60111111111", "lunch")
         original_actor = with_action_key(self.actor("c1", "+60111111111"), "create-c")
-        original = services.log_expense(original_actor, "Lunch", 12, "food")
+        original = services.log_expense(original_actor, "Lunch", 12, "food", currency="MYR")
 
         self.claim("c2", "+60111111111", "actually 15")
         correction_actor = with_action_key(self.actor("c2", "+60111111111"), "correct-c")
@@ -137,7 +137,7 @@ class AlexCoreTests(unittest.TestCase):
             mids.append(media_id)
             actor = with_action_key(self.actor(mid, "+60111111111", [media_id]), f"receipt-{idx}")
             result = services.log_expense(
-                actor, "TNB electricity bill", 100, "utilities", reference=ref
+                actor, "TNB electricity bill", 100, "utilities", currency="MYR", reference=ref
             )
             self.assertTrue(result["receipt_saved"])
 
@@ -162,7 +162,7 @@ class AlexCoreTests(unittest.TestCase):
     def test_pending_clarification_and_money_buckets(self):
         self.claim("pend1", "+60111111111", "paid someone 50")
         actor = with_action_key(self.actor("pend1", "+60111111111"), "pending-action")
-        pending = services.log_expense(actor, "Transfer to person", 50, None, reference="REF9")
+        pending = services.log_expense(actor, "Transfer to person", 50, None, currency="MYR", reference="REF9")
         self.assertEqual(pending["status"], "needs_confirmation")
 
         listed = services.list_pending_expenses(actor)
@@ -213,7 +213,7 @@ class AlexCoreTests(unittest.TestCase):
         base = self.actor("sum1", "+60111111111")
         for i in range(25):
             actor = with_action_key(base, f"sum-{i}")
-            services.log_expense(actor, f"Lunch {i}", 10, "food")
+            services.log_expense(actor, f"Lunch {i}", 10, "food", currency="MYR")
         result = services.query_finances(base, category="food", limit=5)
         self.assertEqual(result["count"], 25)
         self.assertEqual(result["returned_records"], 5)
@@ -223,7 +223,7 @@ class AlexCoreTests(unittest.TestCase):
         self.claim("p2p1", "+60111111111", "sent RM50")
         actor = with_action_key(self.actor("p2p1", "+60111111111"), "p2p-action")
         result = services.log_expense(
-            actor, "Transfer to PRIYA", 50, "groceries", reference="BANKREF"
+            actor, "Transfer to PRIYA", 50, "groceries", currency="MYR", reference="BANKREF"
         )
         self.assertEqual(result["status"], "needs_confirmation")
         self.assertIsNone(result["category"])
@@ -308,7 +308,7 @@ class AlexCoreTests(unittest.TestCase):
                     calc_tool = next(t for t in listed.tools if t.name == "calculate")
                     self.assertNotIn("actor", calc_tool.input_schema.get("properties", {}))
                     result = await client.call_tool("log_expense", {
-                        "description": "Lunch", "amount": 9.5, "category": "food"
+                        "description": "Lunch", "amount": 9.5, "category": "food", "currency": "MYR"
                     })
                     self.assertFalse(result.is_error)
 
@@ -331,7 +331,7 @@ class AlexCoreTests(unittest.TestCase):
         raw = base64.b64encode(b"dummy-audio").decode("ascii")
         media_id = media.save_media("audio-route", "AUDIO", "audio/ogg", raw)
         actor = with_action_key(self.actor("audio-route", "+60111111111", [media_id]), "audio-route-action")
-        result = services.log_expense(actor, "Coffee", 5, "food")
+        result = services.log_expense(actor, "Coffee", 5, "food", currency="MYR")
         self.assertEqual(result["space"], "HUSBAND_PVT")
 
     def test_shared_shopping_list_and_duplicate_guard(self):
