@@ -100,13 +100,6 @@ def recent_failures(actor, hours: int = 24, limit: int = 20) -> dict:
                ORDER BY created_at_utc DESC LIMIT ?""",
             (cutoff, bounded),
         ).fetchall()]
-        tools_failed = [dict(r) for r in conn.execute(
-            """SELECT tool_name,last_error_dummy FROM (
-                 SELECT tool_name,NULL AS last_error_dummy,created_at_utc
-                 FROM tool_audit WHERE status='ERROR' AND created_at_utc>=?
-               ) ORDER BY created_at_utc DESC LIMIT ?""",
-            (cutoff, bounded),
-        ).fetchall()]
         # tool_audit deliberately stores structured result_json rather than a free-form
         # exception column; fetch a second sanitized view with the recorded result.
         tool_rows = [dict(r) for r in conn.execute(
