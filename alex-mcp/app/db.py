@@ -81,6 +81,7 @@ def initialize() -> None:
         _ensure_column(conn, "schedule_conflicts", "conflicting_diary_id", "TEXT")
         _ensure_column(conn, "schedule_conflicts", "conflict_kind", "TEXT NOT NULL DEFAULT 'WORK'")
         _ensure_column(conn, "schedule_conflicts", "expires_at_utc", "TEXT")
+        _ensure_column(conn, "schedule_conflicts", "source_plan_id", "TEXT")
         conn.execute("BEGIN")
         conn.executemany("INSERT OR IGNORE INTO users(user_id,display_name) VALUES(?,?)", [
             ("USR_HUSBAND", "Husband"),
