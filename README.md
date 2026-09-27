@@ -6,4 +6,4 @@ A clean, separate MCP-first rebuild of Alex for Home Assistant + WhatsApp.
 
 This repository intentionally remains separate from `alex-jarvis` so both architectures can be tested side-by-side.
 
-See [DOCS.md](DOCS.md) for setup.
+See [setup guide](alex-mcp/DOCS.md) for setup.
