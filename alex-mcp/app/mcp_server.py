@@ -101,6 +101,18 @@ def get_saved_item(item_id: str, actor: Actor) -> dict:
 
 
 @mcp.tool()
+def remove_saved_item(item_id: str, actor: Actor) -> dict:
+    """Soft-remove an explicit saved-memory index while retaining original archived media evidence."""
+    return services.remove_saved_item(actor, item_id)
+
+
+@mcp.tool()
+def resolve_numbered_choice(choice: int, actor: Actor) -> dict:
+    """Resolve the newest unexpired numbered receipt/saved-memory list to the exact original item."""
+    return services.resolve_numbered_choice(actor, choice)
+
+
+@mcp.tool()
 def create_reminder(task: str, due_local: str, actor: Actor,
                     recurrence_rule: str | None = None, shared: bool = False,
                     recipient: str = "me", presence_aware: bool = False,
