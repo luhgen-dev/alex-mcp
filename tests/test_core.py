@@ -29,6 +29,8 @@ import db
 import media
 import services
 import ha
+import phase2
+import diagnostics
 from context import use_actor, with_action_key
 from mcp import Client
 from mcp_server import mcp
@@ -43,7 +45,9 @@ class AlexCoreTests(unittest.TestCase):
         conn = db.connect()
         try:
             for table in (
-                "tool_audit", "ai_usage", "outbound_messages", "conversation_turns",
+                "tool_audit", "ai_usage", "diagnostic_runs", "outbound_messages", "conversation_turns",
+                "diary_reminder_links", "schedule_conflicts", "diary_events", "plans",
+                "leave_records", "work_roster", "cashflow_baselines",
                 "event_media_links", "financial_event_corrections", "financial_events",
                 "saved_items", "shopping_items", "reminders", "savings_goals", "money_buckets", "leave_state", "media_objects",
                 "inbound_messages",
@@ -416,6 +420,154 @@ class AlexCoreTests(unittest.TestCase):
             self.assertEqual(n, 0)
         finally:
             conn.close()
+
+
+    def group_actor(self, mid, phone):
+        db.claim_inbound({
+            "message_id": mid,
+            "provider": "WHATSAPP",
+            "conversation_id": "family@g.us",
+            "conversation_type": "GROUP",
+            "sender_phone": phone,
+            "text": "group test",
+        })
+        return db.resolve_actor(phone, "family@g.us", "GROUP", mid, [])
+
+    def test_group_channel_is_structurally_shared_only(self):
+        self.claim("privx", "+60111111111", "private coffee")
+        husband = with_action_key(self.actor("privx", "+60111111111"), "privx-action")
+        services.log_expense(husband, "Coffee", 10, "food", currency="MYR")
+
+        group = self.group_actor("groupx", "+60111111111")
+        self.assertEqual(group.allowed_spaces, ("FAMILY_SHARED",))
+        self.assertEqual(services.query_finances(group)["count"], 0)
+
+        shared_group = with_action_key(group, "group-save")
+        saved = services.save_item(shared_group, "Family note", "buy batteries")
+        self.assertEqual(saved["space"], "FAMILY_SHARED")
+
+    def test_diary_conflict_gate_choice_one_creates_planned_leave(self):
+        self.claim("rost1", "+60111111111", "work")
+        actor = with_action_key(self.actor("rost1", "+60111111111"), "roster-a")
+        phase2.set_work_roster(
+            actor, "2026-10-02", "Day shift",
+            "2026-10-02T08:00:00+08:00", "2026-10-02T17:00:00+08:00"
+        )
+
+        self.claim("diary1", "+60111111111", "appointment")
+        actor = with_action_key(self.actor("diary1", "+60111111111"), "diary-a")
+        pending = phase2.add_diary_event(
+            actor, "Appointment", "2026-10-02T10:00:00+08:00",
+            "2026-10-02T11:00:00+08:00", reminder_minutes_before=30,
+        )
+        self.assertEqual(pending["status"], "needs_choice")
+        self.assertEqual(set(pending["choices"]), {"1", "2", "3"})
+
+        resolved = phase2.resolve_diary_conflict(actor, pending["conflict_id"], 1)
+        self.assertEqual(resolved["choice"], 1)
+        self.assertEqual(resolved["leave"]["state"], "PLANNED")
+        conn = db.connect()
+        try:
+            self.assertEqual(conn.execute(
+                "SELECT COUNT(*) FROM diary_events WHERE status='ACTIVE'"
+            ).fetchone()[0], 1)
+            self.assertEqual(conn.execute(
+                "SELECT COUNT(*) FROM leave_records WHERE status='PLANNED'"
+            ).fetchone()[0], 1)
+        finally:
+            conn.close()
+
+    def test_linked_reminder_moves_and_cancels_with_diary(self):
+        self.claim("dlink", "+60111111111", "dentist")
+        actor = with_action_key(self.actor("dlink", "+60111111111"), "diary-link")
+        created = phase2.add_diary_event(
+            actor, "Dentist", "2026-10-05T10:00:00+08:00",
+            reminder_minutes_before=60,
+        )
+        rid = created["linked_reminder_id"]
+        self.assertTrue(rid)
+
+        moved = phase2.update_diary_event(
+            actor, created["diary_id"], start_local="2026-10-05T12:00:00+08:00"
+        )
+        self.assertEqual(moved["linked_reminders_updated"], 1)
+        conn = db.connect()
+        try:
+            due = conn.execute("SELECT due_at_utc,status FROM reminders WHERE reminder_id=?", (rid,)).fetchone()
+            self.assertEqual(due["status"], "OPEN")
+            self.assertIn("03:00:00", due["due_at_utc"])
+        finally:
+            conn.close()
+
+        phase2.update_diary_event(actor, created["diary_id"], status="CANCELLED")
+        conn = db.connect()
+        try:
+            self.assertEqual(conn.execute(
+                "SELECT status FROM reminders WHERE reminder_id=?", (rid,)
+            ).fetchone()[0], "CANC")
+        finally:
+            conn.close()
+
+    def test_private_plan_shares_copy_not_source(self):
+        self.claim("plan1", "+60111111111", "plan")
+        actor = with_action_key(self.actor("plan1", "+60111111111"), "plan-a")
+        plan = phase2.create_plan(actor, "Weekend trip", notes="draft")
+        self.assertEqual(plan["space"], "HUSBAND_PVT")
+        shared_actor = with_action_key(actor, "plan-share")
+        copied = phase2.share_plan(shared_actor, plan["plan_id"])
+        conn = db.connect()
+        try:
+            src = conn.execute("SELECT space_id FROM plans WHERE plan_id=?", (plan["plan_id"],)).fetchone()[0]
+            dst = conn.execute("SELECT space_id FROM plans WHERE plan_id=?", (copied["plan_id"],)).fetchone()[0]
+            self.assertEqual(src, "HUSBAND_PVT")
+            self.assertEqual(dst, "FAMILY_SHARED")
+        finally:
+            conn.close()
+
+    def test_spouse_availability_hides_private_details(self):
+        self.claim("wife-roster", "+60222222222", "work")
+        wife = with_action_key(self.actor("wife-roster", "+60222222222"), "wife-roster-a")
+        phase2.set_work_roster(wife, "2026-10-10", "Secret named shift")
+
+        self.claim("hus-check", "+60111111111", "is she free")
+        husband = self.actor("hus-check", "+60111111111")
+        result = phase2.check_spouse_availability(husband, "2026-10-10T12:00:00+08:00")
+        self.assertEqual(result["availability"], "busy")
+        self.assertEqual(result["privacy"], "details_hidden")
+        self.assertNotIn("shift", str(result).lower())
+
+    def test_agenda_combines_life_work_leave_and_reminders(self):
+        self.claim("agenda-base", "+60111111111", "setup")
+        base = self.actor("agenda-base", "+60111111111")
+        phase2.set_work_roster(with_action_key(base, "ag-r"), "2026-10-20", "Day")
+        phase2.set_leave_record(with_action_key(base, "ag-l"), "2026-10-21", "PLANNED")
+        phase2.create_plan(with_action_key(base, "ag-p"), "Family outing", "2026-10-22T09:00:00+08:00")
+        phase2.add_diary_event(with_action_key(base, "ag-d"), "Doctor", "2026-10-23T10:00:00+08:00")
+        services.create_reminder(with_action_key(base, "ag-rem"), "Pay bill", "2026-10-24T09:00:00+08:00")
+        agenda = phase2.get_agenda(base, "2026-10-20", "2026-10-25")
+        self.assertEqual(len(agenda["roster"]), 1)
+        self.assertEqual(len(agenda["leave"]), 1)
+        self.assertEqual(len(agenda["plans"]), 1)
+        self.assertEqual(len(agenda["diary"]), 1)
+        self.assertEqual(len(agenda["reminders"]), 1)
+
+    def test_cashflow_baseline_excludes_variable_income(self):
+        self.claim("cash1", "+60111111111", "baseline")
+        actor = self.actor("cash1", "+60111111111")
+        snap = phase2.set_cashflow_baseline(
+            actor, "MYR", guaranteed_income=5000, fixed_commitments=2500,
+            locked_allocations=1000, reserves=500,
+        )
+        self.assertEqual(snap["baseline_unallocated"], 1000)
+        self.assertIn("Variable/OT/extra cash", snap["rule"])
+
+    def test_diagnostics_are_sanitized_and_observation_based(self):
+        self.claim("diag1", "+60111111111", "health")
+        actor = self.actor("diag1", "+60111111111")
+        health = diagnostics.system_health(actor, 24)
+        self.assertIn(health["database"], {"ok", "problem"})
+        self.assertIn("observed", health)
+        self.assertNotIn("xai_api_key", str(health))
 
 
 if __name__ == "__main__":
