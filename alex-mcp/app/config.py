@@ -23,6 +23,7 @@ class Settings:
     stt_provider: str = "auto"
     ocr_enabled: bool = True
     context_turns: int = 8
+    reasoning_effort: str = "medium"
 
     @property
     def model(self) -> str:
