@@ -217,7 +217,7 @@ def query_finances(actor: ActorContext, start_date: str | None = None, end_date:
         params.append(category)
     if currency:
         where += " AND currency=?"
-        params.append(resolved_currency)
+        params.append(currency.upper())
     if search:
         where += " AND (LOWER(description) LIKE ? OR LOWER(COALESCE(reference_text,'')) LIKE ?)"
         needle = f"%{search.lower()}%"
@@ -664,7 +664,7 @@ def set_goal(actor: ActorContext, name: str, target_amount: float | None = None,
             conn.execute(
                 """UPDATE savings_goals SET target_amount_minor=?,current_amount_minor=?,currency=?,
                    target_date=?,notes=?,space_id=?,action_key=?,updated_at_utc=? WHERE goal_id=?""",
-                (target_minor, current_minor, resolved_currency, target_date or row["target_date"],
+                (target_minor, current_minor, currency.upper(), target_date or row["target_date"],
                  notes if notes is not None else row["notes"], space, actor.action_key or row["action_key"],
                  utc_now(), row["goal_id"]),
             )
@@ -677,12 +677,12 @@ def set_goal(actor: ActorContext, name: str, target_amount: float | None = None,
                     currency,target_date,notes
                    ) VALUES(?,?,?,?,?,?,?,?,?,?)""",
                 (gid, actor.action_key or str(uuid.uuid4()), actor.user_id, space, name[:200],
-                 target_minor, current_minor, resolved_currency, target_date, notes),
+                 target_minor, current_minor, currency.upper(), target_date, notes),
             )
         conn.commit()
         return {"status": "saved", "goal_id": gid, "name": name,
                 "target_amount": target_minor/100 if target_minor else None,
-                "current_amount": current_minor/100, "currency": resolved_currency}
+                "current_amount": current_minor/100, "currency": currency.upper()}
     finally:
         conn.close()
 
@@ -898,7 +898,7 @@ def set_money_bucket(actor: ActorContext, name: str, amount: float,
             conn.execute(
                 """UPDATE money_buckets SET amount_minor=?,currency=?,notes=?,space_id=?,updated_at_utc=?
                    WHERE bucket_id=?""",
-                (amount_minor, resolved_currency, notes, space, utc_now(), bucket_id),
+                (amount_minor, currency.upper(), notes, space, utc_now(), bucket_id),
             )
         else:
             bucket_id = str(uuid.uuid4())
@@ -906,12 +906,12 @@ def set_money_bucket(actor: ActorContext, name: str, amount: float,
                 """INSERT INTO money_buckets(
                     bucket_id,owner_id,space_id,bucket_name,amount_minor,currency,notes
                    ) VALUES(?,?,?,?,?,?,?)""",
-                (bucket_id, actor.user_id, space, name[:200], amount_minor, resolved_currency, notes),
+                (bucket_id, actor.user_id, space, name[:200], amount_minor, currency.upper(), notes),
             )
         conn.commit()
         return {
             "status": "saved", "bucket_id": bucket_id, "name": name,
-            "amount": amount_minor / 100, "currency": resolved_currency, "space": space,
+            "amount": amount_minor / 100, "currency": currency.upper(), "space": space,
         }
     finally:
         conn.close()
