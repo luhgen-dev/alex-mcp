@@ -1068,5 +1068,51 @@ class AlexCoreTests(unittest.TestCase):
 
 
 
+    def test_date_only_diary_is_heads_up_not_midnight_conflict(self):
+        self.sync_phase2_fixture()
+        self.claim("date-only-base", "+60111111111", "wedding")
+        actor = self.actor("date-only-base", "+60111111111")
+        timed = phase2.add_diary_event(
+            with_action_key(actor, "date-only-timed"),
+            "Wedding", "2026-10-03T19:00:00+08:00",
+            "2026-10-03T22:00:00+08:00",
+        )
+        self.assertEqual(timed["status"], "created")
+
+        date_only = phase2.add_diary_event(
+            with_action_key(actor, "date-only-new"),
+            "Family errand", "2026-10-03", time_known=False,
+        )
+        self.assertEqual(date_only["status"], "created")
+        self.assertFalse(date_only["time_known"])
+        self.assertTrue(any(x["kind"] == "DIARY_SAME_DAY" for x in date_only["heads_up"]))
+        self.assertTrue(any(x["kind"] == "WORK_SAME_DAY" for x in date_only["heads_up"]))
+
+    def test_date_only_plan_confirmation_does_not_invent_midnight(self):
+        self.claim("date-plan", "+60111111111", "holiday plan")
+        actor = self.actor("date-plan", "+60111111111")
+        plan = phase2.create_plan(
+            with_action_key(actor, "date-plan-create"),
+            "Day trip", "2026-12-05", time_known=False,
+        )
+        self.assertFalse(plan["time_known"])
+        result = phase2.confirm_plan(
+            with_action_key(actor, "date-plan-confirm"),
+            plan["plan_id"], add_to_diary=True,
+        )
+        self.assertEqual(result["status"], "created")
+        self.assertFalse(result["time_known"])
+        conn = db.connect()
+        try:
+            row = conn.execute(
+                "SELECT time_known FROM diary_events WHERE diary_id=?",
+                (result["diary_id"],),
+            ).fetchone()
+            self.assertEqual(row["time_known"], 0)
+        finally:
+            conn.close()
+
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
