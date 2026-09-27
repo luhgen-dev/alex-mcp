@@ -281,6 +281,16 @@ def update_plan(plan_id: str, actor: Actor, status: str | None = None,
 
 
 @mcp.tool()
+def confirm_plan(plan_id: str, actor: Actor, add_to_diary: bool = True,
+                 reminder_minutes_before: int | None = None,
+                 reminder_recipient: str = "me") -> dict:
+    """Confirm a plan. A dated plan materializes a linked Diary event; conflicts are gated before confirmation."""
+    return phase2.confirm_plan(
+        actor, plan_id, add_to_diary, reminder_minutes_before, reminder_recipient
+    )
+
+
+@mcp.tool()
 def share_plan(plan_id: str, actor: Actor) -> dict:
     """Explicitly publish a private plan as a separate FAMILY_SHARED copy; the private source remains intact."""
     return phase2.share_plan(actor, plan_id)
