@@ -439,11 +439,11 @@ def add_diary_event(actor: ActorContext, title: str, start_local: str,
                 """INSERT INTO schedule_conflicts(
                     conflict_id,action_key,owner_id,space_id,title,start_at_utc,end_at_utc,
                     timezone_name,notes,reminder_minutes_before,roster_id,
-                    conflict_kind,expires_at_utc
-                   ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    conflict_kind,expires_at_utc,created_at_utc
+                   ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (cid, actor.action_key, actor.user_id, space, title[:240], start_utc, end_utc,
                  actor.timezone, notes, reminder_minutes_before, roster["roster_id"],
-                 "WORK", expiry),
+                 "WORK", expiry, utc_now()),
             )
             conn.commit()
             return {
@@ -463,11 +463,11 @@ def add_diary_event(actor: ActorContext, title: str, start_local: str,
                 """INSERT INTO schedule_conflicts(
                     conflict_id,action_key,owner_id,space_id,title,start_at_utc,end_at_utc,
                     timezone_name,notes,reminder_minutes_before,conflicting_diary_id,
-                    conflict_kind,expires_at_utc
-                   ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    conflict_kind,expires_at_utc,created_at_utc
+                   ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (cid, actor.action_key, actor.user_id, space, title[:240], start_utc, end_utc,
                  actor.timezone, notes, reminder_minutes_before, diary_clash["diary_id"],
-                 "DIARY", expiry),
+                 "DIARY", expiry, utc_now()),
             )
             conn.commit()
             return {
