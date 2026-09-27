@@ -24,6 +24,7 @@ No API key, phone number, provider or pairing credential is stored in source cod
 - durable outbound queue
 - original receipt/media storage
 - receipt OCR through Tesseract
+- local multilingual Whisper voice-note transcription
 - PDF text extraction
 - WhatsApp session state
 - startup structural diagnostics
@@ -36,7 +37,9 @@ Changing Grok ↔ Gemini ↔ OpenAI is an app setting. The MCP tools and househo
 
 ## Voice notes
 
-Voice notes are transcribed before the conversational model sees the request. With `stt_provider=auto`, Alex prefers xAI STT when an xAI key exists, then OpenAI transcription, then Gemini audio transcription.
+Voice notes are transcribed before the conversational model sees the request. With `stt_provider=auto`, Alex uses **local multilingual Whisper first**. This uses no AI API tokens and is the preferred path for Tamil/English/Tanglish voice notes.
+
+The default local model is `base`. It downloads automatically on the first voice note and is then kept under persistent `/data/models`. You can select `small` in Configuration later if you want to trade more storage/RAM for harder multilingual transcription. If local transcription fails, configured cloud transcription providers are fallback options.
 
 Alex replies in text only.
 
@@ -64,3 +67,4 @@ Persistent data lives under the app's `/data` volume:
 - `media/`
 - `whatsapp_auth/`
 - `selftest.json`
+- `models/` (local Whisper model cache)
