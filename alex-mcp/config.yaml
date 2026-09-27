@@ -7,7 +7,6 @@ arch:
 init: false
 startup: application
 boot: auto
-stage: experimental
 ingress: true
 ingress_port: 8099
 panel_icon: "mdi:robot-happy-outline"
@@ -26,6 +25,7 @@ options:
   wife_phone: ""
   timezone: "Asia/Kuala_Lumpur"
   stt_provider: "auto"
+  whisper_model: "base"
   ocr_enabled: true
   context_turns: 8
   reasoning_effort: "medium"
@@ -40,7 +40,8 @@ schema:
   husband_phone: str
   wife_phone: str
   timezone: str
-  stt_provider: "list(auto|xai|openai|gemini)"
+  stt_provider: "list(auto|local_whisper|xai|openai|gemini)"
+  whisper_model: "list(tiny|base|small)"
   ocr_enabled: bool
   context_turns: "int(2,20)"
   reasoning_effort: "list(low|medium|high)"
