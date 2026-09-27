@@ -96,7 +96,7 @@ def extract_text(media_id: str) -> str:
     if kind == "IMAGE" and settings.ocr_enabled:
         try:
             p = subprocess.run(
-                ["tesseract", path, "stdout", "-l", "eng", "--psm", "6"],
+                ["tesseract", path, "stdout", "-l", "eng+msa+tam", "--psm", "6"],
                 capture_output=True, text=True, timeout=30,
             )
             text = (p.stdout or "").strip()
@@ -281,6 +281,19 @@ def _looks_like_financial_document(text: str) -> bool:
     return score >= 2 or (score >= 1 and has_amount)
 
 
+def _ocr_is_sufficient_financial(text: str) -> bool:
+    """Skip model vision only when local OCR contains enough financial evidence to reason safely."""
+    if not _looks_like_financial_document(text):
+        return False
+    lowered = (text or "").lower()
+    has_amount = bool(re.search(r"(?:rm|myr|sgd|s\\$|\\$)?\\s*\\d+[.,]\\d{2}", lowered))
+    lines = [line.strip() for line in (text or "").splitlines() if line.strip()]
+    anchors = sum(1 for marker in (
+        "total", "amount", "payment", "reference", "transaction", "bank", "merchant", "invoice"
+    ) if marker in lowered)
+    return has_amount and len((text or "").strip()) >= 40 and (len(lines) >= 3 or anchors >= 3)
+
+
 def process_payload_media(payload: dict) -> tuple[list[str], list[str], list[dict]]:
     """Persist media first, cheaply extract text, and use model vision only when OCR is insufficient/non-financial."""
     media_ids: list[str] = []
@@ -298,7 +311,7 @@ def process_payload_media(payload: dict) -> tuple[list[str], list[str], list[dic
         caption = (payload.get("text") or "").strip()
         # Receipts/payment slips with useful OCR stay local to save multimodal tokens.
         # General photos, unreadable receipts, or non-financial images are shown to the model.
-        needs_vision = not _looks_like_financial_document(text)
+        needs_vision = not _ocr_is_sufficient_financial(text)
         if needs_vision:
             vision_parts.append({
                 "type": "image_url",
