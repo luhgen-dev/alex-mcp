@@ -100,51 +100,119 @@ def list_work_roster(actor: ActorContext, start_date: str | None = None,
 
 
 def set_leave_record(actor: ActorContext, leave_date: str, status: str = "PLANNED",
-                     portion: str = "FULL", notes: str | None = None) -> dict:
+                     portion: str = "FULL", notes: str | None = None,
+                     end_date: str | None = None,
+                     leave_type: str = "ANNUAL_LEAVE") -> dict:
+    """Store future leave lifecycle. Only TAKEN becomes historical work absence."""
+    if actor.conversation_type == "GROUP":
+        raise PermissionError("private leave lifecycle must be managed in the owner's DM")
     if not actor.action_key:
         raise RuntimeError("missing deterministic action key")
     state = status.upper()
     if state not in {"PLANNED", "CONFIRMED", "TAKEN", "CANCELLED"}:
         raise ValueError("leave status must be PLANNED, CONFIRMED, TAKEN or CANCELLED")
+    kind = (leave_type or "ANNUAL_LEAVE").upper()
+    if kind not in {"ANNUAL_LEAVE", "MEDICAL_LEAVE", "OTHER_LEAVE"}:
+        raise ValueError("leave_type must be ANNUAL_LEAVE, MEDICAL_LEAVE or OTHER_LEAVE")
     portion = (portion or "FULL").upper()[:20]
+    start_d = datetime.fromisoformat(str(leave_date)[:10]).date()
+    end_d = datetime.fromisoformat(str(end_date or leave_date)[:10]).date()
+    if end_d < start_d:
+        raise ValueError("leave end_date cannot be before leave_date")
+
     conn = connect()
     try:
-        existing = conn.execute("SELECT * FROM leave_records WHERE action_key=?", (actor.action_key,)).fetchone()
-        if existing:
-            return {"status": "already_applied", **dict(existing)}
-        row = conn.execute(
-            "SELECT leave_id FROM leave_records WHERE owner_id=? AND leave_date=? AND portion=?",
-            (actor.user_id, leave_date, portion),
+        existing_action = conn.execute(
+            "SELECT * FROM leave_records WHERE action_key=?", (actor.action_key,)
         ).fetchone()
-        if row:
-            conn.execute(
-                "UPDATE leave_records SET status=?,notes=?,updated_at_utc=? WHERE leave_id=?",
-                (state, notes, utc_now(), row["leave_id"]),
+        if existing_action:
+            return {"status": "already_applied", **dict(existing_action)}
+
+        row = conn.execute(
+            """SELECT * FROM leave_records
+               WHERE owner_id=? AND leave_date=? AND portion=?""",
+            (actor.user_id, start_d.isoformat(), portion),
+        ).fetchone()
+
+        if row and row["status"] == "TAKEN" and state != "TAKEN":
+            raise ValueError(
+                "Taken leave is historical fact; correct the underlying work record "
+                "rather than silently reverting it."
             )
+
+        if row:
             leave_id = row["leave_id"]
+            conn.execute(
+                """UPDATE leave_records SET status=?,end_date=?,leave_type=?,notes=?,
+                   updated_at_utc=? WHERE leave_id=?""",
+                (state, end_d.isoformat(), kind, notes, utc_now(), leave_id),
+            )
         else:
             leave_id = str(uuid.uuid4())
             conn.execute(
                 """INSERT INTO leave_records(
-                    leave_id,action_key,owner_id,leave_date,portion,status,notes
-                   ) VALUES(?,?,?,?,?,?,?)""",
-                (leave_id, actor.action_key, actor.user_id, leave_date, portion, state, notes),
+                    leave_id,action_key,owner_id,leave_date,end_date,leave_type,
+                    portion,status,notes
+                   ) VALUES(?,?,?,?,?,?,?,?,?)""",
+                (leave_id, actor.action_key, actor.user_id, start_d.isoformat(),
+                 end_d.isoformat(), kind, portion, state, notes),
             )
+
+        materialized = 0
+        if state == "TAKEN" and kind in {"ANNUAL_LEAVE", "MEDICAL_LEAVE"}:
+            # Materialize dated historical absence exactly once. This is what
+            # the proven roster/OT engine consumes; PLANNED/CONFIRMED never do.
+            import phase2_work
+            phase2_work.ensure_schema(conn)
+            day = start_d
+            while day <= end_d:
+                exists = conn.execute(
+                    """SELECT 1 FROM alex_phase2_work_events
+                       WHERE owner_user_id=? AND event_date=? AND event_type=?
+                       LIMIT 1""",
+                    (actor.user_id, day.isoformat(), kind),
+                ).fetchone()
+                if not exists:
+                    conn.execute(
+                        """INSERT INTO alex_phase2_work_events(
+                            work_event_id,space_id,owner_user_id,event_date,event_type,
+                            units_days,note,source_message_id
+                           ) VALUES(?,?,?,?,?,?,?,?)""",
+                        (str(uuid.uuid4()), actor.private_space, actor.user_id,
+                         day.isoformat(), kind, 1.0,
+                         notes or "Taken from Alex leave lifecycle",
+                         actor.source_message_id),
+                    )
+                    materialized += 1
+                day += timedelta(days=1)
+
         conn.commit()
-        return {"status": "saved", "leave_id": leave_id, "leave_date": leave_date,
-                "portion": portion, "state": state}
+        return {
+            "status": "saved", "leave_id": leave_id,
+            "leave_date": start_d.isoformat(), "end_date": end_d.isoformat(),
+            "leave_type": kind, "portion": portion, "state": state,
+            "materialized_days": materialized,
+        }
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
 
 def list_leave_records(actor: ActorContext, start_date: str | None = None,
-                       end_date: str | None = None, include_cancelled: bool = False) -> dict:
+                       end_date: str | None = None,
+                       include_cancelled: bool = False) -> dict:
+    if actor.conversation_type == "GROUP":
+        # Work/leave is private unless the owner explicitly publishes another
+        # family-safe artifact. Never expose private leave state in group.
+        return {"leave": []}
     where = "owner_id=?"
     params: list = [actor.user_id]
     if not include_cancelled:
         where += " AND status!='CANCELLED'"
     if start_date:
-        where += " AND leave_date>=?"
+        where += " AND COALESCE(end_date,leave_date)>=?"
         params.append(start_date)
     if end_date:
         where += " AND leave_date<=?"
@@ -152,8 +220,9 @@ def list_leave_records(actor: ActorContext, start_date: str | None = None,
     conn = connect()
     try:
         rows = conn.execute(
-            f"""SELECT leave_id,leave_date,portion,status,notes FROM leave_records
-                WHERE {where} ORDER BY leave_date""", params,
+            f"""SELECT leave_id,leave_date,COALESCE(end_date,leave_date) AS end_date,
+                       leave_type,portion,status,notes
+                FROM leave_records WHERE {where} ORDER BY leave_date""", params,
         ).fetchall()
         return {"leave": [dict(r) for r in rows]}
     finally:
