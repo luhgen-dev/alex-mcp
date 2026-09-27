@@ -44,3 +44,33 @@ configuration:
   reasoning_effort:
     name: Reasoning effort
     description: How deeply the selected AI should reason. Medium is the default balance for Alex.
+  monthly_ai_budget_usd:
+    name: Monthly AI budget guard (USD)
+    description: Optional. Leave 0 to disable. When enabled, Alex stops new model calls after the conservative monthly guard is reached.
+  budget_safety_multiplier:
+    name: Budget safety multiplier
+    description: Conservative multiplier applied to estimated model spend before enforcing the optional monthly limit. Default is 2x.
+  income_profiles:
+    name: Income profiles
+    description: Stable fixed/variable income facts. Edit here instead of source code; history is versioned into SQLite.
+  roster_profiles:
+    name: Roster profiles
+    description: Stable repeating work roster patterns and shift times.
+  overtime_profiles:
+    name: Overtime profiles
+    description: Stable OT eligibility windows and payout-day rules. Leave the pay formula blank until it is genuinely known.
+  leave_balances:
+    name: Leave balance snapshots
+    description: Authoritative annual/medical leave snapshots with as-of dates.
+  recurring_payments:
+    name: Recurring bills and commitments
+    description: Expected recurring obligations. Actual paid/unpaid/deferred state is stored separately at runtime.
+  account_aliases:
+    name: Account aliases
+    description: Non-sensitive nicknames used to recognize forwarded payment/slip destinations. Never store bank credentials here.
+  reminder_preferences:
+    name: Reminder preferences
+    description: Optional quiet hours, follow-up delay and presence-aware routine delivery.
+  presence_mappings:
+    name: Presence mappings
+    description: Optional Home Assistant person/device-tracker entities used only for routine reminder delivery policy.
