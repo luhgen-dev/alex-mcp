@@ -78,6 +78,7 @@ def initialize() -> None:
         _ensure_column(conn, "reminders", "defer_reason", "TEXT")
         _ensure_column(conn, "outbound_messages", "context_kind", "TEXT")
         _ensure_column(conn, "outbound_messages", "context_id", "TEXT")
+        _ensure_column(conn, "ai_usage", "estimated_cost_usd", "REAL")
         _ensure_column(conn, "schedule_conflicts", "conflicting_diary_id", "TEXT")
         _ensure_column(conn, "schedule_conflicts", "conflict_kind", "TEXT NOT NULL DEFAULT 'WORK'")
         _ensure_column(conn, "schedule_conflicts", "expires_at_utc", "TEXT")
@@ -325,16 +326,31 @@ def queue_outbound(conversation_id: str, kind: str, text: str | None = None,
 
 
 def record_usage(source_message_id: str, provider: str, model: str,
-                 input_tokens: int, output_tokens: int, tool_rounds: int, latency_ms: int) -> None:
+                 input_tokens: int, output_tokens: int, tool_rounds: int,
+                 latency_ms: int, estimated_cost_usd: float | None = None) -> None:
     conn = connect()
     try:
         conn.execute(
             """INSERT INTO ai_usage(
-                usage_id,source_message_id,provider,model,input_tokens,output_tokens,tool_rounds,latency_ms
-               ) VALUES(?,?,?,?,?,?,?,?)""",
+                usage_id,source_message_id,provider,model,input_tokens,output_tokens,
+                tool_rounds,latency_ms,estimated_cost_usd
+               ) VALUES(?,?,?,?,?,?,?,?,?)""",
             (str(uuid.uuid4()), source_message_id, provider, model,
-             input_tokens, output_tokens, tool_rounds, latency_ms),
+             input_tokens, output_tokens, tool_rounds, latency_ms, estimated_cost_usd),
         )
         conn.commit()
+    finally:
+        conn.close()
+
+
+def current_month_ai_cost() -> float:
+    conn = connect()
+    try:
+        row = conn.execute(
+            """SELECT COALESCE(SUM(estimated_cost_usd),0) AS cost
+               FROM ai_usage
+               WHERE substr(created_at_utc,1,7)=substr(CURRENT_TIMESTAMP,1,7)"""
+        ).fetchone()
+        return float(row["cost"] or 0.0)
     finally:
         conn.close()
