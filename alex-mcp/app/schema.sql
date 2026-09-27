@@ -223,6 +223,117 @@ CREATE TABLE IF NOT EXISTS leave_state (
     FOREIGN KEY(user_id) REFERENCES users(user_id)
 );
 
+
+CREATE TABLE IF NOT EXISTS work_roster (
+    roster_id TEXT PRIMARY KEY,
+    action_key TEXT NOT NULL UNIQUE,
+    owner_id TEXT NOT NULL,
+    work_date TEXT NOT NULL,
+    shift_name TEXT NOT NULL,
+    start_at_utc TEXT,
+    end_at_utc TEXT,
+    notes TEXT,
+    status TEXT NOT NULL CHECK(status IN ('PLANNED','CONFIRMED','CANCELLED')) DEFAULT 'CONFIRMED',
+    created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(owner_id) REFERENCES users(user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_roster_owner_date ON work_roster(owner_id,work_date,status);
+
+CREATE TABLE IF NOT EXISTS leave_records (
+    leave_id TEXT PRIMARY KEY,
+    action_key TEXT NOT NULL UNIQUE,
+    owner_id TEXT NOT NULL,
+    leave_date TEXT NOT NULL,
+    portion TEXT NOT NULL DEFAULT 'FULL',
+    status TEXT NOT NULL CHECK(status IN ('PLANNED','CONFIRMED','TAKEN','CANCELLED')) DEFAULT 'PLANNED',
+    notes TEXT,
+    created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(owner_id,leave_date,portion),
+    FOREIGN KEY(owner_id) REFERENCES users(user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_leave_owner_date ON leave_records(owner_id,leave_date,status);
+
+CREATE TABLE IF NOT EXISTS diary_events (
+    diary_id TEXT PRIMARY KEY,
+    action_key TEXT NOT NULL UNIQUE,
+    owner_id TEXT NOT NULL,
+    space_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    start_at_utc TEXT NOT NULL,
+    end_at_utc TEXT,
+    timezone_name TEXT NOT NULL,
+    notes TEXT,
+    status TEXT NOT NULL CHECK(status IN ('ACTIVE','CANCELLED')) DEFAULT 'ACTIVE',
+    created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(owner_id) REFERENCES users(user_id),
+    FOREIGN KEY(space_id) REFERENCES spaces(space_id)
+);
+CREATE INDEX IF NOT EXISTS idx_diary_space_time ON diary_events(space_id,start_at_utc,status);
+
+CREATE TABLE IF NOT EXISTS diary_reminder_links (
+    diary_id TEXT NOT NULL,
+    reminder_id TEXT NOT NULL UNIQUE,
+    PRIMARY KEY(diary_id,reminder_id),
+    FOREIGN KEY(diary_id) REFERENCES diary_events(diary_id),
+    FOREIGN KEY(reminder_id) REFERENCES reminders(reminder_id)
+);
+
+CREATE TABLE IF NOT EXISTS plans (
+    plan_id TEXT PRIMARY KEY,
+    action_key TEXT NOT NULL UNIQUE,
+    owner_id TEXT NOT NULL,
+    space_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    start_at_utc TEXT,
+    end_at_utc TEXT,
+    timezone_name TEXT NOT NULL,
+    notes TEXT,
+    status TEXT NOT NULL CHECK(status IN ('DRAFT','LOCKED','CANCELLED')) DEFAULT 'DRAFT',
+    source_plan_id TEXT,
+    created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(owner_id) REFERENCES users(user_id),
+    FOREIGN KEY(space_id) REFERENCES spaces(space_id),
+    FOREIGN KEY(source_plan_id) REFERENCES plans(plan_id)
+);
+CREATE INDEX IF NOT EXISTS idx_plans_space_time ON plans(space_id,start_at_utc,status);
+
+CREATE TABLE IF NOT EXISTS schedule_conflicts (
+    conflict_id TEXT PRIMARY KEY,
+    action_key TEXT NOT NULL UNIQUE,
+    owner_id TEXT NOT NULL,
+    space_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    start_at_utc TEXT NOT NULL,
+    end_at_utc TEXT,
+    timezone_name TEXT NOT NULL,
+    notes TEXT,
+    reminder_minutes_before INTEGER,
+    roster_id TEXT,
+    status TEXT NOT NULL CHECK(status IN ('OPEN','RESOLVED','CANCELLED')) DEFAULT 'OPEN',
+    choice INTEGER,
+    created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(owner_id) REFERENCES users(user_id),
+    FOREIGN KEY(space_id) REFERENCES spaces(space_id),
+    FOREIGN KEY(roster_id) REFERENCES work_roster(roster_id)
+);
+
+CREATE TABLE IF NOT EXISTS cashflow_baselines (
+    user_id TEXT NOT NULL,
+    currency TEXT NOT NULL CHECK(currency IN ('MYR','SGD')),
+    guaranteed_income_minor INTEGER NOT NULL DEFAULT 0,
+    fixed_commitments_minor INTEGER NOT NULL DEFAULT 0,
+    locked_allocations_minor INTEGER NOT NULL DEFAULT 0,
+    reserves_minor INTEGER NOT NULL DEFAULT 0,
+    notes TEXT,
+    updated_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY(user_id,currency),
+    FOREIGN KEY(user_id) REFERENCES users(user_id)
+);
+
 CREATE TABLE IF NOT EXISTS conversation_turns (
     turn_id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
