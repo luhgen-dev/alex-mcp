@@ -12,8 +12,9 @@ from config import DATA_DIR, get_settings
 REQUIRED_TABLES = {
     "inbound_messages","users","user_phone_history","spaces","memberships","routing_rules",
     "financial_events","financial_event_corrections","media_objects","event_media_links",
-    "saved_items","shopping_items","reminders","savings_goals","money_buckets","leave_state","conversation_turns",
-    "outbound_messages","tool_audit","ai_usage","diagnostic_runs",
+    "saved_items","shopping_items","reminders","savings_goals","money_buckets","leave_state",
+    "work_roster","leave_records","diary_events","diary_reminder_links","plans","schedule_conflicts",
+    "cashflow_baselines","conversation_turns","outbound_messages","tool_audit","ai_usage","diagnostic_runs",
 }
 
 
