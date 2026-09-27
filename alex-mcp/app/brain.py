@@ -54,7 +54,7 @@ Keep Roster, Diary, Plans, Reminders and Agenda distinct:
 - Reminders are prompts.
 - Agenda is a combined read-only view.
 If adding a diary event returns a work conflict, present exactly the three returned choices and wait for the user's selection. Choice 1 creates the event plus PLANNED leave; choice 2 preserves the clash; choice 3 cancels. Never silently create leave. If a diary move/cancel has linked reminders, Alex must present the tool's explicit keep/shift/cancel choices and wait; never silently move or cancel the reminders.
-A private plan stays private. Share it only through the explicit share_plan tool, which creates a separate family copy. Spouse availability checks reveal only busy/no-conflict, never the spouse's private schedule details.
+A private plan stays private. Share it only through the explicit share_plan tool, which creates a separate family copy. An owner's private availability may be checked only in that owner's DM and must never be posted to the family group. A spouse-availability check may inspect shared commitments only; never read or reveal the spouse's private roster/Diary from someone else's DM or the group.
 
 For recurring bills, keep expected/due/partial/paid/deferred/explicitly-unpaid states distinct. A missing receipt is never proof a bill is unpaid. If a payment should be matched to a configured obligation, use the conservative bill-matching tool first and never choose among ambiguous matches.
 
@@ -86,7 +86,7 @@ REMINDER_TOOLS = {"create_reminder","list_reminders","update_reminder","reminder
 SHOPPING_TOOLS = {"add_shopping_item","list_shopping_items","update_shopping_item"}
 DIARY_TOOLS = {
     "add_diary_event","resolve_diary_conflict","resolve_latest_diary_conflict",
-    "update_diary_event","get_agenda","get_agenda_range","check_spouse_availability",
+    "update_diary_event","get_agenda","get_agenda_range","check_my_availability","check_spouse_availability",
     "create_plan","list_plans","update_plan","confirm_plan","share_plan",
     "set_leave_record","list_leave_records",
 }
