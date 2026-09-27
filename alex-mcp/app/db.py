@@ -28,17 +28,27 @@ def connect(path: str | None = None) -> sqlite3.Connection:
 
 
 ROUTING_CATALOGUE = [
-    (("mydin","lotus","tesco","aeon","giant","jaya grocer","grocery","groceries","barang dapur"), "groceries", "FAMILY_SHARED", None),
-    (("tnb","electric","elektrik","bil elektrik","water bill","bil air","ranhill","indah water","sewerage"), "utilities", "FAMILY_SHARED", None),
-    (("maxis","digi","hotlink","umobile","phone bill","top up","topup","reload"), "telco", "FAMILY_SHARED", None),
-    (("parking","parkir","tng","touch n go","toll"), "transport", "FAMILY_SHARED", None),
-    (("petrol","shell","petronas","caltex","bhp","minyak"), "fuel", "FAMILY_SHARED", None),
-    (("school fee","yuran sekolah","tuition","sekolah"), "education", "FAMILY_SHARED", None),
-    (("car installment","car instalment","kereta loan","ansuran kereta","motor installment","motosikal"), "vehicle_loan", "FAMILY_SHARED", None),
-    (("car service","servis kereta","road tax","cukai jalan","insurance","insurans","tyre","tayar"), "vehicle_upkeep", "FAMILY_SHARED", 80000),
-    (("netflix","spotify","astro","disney","subscription"), "subscriptions", "FAMILY_SHARED", None),
+    (("mydin","tesco","lotus","aeon","giant","jaya grocer","barang dapur","grocery","groceries"), "groceries", "FAMILY_SHARED", None),
+    (("pasar","market","wet market","pasar malam"), "marketing_allowance", "FAMILY_SHARED", None),
+    (("manjaku","diaper","lampin","susu","baby"), "kids_supplies", "FAMILY_SHARED", None),
+    (("school fee","yuran sekolah","yuran","tuition","sekolah"), "education", "FAMILY_SHARED", None),
+    (("petrol","minyak","shell","petronas","caltex","bhp"), "fuel", "FAMILY_SHARED", None),
+    (("car installment","car instalment","kereta loan","ansuran kereta","motorbike installment","motor installment","motosikal","ansuran motor"), "vehicle_loan", "FAMILY_SHARED", None),
+    (("toll","touch n go","tng","parking","parkir"), "transport", "FAMILY_SHARED", None),
+    (("road tax","cukai jalan","insurance","insurans","car service","servis kereta","tyre","tayar"), "vehicle_upkeep", "FAMILY_SHARED", 80000),
+    (("maintenance fee","management fee","yuran penyelenggaraan"), "housing", "FAMILY_SHARED", None),
+    (("tnb","electric","elektrik","bil elektrik"), "utilities", "FAMILY_SHARED", None),
+    (("water bill","syabas","bil air","ranhill","air bill","indah water","sewerage"), "utilities", "FAMILY_SHARED", None),
+    (("unifi","wifi","internet","streamyx","time fibre"), "internet", "FAMILY_SHARED", None),
+    (("phone bill","bil telefon","maxis","celcom","digi","umobile","hotlink","topup","top up","reload"), "telco", "FAMILY_SHARED", None),
+    (("astro","netflix","spotify","disney","subscription","langganan"), "subscriptions", "FAMILY_SHARED", None),
     (("doctor","clinic","klinik","hospital","doktor"), "medical", None, 150000),
-    (("lunch","breakfast","dinner","mamak","kopitiam","makan","canteen"), "food", None, None),
+    (("pharmacy","farmasi","guardian","watsons","ubat","medicine"), "pharmacy", "FAMILY_SHARED", 30000),
+    (("credit card","kad kredit","cc payment","card payment","pawn","pajak","pajak gadai","pawn shop","tebus"), "debt_payment", "FAMILY_SHARED", None),
+    (("shopee","lazada","online order","bnpl","spaylater"), "online_shopping", None, 0),
+    (("vep",), "sg_vehicle", "FAMILY_SHARED", None),
+    (("saman","fine","summons","compound"), "fines", "FAMILY_SHARED", None),
+    (("lunch sg","food sg","makan sg","canteen","makan","lunch","breakfast","dinner","kopitiam","mamak"), "food", None, None),
 ]
 
 
