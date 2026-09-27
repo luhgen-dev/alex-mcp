@@ -283,6 +283,9 @@ CREATE TABLE IF NOT EXISTS leave_records (
     action_key TEXT NOT NULL UNIQUE,
     owner_id TEXT NOT NULL,
     leave_date TEXT NOT NULL,
+    end_date TEXT,
+    leave_type TEXT NOT NULL DEFAULT 'ANNUAL_LEAVE'
+        CHECK(leave_type IN ('ANNUAL_LEAVE','MEDICAL_LEAVE','OTHER_LEAVE')),
     portion TEXT NOT NULL DEFAULT 'FULL',
     status TEXT NOT NULL CHECK(status IN ('PLANNED','CONFIRMED','TAKEN','CANCELLED')) DEFAULT 'PLANNED',
     notes TEXT,
