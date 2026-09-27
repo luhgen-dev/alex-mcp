@@ -170,15 +170,37 @@ def claim_inbound(payload: dict) -> str:
     conn = connect()
     try:
         existing = conn.execute(
-            "SELECT processing_state,cached_response FROM inbound_messages WHERE message_id=?",
+            """SELECT processing_state,cached_response,attempt_count,processing_started_at_utc
+               FROM inbound_messages WHERE message_id=?""",
             (payload["message_id"],),
         ).fetchone()
+        now = datetime.now(timezone.utc)
         if existing:
-            return "DUPLICATE"
+            state = existing["processing_state"]
+            if state == "COMPLETED":
+                return "DUPLICATE"
+            if state == "PROCESSING" and existing["processing_started_at_utc"]:
+                try:
+                    started = datetime.fromisoformat(existing["processing_started_at_utc"].replace("Z", "+00:00"))
+                    if started.tzinfo is None:
+                        started = started.replace(tzinfo=timezone.utc)
+                    if (now - started).total_seconds() < 120:
+                        return "DUPLICATE"
+                except Exception:
+                    pass
+            conn.execute(
+                """UPDATE inbound_messages SET processing_state='PROCESSING',
+                   attempt_count=attempt_count+1,processing_started_at_utc=?,last_error=NULL
+                   WHERE message_id=?""",
+                (now.isoformat(), payload["message_id"]),
+            )
+            conn.commit()
+            return "CLAIMED"
         conn.execute(
             """INSERT INTO inbound_messages(
-                message_id,provider_name,conversation_id,conversation_type,sender_phone,raw_text,processing_state
-               ) VALUES(?,?,?,?,?,?, 'PROCESSING')""",
+                message_id,provider_name,conversation_id,conversation_type,sender_phone,raw_text,
+                processing_state,attempt_count,processing_started_at_utc
+               ) VALUES(?,?,?,?,?,?, 'PROCESSING',1,?)""",
             (
                 payload["message_id"],
                 payload.get("provider","WHATSAPP"),
@@ -186,6 +208,7 @@ def claim_inbound(payload: dict) -> str:
                 payload.get("conversation_type","DIRECT_DM"),
                 normalize_phone(payload["sender_phone"]),
                 payload.get("text","") or "",
+                now.isoformat(),
             ),
         )
         conn.commit()
