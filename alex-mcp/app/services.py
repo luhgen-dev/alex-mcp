@@ -768,7 +768,7 @@ def add_shopping_item(actor: ActorContext, item: str, quantity: str | None = Non
             (actor.action_key,),
         ).fetchone()
         if prior_action:
-            return {"status": "already_applied", **dict(prior_action)}
+            return {**dict(prior_action), "status": "already_applied"}
         duplicate = conn.execute(
             """SELECT item_id,item_name,quantity,notes,space_id,status FROM shopping_items
                WHERE space_id=? AND LOWER(item_name)=LOWER(?) AND status='OPEN'
@@ -776,7 +776,7 @@ def add_shopping_item(actor: ActorContext, item: str, quantity: str | None = Non
             (space, clean_item),
         ).fetchone()
         if duplicate:
-            return {"status": "already_listed", **dict(duplicate)}
+            return {**dict(duplicate), "status": "already_listed"}
         item_id = str(uuid.uuid4())
         conn.execute(
             """INSERT INTO shopping_items(
