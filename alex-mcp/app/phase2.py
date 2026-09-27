@@ -217,8 +217,8 @@ def update_plan(actor: ActorContext, plan_id: str, status: str | None = None,
         if not row:
             raise PermissionError("plan not found in your accessible spaces")
         state = row["status"] if status is None else status.upper()
-        if state not in {"DRAFT", "LOCKED", "CANCELLED"}:
-            raise ValueError("plan status must be DRAFT, LOCKED or CANCELLED")
+        if state not in {"DRAFT", "LOCKED", "CONFIRMED", "CANCELLED"}:
+            raise ValueError("plan status must be DRAFT, LOCKED, CONFIRMED or CANCELLED")
         conn.execute(
             """UPDATE plans SET title=?,start_at_utc=?,end_at_utc=?,notes=?,status=?,updated_at_utc=?
                WHERE plan_id=?""",
@@ -234,6 +234,83 @@ def update_plan(actor: ActorContext, plan_id: str, status: str | None = None,
         return {"status": "updated", "plan_id": plan_id, "state": state}
     finally:
         conn.close()
+
+
+def confirm_plan(actor: ActorContext, plan_id: str,
+                 add_to_diary: bool = True,
+                 reminder_minutes_before: int | None = None,
+                 reminder_recipient: str = "me") -> dict:
+    """Confirm a plan; dated confirmations materialize a linked Diary event."""
+    marks = ",".join("?" for _ in actor.allowed_spaces)
+    conn = connect()
+    try:
+        row = conn.execute(
+            f"SELECT * FROM plans WHERE plan_id=? AND space_id IN ({marks})",
+            [plan_id] + list(actor.allowed_spaces),
+        ).fetchone()
+        if not row:
+            raise PermissionError("plan not found in your accessible spaces")
+        if row["status"] == "CANCELLED":
+            raise ValueError("cancelled plan cannot be confirmed")
+        link = conn.execute(
+            "SELECT diary_id FROM plan_diary_links WHERE plan_id=?",
+            (plan_id,),
+        ).fetchone()
+        if link:
+            conn.execute(
+                "UPDATE plans SET status='CONFIRMED',updated_at_utc=? WHERE plan_id=?",
+                (utc_now(), plan_id),
+            )
+            conn.commit()
+            return {"status": "confirmed", "plan_id": plan_id,
+                    "diary_id": link["diary_id"], "already_linked": True}
+        if not add_to_diary or not row["start_at_utc"]:
+            conn.execute(
+                "UPDATE plans SET status='CONFIRMED',updated_at_utc=? WHERE plan_id=?",
+                (utc_now(), plan_id),
+            )
+            conn.commit()
+            return {"status": "confirmed", "plan_id": plan_id,
+                    "diary_id": None, "materialized": False}
+        start_local = datetime.fromisoformat(row["start_at_utc"]).astimezone(
+            ZoneInfo(actor.timezone)
+        ).isoformat()
+        end_local = (
+            datetime.fromisoformat(row["end_at_utc"]).astimezone(
+                ZoneInfo(actor.timezone)
+            ).isoformat()
+            if row["end_at_utc"] else None
+        )
+    finally:
+        conn.close()
+
+    plan_actor = ActorContext(
+        user_id=actor.user_id, phone=actor.phone, allowed_spaces=actor.allowed_spaces,
+        private_space=actor.private_space, conversation_id=actor.conversation_id,
+        conversation_type=actor.conversation_type, source_message_id=actor.source_message_id,
+        media_ids=actor.media_ids, timezone=actor.timezone,
+        action_key=f"{actor.action_key}:confirm-plan:{plan_id}",
+    )
+    result = add_diary_event(
+        plan_actor, row["title"], start_local, end_local, row["notes"],
+        shared=(row["space_id"] == "FAMILY_SHARED"),
+        reminder_minutes_before=reminder_minutes_before,
+        reminder_recipient=reminder_recipient,
+        source_plan_id=plan_id,
+    )
+    if result.get("status") == "needs_choice":
+        conn = connect()
+        try:
+            conn.execute(
+                "UPDATE plans SET status='LOCKED',updated_at_utc=? WHERE plan_id=?",
+                (utc_now(), plan_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        result["plan_id"] = plan_id
+        result["plan_status"] = "LOCKED"
+    return result
 
 
 def share_plan(actor: ActorContext, plan_id: str) -> dict:
@@ -398,7 +475,8 @@ def _insert_diary(conn, actor: ActorContext, action_key: str, title: str, start_
 def add_diary_event(actor: ActorContext, title: str, start_local: str,
                     end_local: str | None = None, notes: str | None = None,
                     shared: bool = False, reminder_minutes_before: int | None = None,
-                    reminder_recipient: str = "me") -> dict:
+                    reminder_recipient: str = "me",
+                    source_plan_id: str | None = None) -> dict:
     if not actor.action_key:
         raise RuntimeError("missing deterministic action key")
     start_utc = _to_utc(start_local, actor.timezone)
@@ -440,11 +518,11 @@ def add_diary_event(actor: ActorContext, title: str, start_local: str,
                 """INSERT INTO schedule_conflicts(
                     conflict_id,action_key,owner_id,space_id,title,start_at_utc,end_at_utc,
                     timezone_name,notes,reminder_minutes_before,roster_id,
-                    conflict_kind,expires_at_utc,created_at_utc
-                   ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    source_plan_id,conflict_kind,expires_at_utc,created_at_utc
+                   ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (cid, actor.action_key, actor.user_id, space, title[:240], start_utc, end_utc,
                  actor.timezone, notes, reminder_minutes_before, roster["roster_id"],
-                 "WORK", expiry, utc_now()),
+                 source_plan_id, "WORK", expiry, utc_now()),
             )
             conn.commit()
             return {
@@ -464,11 +542,11 @@ def add_diary_event(actor: ActorContext, title: str, start_local: str,
                 """INSERT INTO schedule_conflicts(
                     conflict_id,action_key,owner_id,space_id,title,start_at_utc,end_at_utc,
                     timezone_name,notes,reminder_minutes_before,conflicting_diary_id,
-                    conflict_kind,expires_at_utc,created_at_utc
-                   ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    source_plan_id,conflict_kind,expires_at_utc,created_at_utc
+                   ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (cid, actor.action_key, actor.user_id, space, title[:240], start_utc, end_utc,
                  actor.timezone, notes, reminder_minutes_before, diary_clash["diary_id"],
-                 "DIARY", expiry, utc_now()),
+                 source_plan_id, "DIARY", expiry, utc_now()),
             )
             conn.commit()
             return {
@@ -488,6 +566,17 @@ def add_diary_event(actor: ActorContext, title: str, start_local: str,
             conn, actor, actor.action_key, title, start_utc, end_utc, notes, space,
             reminder_minutes_before, reminder_recipient,
         )
+        if source_plan_id and result.get("diary_id"):
+            conn.execute(
+                "INSERT OR IGNORE INTO plan_diary_links(plan_id,diary_id) VALUES(?,?)",
+                (source_plan_id, result["diary_id"]),
+            )
+            conn.execute(
+                "UPDATE plans SET status='CONFIRMED',updated_at_utc=? WHERE plan_id=?",
+                (utc_now(), source_plan_id),
+            )
+            result["source_plan_id"] = source_plan_id
+            result["plan_confirmed"] = True
         conn.commit()
         return result
     finally:
@@ -528,6 +617,17 @@ def resolve_diary_conflict(actor: ActorContext, conflict_id: str, choice: int,
                 row["start_at_utc"], row["end_at_utc"], row["notes"], row["space_id"],
                 row["reminder_minutes_before"], reminder_recipient,
             )
+            if row["source_plan_id"] and result.get("diary_id"):
+                conn.execute(
+                    "INSERT OR IGNORE INTO plan_diary_links(plan_id,diary_id) VALUES(?,?)",
+                    (row["source_plan_id"], result["diary_id"]),
+                )
+                conn.execute(
+                    "UPDATE plans SET status='CONFIRMED',updated_at_utc=? WHERE plan_id=?",
+                    (utc_now(), row["source_plan_id"]),
+                )
+                result["source_plan_id"] = row["source_plan_id"]
+                result["plan_confirmed"] = True
             conn.execute(
                 "UPDATE schedule_conflicts SET status='RESOLVED',choice=1 WHERE conflict_id=?",
                 (conflict_id,),
@@ -550,6 +650,17 @@ def resolve_diary_conflict(actor: ActorContext, conflict_id: str, choice: int,
             row["start_at_utc"], row["end_at_utc"], row["notes"], row["space_id"],
             row["reminder_minutes_before"], reminder_recipient,
         )
+        if row["source_plan_id"] and result.get("diary_id"):
+            conn.execute(
+                "INSERT OR IGNORE INTO plan_diary_links(plan_id,diary_id) VALUES(?,?)",
+                (row["source_plan_id"], result["diary_id"]),
+            )
+            conn.execute(
+                "UPDATE plans SET status='CONFIRMED',updated_at_utc=? WHERE plan_id=?",
+                (utc_now(), row["source_plan_id"]),
+            )
+            result["source_plan_id"] = row["source_plan_id"]
+            result["plan_confirmed"] = True
         leave = None
         if choice == 1:
             leave_date = _local_date_from_utc(row["start_at_utc"], actor.timezone)
