@@ -172,7 +172,7 @@ CREATE TABLE IF NOT EXISTS savings_goals (
     notes TEXT,
     status TEXT NOT NULL CHECK(status IN ('ACTIVE','ACHIEVED','CANCELLED')) DEFAULT 'ACTIVE',
     updated_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(owner_id, goal_name),
+    UNIQUE(space_id, goal_name),
     FOREIGN KEY(owner_id) REFERENCES users(user_id),
     FOREIGN KEY(space_id) REFERENCES spaces(space_id)
 );
@@ -186,7 +186,7 @@ CREATE TABLE IF NOT EXISTS money_buckets (
     currency TEXT NOT NULL DEFAULT 'MYR',
     notes TEXT,
     updated_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(owner_id, bucket_name),
+    UNIQUE(space_id, bucket_name),
     FOREIGN KEY(owner_id) REFERENCES users(user_id),
     FOREIGN KEY(space_id) REFERENCES spaces(space_id)
 );
