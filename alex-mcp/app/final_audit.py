@@ -130,17 +130,30 @@ def main() -> dict:
             "Gemini default model configured")
     require('openai_model: str = "gpt-5.6-luna"' in config_py,
             "OpenAI default model configured")
-    all_source = "\n".join(
-        p.read_text(encoding="utf-8", errors="ignore")
-        for p in APP.iterdir() if p.suffix in {".py", ".js", ".json"}
-    ).lower()
-    require("import needle" not in all_source and "from needle" not in all_source,
-            "Needle is not an Alex MCP dependency")
+    import_lines = []
+    for p in APP.iterdir():
+        if p.suffix != ".py" or p.name == "final_audit.py":
+            continue
+        for line in p.read_text(encoding="utf-8", errors="ignore").splitlines():
+            stripped = line.strip().lower()
+            if stripped.startswith("import ") or stripped.startswith("from "):
+                import_lines.append(stripped)
+    require(
+        not any(
+            re.match(r"^(?:import|from)\s+needle(?:\.|\s|$)", line)
+            for line in import_lines
+        ),
+        "Needle is not an Alex MCP dependency",
+    )
 
     # 6. WhatsApp UX: QR Web UI + explicit family-group binding.
     connect = (APP / "connect.js").read_text(encoding="utf-8")
-    require("qrcode" in connect.lower() and "Pair WhatsApp" in connect,
-            "WhatsApp QR pairing Web UI present")
+    require(
+        "qrcode.todataurl" in connect.lower()
+        and "qrdataurl" in connect.lower()
+        and "linked devices" in connect.lower(),
+        "WhatsApp QR pairing Web UI present",
+    )
     require("alex set family group" in connect.lower(),
             "Family Shared group pairing command present")
 
