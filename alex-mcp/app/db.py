@@ -78,6 +78,9 @@ def initialize() -> None:
         _ensure_column(conn, "reminders", "defer_reason", "TEXT")
         _ensure_column(conn, "outbound_messages", "context_kind", "TEXT")
         _ensure_column(conn, "outbound_messages", "context_id", "TEXT")
+        _ensure_column(conn, "schedule_conflicts", "conflicting_diary_id", "TEXT")
+        _ensure_column(conn, "schedule_conflicts", "conflict_kind", "TEXT NOT NULL DEFAULT 'WORK'")
+        _ensure_column(conn, "schedule_conflicts", "expires_at_utc", "TEXT")
         conn.execute("BEGIN")
         conn.executemany("INSERT OR IGNORE INTO users(user_id,display_name) VALUES(?,?)", [
             ("USR_HUSBAND", "Husband"),
