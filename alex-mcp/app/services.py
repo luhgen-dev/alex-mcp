@@ -29,6 +29,19 @@ def _minor(amount: float | int | None) -> int | None:
     return int(round(value * 100))
 
 
+GENERIC_CATEGORIES = {
+    "general", "other", "misc", "miscellaneous", "unknown",
+    "payment", "transfer", "bank_transfer", "fund_transfer", "duitnow",
+}
+
+
+def _clean_category(value: str | None) -> str | None:
+    if not value:
+        return None
+    cleaned = str(value).strip().lower().replace(" ", "_")[:80]
+    return None if cleaned in GENERIC_CATEGORIES else cleaned
+
+
 def _find_rule(conn, actor: ActorContext, text: str):
     lowered = (text or "").lower()
     rows = conn.execute(
@@ -43,7 +56,14 @@ def _find_rule(conn, actor: ActorContext, text: str):
 
 def _route(conn, actor: ActorContext, text: str, category: str | None) -> tuple[str, str | None, int | None]:
     rule = _find_rule(conn, actor, text)
-    resolved_category = category or (rule["category"] if rule else None)
+    proposed = _clean_category(category)
+    lowered = (text or "").lower()
+    generic_transfer = any(term in lowered for term in (
+        "fund transfer", "bank transfer", "duitnow", "instant transfer", "transfer to", "payment to"
+    ))
+    # If a transfer description contains no established purpose keyword, do not trust
+    # a model-supplied category. Alex must ask the user instead.
+    resolved_category = (rule["category"] if rule else None) or (None if generic_transfer else proposed)
     if actor.conversation_type == "GROUP":
         space = "FAMILY_SHARED"
     elif rule and rule["force_space_id"]:
@@ -165,45 +185,59 @@ def confirm_expense(actor: ActorContext, event_id: str, approve: bool = True,
 def query_finances(actor: ActorContext, start_date: str | None = None, end_date: str | None = None,
                    category: str | None = None, search: str | None = None,
                    currency: str | None = None, limit: int = 20) -> dict:
+    """Return exact aggregates over the full match set plus a bounded recent-record sample."""
     marks, spaces = _spaces_sql(actor)
-    sql = f"""SELECT event_id,event_type,category,amount_minor,currency,event_date_utc,
-                     description,reference_text,space_id
-              FROM financial_events
-              WHERE status='ACTIVE' AND space_id IN ({marks})"""
+    where = f"status='ACTIVE' AND space_id IN ({marks})"
     params: list = spaces[:]
     if start_date:
-        sql += " AND event_date_utc>=?"
+        where += " AND event_date_utc>=?"
         params.append(_local_bound(start_date, actor.timezone, False))
     if end_date:
-        sql += " AND event_date_utc<=?"
+        where += " AND event_date_utc<=?"
         params.append(_local_bound(end_date, actor.timezone, True))
     if category:
-        sql += " AND LOWER(category)=LOWER(?)"
+        where += " AND LOWER(category)=LOWER(?)"
         params.append(category)
     if currency:
-        sql += " AND currency=?"
+        where += " AND currency=?"
         params.append(currency.upper())
     if search:
-        sql += " AND (LOWER(description) LIKE ? OR LOWER(COALESCE(reference_text,'')) LIKE ?)"
+        where += " AND (LOWER(description) LIKE ? OR LOWER(COALESCE(reference_text,'')) LIKE ?)"
         needle = f"%{search.lower()}%"
         params.extend([needle, needle])
-    sql += " ORDER BY event_date_utc DESC LIMIT ?"
-    params.append(max(1, min(100, int(limit))))
 
     conn = connect()
     try:
-        rows = [dict(r) for r in conn.execute(sql, params).fetchall()]
+        aggregate_rows = conn.execute(
+            f"""SELECT event_type,currency,COALESCE(SUM(amount_minor),0) AS total_minor,COUNT(*) AS n
+                FROM financial_events WHERE {where}
+                GROUP BY event_type,currency""",
+            params,
+        ).fetchall()
+        count_row = conn.execute(
+            f"SELECT COUNT(*) AS n FROM financial_events WHERE {where}", params
+        ).fetchone()
+        rows = [dict(r) for r in conn.execute(
+            f"""SELECT event_id,event_type,category,amount_minor,currency,event_date_utc,
+                       description,reference_text,space_id
+                FROM financial_events WHERE {where}
+                ORDER BY event_date_utc DESC LIMIT ?""",
+            params + [max(1, min(100, int(limit)))],
+        ).fetchall()]
     finally:
         conn.close()
 
     spending_totals: dict[str, float] = {}
     income_totals: dict[str, float] = {}
+    for r in aggregate_rows:
+        amount = (r["total_minor"] or 0) / 100
+        target = spending_totals if r["event_type"] == "Expense" else income_totals
+        target[r["currency"]] = round(amount, 2)
+
     records = []
     tz = ZoneInfo(actor.timezone)
     for r in rows:
         amount = (r["amount_minor"] or 0) / 100
-        target = spending_totals if r["event_type"] == "Expense" else income_totals
-        target[r["currency"]] = round(target.get(r["currency"], 0) + amount, 2)
         try:
             local = datetime.fromisoformat(r["event_date_utc"]).astimezone(tz).isoformat()
         except Exception:
@@ -213,6 +247,7 @@ def query_finances(actor: ActorContext, start_date: str | None = None, end_date:
             "currency": r["currency"], "category": r["category"], "description": r["description"],
             "date_local": local, "reference": r["reference_text"],
         })
+
     currencies = set(spending_totals) | set(income_totals)
     net_outflow = {
         cur: round(spending_totals.get(cur, 0) - income_totals.get(cur, 0), 2)
@@ -222,10 +257,10 @@ def query_finances(actor: ActorContext, start_date: str | None = None, end_date:
         "spending_totals": spending_totals,
         "income_totals": income_totals,
         "net_outflow": net_outflow,
-        "count": len(records),
+        "count": int(count_row["n"] if count_row else 0),
+        "returned_records": len(records),
         "records": records,
     }
-
 
 def correct_expense(actor: ActorContext, event_id: str, amount: float | None = None,
                     description: str | None = None, category: str | None = None,
