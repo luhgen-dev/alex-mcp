@@ -43,7 +43,7 @@ class AlexCoreTests(unittest.TestCase):
             for table in (
                 "tool_audit", "ai_usage", "outbound_messages", "conversation_turns",
                 "event_media_links", "financial_event_corrections", "financial_events",
-                "saved_items", "reminders", "savings_goals", "leave_state", "media_objects",
+                "saved_items", "reminders", "savings_goals", "money_buckets", "leave_state", "media_objects",
                 "inbound_messages",
             ):
                 conn.execute(f"DELETE FROM {table}")
@@ -156,6 +156,39 @@ class AlexCoreTests(unittest.TestCase):
         self.assertEqual(result["status"], "saved")
         found = services.search_saved_items(actor, "Bay 18")
         self.assertEqual(len(found["matches"]), 1)
+
+    def test_pending_clarification_and_money_buckets(self):
+        self.claim("pend1", "+60111111111", "paid someone 50")
+        actor = with_action_key(self.actor("pend1", "+60111111111"), "pending-action")
+        pending = services.log_expense(actor, "Transfer to person", 50, None, reference="REF9")
+        self.assertEqual(pending["status"], "needs_confirmation")
+
+        listed = services.list_pending_expenses(actor)
+        self.assertEqual(len(listed["pending"]), 1)
+        self.assertEqual(listed["pending"][0]["event_id"], pending["event_id"])
+
+        confirmed = services.confirm_expense(actor, pending["event_id"], True, category="groceries")
+        self.assertEqual(confirmed["status"], "confirmed")
+
+        saved = services.set_money_bucket(actor, "UK trip", 2500, notes="User-set allocation")
+        self.assertEqual(saved["amount"], 2500)
+        buckets = services.list_money_buckets(actor)
+        self.assertEqual(len(buckets["buckets"]), 1)
+        self.assertEqual(buckets["buckets"][0]["name"], "UK trip")
+
+    def test_nonfinancial_image_is_available_to_model_vision(self):
+        self.claim("img1", "+60111111111", "what is this?")
+        payload = {
+            "message_id": "img1",
+            "text": "what is this?",
+            "image_data": base64.b64encode(b"not-a-real-jpeg-but-persistable").decode("ascii"),
+            "image_mime_type": "image/jpeg",
+        }
+        media_ids, context_lines, vision_parts = media.process_payload_media(payload)
+        self.assertEqual(len(media_ids), 1)
+        self.assertEqual(context_lines, [])
+        self.assertEqual(len(vision_parts), 1)
+        self.assertTrue(vision_parts[0]["image_url"]["url"].startswith("data:image/jpeg;base64,"))
 
     def test_reminder_scheduler_is_durable(self):
         self.claim("rem1", "+60111111111", "remind me")
