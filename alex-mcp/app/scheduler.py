@@ -2,11 +2,86 @@ from __future__ import annotations
 
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from dateutil.rrule import rrulestr
 
 from db import connect, utc_now
+import ha
+import phase2_presence
+
+
+def _owner_phone(conn, user_id: str) -> str | None:
+    row = conn.execute(
+        "SELECT phone_number FROM user_phone_history WHERE user_id=? AND valid_to_utc IS NULL LIMIT 1",
+        (user_id,),
+    ).fetchone()
+    return row["phone_number"] if row else None
+
+
+def _presence_state(phone: str) -> str:
+    try:
+        mapping = phase2_presence.owner_presence_mapping(phone, "DIRECT_DM")
+    except Exception:
+        mapping = None
+    if not mapping:
+        return "unknown"
+    for key in ("person_entity", "phone_tracker_entity"):
+        entity_id = mapping.get(key)
+        if not entity_id:
+            continue
+        try:
+            state = str(ha.get_state(entity_id).get("state") or "unknown").lower()
+            if state:
+                return state
+        except Exception:
+            continue
+    return "unknown"
+
+
+def _delivery_decision(conn, row, now: datetime) -> dict:
+    if row["delivery_class"] == "time_critical":
+        return {"decision": "DELIVER", "reason": "TIME_CRITICAL"}
+    phone = _owner_phone(conn, row["owner_id"])
+    if not phone:
+        return {"decision": "DELIVER", "reason": "NO_OWNER_PHONE_POLICY"}
+    try:
+        pref = dict(phase2_presence.owner_preference(phone, "DIRECT_DM"))
+    except Exception:
+        pref = {
+            "quiet_start": None, "quiet_end": None,
+            "presence_aware": False, "follow_up_after_hours": 24,
+        }
+    if row["presence_aware"]:
+        pref["presence_aware"] = True
+    presence = _presence_state(phone) if pref.get("presence_aware") else "unknown"
+    try:
+        local_now = now.astimezone(ZoneInfo(row["timezone_name"]))
+    except Exception:
+        local_now = now
+    return phase2_presence.delivery_decision(
+        pref, presence, local_now, row["delivery_class"] or "routine"
+    )
+
+
+def _queue(conn, row, text: str, kind: str) -> None:
+    conn.execute(
+        """INSERT INTO outbound_messages(
+            outbound_id,conversation_id,kind,text_body,context_kind,context_id
+           ) VALUES(?,?, 'TEXT', ?,?,?)""",
+        (str(uuid.uuid4()), row["conversation_id"], text, kind, row["reminder_id"]),
+    )
+
+
+def _event(conn, reminder_id: str, event_type: str, previous_state: str | None,
+           new_state: str | None, note: str | None = None) -> None:
+    conn.execute(
+        """INSERT INTO reminder_events(
+            event_id,reminder_id,event_type,previous_state,new_state,note
+           ) VALUES(?,?,?,?,?,?)""",
+        (str(uuid.uuid4()), reminder_id, event_type, previous_state, new_state, note),
+    )
 
 
 def fire_due():
@@ -16,19 +91,26 @@ def fire_due():
         conn.execute("BEGIN IMMEDIATE")
         rows = conn.execute(
             """SELECT * FROM reminders
-               WHERE status='OPEN' AND due_at_utc<=?
-               ORDER BY due_at_utc LIMIT 20""",
-            (now.isoformat(),),
+               WHERE status IN ('OPEN','DEFERRED')
+                 AND due_at_utc<=?
+                 AND (next_delivery_at_utc IS NULL OR next_delivery_at_utc<=?)
+               ORDER BY due_at_utc LIMIT 40""",
+            (now.isoformat(), now.isoformat()),
         ).fetchall()
 
         for row in rows:
-            oid = str(uuid.uuid4())
-            conn.execute(
-                """INSERT INTO outbound_messages(
-                    outbound_id,conversation_id,kind,text_body
-                   ) VALUES(?,?, 'TEXT', ?)""",
-                (oid, row["conversation_id"], f"⏰ Reminder: {row['task_text']}"),
-            )
+            decision = _delivery_decision(conn, row, now)
+            if decision.get("decision") != "DELIVER":
+                next_try = (now + timedelta(minutes=15)).isoformat()
+                conn.execute(
+                    """UPDATE reminders SET next_delivery_at_utc=?,defer_reason=?
+                       WHERE reminder_id=?""",
+                    (next_try, decision.get("reason"), row["reminder_id"]),
+                )
+                continue
+
+            _queue(conn, row, f"⏰ Reminder: {row['task_text']}", "REMINDER_INITIAL")
+            previous_state = row["status"]
             recurrence = row["recurrence_rule"]
             if recurrence:
                 try:
@@ -39,20 +121,67 @@ def fire_due():
                     next_dt = None
                 if next_dt:
                     conn.execute(
-                        """UPDATE reminders SET due_at_utc=?,status='OPEN',last_fired_at_utc=?
+                        """UPDATE reminders SET due_at_utc=?,status='OPEN',
+                           next_delivery_at_utc=NULL,defer_reason=NULL
                            WHERE reminder_id=?""",
-                        (next_dt.astimezone(timezone.utc).isoformat(), utc_now(), row["reminder_id"]),
+                        (next_dt.astimezone(timezone.utc).isoformat(), row["reminder_id"]),
                     )
+                    _event(conn, row["reminder_id"], "DUE", previous_state, "OPEN",
+                           "recurring occurrence queued")
                 else:
                     conn.execute(
-                        "UPDATE reminders SET status='DUE',last_fired_at_utc=? WHERE reminder_id=?",
-                        (utc_now(), row["reminder_id"]),
+                        """UPDATE reminders SET status='DUE',next_delivery_at_utc=NULL,
+                           defer_reason=NULL WHERE reminder_id=?""",
+                        (row["reminder_id"],),
                     )
+                    _event(conn, row["reminder_id"], "DUE", previous_state, "DUE")
             else:
                 conn.execute(
-                    "UPDATE reminders SET status='DUE',last_fired_at_utc=? WHERE reminder_id=?",
-                    (utc_now(), row["reminder_id"]),
+                    """UPDATE reminders SET status='DUE',next_delivery_at_utc=NULL,
+                       defer_reason=NULL WHERE reminder_id=?""",
+                    (row["reminder_id"],),
                 )
+                _event(conn, row["reminder_id"], "DUE", previous_state, "DUE")
+
+        # An acknowledged reminder may receive one quiet/presence-aware follow-up
+        # after the configured delay. Completion/cancellation stops it.
+        ack_rows = conn.execute(
+            """SELECT * FROM reminders
+               WHERE status='ACK' AND acknowledged_at_utc IS NOT NULL
+                 AND follow_up_after_hours>0
+                 AND (last_follow_up_at_utc IS NULL OR last_follow_up_at_utc<acknowledged_at_utc)
+               ORDER BY acknowledged_at_utc LIMIT 40"""
+        ).fetchall()
+        for row in ack_rows:
+            try:
+                ack = datetime.fromisoformat(row["acknowledged_at_utc"])
+                if ack.tzinfo is None:
+                    ack = ack.replace(tzinfo=timezone.utc)
+            except Exception:
+                continue
+            if now < ack + timedelta(hours=int(row["follow_up_after_hours"])):
+                continue
+            if row["next_delivery_at_utc"]:
+                try:
+                    if now < datetime.fromisoformat(row["next_delivery_at_utc"]):
+                        continue
+                except Exception:
+                    pass
+            decision = _delivery_decision(conn, row, now)
+            if decision.get("decision") != "DELIVER":
+                conn.execute(
+                    "UPDATE reminders SET next_delivery_at_utc=?,defer_reason=? WHERE reminder_id=?",
+                    ((now + timedelta(minutes=15)).isoformat(), decision.get("reason"), row["reminder_id"]),
+                )
+                continue
+            _queue(conn, row, f"↪️ Follow-up: {row['task_text']}", "REMINDER_FOLLOWUP")
+            # Mark queued to prevent duplicate queueing. Outbox replaces this with
+            # the actual delivered timestamp after transport success.
+            conn.execute(
+                "UPDATE reminders SET last_follow_up_at_utc=?,next_delivery_at_utc=NULL,defer_reason=NULL WHERE reminder_id=?",
+                (now.isoformat(), row["reminder_id"]),
+            )
+
         conn.commit()
     except Exception:
         conn.rollback()
