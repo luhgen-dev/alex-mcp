@@ -23,7 +23,7 @@ def process(payload: dict) -> dict:
         return {"ok": True, "duplicate": True}
 
     try:
-        media_ids, media_context = media.process_payload_media(payload)
+        media_ids, media_context, vision_parts = media.process_payload_media(payload)
         actor = db.resolve_actor(
             payload["sender_phone"],
             payload["conversation_id"],
@@ -32,7 +32,7 @@ def process(payload: dict) -> dict:
             media_ids,
         )
         reply, attachments = asyncio.run(
-            brain.respond(actor, payload.get("text", "") or "", media_context)
+            brain.respond(actor, payload.get("text", "") or "", media_context, vision_parts)
         )
         db.queue_outbound(
             actor.conversation_id, "TEXT", text=reply,
