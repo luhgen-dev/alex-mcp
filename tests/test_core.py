@@ -605,19 +605,26 @@ class AlexCoreTests(unittest.TestCase):
         finally:
             conn.close()
 
-    def test_private_plan_shares_copy_not_source(self):
+    def test_private_plan_shares_copy_not_source_or_private_notes(self):
         self.claim("plan1", "+60111111111", "plan")
         actor = with_action_key(self.actor("plan1", "+60111111111"), "plan-a")
-        plan = phase2.create_plan(actor, "Weekend trip", notes="draft")
+        plan = phase2.create_plan(actor, "Weekend trip", notes="private budget note")
         self.assertEqual(plan["space"], "HUSBAND_PVT")
         shared_actor = with_action_key(actor, "plan-share")
         copied = phase2.share_plan(shared_actor, plan["plan_id"])
         conn = db.connect()
         try:
-            src = conn.execute("SELECT space_id FROM plans WHERE plan_id=?", (plan["plan_id"],)).fetchone()[0]
-            dst = conn.execute("SELECT space_id FROM plans WHERE plan_id=?", (copied["plan_id"],)).fetchone()[0]
-            self.assertEqual(src, "HUSBAND_PVT")
-            self.assertEqual(dst, "FAMILY_SHARED")
+            src = conn.execute(
+                "SELECT space_id,notes FROM plans WHERE plan_id=?", (plan["plan_id"],)
+            ).fetchone()
+            dst = conn.execute(
+                "SELECT space_id,notes FROM plans WHERE plan_id=?", (copied["plan_id"],)
+            ).fetchone()
+            self.assertEqual(src["space_id"], "HUSBAND_PVT")
+            self.assertEqual(src["notes"], "private budget note")
+            self.assertEqual(dst["space_id"], "FAMILY_SHARED")
+            self.assertIsNone(dst["notes"])
+            self.assertFalse(copied["private_notes_copied"])
         finally:
             conn.close()
 
