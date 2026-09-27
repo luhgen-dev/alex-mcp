@@ -21,6 +21,7 @@ class Settings:
     wife_phone: str = ""
     timezone: str = "Asia/Kuala_Lumpur"
     stt_provider: str = "auto"
+    whisper_model: str = "base"
     ocr_enabled: bool = True
     context_turns: int = 8
     reasoning_effort: str = "medium"
