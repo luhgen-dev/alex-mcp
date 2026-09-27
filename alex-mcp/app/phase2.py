@@ -26,6 +26,12 @@ def _to_utc(value: str, tz_name: str) -> str:
     return _to_dt(value, tz_name).astimezone(timezone.utc).isoformat()
 
 
+def _has_explicit_time(value: str | None) -> bool:
+    raw = str(value or "").strip()
+    # ISO date-only input is a valid all-day/date-known item, not midnight.
+    return "T" in raw or (" " in raw and ":" in raw)
+
+
 def _local_date_from_utc(value: str, tz_name: str) -> str:
     return datetime.fromisoformat(value).astimezone(ZoneInfo(tz_name)).date().isoformat()
 
@@ -496,11 +502,14 @@ def _roster_conflict(conn, actor: ActorContext, start_utc: str, end_utc: str | N
 
 
 def _diary_conflict(conn, actor: ActorContext, start_utc: str, end_utc: str | None,
-                    exclude_diary_id: str | None = None):
+                    exclude_diary_id: str | None = None,
+                    candidate_time_known: bool = True):
+    if not candidate_time_known:
+        return None
     marks = ",".join("?" for _ in actor.allowed_spaces)
     params = list(actor.allowed_spaces)
     sql = f"""SELECT * FROM diary_events
-              WHERE space_id IN ({marks}) AND status='ACTIVE'"""
+              WHERE space_id IN ({marks}) AND status='ACTIVE' AND time_known=1"""
     if exclude_diary_id:
         sql += " AND diary_id!=?"
         params.append(exclude_diary_id)
@@ -513,6 +522,53 @@ def _diary_conflict(conn, actor: ActorContext, start_utc: str, end_utc: str | No
         if start < re and end > rs:
             return row
     return None
+
+
+def _same_day_heads_up(conn, actor: ActorContext, local_date: str,
+                       exclude_diary_id: str | None = None) -> list[dict]:
+    marks = ",".join("?" for _ in actor.allowed_spaces)
+    start_utc = _to_utc(local_date + "T00:00:00", actor.timezone)
+    end_utc = _to_utc(local_date + "T23:59:59", actor.timezone)
+    params = list(actor.allowed_spaces) + [start_utc, end_utc]
+    sql = f"""SELECT diary_id,title,start_at_utc,end_at_utc,time_known
+              FROM diary_events
+              WHERE space_id IN ({marks}) AND status='ACTIVE'
+                AND start_at_utc BETWEEN ? AND ?"""
+    if exclude_diary_id:
+        sql += " AND diary_id!=?"
+        params.append(exclude_diary_id)
+    rows = conn.execute(sql, params).fetchall()
+    return [
+        {
+            "kind": "DIARY_SAME_DAY",
+            "diary_id": r["diary_id"],
+            "title": r["title"],
+            "time_known": bool(r["time_known"]),
+        }
+        for r in rows
+    ]
+
+
+def _leave_heads_up(conn, actor: ActorContext, local_date: str) -> list[dict]:
+    if actor.conversation_type == "GROUP":
+        return []
+    rows = conn.execute(
+        """SELECT leave_id,leave_date,COALESCE(end_date,leave_date) AS end_date,
+                  leave_type,status
+           FROM leave_records
+           WHERE owner_id=? AND status IN ('PLANNED','CONFIRMED','TAKEN')
+             AND leave_date<=? AND COALESCE(end_date,leave_date)>=?""",
+        (actor.user_id, local_date, local_date),
+    ).fetchall()
+    return [
+        {
+            "kind": "LEAVE_COVERS_DAY",
+            "leave_id": r["leave_id"],
+            "leave_type": r["leave_type"],
+            "status": r["status"],
+        }
+        for r in rows
+    ]
 
 
 def _ticket_expired(row) -> bool:
@@ -553,7 +609,8 @@ def _active_phone(conn, user_id: str) -> str | None:
 def _insert_diary(conn, actor: ActorContext, action_key: str, title: str, start_utc: str,
                   end_utc: str | None, notes: str | None, space: str,
                   reminder_minutes_before: int | None = None,
-                  reminder_recipient: str = "me") -> dict:
+                  reminder_recipient: str = "me",
+                  time_known: bool = True) -> dict:
     existing = conn.execute("SELECT * FROM diary_events WHERE action_key=?", (action_key,)).fetchone()
     if existing:
         return {"status": "already_applied", **dict(existing)}
@@ -561,10 +618,10 @@ def _insert_diary(conn, actor: ActorContext, action_key: str, title: str, start_
     conn.execute(
         """INSERT INTO diary_events(
             diary_id,action_key,owner_id,space_id,title,start_at_utc,end_at_utc,
-            timezone_name,notes
-           ) VALUES(?,?,?,?,?,?,?,?,?)""",
+            time_known,timezone_name,notes
+           ) VALUES(?,?,?,?,?,?,?,?,?,?)""",
         (diary_id, action_key, actor.user_id, space, title[:240], start_utc, end_utc,
-         actor.timezone, notes),
+         1 if time_known else 0, actor.timezone, notes),
     )
 
     reminder_ids: list[str] = []
@@ -600,6 +657,7 @@ def _insert_diary(conn, actor: ActorContext, action_key: str, title: str, start_
             reminder_ids.append(reminder_id)
 
     return {"status": "created", "diary_id": diary_id, "space": space,
+            "time_known": bool(time_known),
             "linked_reminder_id": reminder_ids[0] if len(reminder_ids) == 1 else None,
             "linked_reminder_ids": reminder_ids}
 
@@ -608,11 +666,15 @@ def add_diary_event(actor: ActorContext, title: str, start_local: str,
                     end_local: str | None = None, notes: str | None = None,
                     shared: bool = False, reminder_minutes_before: int | None = None,
                     reminder_recipient: str = "me",
-                    source_plan_id: str | None = None) -> dict:
+                    source_plan_id: str | None = None,
+                    time_known: bool | None = None) -> dict:
     if not actor.action_key:
         raise RuntimeError("missing deterministic action key")
     start_utc = _to_utc(start_local, actor.timezone)
     end_utc = _to_utc(end_local, actor.timezone) if end_local else None
+    candidate_time_known = _has_explicit_time(start_local) if time_known is None else bool(time_known)
+    if candidate_time_known and not _has_explicit_time(start_local):
+        raise ValueError("time_known=true requires an explicit time; do not invent midnight")
     space = _space(actor, shared)
     conn = connect()
     try:
@@ -642,7 +704,32 @@ def add_diary_event(actor: ActorContext, title: str, start_local: str,
                 return {"status": "needs_choice", "conflict_id": pending["conflict_id"],
                         "conflict_kind": pending["conflict_kind"], "choices": choices}
 
-        roster = _roster_conflict(conn, actor, start_utc, end_utc)
+        local_date = _local_date_from_utc(start_utc, actor.timezone)
+        heads_up = _same_day_heads_up(conn, actor, local_date)
+        heads_up.extend(_leave_heads_up(conn, actor, local_date))
+
+        roster = _roster_conflict(conn, actor, start_utc, end_utc) if candidate_time_known else None
+        if roster and roster.get("time_known") is False:
+            heads_up.append({
+                "kind": "WORK_SAME_DAY",
+                "shift": roster.get("shift"),
+                "time_known": False,
+            })
+            roster = None
+        elif not candidate_time_known and actor.conversation_type != "GROUP":
+            # Date-only events get a non-blocking work heads-up if the roster says
+            # this is a work day. No time overlap is invented.
+            try:
+                work = phase2_work.effective_shift(local_date, actor.phone, actor.conversation_type)
+                if work.get("shift") not in {None, "off"}:
+                    heads_up.append({
+                        "kind": "WORK_SAME_DAY",
+                        "shift": work.get("shift"),
+                        "time_known": False,
+                    })
+            except (ValueError, PermissionError):
+                pass
+
         if roster:
             cid = str(uuid.uuid4())
             expiry = (datetime.now(timezone.utc) + timedelta(hours=48)).isoformat()
@@ -650,23 +737,27 @@ def add_diary_event(actor: ActorContext, title: str, start_local: str,
                 """INSERT INTO schedule_conflicts(
                     conflict_id,action_key,owner_id,space_id,title,start_at_utc,end_at_utc,
                     timezone_name,notes,reminder_minutes_before,roster_id,
-                    source_plan_id,conflict_kind,expires_at_utc,created_at_utc
-                   ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    conflict_kind,expires_at_utc,source_plan_id
+                   ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (cid, actor.action_key, actor.user_id, space, title[:240], start_utc, end_utc,
-                 actor.timezone, notes, reminder_minutes_before, roster["roster_id"],
-                 source_plan_id, "WORK", expiry, utc_now()),
+                 actor.timezone, notes, reminder_minutes_before, roster.get("roster_id"),
+                 "WORK", expiry, source_plan_id),
             )
             conn.commit()
             return {
                 "status": "needs_choice", "conflict_id": cid, "conflict_kind": "WORK",
                 "expires_at_utc": expiry,
                 "message": "This clashes with your work roster.",
+                "heads_up": heads_up,
                 "choices": {"1": "add event and create PLANNED leave",
                             "2": "add event and keep the work clash",
                             "3": "cancel"},
             }
 
-        diary_clash = _diary_conflict(conn, actor, start_utc, end_utc)
+        diary_clash = _diary_conflict(
+            conn, actor, start_utc, end_utc,
+            candidate_time_known=candidate_time_known,
+        )
         if diary_clash:
             cid = str(uuid.uuid4())
             expiry = (datetime.now(timezone.utc) + timedelta(hours=48)).isoformat()
@@ -674,17 +765,18 @@ def add_diary_event(actor: ActorContext, title: str, start_local: str,
                 """INSERT INTO schedule_conflicts(
                     conflict_id,action_key,owner_id,space_id,title,start_at_utc,end_at_utc,
                     timezone_name,notes,reminder_minutes_before,conflicting_diary_id,
-                    source_plan_id,conflict_kind,expires_at_utc,created_at_utc
-                   ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    conflict_kind,expires_at_utc,source_plan_id
+                   ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (cid, actor.action_key, actor.user_id, space, title[:240], start_utc, end_utc,
                  actor.timezone, notes, reminder_minutes_before, diary_clash["diary_id"],
-                 source_plan_id, "DIARY", expiry, utc_now()),
+                 "DIARY", expiry, source_plan_id),
             )
             conn.commit()
             return {
                 "status": "needs_choice", "conflict_id": cid, "conflict_kind": "DIARY",
                 "expires_at_utc": expiry,
                 "message": "This overlaps an existing diary event.",
+                "heads_up": heads_up,
                 "conflicting_event": {
                     "diary_id": diary_clash["diary_id"],
                     "title": diary_clash["title"],
@@ -697,7 +789,9 @@ def add_diary_event(actor: ActorContext, title: str, start_local: str,
         result = _insert_diary(
             conn, actor, actor.action_key, title, start_utc, end_utc, notes, space,
             reminder_minutes_before, reminder_recipient,
+            time_known=candidate_time_known,
         )
+        result["heads_up"] = heads_up
         if source_plan_id and result.get("diary_id"):
             conn.execute(
                 "INSERT OR IGNORE INTO plan_diary_links(plan_id,diary_id) VALUES(?,?)",
@@ -873,6 +967,10 @@ def update_diary_event(actor: ActorContext, diary_id: str, status: str | None = 
             raise ValueError("diary status must be ACTIVE or CANCELLED")
         new_start = _to_utc(start_local, actor.timezone) if start_local else row["start_at_utc"]
         new_end = _to_utc(end_local, actor.timezone) if end_local else row["end_at_utc"]
+        new_time_known = (
+            _has_explicit_time(start_local) if start_local is not None
+            else bool(row["time_known"])
+        )
         links = conn.execute(
             """SELECT r.* FROM reminders r JOIN diary_reminder_links l ON l.reminder_id=r.reminder_id
                WHERE l.diary_id=? AND r.status NOT IN ('COMP','CANC')""", (diary_id,),
@@ -906,8 +1004,13 @@ def update_diary_event(actor: ActorContext, diary_id: str, status: str | None = 
             raise ValueError(f"linked_reminders must be one of {sorted(allowed_actions)}")
 
         if state == "ACTIVE" and changing_time:
-            roster = _roster_conflict(conn, actor, new_start, new_end)
-            diary_clash = _diary_conflict(conn, actor, new_start, new_end, exclude_diary_id=diary_id)
+            roster = _roster_conflict(conn, actor, new_start, new_end) if new_time_known else None
+            if roster and roster.get("time_known") is False:
+                roster = None
+            diary_clash = _diary_conflict(
+                conn, actor, new_start, new_end,
+                exclude_diary_id=diary_id, candidate_time_known=new_time_known,
+            )
             if roster or diary_clash:
                 return {
                     "status": "needs_conflict_resolution",
@@ -921,9 +1024,9 @@ def update_diary_event(actor: ActorContext, diary_id: str, status: str | None = 
                 }
 
         conn.execute(
-            """UPDATE diary_events SET title=?,start_at_utc=?,end_at_utc=?,notes=?,status=?,updated_at_utc=?
-               WHERE diary_id=?""",
-            ((title or row["title"])[:240], new_start, new_end,
+            """UPDATE diary_events SET title=?,start_at_utc=?,end_at_utc=?,time_known=?,
+               notes=?,status=?,updated_at_utc=? WHERE diary_id=?""",
+            ((title or row["title"])[:240], new_start, new_end, 1 if new_time_known else 0,
              notes if notes is not None else row["notes"], state, utc_now(), diary_id),
         )
 
@@ -1085,7 +1188,7 @@ def get_agenda(actor: ActorContext, start_date: str, end_date: str,
     conn = connect()
     try:
         diary = [dict(r) for r in conn.execute(
-            f"""SELECT diary_id,title,start_at_utc,end_at_utc,notes,space_id,'DIARY' AS kind
+            f"""SELECT diary_id,title,start_at_utc,end_at_utc,time_known,notes,space_id,'DIARY' AS kind
                 FROM diary_events WHERE space_id IN ({marks}) AND status='ACTIVE'
                   AND start_at_utc BETWEEN ? AND ? ORDER BY start_at_utc""",
             list(actor.allowed_spaces) + [start_utc, end_utc],
