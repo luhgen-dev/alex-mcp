@@ -69,6 +69,15 @@ def initialize() -> None:
         _ensure_column(conn, "inbound_messages", "attempt_count", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(conn, "inbound_messages", "processing_started_at_utc", "TEXT")
         _ensure_column(conn, "outbound_messages", "next_attempt_at_utc", "TEXT")
+        _ensure_column(conn, "reminders", "presence_aware", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(conn, "reminders", "delivery_class", "TEXT NOT NULL DEFAULT 'routine'")
+        _ensure_column(conn, "reminders", "follow_up_after_hours", "INTEGER NOT NULL DEFAULT 24")
+        _ensure_column(conn, "reminders", "acknowledged_at_utc", "TEXT")
+        _ensure_column(conn, "reminders", "last_follow_up_at_utc", "TEXT")
+        _ensure_column(conn, "reminders", "next_delivery_at_utc", "TEXT")
+        _ensure_column(conn, "reminders", "defer_reason", "TEXT")
+        _ensure_column(conn, "outbound_messages", "context_kind", "TEXT")
+        _ensure_column(conn, "outbound_messages", "context_id", "TEXT")
         conn.execute("BEGIN")
         conn.executemany("INSERT OR IGNORE INTO users(user_id,display_name) VALUES(?,?)", [
             ("USR_HUSBAND", "Husband"),
@@ -291,15 +300,19 @@ def recent_turns(conversation_id: str, limit: int) -> list[dict]:
 
 def queue_outbound(conversation_id: str, kind: str, text: str | None = None,
                    local_path: str | None = None, mime_type: str | None = None,
-                   source_message_id: str | None = None) -> str:
+                   source_message_id: str | None = None,
+                   context_kind: str | None = None,
+                   context_id: str | None = None) -> str:
     oid = str(uuid.uuid4())
     conn = connect()
     try:
         conn.execute(
             """INSERT INTO outbound_messages(
-                outbound_id,source_message_id,conversation_id,kind,text_body,local_path,mime_type
-               ) VALUES(?,?,?,?,?,?,?)""",
-            (oid, source_message_id, conversation_id, kind, text, local_path, mime_type),
+                outbound_id,source_message_id,conversation_id,kind,text_body,local_path,mime_type,
+                context_kind,context_id
+               ) VALUES(?,?,?,?,?,?,?,?,?)""",
+            (oid, source_message_id, conversation_id, kind, text, local_path, mime_type,
+             context_kind, context_id),
         )
         conn.commit()
         return oid
