@@ -115,6 +115,111 @@ LEGACY_SIMPLE_PLANNING = {
 }
 
 
+TOOL_EXPOSURE_MAX = 6
+
+
+def _tool_priority(name: str, text: str, has_media: bool) -> int:
+    low = (text or "").casefold()
+    score = 10
+
+    # Strong direct-action/read signals.
+    direct = {
+        "query_finances": (r"how much|spent|spend|breakdown|total|expense", 100),
+        "log_expense": (r"log|spent|paid|bought|receipt|transaction", 96),
+        "correct_expense": (r"correct|change|fix|wrong amount", 115),
+        "list_pending_expenses": (r"pending|clarif|which expense|that expense", 105),
+        "find_receipts": (r"find|show|receipt|reference|ref", 110),
+        "get_receipt": (r"receipt|original|show", 90),
+        "resolve_numbered_choice": (r"^\s*\d+\s*$", 140),
+        "create_reminder": (r"remind|reminder|notify", 110),
+        "list_reminders": (r"list|what reminders|reminders", 95),
+        "update_reminder": (r"cancel|complete|ack|snooze|defer|reschedule", 115),
+        "reminder_history": (r"history|what happened|reminder history", 105),
+        "add_shopping_item": (r"add|buy|need|shopping", 105),
+        "list_shopping_items": (r"list|shopping|grocery", 95),
+        "update_shopping_item": (r"bought|purchased|remove|delete", 110),
+        "save_item": (r"save|remember", 115),
+        "search_saved_items": (r"find|search|remember|saved", 105),
+        "get_saved_item": (r"show|open|original|saved", 95),
+        "remove_saved_item": (r"remove|delete|forget", 110),
+        "add_diary_event": (r"diary|appointment|meeting|event|put.*calendar", 110),
+        "update_diary_event": (r"move|reschedule|cancel|change.*diary|change.*event", 118),
+        "get_agenda_range": (r"agenda|what.*have|schedule.*week|schedule.*today", 112),
+        "get_agenda": (r"agenda", 100),
+        "resolve_latest_diary_conflict": (r"^\s*[123]\s*$", 145),
+        "create_plan": (r"plan|trip|holiday|vacation|brainstorm", 90),
+        "confirm_plan": (r"confirm|lock|booked|make.*real", 120),
+        "update_plan": (r"change|update|cancel.*plan", 105),
+        "share_plan": (r"share|family|wife|husband", 105),
+        "list_plans": (r"plans|what.*plan", 90),
+        "check_my_availability": (r"am i free|my availability|do i have", 110),
+        "check_spouse_availability": (r"wife.*free|husband.*free|spouse.*free|partner.*free", 110),
+        "work_schedule": (r"roster|shift|work schedule|working", 110),
+        "work_day": (r"work.*today|work.*tomorrow|shift.*today|shift.*tomorrow", 112),
+        "work_record_event": (r"leave|mc|shift swap|ot worked|ot planned|overtime", 102),
+        "work_ot_status": (r"ot|overtime", 108),
+        "work_leave_balance": (r"leave balance|annual leave|medical leave", 110),
+        "work_departure_plan": (r"leave home|depart|alarm|travel time", 115),
+        "planning_create_goal": (r"create.*goal|new goal|save for", 115),
+        "planning_change_goal_baseline": (r"every month|monthly.*change|change.*baseline", 118),
+        "planning_record_goal_contribution": (r"contributed|deposit.*goal|put.*goal", 112),
+        "planning_goal_progress": (r"goal.*progress|how much.*goal|remaining.*goal", 112),
+        "planning_goal_deviation": (r"below plan|above plan|this month", 95),
+        "planning_record_cash": (r"bonus|refund|extra cash|ot.*paid|salary.*received", 110),
+        "planning_cash_status": (r"unallocated|extra cash|cash.*left", 105),
+        "planning_allocate_cash_to_goal": (r"allocate|put.*goal|channel.*goal", 118),
+        "planning_allocate_cash_to_pool": (r"stash|pool|reserve", 112),
+        "planning_cashflow": (r"cashflow|cash flow|budget|forecast", 110),
+        "planning_brief": (r"plan my money|planning|budget", 100),
+        "planning_list_goals": (r"goals|goal list", 95),
+        "bills_list": (r"bill|bills|due|obligation|tnb|electricity|water|unifi", 108),
+        "bills_match_payment": (r"payment|paid|receipt|match", 115),
+        "bills_record_payment": (r"record.*payment|paid.*bill|bill.*paid", 112),
+        "bills_defer": (r"defer|postpone|new due", 120),
+        "bills_confirm_unpaid": (r"unpaid|didn't pay|did not pay", 120),
+        "ha_find_entities": (r"light|switch|fan|climate|thermostat|media player|home assistant", 110),
+        "ha_get_state": (r"state|is .* on|status", 108),
+        "ha_control": (r"turn on|turn off|toggle|set .*%|set temperature|play|pause", 125),
+        "ha_home_summary": (r"home status|house status|what's on|whats on", 112),
+        "ha_draft_automation": (r"automation|automate|when .* then", 112),
+        "asset_create": (r"warranty|asset|appliance|serial|bought.*device", 105),
+        "asset_link_document": (r"warranty|manual|receipt.*asset|link.*document", 108),
+        "asset_list": (r"assets|appliances|devices", 95),
+        "warranty_expiring": (r"warranty.*expir|expiring.*warranty", 118),
+        "system_health": (r"health|diagnostic|status.*alex|working", 110),
+        "recent_failures": (r"failed|failure|error|didn't reply|did not reply|why", 115),
+        "monitor_delegate": (r"monitor|track|watch|keep an eye|follow", 112),
+        "monitor_list": (r"what.*monitor|list.*monitor|tracking", 95),
+        "monitor_cancel": (r"stop.*monitor|cancel.*monitor|stop tracking", 120),
+        "calculate": (r"calculate|how much|total|difference|remaining", 70),
+    }
+    pattern, weight = direct.get(name, ("", 0))
+    if pattern and re.search(pattern, low):
+        score += weight
+
+    if has_media:
+        if name in {"log_expense","find_receipts","get_receipt","save_item","asset_link_document"}:
+            score += 45
+
+    # Keep safety/continuation resolvers ahead of generic tools.
+    if name in {"resolve_latest_diary_conflict","resolve_numbered_choice"}:
+        score += 30
+
+    return score
+
+
+def _cap_tool_names(selected: set[str], user_text: str,
+                    media_context: list[str] | None = None) -> set[str]:
+    if len(selected) <= TOOL_EXPOSURE_MAX:
+        return selected
+    has_media = bool(media_context)
+    ranked = sorted(
+        selected,
+        key=lambda name: (-_tool_priority(name, user_text, has_media), name),
+    )
+    return set(ranked[:TOOL_EXPOSURE_MAX])
+
+
 def _select_tool_names(user_text: str, media_context: list[str] | None = None) -> set[str]:
     text = (user_text or "").strip()
     low = text.casefold()
@@ -192,7 +297,7 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
     # Do not advertise superseded simple planning tools when the advanced
     # proven engine is available.
     selected -= LEGACY_SIMPLE_PLANNING
-    return selected
+    return _cap_tool_names(selected, text, media_context)
 
 
 async def _tool_specs(user_text: str, media_context: list[str] | None = None) -> list[dict]:
