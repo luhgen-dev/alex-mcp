@@ -139,6 +139,7 @@ HOME_TOOLS = {"ha_find_entities","ha_get_state","ha_home_summary","ha_draft_auto
 ASSET_TOOLS = {"asset_create","asset_link_document","asset_list","warranty_expiring"}
 DIAGNOSTIC_TOOLS = {"system_health","recent_failures"}
 MONITOR_TOOLS = {"monitor_delegate","monitor_list","monitor_cancel"}
+REPORT_TOOLS = {"report_snapshot","report_export","report_payload"}
 LEGACY_SIMPLE_PLANNING = {
     "set_goal","list_goals","set_cashflow_baseline","get_cashflow_baseline",
     "set_money_bucket","list_money_buckets","get_leave_balance","set_leave_balance",
@@ -232,6 +233,9 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
         "monitor_delegate": (r"monitor|track|watch|keep an eye|follow", 112),
         "monitor_list": (r"what.*monitor|list.*monitor|tracking", 95),
         "monitor_cancel": (r"stop.*monitor|cancel.*monitor|stop tracking", 120),
+        "report_snapshot": (r"report|summary|snapshot|overview", 105),
+        "report_export": (r"pdf|csv|json|export|send.*report|report.*file", 122),
+        "report_payload": (r"google sheets|sheet|tv|dashboard|handoff", 115),
         "calculate": (r"calculate|how much|total|difference|remaining", 70),
     }
     pattern, weight = direct.get(name, ("", 0))
@@ -326,6 +330,8 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
         selected |= DIAGNOSTIC_TOOLS
     if re.search(r"\b(?:monitor|track this|watch this|proactive|follow this)\b", low):
         selected |= MONITOR_TOOLS
+    if re.search(r"\b(?:report|snapshot|export|pdf|csv|google sheets|dashboard|tv payload)\b", low):
+        selected |= REPORT_TOOLS
 
     # Tamil script: favor coverage over a false-negative router. It is still a
     # much smaller catalog than advertising every MCP tool on every turn.
