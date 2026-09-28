@@ -750,6 +750,24 @@ def _record_usage_buckets(source_message_id: str | None, usage_by_route: dict) -
         )
 
 
+def _next_route_after_failure(routes: list[dict], current_index: int, info: dict) -> int:
+    """Skip redundant same-provider retries for provider-wide failures."""
+    next_index = current_index + 1
+    category = str(info.get("category") or "")
+    provider_wide = {
+        "provider_authentication_failed",
+        "provider_access_or_billing_blocked",
+        "provider_rate_limit_or_quota",
+        "provider_temporarily_unavailable",
+        "provider_connection_error",
+    }
+    if category in provider_wide and current_index < len(routes):
+        failed_provider = routes[current_index]["provider"]
+        while next_index < len(routes) and routes[next_index]["provider"] == failed_provider:
+            next_index += 1
+    return next_index
+
+
 def _completion_kwargs(route: dict, messages: list[dict], tools: list[dict] | None,
                        actor: ActorContext | None = None) -> dict:
     kwargs = {
@@ -785,7 +803,9 @@ def provider_probe() -> dict:
 
     failures: list[dict] = []
     usage_by_route: dict = {}
-    for route in routes:
+    route_index = 0
+    while route_index < len(routes):
+        route = routes[route_index]
         call_started = time.monotonic()
         try:
             client = _client_for(route["provider"], settings)
@@ -825,6 +845,7 @@ def provider_probe() -> dict:
                 "provider": route["provider"], "model": route["model"],
                 "category": info["category"], "status_code": info.get("status_code"),
             })
+            route_index = _next_route_after_failure(routes, route_index, info)
 
     _record_usage_buckets(None, usage_by_route)
     last = failures[-1] if failures else {}
@@ -1244,7 +1265,7 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                     "category": info["category"],
                     "status_code": info.get("status_code"),
                 })
-                route_index += 1
+                route_index = _next_route_after_failure(routes, route_index, info)
                 active_route = None
 
         if response is None or active_route is None:
