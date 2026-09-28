@@ -1,5 +1,5 @@
 name: "Alex MCP"
-version: "0.4.1"
+version: "0.4.2"
 slug: "alex_mcp"
 description: "MCP-first household assistant — natural WhatsApp conversation, deterministic tools, receipts, reminders and memory"
 arch:
@@ -29,7 +29,7 @@ options:
   whisper_model: "base"
   ocr_enabled: true
   context_turns: 8
-  reasoning_effort: "medium"
+  reasoning_effort: "low"
   monthly_ai_budget_usd: 0.0
   budget_safety_multiplier: 2.0
   income_profiles: []
