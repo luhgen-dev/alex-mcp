@@ -1130,8 +1130,7 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                   vision_parts: list[dict] | None = None,
                   quoted_context: dict | None = None) -> tuple[str, list[dict]]:
     # A deterministic no-write gate handles the small class of phrases that
-    # are genuinely ambiguous across household domains. This prevents a strong
-    # language model from confidently choosing a write the user never asked for.
+    # are genuinely ambiguous across household domains.
     preflight = phase2_intent.classify_write_intent(
         user_text or "", has_media=bool(media_context or vision_parts)
     )
@@ -1141,10 +1140,28 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
         add_turn(actor.user_id, actor.conversation_id, "assistant", question)
         return question, []
 
+    # Tiny social/health-check messages do not need any paid model at all.
+    if not media_context and not vision_parts and not quoted_context:
+        local_reply = _local_chat_reply(user_text)
+        if local_reply is not None:
+            add_turn(actor.user_id, actor.conversation_id, "user", (user_text or "").strip())
+            add_turn(actor.user_id, actor.conversation_id, "assistant", local_reply)
+            return local_reply, []
+
     settings = get_settings()
-    provider = settings.ai_provider
-    model = settings.model
     tools = await _tool_specs(user_text, media_context, quoted_context)
+    routes = _provider_routes(
+        settings, user_text=user_text, tools=tools,
+        vision_parts=vision_parts, preflight=preflight,
+    )
+    if not routes:
+        final = (
+            "Alex has no usable AI provider configured. Add a Gemini, Grok, or OpenAI "
+            "API key in Alex MCP → Configuration."
+        )
+        add_turn(actor.user_id, actor.conversation_id, "user", (user_text or "").strip())
+        add_turn(actor.user_id, actor.conversation_id, "assistant", final)
+        return final, []
 
     messages: list[dict] = [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -1170,9 +1187,7 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
     else:
         messages.append({"role": "user", "content": current})
 
-    # Optional owner-configured budget guard. Zero means disabled. The safety
-    # multiplier deliberately makes the guard conservative without changing
-    # normal Alex behavior for users who leave it disabled.
+    # Owner-configured all-provider budget guard. Zero means disabled.
     if settings.monthly_ai_budget_usd > 0:
         month_cost = current_month_ai_cost()
         guarded = month_cost * settings.budget_safety_multiplier
@@ -1185,63 +1200,81 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
             add_turn(actor.user_id, actor.conversation_id, "assistant", final)
             return final, []
 
-    client = _client()
     attachments: list[dict] = []
-    input_tokens = cached_input_tokens = output_tokens = reasoning_tokens = 0
-    model_calls = 0
+    usage_by_route: dict = {}
     tool_rounds = 0
     occurrence: dict[str, int] = {}
-    started = time.monotonic()
+    route_index = 0
+    active_route: dict | None = None
+    provider_failures: list[dict] = []
 
     for _ in range(MAX_MODEL_CALLS):
-        kwargs = {
-            "model": model,
-            "messages": messages,
-            "reasoning_effort": settings.reasoning_effort,
-        }
-        if tools:
-            kwargs["tools"] = tools
-            kwargs["tool_choice"] = "auto"
-        if provider == "grok":
-            # Stable, privacy-preserving conversation affinity improves xAI
-            # prompt-cache reuse without revealing the raw WhatsApp id.
-            kwargs["extra_headers"] = {
-                "x-grok-conv-id": hashlib.sha256(
-                    actor.conversation_id.encode("utf-8")
-                ).hexdigest()[:32]
-            }
-        response = client.chat.completions.create(**kwargs)
-        model_calls += 1
-        prompt_n, cached_n, completion_n, reasoning_n = _usage_breakdown(
-            getattr(response, "usage", None)
-        )
-        input_tokens += prompt_n
-        cached_input_tokens += cached_n
-        output_tokens += completion_n
-        reasoning_tokens += reasoning_n
+        # If the cheap model is genuinely looping through tools, escalate the
+        # next reasoning step to the stronger Gemini model instead of spending
+        # repeated Lite calls. Normal one-tool workflows never pay this cost.
+        if (
+            settings.ai_provider == "auto"
+            and active_route
+            and active_route.get("role") == "primary_saver"
+            and tool_rounds >= 2
+        ):
+            for i in range(route_index + 1, len(routes)):
+                if routes[i].get("role") == "quality_fallback":
+                    route_index = i
+                    active_route = None
+                    break
 
-        msg = response.choices[0].message
-        tool_calls = getattr(msg, "tool_calls", None) or []
-        if not tool_calls:
-            final = _content_text(msg.content).strip() or "Done."
-            elapsed = int((time.monotonic() - started) * 1000)
-            record_usage(
-                actor.source_message_id, provider, model, input_tokens, output_tokens,
-                tool_rounds, elapsed,
-                _estimate_cost(provider, model, input_tokens, output_tokens, cached_input_tokens),
-                cached_input_tokens=cached_input_tokens,
-                reasoning_tokens=reasoning_tokens,
-                model_calls=model_calls,
+        response = None
+        while route_index < len(routes):
+            route = routes[route_index]
+            call_started = time.monotonic()
+            try:
+                client = _client_for(route["provider"], settings)
+                response = client.chat.completions.create(
+                    **_completion_kwargs(route, messages, tools, actor)
+                )
+                call_ms = int((time.monotonic() - call_started) * 1000)
+                active_route = route
+                break
+            except Exception as exc:
+                info = classify_runtime_error(exc)
+                provider_failures.append({
+                    "provider": route["provider"],
+                    "model": route["model"],
+                    "category": info["category"],
+                    "status_code": info.get("status_code"),
+                })
+                route_index += 1
+                active_route = None
+
+        if response is None or active_route is None:
+            _record_usage_buckets(actor.source_message_id, usage_by_route)
+            final = (
+                "I couldn't finish that because the configured AI providers are temporarily "
+                "unavailable. I won't repeat any household action automatically; please try once more later."
             )
             add_turn(actor.user_id, actor.conversation_id, "user", current or "[attachment]")
             add_turn(actor.user_id, actor.conversation_id, "assistant", final)
             return final, attachments
 
-        tool_rounds += 1
-        assistant_dump = msg.model_dump(exclude_none=True)
-        messages.append(assistant_dump)
+        msg = response.choices[0].message
+        calls = getattr(msg, "tool_calls", None) or []
+        _accumulate_usage(
+            usage_by_route, active_route, getattr(response, "usage", None),
+            call_ms, had_tool_calls=bool(calls),
+        )
 
-        for call in tool_calls:
+        if not calls:
+            final = _content_text(msg.content).strip() or "Done."
+            _record_usage_buckets(actor.source_message_id, usage_by_route)
+            add_turn(actor.user_id, actor.conversation_id, "user", current or "[attachment]")
+            add_turn(actor.user_id, actor.conversation_id, "assistant", final)
+            return final, attachments
+
+        tool_rounds += 1
+        messages.append(msg.model_dump(exclude_none=True))
+
+        for call in calls:
             name = call.function.name
             try:
                 args = json.loads(call.function.arguments or "{}")
@@ -1254,8 +1287,6 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                 normalized = str(args.get("intent") or "").strip()
                 discovered = _select_tool_names(normalized, media_context)
                 discovered_specs = await _tool_specs_for_names(discovered)
-                # Keep the discovery valve available in case the first normalized
-                # description was still too vague, while never exceeding six schemas.
                 tools = discovered_specs[:TOOL_EXPOSURE_MAX - 1] + [DISCOVERY_TOOL]
                 messages.append({
                     "role": "tool",
@@ -1263,7 +1294,10 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                     "content": json.dumps({
                         "status": "tools_loaded",
                         "normalized_intent": normalized,
-                        "tool_names": [x["function"]["name"] for x in discovered_specs[:TOOL_EXPOSURE_MAX - 1]],
+                        "tool_names": [
+                            x["function"]["name"]
+                            for x in discovered_specs[:TOOL_EXPOSURE_MAX - 1]
+                        ],
                     }, ensure_ascii=False, separators=(",", ":")),
                 })
                 continue
@@ -1286,16 +1320,8 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                 "content": json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
             })
 
+    _record_usage_buckets(actor.source_message_id, usage_by_route)
     final = "I couldn't complete that safely after several tool steps. Nothing else was changed."
-    elapsed = int((time.monotonic() - started) * 1000)
-    record_usage(
-        actor.source_message_id, provider, model, input_tokens, output_tokens,
-        tool_rounds, elapsed,
-        _estimate_cost(provider, model, input_tokens, output_tokens, cached_input_tokens),
-        cached_input_tokens=cached_input_tokens,
-        reasoning_tokens=reasoning_tokens,
-        model_calls=model_calls,
-    )
     add_turn(actor.user_id, actor.conversation_id, "user", current or "[attachment]")
     add_turn(actor.user_id, actor.conversation_id, "assistant", final)
     return final, attachments
