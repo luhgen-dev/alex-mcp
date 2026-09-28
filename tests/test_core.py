@@ -847,6 +847,25 @@ class AlexCoreTests(unittest.TestCase):
         self.assertEqual(picked["status"], "found")
         self.assertEqual(picked["media_id"], found["matches"][1]["media_id"])
 
+    def test_basic_are_you_working_is_pure_chat_not_work_tool_query(self):
+        self.assertTrue(brain._pure_chat("Hi Alex, are you working?"))
+        self.assertTrue(brain._pure_chat("Alex are u working"))
+        async def run():
+            specs = await brain._tool_specs("Hi Alex, are you working?")
+            self.assertEqual(specs, [])
+        asyncio.run(run())
+
+    def test_runtime_error_classifier_scrubs_provider_secrets(self):
+        class FakeProviderError(Exception):
+            status_code = 401
+            __module__ = "openai"
+        info = brain.classify_runtime_error(
+            FakeProviderError("Authorization: Bearer xai-secretsecretsecret")
+        )
+        self.assertEqual(info["scope"], "ai_provider")
+        self.assertEqual(info["category"], "provider_authentication_failed")
+        self.assertNotIn("xai-secret", info["message"])
+
     def test_selective_tool_exposure_is_small_and_relevant(self):
         cases = [
             ("how much did I spend this weekend?", "query_finances"),
