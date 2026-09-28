@@ -30,7 +30,6 @@ class Settings:
     auto_grok_fallback_budget_usd: float = 0.50
     budget_safety_multiplier: float = 2.0
 
-    @property
     def model_for(self, provider: str, *, lite: bool = False) -> str:
         if provider == "gemini" and lite:
             return self.gemini_lite_model
