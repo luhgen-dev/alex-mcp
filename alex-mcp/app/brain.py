@@ -400,13 +400,22 @@ def _pure_chat(user_text: str, media_context: list[str] | None = None) -> bool:
     if not normalized:
         return True
     return bool(re.fullmatch(
-        r"(?:hi|hello|hey|thanks|thank you|good morning|good afternoon|good evening|"
-        r"good night|how are you|how r u|ok|okay|nice|great|cool|got it|alright|bye)",
+        r"(?:hi|hello|hey|hi alex|hello alex|hey alex|thanks|thank you|"
+        r"good morning|good afternoon|good evening|good night|how are you|how r u|"
+        r"are you working|are u working|alex are you working|alex are u working|"
+        r"are you there|are u there|alex are you there|alex are u there|"
+        r"you working|u working|you there|u there|"
+        r"ok|okay|nice|great|cool|got it|alright|bye)",
         normalized,
     ))
 
 
 async def _tool_specs(user_text: str, media_context: list[str] | None = None) -> list[dict]:
+    # Casual conversation must stay model-only. This check runs before the
+    # keyword router so phrases like "are you working?" cannot be mistaken for
+    # a roster/work query merely because they contain the word "working".
+    if _pure_chat(user_text, media_context):
+        return []
     wanted = _select_tool_names(user_text, media_context)
     specs = await _tool_specs_for_names(wanted)
     # The discovery tool is a tiny safety valve for typo-heavy, incomplete,
@@ -424,7 +433,98 @@ def _client():
             f"No API key configured for {settings.ai_provider}. "
             "Enter it in Alex MCP → Configuration and restart."
         )
-    return OpenAI(api_key=settings.api_key, base_url=settings.base_url)
+    return OpenAI(api_key=settings.api_key, base_url=settings.base_url, timeout=30.0)
+
+
+def _scrub_error_text(value: object) -> str:
+    text = str(value or "")
+    text = re.sub(r"(?i)bearer\s+[A-Za-z0-9._-]+", "Bearer [redacted]", text)
+    text = re.sub(r"(?i)\b(?:xai-|sk-)[A-Za-z0-9._-]{8,}", "[redacted-key]", text)
+    return text[:500]
+
+
+def classify_runtime_error(exc: Exception) -> dict:
+    status = getattr(exc, "status_code", None)
+    module = exc.__class__.__module__.casefold()
+    message = _scrub_error_text(exc)
+    providerish = status is not None or module.startswith("openai") or "api" in module
+
+    if providerish:
+        if status == 400:
+            category = "provider_request_rejected"
+        elif status == 401:
+            category = "provider_authentication_failed"
+        elif status == 403:
+            category = "provider_access_or_billing_blocked"
+        elif status == 404:
+            category = "provider_model_or_endpoint_not_found"
+        elif status == 429:
+            category = "provider_rate_limit_or_quota"
+        elif isinstance(status, int) and status >= 500:
+            category = "provider_temporarily_unavailable"
+        else:
+            category = "provider_connection_error"
+        return {
+            "scope": "ai_provider",
+            "category": category,
+            "status_code": status,
+            "message": message,
+        }
+
+    return {
+        "scope": "alex_runtime",
+        "category": "internal_processing_error",
+        "status_code": status,
+        "message": message,
+    }
+
+
+def provider_probe() -> dict:
+    settings = get_settings()
+    started = time.monotonic()
+    if not settings.api_key:
+        return {
+            "status": "error",
+            "provider": settings.ai_provider,
+            "model": settings.model,
+            "category": "api_key_missing",
+            "message": "No API key is configured for the selected provider.",
+            "latency_ms": 0,
+        }
+    try:
+        client = _client()
+        kwargs = {
+            "model": settings.model,
+            "messages": [
+                {"role": "system", "content": "Reply exactly OK."},
+                {"role": "user", "content": "Connection check."},
+            ],
+        }
+        if settings.ai_provider in {"grok", "openai"}:
+            kwargs["reasoning_effort"] = "low"
+        response = client.chat.completions.create(**kwargs)
+        content = ""
+        if getattr(response, "choices", None):
+            content = _content_text(response.choices[0].message.content).strip()
+        return {
+            "status": "ok",
+            "provider": settings.ai_provider,
+            "model": settings.model,
+            "category": "inference_ready",
+            "message": content[:80] or "Provider returned a valid completion.",
+            "latency_ms": int((time.monotonic() - started) * 1000),
+        }
+    except Exception as exc:
+        info = classify_runtime_error(exc)
+        return {
+            "status": "error",
+            "provider": settings.ai_provider,
+            "model": settings.model,
+            "category": info["category"],
+            "status_code": info.get("status_code"),
+            "message": info["message"],
+            "latency_ms": int((time.monotonic() - started) * 1000),
+        }
 
 
 def _runtime_context(actor: ActorContext) -> str:
