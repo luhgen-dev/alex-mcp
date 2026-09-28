@@ -1,5 +1,5 @@
 name: "Alex MCP"
-version: "0.4.2"
+version: "0.4.3"
 slug: "alex_mcp"
 description: "MCP-first household assistant — natural WhatsApp conversation, deterministic tools, receipts, reminders and memory"
 arch:
@@ -15,9 +15,10 @@ panel_title: "Alex MCP"
 map:
   - data:rw
 options:
-  ai_provider: "grok"
+  ai_provider: "auto"
   grok_model: "grok-4.7"
   gemini_model: "gemini-3.8-flash"
+  gemini_lite_model: "gemini-3.1-flash-lite"
   openai_model: "gpt-5.6-luna"
   xai_api_key: ""
   gemini_api_key: ""
@@ -41,9 +42,10 @@ options:
   reminder_preferences: []
   presence_mappings: []
 schema:
-  ai_provider: "list(grok|gemini|openai)"
+  ai_provider: "list(auto|grok|gemini|openai)"
   grok_model: str
   gemini_model: str
+  gemini_lite_model: str
   openai_model: str
   xai_api_key: password
   gemini_api_key: password
