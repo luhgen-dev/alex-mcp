@@ -418,6 +418,7 @@ function safeStatus() {
       auto_route: provider === 'auto'
         ? 'Gemini Flash-Lite → Gemini 3.8 Flash → Grok → OpenAI'
         : null,
+      auto_grok_fallback_budget_usd: Number(opts.auto_grok_fallback_budget_usd ?? 0.5),
     },
     selftest: readSelftest(),
     runtime: readRuntimeStatus(),
@@ -446,7 +447,7 @@ const UI_HTML = [
 'const w=s.whatsapp||{};const q=document.getElementById("qr");',
 'document.getElementById("wa").innerHTML="<b>Status:</b> "+esc(w.status||"unknown")+(w.linked_user?"<br><span class=ok>Connected as "+esc(w.linked_user)+"</span>":"")+(w.last_error?"<br><span class=bad>"+esc(w.last_error)+"</span>":"");',
 'if(w.qr_data_url){q.src=w.qr_data_url;q.style.display="block"}else{q.style.display="none"}',
-'const c=s.setup||{};let route=c.auto_route?"<br><b>Route:</b> "+esc(c.auto_route):"";let keys=c.ai_provider==="auto"?"<br><b>Ready:</b> Gemini "+(c.gemini_ready?"✓":"—")+" · Grok "+(c.grok_ready?"✓":"—")+" · OpenAI "+(c.openai_ready?"✓":"—"):"";document.getElementById("cfg").innerHTML="<b>AI mode:</b> "+esc(c.ai_provider||"")+(c.api_key_present?" <span class=ok>✓</span>":" <span class=warn>— API key not set</span>")+route+keys+"<br><b>Reasoning:</b> "+esc(c.reasoning_effort||"low")+"<br><b>Household numbers configured:</b> "+esc(String(c.configured_numbers||0))+"/2<br><b>Family group:</b> "+(c.family_group_paired?"<span class=ok>paired ✓</span>":"<span class=warn>not paired</span>");',
+'const c=s.setup||{};let route=c.auto_route?"<br><b>Route:</b> "+esc(c.auto_route):"";let keys=c.ai_provider==="auto"?"<br><b>Ready:</b> Gemini "+(c.gemini_ready?"✓":"—")+" · Grok "+(c.grok_ready?"✓":"—")+" · OpenAI "+(c.openai_ready?"✓":"—")+"<br><b>Auto Grok cap:</b> $"+esc(Number(c.auto_grok_fallback_budget_usd||0).toFixed(2))+"/month":"";document.getElementById("cfg").innerHTML="<b>AI mode:</b> "+esc(c.ai_provider||"")+(c.api_key_present?" <span class=ok>✓</span>":" <span class=warn>— API key not set</span>")+route+keys+"<br><b>Reasoning:</b> "+esc(c.reasoning_effort||"low")+"<br><b>Household numbers configured:</b> "+esc(String(c.configured_numbers||0))+"/2<br><b>Family group:</b> "+(c.family_group_paired?"<span class=ok>paired ✓</span>":"<span class=warn>not paired</span>");',
 'const rt=s.runtime||{};const p=rt.provider_probe||{};let ai="Not tested yet";if(p.status==="ok"){let role=p.route_role?" · "+esc(p.route_role):"";ai="<span class=ok>✓ "+esc(p.provider)+" / "+esc(p.model)+" responding</span>"+role+"<br><span class=muted>"+esc(String(p.latency_ms||0))+" ms</span>"}else if(p.status==="error"){ai="<span class=bad>✗ "+esc(p.category||"provider error")+"</span><br><span class=muted>"+esc(p.message||"")+"</span>"}document.getElementById("ai").innerHTML=ai;',
 'const d=s.selftest;if(d){document.getElementById("diag").innerHTML="<span class="+(d.failed===0?"ok":"bad")+">"+d.passed+" passed, "+d.failed+" failed</span>"}else{document.getElementById("diag").textContent="Not run yet"}',
 '}catch(e){document.getElementById("wa").textContent="Status unavailable: "+e}}',
