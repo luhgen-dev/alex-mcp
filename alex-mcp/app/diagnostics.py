@@ -31,7 +31,7 @@ def usage_summary(hours: int = 24) -> dict:
     conn = connect()
     try:
         row = conn.execute(
-            """SELECT COUNT(*) AS interactions,
+            """SELECT COUNT(DISTINCT COALESCE(source_message_id,usage_id)) AS interactions,
                       COALESCE(SUM(CASE WHEN source_message_id IS NULL THEN 1 ELSE 0 END),0) AS probes,
                       COALESCE(SUM(model_calls),0) AS model_calls,
                       COALESCE(SUM(input_tokens),0) AS input_tokens,
@@ -44,8 +44,30 @@ def usage_summary(hours: int = 24) -> dict:
                FROM ai_usage WHERE created_at_utc>=?""",
             (cutoff,),
         ).fetchone()
+        providers = conn.execute(
+            """SELECT provider,model,
+                      COALESCE(SUM(model_calls),0) AS model_calls,
+                      COALESCE(SUM(input_tokens),0) AS input_tokens,
+                      COALESCE(SUM(cached_input_tokens),0) AS cached_input_tokens,
+                      COALESCE(SUM(output_tokens),0) AS output_tokens,
+                      COALESCE(SUM(reasoning_tokens),0) AS reasoning_tokens,
+                      COALESCE(SUM(estimated_cost_usd),0) AS estimated_cost
+               FROM ai_usage WHERE created_at_utc>=?
+               GROUP BY provider,model
+               ORDER BY estimated_cost DESC,model_calls DESC""",
+            (cutoff,),
+        ).fetchall()
         total_in = int(row["input_tokens"] or 0)
         cached = min(total_in, int(row["cached_input_tokens"] or 0))
+        by_provider = [{
+            "provider": r["provider"], "model": r["model"],
+            "model_calls": int(r["model_calls"] or 0),
+            "input_tokens": int(r["input_tokens"] or 0),
+            "cached_input_tokens": int(r["cached_input_tokens"] or 0),
+            "output_tokens": int(r["output_tokens"] or 0),
+            "reasoning_tokens": int(r["reasoning_tokens"] or 0),
+            "cost_usd": round(float(r["estimated_cost"] or 0), 6),
+        } for r in providers]
         return {
             "window_hours": bounded,
             "interactions": int(row["interactions"] or 0),
@@ -60,7 +82,11 @@ def usage_summary(hours: int = 24) -> dict:
             "cache_ratio_pct": round((cached / total_in * 100.0) if total_in else 0.0, 1),
             "average_ai_latency_ms": round(float(row["avg_latency"] or 0), 1),
             "estimated_ai_cost_usd": round(float(row["estimated_cost"] or 0), 6),
-            "note": "Local telemetry from provider usage fields; no AI request was made to read this.",
+            "by_provider": by_provider,
+            "note": (
+                "Local telemetry only; reading this makes no AI request. "
+                "xAI rows use provider-reported billed cost when available; other rows use configured token rates."
+            ),
         }
     finally:
         conn.close()
@@ -88,7 +114,7 @@ def system_health(actor, hours: int = 24) -> dict:
             (cutoff,),
         ).fetchone()[0]
         usage = conn.execute(
-            """SELECT COUNT(*) AS interactions,
+            """SELECT COUNT(DISTINCT COALESCE(source_message_id,usage_id)) AS interactions,
                       COALESCE(SUM(model_calls),0) AS model_calls,
                       COALESCE(SUM(input_tokens),0) AS input_tokens,
                       COALESCE(SUM(cached_input_tokens),0) AS cached_input_tokens,
@@ -112,6 +138,13 @@ def system_health(actor, hours: int = 24) -> dict:
                 "name": settings.ai_provider,
                 "model": settings.model,
                 "api_key_present": bool(settings.api_key),
+                "gemini_ready": bool(settings.gemini_api_key),
+                "grok_ready": bool(settings.xai_api_key),
+                "openai_ready": bool(settings.openai_api_key),
+                "auto_primary": (
+                    settings.gemini_lite_model if settings.ai_provider == "auto"
+                    and settings.gemini_api_key else settings.model
+                ),
             },
             "observed": {
                 "failed_inbound": int(failed_inbound),
