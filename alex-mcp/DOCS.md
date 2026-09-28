@@ -6,8 +6,8 @@ Alex MCP is a separate Home Assistant app. It does not modify the existing `alex
 
 1. Install the app from the Alex MCP repository.
 2. Open **Configuration**.
-3. Choose the AI provider. The initial default is **Grok**.
-4. Enter the matching API key.
+3. Choose the AI mode. **Auto** is recommended: Gemini Flash-Lite handles routine turns, Gemini 3.8 Flash handles harder turns, and Grok/OpenAI are used only as configured fallbacks.
+4. Enter the API keys you want Alex to use. For Auto mode, a Gemini key is the preferred primary key; adding Grok provides a resilient fallback.
 5. Enter both authorised WhatsApp phone numbers in international format.
 6. Save and restart the app.
 7. Open **Web UI** and scan the WhatsApp QR from **WhatsApp → Linked devices → Link a device**.
@@ -29,9 +29,20 @@ No API key, phone number, provider or pairing credential is stored in source cod
 - WhatsApp session state
 - startup structural diagnostics
 
-The chosen AI is used for natural-language understanding, reasoning, tool selection and final wording. Normal household calls default to low reasoning, expose at most six relevant MCP tools and avoid replaying conversation history unless the new message is actually a follow-up.
+The AI layer is used only for natural-language understanding, reasoning, tool selection and final wording. Normal household calls default to low reasoning, expose at most six relevant MCP tools and avoid replaying conversation history unless the new message is actually a follow-up.
 
-The Web UI includes local 24-hour AI usage telemetry (input/cached/output/reasoning tokens, model calls, latency and estimated cost). Reading or refreshing this telemetry does not call the AI provider.
+### Auto Saver routing
+
+Auto mode is designed for the best household experience at the lowest practical API cost:
+
+- **Gemini 3.1 Flash-Lite** handles routine text/tool turns.
+- **Gemini 3.8 Flash** is selected up front for visual input, compound requests and genuinely analytical planning; it can also take over if a Lite turn becomes unusually multi-step.
+- **Grok 4.7** is a resilience fallback when configured, preserving existing xAI credit instead of spending it on every routine message.
+- **OpenAI** is an optional final fallback when its key is configured.
+- Simple greetings, thanks and Alex health checks are answered locally without any model call.
+- Whisper and OCR remain local-first; Auto mode does not start sending every voice note or receipt directly to a paid multimodal model.
+
+The Web UI includes local 24-hour AI usage telemetry (input/cached/output/reasoning tokens, model calls, latency and cost) with a per-provider/model breakdown. Reading or refreshing this telemetry does not call an AI provider. xAI rows use xAI's provider-reported billed cost when the API returns it; other providers use the configured public token rates for local estimates.
 
 Alex MCP also exposes a shared shopping list and a bounded Home Assistant tool surface. Home Assistant entity lookup/state reads are allowed; device writes are limited to explicitly requested low-risk actions on lights, switches, fans, climate and media players. Locks, alarm panels, covers, scripts, scenes, automations and other sensitive domains are rejected by the backend.
 
@@ -43,7 +54,7 @@ Swipe replies are bound locally to the exact Alex message in the same conversati
 
 ## Provider switching
 
-Changing Grok ↔ Gemini ↔ OpenAI is an app setting. The MCP tools and household database do not change.
+Changing Auto ↔ Grok ↔ Gemini ↔ OpenAI is an app setting. The MCP tools and household database do not change. Manual provider modes intentionally disable automatic cross-provider fallback so you can pin Alex to one provider when testing.
 
 ## Voice notes
 
