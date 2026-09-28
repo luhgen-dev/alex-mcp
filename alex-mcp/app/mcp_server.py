@@ -51,9 +51,11 @@ def confirm_expense(event_id: str, actor: Actor, approve: bool = True,
 def query_finances(actor: Actor, start_date: str | None = None, end_date: str | None = None,
                    category: str | None = None, search: str | None = None,
                    currency: str | None = None, limit: int = 20,
-                   scope: str | None = None) -> dict:
-    """Read true ledger totals and matching transactions. Use ISO dates YYYY-MM-DD. scope may be all, family, or private; honor explicit user scope."""
-    return services.query_finances(actor, start_date, end_date, category, search, currency, limit, scope)
+                   scope: str | None = None, source: str | None = None) -> dict:
+    """Read true ledger totals and matching transactions. Use ISO dates YYYY-MM-DD. scope may be all/family/private. source may be all/voice/receipt/text. For today/tomorrow/yesterday, resolve the runtime date and set both start_date and end_date."""
+    return services.query_finances(
+        actor, start_date, end_date, category, search, currency, limit, scope, source
+    )
 
 
 @mcp.tool()
