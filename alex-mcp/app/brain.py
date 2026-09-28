@@ -661,13 +661,15 @@ def _provider_routes(settings, *, user_text: str = "", tools: list[dict] | None 
                     "reasoning_effort": "low",
                     "role": "quality_fallback",
                 })
-    if settings.xai_api_key:
-        routes.append({
-            "provider": "grok",
-            "model": settings.grok_model,
-            "reasoning_effort": "low",
-            "role": "resilience_fallback",
-        })
+    if settings.xai_api_key and settings.auto_grok_fallback_budget_usd > 0:
+        grok_month = current_month_ai_cost("grok")
+        if grok_month < settings.auto_grok_fallback_budget_usd:
+            routes.append({
+                "provider": "grok",
+                "model": settings.grok_model,
+                "reasoning_effort": "low",
+                "role": "resilience_fallback",
+            })
     if settings.openai_api_key:
         routes.append({
             "provider": "openai",
