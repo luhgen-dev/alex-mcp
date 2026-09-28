@@ -215,11 +215,34 @@ def confirm_expense(actor: ActorContext, event_id: str, approve: bool = True,
 def query_finances(actor: ActorContext, start_date: str | None = None, end_date: str | None = None,
                    category: str | None = None, search: str | None = None,
                    currency: str | None = None, limit: int = 20,
-                   scope: str | None = None) -> dict:
+                   scope: str | None = None, source: str | None = None) -> dict:
     """Return exact aggregates over the full match set plus a bounded recent-record sample."""
     marks, spaces = _spaces_sql(actor, scope)
     where = f"status='ACTIVE' AND space_id IN ({marks})"
     params: list = spaces[:]
+    source_kind = str(source or "all").strip().casefold()
+    if source_kind in {"", "all", "any"}:
+        pass
+    elif source_kind in {"voice", "audio", "voice_note", "voice-note"}:
+        where += """ AND EXISTS (
+            SELECT 1 FROM media_objects srcm
+            WHERE srcm.source_message_id=financial_events.source_message_id
+              AND srcm.media_type='AUDIO'
+        )"""
+    elif source_kind in {"receipt", "document", "media"}:
+        where += """ AND EXISTS (
+            SELECT 1 FROM media_objects srcm
+            WHERE srcm.source_message_id=financial_events.source_message_id
+              AND srcm.media_type IN ('IMAGE','PDF')
+        )"""
+    elif source_kind in {"text", "typed"}:
+        where += """ AND NOT EXISTS (
+            SELECT 1 FROM media_objects srcm
+            WHERE srcm.source_message_id=financial_events.source_message_id
+              AND srcm.media_type IN ('AUDIO','IMAGE','PDF')
+        )"""
+    else:
+        raise ValueError("source must be all, voice, receipt, or text")
     if start_date:
         where += " AND event_date_utc>=?"
         params.append(_local_bound(start_date, actor.timezone, False))
