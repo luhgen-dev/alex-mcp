@@ -11,6 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import brain
 import db
 import media
+import diagnostics
 from config import DATA_DIR
 
 PORT = 5001
@@ -73,8 +74,14 @@ def process(payload: dict) -> dict:
             payload["message_id"],
             media_ids,
         )
+        quoted_context = db.resolve_quoted_context(
+            actor.conversation_id, payload.get("quoted_message_id")
+        )
         reply, attachments = asyncio.run(
-            brain.respond(actor, payload.get("text", "") or "", media_context, vision_parts)
+            brain.respond(
+                actor, payload.get("text", "") or "", media_context, vision_parts,
+                quoted_context=quoted_context,
+            )
         )
         db.queue_outbound(
             actor.conversation_id, "TEXT", text=reply,
@@ -125,6 +132,8 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {"status": "alive"})
         elif self.path == "/runtime-status":
             self._json(200, _read_runtime_status())
+        elif self.path == "/usage-summary":
+            self._json(200, diagnostics.usage_summary(24))
         else:
             self._json(404, {"error": "not found"})
 
