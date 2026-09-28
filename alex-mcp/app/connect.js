@@ -17,7 +17,9 @@ const AUTH_DIR = path.join(DATA_DIR, 'whatsapp_auth');
 const OPTIONS_FILE = path.join(DATA_DIR, 'options.json');
 const SELFTEST_FILE = path.join(DATA_DIR, 'selftest.json');
 const GROUP_FILE = path.join(DATA_DIR, 'family_group.json');
+const RUNTIME_STATUS_FILE = path.join(DATA_DIR, 'runtime_status.json');
 const INGRESS_URL = 'http://127.0.0.1:5001/ingress';
+const PROVIDER_PROBE_URL = 'http://127.0.0.1:5001/provider-probe';
 const EGRESS_PORT = 5002;
 const UI_PORT = 8099;
 const logger = pino({ level: process.env.ALEX_LOG_LEVEL || 'silent' });
@@ -353,6 +355,14 @@ function readSelftest() {
   }
 }
 
+function readRuntimeStatus() {
+  try {
+    return JSON.parse(fs.readFileSync(RUNTIME_STATUS_FILE, 'utf8'));
+  } catch (_err) {
+    return {};
+  }
+}
+
 function safeStatus() {
   const opts = readOptions();
   const provider = opts.ai_provider || 'grok';
@@ -375,6 +385,7 @@ function safeStatus() {
       family_group_paired: Boolean(getFamilyGroupJid()),
     },
     selftest: readSelftest(),
+    runtime: readRuntimeStatus(),
   };
 }
 
@@ -392,6 +403,7 @@ const UI_HTML = [
 '<h1>Alex MCP</h1><div class="muted">Setup and WhatsApp pairing</div>',
 '<div class="card"><h2>WhatsApp</h2><div id="wa">Checking…</div><img id="qr" style="display:none"><p class="muted">On your phone: WhatsApp → Linked devices → Link a device, then scan the QR.</p><button onclick="resetPairing()">Reset / pair again</button></div>',
 '<div class="card"><h2>Configuration</h2><div id="cfg">Checking…</div><p class="muted">API keys and phone numbers are entered in the Home Assistant Configuration tab. To bind the shared family group, send <code>alex set family group</code> once from that group. No source-code editing is required.</p></div>',
+'<div class="card"><h2>AI connection</h2><div id="ai">Not tested yet</div><p><button onclick="testAi()">Test AI now</button></p></div>',
 '<div class="card"><h2>Core diagnostics</h2><div id="diag">Checking…</div></div>',
 '<script>',
 'async function load(){try{const r=await fetch("./status");const s=await r.json();',
@@ -399,9 +411,11 @@ const UI_HTML = [
 'document.getElementById("wa").innerHTML="<b>Status:</b> "+esc(w.status||"unknown")+(w.linked_user?"<br><span class=ok>Connected as "+esc(w.linked_user)+"</span>":"")+(w.last_error?"<br><span class=bad>"+esc(w.last_error)+"</span>":"");',
 'if(w.qr_data_url){q.src=w.qr_data_url;q.style.display="block"}else{q.style.display="none"}',
 'const c=s.setup||{};document.getElementById("cfg").innerHTML="<b>AI:</b> "+esc(c.ai_provider||"")+(c.api_key_present?" <span class=ok>✓ key present</span>":" <span class=warn>— API key not set</span>")+"<br><b>Household numbers configured:</b> "+esc(String(c.configured_numbers||0))+"/2<br><b>Family group:</b> "+(c.family_group_paired?"<span class=ok>paired ✓</span>":"<span class=warn>not paired</span>");',
+'const rt=s.runtime||{};const p=rt.provider_probe||{};let ai="Not tested yet";if(p.status==="ok"){ai="<span class=ok>✓ "+esc(p.provider)+" / "+esc(p.model)+" responding</span><br><span class=muted>"+esc(String(p.latency_ms||0))+" ms</span>"}else if(p.status==="error"){ai="<span class=bad>✗ "+esc(p.category||"provider error")+"</span><br><span class=muted>"+esc(p.message||"")+"</span>"}document.getElementById("ai").innerHTML=ai;',
 'const d=s.selftest;if(d){document.getElementById("diag").innerHTML="<span class="+(d.failed===0?"ok":"bad")+">"+d.passed+" passed, "+d.failed+" failed</span>"}else{document.getElementById("diag").textContent="Not run yet"}',
 '}catch(e){document.getElementById("wa").textContent="Status unavailable: "+e}}',
 'function esc(x){const e=document.createElement("div");e.textContent=String(x);return e.innerHTML}',
+'async function testAi(){const el=document.getElementById("ai");el.textContent="Testing…";try{await fetch("./test-ai",{method:"POST"});}catch(e){}setTimeout(load,500)}',
 'async function resetPairing(){if(!confirm("Reset WhatsApp pairing and generate a new QR?"))return;await fetch("./reset",{method:"POST"});setTimeout(load,800)}',
 'load();setInterval(load,2000);',
 '</script></main></body></html>'
@@ -428,6 +442,18 @@ function startPairingUi() {
     if (req.method === 'GET' && url.endsWith('/status')) {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(safeStatus()));
+      return;
+    }
+    if (req.method === 'POST' && url.endsWith('/test-ai')) {
+      try {
+        const probe = await fetch(PROVIDER_PROBE_URL, { method: 'POST' });
+        const body = await probe.text();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(body);
+      } catch (err) {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 'error', category: 'local_probe_unavailable', message: err.message }));
+      }
       return;
     }
     if (req.method === 'POST' && url.endsWith('/reset')) {
