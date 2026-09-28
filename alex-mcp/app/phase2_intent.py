@@ -182,6 +182,22 @@ def classify_write_intent(text, *, has_media=False):
             r"holiday|vacation|trip)\b", low)
     )
 
+    correction_natural = bool(
+        has_money
+        and re.search(r"\b(?:correct|correction|change|fix|amend|update|wrong|actually)\b", low)
+        and re.search(
+            r"\b(?:expense|transaction|payment|purchase|spent|paid|amount|parking|toll|receipt)\b",
+            low,
+        )
+    )
+
+    if correction_natural:
+        return {
+            "status": "resolved", "intent": "EXPENSE",
+            "intents": ["EXPENSE"], "basis": "FINANCIAL_CORRECTION",
+            "requires_clarification": False,
+        }
+
     if expense_natural and not diary_natural:
         return {
             "status": "resolved", "intent": "EXPENSE",
