@@ -115,10 +115,10 @@ def _parse_event_time(value: str | None, tz_name: str) -> str:
 
 _EXACT_TIME_STATED_RE = re.compile(
     r"(?i)(?:"
-    r"\\b\\d{1,2}(?::\\d{2})?\\s*(?:am|pm|a\\.m\\.|p\\.m\\.)\\b|"
-    r"\\b(?:[01]?\\d|2[0-3]):[0-5]\\d\\b|"
-    r"\\b\\d{1,2}\\.[0-5]\\d\\s*(?:am|pm)\\b|"
-    r"\\b(?:noon|midnight)\\b"
+    r"\b\d{1,2}(?::\d{2})?\s*(?:am|pm|a\.m\.|p\.m\.)\b|"
+    r"\b(?:[01]?\d|2[0-3]):[0-5]\d\b|"
+    r"\b\d{1,2}\.[0-5]\d\s*(?:am|pm)\b|"
+    r"\b(?:noon|midnight)\b"
     r")"
 )
 
@@ -173,9 +173,9 @@ def _resolve_new_event_time(actor: ActorContext, event_date_local: str | None) -
 
 _TEMPORAL_CORRECTION_RE = re.compile(
     r"(?i)(?:"
-    r"\\b(?:change|correct|fix|update|move|set)\\b.{0,30}\\b(?:date|time|when)\\b|"
-    r"\\b(?:actually|it\\s+was|was|not)\\s+(?:today|yesterday|tomorrow)\\b|"
-    r"\\b(?:on|at)\\s+\\d{4}-\\d{2}-\\d{2}\\b"
+    r"\b(?:change|correct|fix|update|move|set)\b.{0,30}\b(?:date|time|when)\b|"
+    r"\b(?:actually|it\s+was|was|not)\s+(?:today|yesterday|tomorrow)\b|"
+    r"\b(?:on|at)\s+\d{4}-\d{2}-\d{2}\b"
     r")"
 )
 
