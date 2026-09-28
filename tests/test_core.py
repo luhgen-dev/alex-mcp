@@ -1404,6 +1404,7 @@ class AlexCoreTests(unittest.TestCase):
         self.assertIsNone(brain._provider_reported_cost_usd("gemini", Usage()))
 
     def test_hybrid_usage_rows_count_one_source_message_as_one_interaction(self):
+        self.claim("hybrid-one", "+60111111111", "hybrid")
         db.record_usage(
             "hybrid-one", "gemini", "gemini-3.1-flash-lite",
             100, 10, 1, 100, 0.0001, model_calls=1,
