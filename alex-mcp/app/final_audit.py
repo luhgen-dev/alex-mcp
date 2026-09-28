@@ -128,7 +128,7 @@ def main() -> dict:
         "income_profiles", "roster_profiles", "overtime_profiles",
         "leave_balances", "recurring_payments", "account_aliases",
         "reminder_preferences", "presence_mappings",
-        "monthly_ai_budget_usd", "budget_safety_multiplier",
+        "monthly_ai_budget_usd", "auto_grok_fallback_budget_usd", "budget_safety_multiplier",
     ):
         require(re.search(rf"^\s*{re.escape(key)}:", config_text, re.M) is not None,
                 f"HA configuration exposes {key}")
@@ -143,6 +143,8 @@ def main() -> dict:
     require('ai_provider: "auto"' in config_text
             and 'list(auto|grok|gemini|openai)' in config_text,
             "Auto Saver is the shipped provider-neutral default")
+    require('auto_grok_fallback_budget_usd: 0.5' in config_text,
+            "automatic Grok fallback has a conservative monthly spend cap")
 
     # 5. Provider-neutral defaults and no Needle dependency.
     config_py = (APP / "config.py").read_text(encoding="utf-8")
