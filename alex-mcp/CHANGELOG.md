@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.3
+- Added **Auto Saver** as the recommended AI mode.
+- Routine turns use Gemini 3.1 Flash-Lite first; harder visual/compound/planning turns start on Gemini 3.8 Flash.
+- Grok 4.7 is retained as a resilience fallback, so existing xAI credit is used only when Gemini cannot complete the request.
+- OpenAI remains an optional last fallback when configured.
+- Provider fallback happens inside the same bounded MCP turn and preserves deterministic/idempotent tool protections.
+- Tiny greetings, acknowledgements and Alex health checks now reply locally with zero model tokens and near-zero latency.
+- Added per-provider/model usage breakdown to the Web UI so Gemini and Grok spend can be audited separately.
+- xAI telemetry now uses the provider-reported exact billed request cost when available instead of estimating it from tokens.
+- Added current Gemini 3.1 Flash-Lite and 3.8 Flash pricing for local budget telemetry.
+- Kept local Whisper-first voice transcription and local OCR to avoid unnecessary multimodal API spend.
+- Manual Grok/Gemini/OpenAI modes remain available and unchanged for explicit provider pinning.
+
+
 ## 0.4.2
 - Reduced normal Grok reasoning from medium to low and capped provider orchestration at four model calls.
 - Stopped replaying eight conversation turns into every self-contained request; history is now loaded only for genuine conversational continuation.
