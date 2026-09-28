@@ -30,6 +30,15 @@ def _send(payload: dict) -> tuple[bool, str]:
         return False, str(exc)
 
 
+def _provider_message_id(detail: str) -> str | None:
+    try:
+        payload = json.loads(detail or "{}")
+    except Exception:
+        return None
+    value = payload.get("message_id") if isinstance(payload, dict) else None
+    return str(value)[:200] if value else None
+
+
 def _payload(row) -> dict:
     kind = row["kind"]
     if kind == "TEXT":
@@ -89,8 +98,9 @@ def sweep():
                 delivered = _now()
                 conn.execute(
                     """UPDATE outbound_messages SET delivery_status='SENT',attempt_count=?,
-                       delivered_at_utc=?,last_error=NULL,next_attempt_at_utc=NULL WHERE outbound_id=?""",
-                    (attempts, delivered, row["outbound_id"]),
+                       delivered_at_utc=?,last_error=NULL,next_attempt_at_utc=NULL,
+                       provider_message_id=? WHERE outbound_id=?""",
+                    (attempts, delivered, _provider_message_id(detail), row["outbound_id"]),
                 )
                 if row["context_kind"] in ("REMINDER_INITIAL", "REMINDER_FOLLOWUP") and row["context_id"]:
                     if row["context_kind"] == "REMINDER_INITIAL":
