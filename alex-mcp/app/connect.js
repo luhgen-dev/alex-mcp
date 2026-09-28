@@ -20,6 +20,7 @@ const GROUP_FILE = path.join(DATA_DIR, 'family_group.json');
 const RUNTIME_STATUS_FILE = path.join(DATA_DIR, 'runtime_status.json');
 const INGRESS_URL = 'http://127.0.0.1:5001/ingress';
 const PROVIDER_PROBE_URL = 'http://127.0.0.1:5001/provider-probe';
+const USAGE_URL = 'http://127.0.0.1:5001/usage-summary';
 const EGRESS_PORT = 5002;
 const UI_PORT = 8099;
 const logger = pino({ level: process.env.ALEX_LOG_LEVEL || 'silent' });
@@ -99,16 +100,39 @@ function extractText(message) {
   );
 }
 
-function extractQuotedId(message) {
+function extractContextInfo(message) {
   const m = unwrapMessage(message);
   if (!m) return null;
-  const ctx =
+  return (
     (m.extendedTextMessage && m.extendedTextMessage.contextInfo) ||
     (m.imageMessage && m.imageMessage.contextInfo) ||
     (m.audioMessage && m.audioMessage.contextInfo) ||
     (m.documentMessage && m.documentMessage.contextInfo) ||
-    null;
+    null
+  );
+}
+
+function extractQuotedId(message) {
+  const ctx = extractContextInfo(message);
   return ctx && ctx.stanzaId ? ctx.stanzaId : null;
+}
+
+function jidUser(value) {
+  return cleanNumber(String(value || '').split('@')[0].split(':')[0]);
+}
+
+function isAlexMentioned(message) {
+  const ctx = extractContextInfo(message);
+  const self = jidUser(currentSock && currentSock.user ? currentSock.user.id : '');
+  if (!ctx || !self || !Array.isArray(ctx.mentionedJid)) return false;
+  return ctx.mentionedJid.some(jid => jidUser(jid) === self);
+}
+
+function isReplyToAlex(message) {
+  const ctx = extractContextInfo(message);
+  const self = jidUser(currentSock && currentSock.user ? currentSock.user.id : '');
+  if (!ctx || !self || !ctx.stanzaId || !ctx.quotedMessage) return false;
+  return jidUser(ctx.participant || ctx.remoteJid || '') === self;
 }
 
 function detectMedia(message) {
@@ -200,6 +224,9 @@ async function handleIncoming(message) {
   if (isGroup) {
     const familyGroup = getFamilyGroupJid();
     if (!familyGroup || familyGroup !== remoteJid) return;
+    // Family Shared is intentionally opt-in per message: Alex responds only
+    // when explicitly @mentioned or when someone swipe-replies to Alex.
+    if (!isAlexMentioned(message) && !isReplyToAlex(message)) return;
   }
 
   const media = detectMedia(message);
@@ -383,6 +410,7 @@ function safeStatus() {
       ai_provider: provider,
       api_key_present: keyPresent,
       family_group_paired: Boolean(getFamilyGroupJid()),
+      reasoning_effort: opts.reasoning_effort || 'low',
     },
     selftest: readSelftest(),
     runtime: readRuntimeStatus(),
@@ -404,20 +432,22 @@ const UI_HTML = [
 '<div class="card"><h2>WhatsApp</h2><div id="wa">Checking…</div><img id="qr" style="display:none"><p class="muted">On your phone: WhatsApp → Linked devices → Link a device, then scan the QR.</p><button onclick="resetPairing()">Reset / pair again</button></div>',
 '<div class="card"><h2>Configuration</h2><div id="cfg">Checking…</div><p class="muted">API keys and phone numbers are entered in the Home Assistant Configuration tab. To bind the shared family group, send <code>alex set family group</code> once from that group. No source-code editing is required.</p></div>',
 '<div class="card"><h2>AI connection</h2><div id="ai">Not tested yet</div><p><button onclick="testAi()">Test AI now</button></p></div>',
+'<div class="card"><h2>AI usage — last 24h</h2><div id="usage">Checking…</div><p class="muted">Local telemetry only. Refreshing this card does not call the AI provider.</p></div>',
 '<div class="card"><h2>Core diagnostics</h2><div id="diag">Checking…</div></div>',
 '<script>',
 'async function load(){try{const r=await fetch("./status");const s=await r.json();',
 'const w=s.whatsapp||{};const q=document.getElementById("qr");',
 'document.getElementById("wa").innerHTML="<b>Status:</b> "+esc(w.status||"unknown")+(w.linked_user?"<br><span class=ok>Connected as "+esc(w.linked_user)+"</span>":"")+(w.last_error?"<br><span class=bad>"+esc(w.last_error)+"</span>":"");',
 'if(w.qr_data_url){q.src=w.qr_data_url;q.style.display="block"}else{q.style.display="none"}',
-'const c=s.setup||{};document.getElementById("cfg").innerHTML="<b>AI:</b> "+esc(c.ai_provider||"")+(c.api_key_present?" <span class=ok>✓ key present</span>":" <span class=warn>— API key not set</span>")+"<br><b>Household numbers configured:</b> "+esc(String(c.configured_numbers||0))+"/2<br><b>Family group:</b> "+(c.family_group_paired?"<span class=ok>paired ✓</span>":"<span class=warn>not paired</span>");',
+'const c=s.setup||{};document.getElementById("cfg").innerHTML="<b>AI:</b> "+esc(c.ai_provider||"")+(c.api_key_present?" <span class=ok>✓ key present</span>":" <span class=warn>— API key not set</span>")+"<br><b>Reasoning:</b> "+esc(c.reasoning_effort||"low")+"<br><b>Household numbers configured:</b> "+esc(String(c.configured_numbers||0))+"/2<br><b>Family group:</b> "+(c.family_group_paired?"<span class=ok>paired ✓</span>":"<span class=warn>not paired</span>");',
 'const rt=s.runtime||{};const p=rt.provider_probe||{};let ai="Not tested yet";if(p.status==="ok"){ai="<span class=ok>✓ "+esc(p.provider)+" / "+esc(p.model)+" responding</span><br><span class=muted>"+esc(String(p.latency_ms||0))+" ms</span>"}else if(p.status==="error"){ai="<span class=bad>✗ "+esc(p.category||"provider error")+"</span><br><span class=muted>"+esc(p.message||"")+"</span>"}document.getElementById("ai").innerHTML=ai;',
 'const d=s.selftest;if(d){document.getElementById("diag").innerHTML="<span class="+(d.failed===0?"ok":"bad")+">"+d.passed+" passed, "+d.failed+" failed</span>"}else{document.getElementById("diag").textContent="Not run yet"}',
 '}catch(e){document.getElementById("wa").textContent="Status unavailable: "+e}}',
+'async function loadUsage(){try{const r=await fetch("./usage");const u=await r.json();const cost=Number(u.estimated_ai_cost_usd||0).toFixed(6);document.getElementById("usage").innerHTML="<b>Interactions:</b> "+esc(u.interactions||0)+" &nbsp; <b>Model calls:</b> "+esc(u.model_calls||0)+"<br><b>Input:</b> "+esc(u.input_tokens||0)+" &nbsp; <b>Cached:</b> "+esc(u.cached_input_tokens||0)+" ("+esc(u.cache_ratio_pct||0)+"%)<br><b>Output:</b> "+esc(u.output_tokens||0)+" &nbsp; <b>Reasoning:</b> "+esc(u.reasoning_tokens||0)+"<br><b>Average latency:</b> "+esc(u.average_ai_latency_ms||0)+" ms<br><b>Estimated API cost:</b> $"+esc(cost)}catch(e){document.getElementById("usage").textContent="Usage unavailable: "+e}}',
 'function esc(x){const e=document.createElement("div");e.textContent=String(x);return e.innerHTML}',
 'async function testAi(){const el=document.getElementById("ai");el.textContent="Testing…";try{await fetch("./test-ai",{method:"POST"});}catch(e){}setTimeout(load,500)}',
 'async function resetPairing(){if(!confirm("Reset WhatsApp pairing and generate a new QR?"))return;await fetch("./reset",{method:"POST"});setTimeout(load,800)}',
-'load();setInterval(load,2000);',
+'load();loadUsage();setInterval(load,2000);setInterval(loadUsage,10000);',
 '</script></main></body></html>'
 ].join('');
 
@@ -442,6 +472,18 @@ function startPairingUi() {
     if (req.method === 'GET' && url.endsWith('/status')) {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(safeStatus()));
+      return;
+    }
+    if (req.method === 'GET' && url.endsWith('/usage')) {
+      try {
+        const usage = await fetch(USAGE_URL);
+        const body = await usage.text();
+        res.writeHead(usage.ok ? 200 : 503, { 'Content-Type': 'application/json' });
+        res.end(body);
+      } catch (err) {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'local_usage_unavailable' }));
+      }
       return;
     }
     if (req.method === 'POST' && url.endsWith('/test-ai')) {
