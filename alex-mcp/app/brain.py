@@ -399,15 +399,25 @@ def _pure_chat(user_text: str, media_context: list[str] | None = None) -> bool:
     normalized = " ".join(normalized.split())
     if not normalized:
         return True
-    return bool(re.fullmatch(
-        r"(?:hi|hello|hey|hi alex|hello alex|hey alex|thanks|thank you|"
-        r"good morning|good afternoon|good evening|good night|how are you|how r u|"
-        r"are you working|are u working|alex are you working|alex are u working|"
-        r"are you there|are u there|alex are you there|alex are u there|"
-        r"you working|u working|you there|u there|"
-        r"ok|okay|nice|great|cool|got it|alright|bye)",
-        normalized,
-    ))
+
+    simple = {
+        "hi", "hello", "hey", "hi alex", "hello alex", "hey alex",
+        "thanks", "thank you", "good morning", "good afternoon",
+        "good evening", "good night", "how are you", "how r u",
+        "ok", "okay", "nice", "great", "cool", "got it", "alright", "bye",
+    }
+    if normalized in simple:
+        return True
+
+    # Strip an optional greeting and/or Alex's name before evaluating harmless
+    # conversational health-check phrasing. This prevents "Hi Alex, are you
+    # working?" from being mistaken for a work-roster query.
+    probe = re.sub(r"^(?:hi|hello|hey)\s+", "", normalized)
+    probe = re.sub(r"^alex\s+", "", probe)
+    return probe in {
+        "are you working", "are u working", "you working", "u working",
+        "are you there", "are u there", "you there", "u there",
+    }
 
 
 async def _tool_specs(user_text: str, media_context: list[str] | None = None) -> list[dict]:
