@@ -10,9 +10,10 @@ DATA_DIR = os.environ.get("ALEX_DATA_DIR", "/data")
 
 @dataclass(frozen=True)
 class Settings:
-    ai_provider: str = "grok"
+    ai_provider: str = "auto"
     grok_model: str = "grok-4.7"
     gemini_model: str = "gemini-3.8-flash"
+    gemini_lite_model: str = "gemini-3.1-flash-lite"
     openai_model: str = "gpt-5.6-luna"
     xai_api_key: str = ""
     gemini_api_key: str = ""
@@ -29,28 +30,51 @@ class Settings:
     budget_safety_multiplier: float = 2.0
 
     @property
-    def model(self) -> str:
+    def model_for(self, provider: str, *, lite: bool = False) -> str:
+        if provider == "gemini" and lite:
+            return self.gemini_lite_model
         return {
             "grok": self.grok_model,
             "gemini": self.gemini_model,
             "openai": self.openai_model,
-        }.get(self.ai_provider, self.grok_model)
+        }.get(provider, self.grok_model)
 
-    @property
-    def api_key(self) -> str:
+    def api_key_for(self, provider: str) -> str:
         return {
             "grok": self.xai_api_key,
             "gemini": self.gemini_api_key,
             "openai": self.openai_api_key,
-        }.get(self.ai_provider, "")
+        }.get(provider, "")
 
-    @property
-    def base_url(self) -> str:
+    def base_url_for(self, provider: str) -> str:
         return {
             "grok": "https://api.x.ai/v1",
             "gemini": "https://generativelanguage.googleapis.com/v1beta/openai/",
             "openai": "https://api.openai.com/v1",
-        }.get(self.ai_provider, "https://api.x.ai/v1")
+        }.get(provider, "https://api.x.ai/v1")
+
+    @property
+    def model(self) -> str:
+        if self.ai_provider == "auto":
+            return self.gemini_lite_model if self.gemini_api_key else (
+                self.grok_model if self.xai_api_key else self.openai_model
+            )
+        return self.model_for(self.ai_provider)
+
+    @property
+    def api_key(self) -> str:
+        if self.ai_provider == "auto":
+            return self.gemini_api_key or self.xai_api_key or self.openai_api_key
+        return self.api_key_for(self.ai_provider)
+
+    @property
+    def base_url(self) -> str:
+        if self.ai_provider == "auto":
+            provider = "gemini" if self.gemini_api_key else (
+                "grok" if self.xai_api_key else "openai"
+            )
+            return self.base_url_for(provider)
+        return self.base_url_for(self.ai_provider)
 
 
 def _read_options() -> dict:
