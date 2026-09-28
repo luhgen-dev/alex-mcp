@@ -1245,11 +1245,11 @@ _ATTACHMENT_RETRIEVAL_TOOLS = {
 def _looks_compound_request(user_text: str) -> bool:
     """Conservative signal used only to avoid claiming a partial turn fully succeeded."""
     text = (user_text or "").casefold()
-    if not re.search(r"\\b(?:and|also|then)\\b", text):
+    if not re.search(r"\b(?:and|also|then)\b", text):
         return False
     signals = re.findall(
-        r"\\b(?:send|show|open|get|find|tell|check|list|calculate|"
-        r"how\\s+much|what|when|where|why|turn|add|remove|change|remind)\\b",
+        r"\b(?:send|show|open|get|find|tell|check|list|calculate|"
+        r"how\s+much|what|when|where|why|turn|add|remove|change|remind)\b",
         text,
     )
     return len(signals) >= 2
