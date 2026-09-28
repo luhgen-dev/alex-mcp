@@ -1242,8 +1242,23 @@ _ATTACHMENT_RETRIEVAL_TOOLS = {
 }
 
 
+def _looks_compound_request(user_text: str) -> bool:
+    """Conservative signal used only to avoid claiming a partial turn fully succeeded."""
+    text = (user_text or "").casefold()
+    if not re.search(r"\\b(?:and|also|then)\\b", text):
+        return False
+    signals = re.findall(
+        r"\\b(?:send|show|open|get|find|tell|check|list|calculate|"
+        r"how\\s+much|what|when|where|why|turn|add|remove|change|remind)\\b",
+        text,
+    )
+    return len(signals) >= 2
+
+
 def _attachment_request_finished(trace: dict) -> bool:
     """True only when queued files are the complete result, not one part of a compound turn."""
+    if trace.get("compound"):
+        return False
     called = [str(x) for x in (trace.get("tools_called") or [])]
     if any(x.endswith(":error") for x in called):
         return False
@@ -1266,6 +1281,9 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
     # are genuinely ambiguous across household domains.
     preflight = phase2_intent.classify_write_intent(
         user_text or "", has_media=bool(media_context or vision_parts)
+    )
+    trace["compound"] = (
+        preflight.get("status") == "compound" or _looks_compound_request(user_text)
     )
     if preflight.get("requires_clarification"):
         question = str(preflight.get("question") or "What would you like me to do with that?")
