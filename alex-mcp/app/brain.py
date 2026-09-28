@@ -1236,9 +1236,32 @@ def _trace_turn(actor: ActorContext, trace: dict) -> None:
         pass
 
 
+_ATTACHMENT_RETRIEVAL_TOOLS = {
+    "find_receipts", "get_receipt", "search_saved_items",
+    "get_saved_item", "resolve_numbered_choice",
+}
+
+
+def _attachment_request_finished(trace: dict) -> bool:
+    """True only when queued files are the complete result, not one part of a compound turn."""
+    called = [str(x) for x in (trace.get("tools_called") or [])]
+    if any(x.endswith(":error") for x in called):
+        return False
+    meaningful = [x for x in called if x != DISCOVERY_TOOL_NAME]
+    return bool(meaningful) and all(x in _ATTACHMENT_RETRIEVAL_TOOLS for x in meaningful)
+
+
 async def respond(actor: ActorContext, user_text: str, media_context: list[str] | None = None,
                   vision_parts: list[dict] | None = None,
                   quoted_context: dict | None = None) -> tuple[str, list[dict]]:
+    history_user = _history_user_text(actor, user_text, media_context, vision_parts)
+    trace = {
+        "exposed_tools": [],
+        "history_turns": 0,
+        "quoted_context": quoted_context,
+        "routes": [], "tools_called": [], "attachments_queued": 0,
+    }
+
     # A deterministic no-write gate handles the small class of phrases that
     # are genuinely ambiguous across household domains.
     preflight = phase2_intent.classify_write_intent(
@@ -1246,20 +1269,25 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
     )
     if preflight.get("requires_clarification"):
         question = str(preflight.get("question") or "What would you like me to do with that?")
-        add_turn(actor.user_id, actor.conversation_id, "user", (user_text or "").strip())
+        add_turn(actor.user_id, actor.conversation_id, "user", history_user)
         add_turn(actor.user_id, actor.conversation_id, "assistant", question)
+        trace["outcome"] = "clarification"
+        _trace_turn(actor, trace)
         return question, []
 
     # Tiny social/health-check messages do not need any paid model at all.
     if not media_context and not vision_parts and not quoted_context:
         local_reply = _local_chat_reply(user_text)
         if local_reply is not None:
-            add_turn(actor.user_id, actor.conversation_id, "user", (user_text or "").strip())
+            add_turn(actor.user_id, actor.conversation_id, "user", history_user)
             add_turn(actor.user_id, actor.conversation_id, "assistant", local_reply)
+            trace["outcome"] = "local_reply"
+            _trace_turn(actor, trace)
             return local_reply, []
 
     settings = get_settings()
     tools = await _tool_specs(user_text, media_context, quoted_context)
+    trace["exposed_tools"] = [x["function"]["name"] for x in tools] if tools else []
     routes = _provider_routes(
         settings, user_text=user_text, tools=tools,
         vision_parts=vision_parts, preflight=preflight,
@@ -1269,8 +1297,10 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
             "Alex has no usable AI provider configured. Add a Gemini, Grok, or OpenAI "
             "API key in Alex MCP → Configuration."
         )
-        add_turn(actor.user_id, actor.conversation_id, "user", (user_text or "").strip())
+        add_turn(actor.user_id, actor.conversation_id, "user", history_user)
         add_turn(actor.user_id, actor.conversation_id, "assistant", final)
+        trace["outcome"] = "no_provider"
+        _trace_turn(actor, trace)
         return final, []
 
     messages: list[dict] = [
@@ -1278,6 +1308,7 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
         {"role": "system", "content": _runtime_context(actor, user_text)},
     ]
     history_limit = _history_turn_limit(user_text, settings.context_turns, quoted_context)
+    trace["history_turns"] = history_limit
     if history_limit:
         for turn in recent_turns(actor.conversation_id, history_limit):
             messages.append({"role": turn["role"], "content": turn["content"]})
@@ -1289,14 +1320,6 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
     trusted_quote = _quoted_context_message(quoted_context)
     if trusted_quote:
         messages.append({"role": "system", "content": trusted_quote})
-
-    history_user = _history_user_text(actor, user_text, media_context, vision_parts)
-    trace = {
-        "exposed_tools": [x["function"]["name"] for x in tools] if tools else [],
-        "history_turns": history_limit,
-        "quoted_context": quoted_context,
-        "routes": [], "tools_called": [], "attachments_queued": 0,
-    }
 
     current = (user_text or "").strip()
     if media_context:
@@ -1321,6 +1344,8 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
             )
             add_turn(actor.user_id, actor.conversation_id, "user", history_user)
             add_turn(actor.user_id, actor.conversation_id, "assistant", final)
+            trace["outcome"] = "budget_guard"
+            _trace_turn(actor, trace)
             return final, []
 
     attachments: list[dict] = []
@@ -1374,8 +1399,10 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
 
         if response is None or active_route is None:
             _record_usage_buckets(actor.source_message_id, usage_by_route)
-            if attachments:
+            if attachments and _attachment_request_finished(trace):
                 final = "Here it is."
+            elif attachments:
+                final = "I sent the file, but I couldn't finish the rest of that request."
             else:
                 final = (
                     "I couldn't finish that because the configured AI providers are temporarily "
@@ -1418,10 +1445,14 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                 args = {}
 
             if name == DISCOVERY_TOOL_NAME:
+                trace["tools_called"].append(name)
                 normalized = str(args.get("intent") or "").strip()
                 discovered = _select_tool_names(normalized, media_context)
                 discovered_specs = await _tool_specs_for_names(discovered)
                 tools = discovered_specs[:TOOL_EXPOSURE_MAX - 1] + [DISCOVERY_TOOL]
+                trace["exposed_tools"] = sorted(set(trace["exposed_tools"]) | {
+                    x["function"]["name"] for x in tools
+                })
                 messages.append({
                     "role": "tool",
                     "tool_call_id": call.id,
@@ -1471,9 +1502,11 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
             })
 
     _record_usage_buckets(actor.source_message_id, usage_by_route)
-    if attachments:
-        # The requested file was found and is being sent; do not contradict it.
+    if attachments and _attachment_request_finished(trace):
+        # A retrieval-only turn found the requested original; delivery is the complete result.
         final = "Here it is."
+    elif attachments:
+        final = "I sent the file, but I couldn't finish the rest of that request."
     else:
         final = "I couldn't complete that safely after several tool steps. Nothing else was changed."
     add_turn(actor.user_id, actor.conversation_id, "user", history_user)
