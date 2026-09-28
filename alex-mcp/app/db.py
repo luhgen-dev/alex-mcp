@@ -360,8 +360,9 @@ def record_usage(source_message_id: str, provider: str, model: str,
         conn.close()
 
 
-def resolve_quoted_context(conversation_id: str, quoted_message_id: str | None) -> dict | None:
-    """Resolve a WhatsApp reply only against an Alex outbound in the same conversation."""
+def resolve_quoted_context(conversation_id: str, quoted_message_id: str | None,
+                           sender_phone: str | None = None) -> dict | None:
+    """Resolve a WhatsApp reply inside the same conversation without model guessing."""
     if not quoted_message_id:
         return None
     conn = connect()
@@ -374,35 +375,79 @@ def resolve_quoted_context(conversation_id: str, quoted_message_id: str | None) 
                ORDER BY delivered_at_utc DESC,created_at_utc DESC LIMIT 1""",
             (conversation_id, quoted_message_id),
         ).fetchone()
+        if row:
+            result = {
+                "quoted_alex_text": row["text_body"] or "",
+                "source_message_id": row["source_message_id"],
+                "context_kind": row["context_kind"],
+                "context_id": row["context_id"],
+            }
+            if row["source_message_id"]:
+                events = conn.execute(
+                    """SELECT event_id,status,event_type,amount_minor,currency,description,category
+                       FROM financial_events
+                       WHERE source_message_id=?
+                         AND status IN ('ACTIVE','PENDING_HUMAN_REVIEW')
+                       ORDER BY created_at_utc DESC""",
+                    (row["source_message_id"],),
+                ).fetchall()
+                if len(events) == 1:
+                    event = events[0]
+                    result["financial_event"] = {
+                        "event_id": event["event_id"],
+                        "status": event["status"],
+                        "type": event["event_type"],
+                        "amount": event["amount_minor"] / 100 if event["amount_minor"] is not None else None,
+                        "currency": event["currency"],
+                        "description": event["description"],
+                        "category": event["category"],
+                    }
+            return result
+
+        # A user may reply to their own earlier instruction while attaching a
+        # file. Bind only the same authenticated sender in the same conversation.
+        if sender_phone:
+            user_row = conn.execute(
+                """SELECT message_id,raw_text FROM inbound_messages
+                   WHERE message_id=? AND conversation_id=? AND sender_phone=? LIMIT 1""",
+                (quoted_message_id, conversation_id, normalize_phone(sender_phone)),
+            ).fetchone()
+            if user_row and str(user_row["raw_text"] or "").strip():
+                return {
+                    "quoted_user_text": str(user_row["raw_text"]).strip()[:2000],
+                    "source_message_id": user_row["message_id"],
+                }
+        return None
+    finally:
+        conn.close()
+
+
+def resolve_recent_instruction_context(conversation_id: str, sender_phone: str,
+                                       current_message_id: str,
+                                       max_age_seconds: int = 120) -> dict | None:
+    """Short same-sender pairing for a captionless attachment after an instruction."""
+    bounded = max(15, min(300, int(max_age_seconds)))
+    conn = connect()
+    try:
+        row = conn.execute(
+            """SELECT message_id,raw_text FROM inbound_messages
+               WHERE conversation_id=? AND sender_phone=? AND message_id<>?
+                 AND processing_state='COMPLETED'
+                 AND TRIM(raw_text)<>''
+                 AND datetime(received_at_utc)>=datetime('now', ?)
+               ORDER BY received_at_utc DESC,rowid DESC LIMIT 1""",
+            (
+                conversation_id, normalize_phone(sender_phone), current_message_id,
+                f"-{bounded} seconds",
+            ),
+        ).fetchone()
         if not row:
             return None
-        result = {
-            "quoted_alex_text": row["text_body"] or "",
-            "source_message_id": row["source_message_id"],
-            "context_kind": row["context_kind"],
-            "context_id": row["context_id"],
+        return {
+            "recent_user_instruction": str(row["raw_text"]).strip()[:2000],
+            "source_message_id": row["message_id"],
+            "pairing": "same_sender_recent_instruction",
         }
-        if row["source_message_id"]:
-            events = conn.execute(
-                """SELECT event_id,status,event_type,amount_minor,currency,description,category
-                   FROM financial_events
-                   WHERE source_message_id=?
-                     AND status IN ('ACTIVE','PENDING_HUMAN_REVIEW')
-                   ORDER BY created_at_utc DESC""",
-                (row["source_message_id"],),
-            ).fetchall()
-            if len(events) == 1:
-                event = events[0]
-                result["financial_event"] = {
-                    "event_id": event["event_id"],
-                    "status": event["status"],
-                    "type": event["event_type"],
-                    "amount": event["amount_minor"] / 100 if event["amount_minor"] is not None else None,
-                    "currency": event["currency"],
-                    "description": event["description"],
-                    "category": event["category"],
-                }
-        return result
     finally:
         conn.close()
 
