@@ -102,6 +102,14 @@ def main() -> dict:
         brain.DISCOVERY_TOOL_NAME == "discover_alex_tools",
         "AI intent-discovery fallback present for novel/typo-heavy wording",
     )
+    require(
+        brain._pure_chat("Hi Alex, are you working?"),
+        "basic conversational health-check phrase stays tool-free",
+    )
+    require(
+        callable(brain.provider_probe) and callable(brain.classify_runtime_error),
+        "live provider probe and sanitized runtime error classifier present",
+    )
 
     # 4. Plug-and-play HA configuration carries user-owned facts/secrets.
     config_text = (ROOT / "config.yaml").read_text(encoding="utf-8")
