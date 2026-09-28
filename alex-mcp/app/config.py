@@ -27,6 +27,7 @@ class Settings:
     context_turns: int = 8
     reasoning_effort: str = "low"
     monthly_ai_budget_usd: float = 0.0
+    auto_grok_fallback_budget_usd: float = 0.50
     budget_safety_multiplier: float = 2.0
 
     @property
@@ -98,6 +99,12 @@ def get_settings() -> Settings:
         clean["monthly_ai_budget_usd"] = max(0.0, float(clean.get("monthly_ai_budget_usd", 0.0)))
     except (TypeError, ValueError):
         clean["monthly_ai_budget_usd"] = 0.0
+    try:
+        clean["auto_grok_fallback_budget_usd"] = max(
+            0.0, float(clean.get("auto_grok_fallback_budget_usd", 0.50))
+        )
+    except (TypeError, ValueError):
+        clean["auto_grok_fallback_budget_usd"] = 0.50
     try:
         clean["budget_safety_multiplier"] = max(1.0, min(10.0, float(clean.get("budget_safety_multiplier", 2.0))))
     except (TypeError, ValueError):
