@@ -29,9 +29,17 @@ No API key, phone number, provider or pairing credential is stored in source cod
 - WhatsApp session state
 - startup structural diagnostics
 
-The chosen AI is used for natural-language understanding, reasoning, tool selection and final wording.
+The chosen AI is used for natural-language understanding, reasoning, tool selection and final wording. Normal household calls default to low reasoning, expose at most six relevant MCP tools and avoid replaying conversation history unless the new message is actually a follow-up.
+
+The Web UI includes local 24-hour AI usage telemetry (input/cached/output/reasoning tokens, model calls, latency and estimated cost). Reading or refreshing this telemetry does not call the AI provider.
 
 Alex MCP also exposes a shared shopping list and a bounded Home Assistant tool surface. Home Assistant entity lookup/state reads are allowed; device writes are limited to explicitly requested low-risk actions on lights, switches, fans, climate and media players. Locks, alarm panels, covers, scripts, scenes, automations and other sensitive domains are rejected by the backend.
+
+## WhatsApp conversation rules
+
+In the bound Family Shared group, Alex responds only when explicitly @mentioned or when a household member swipe-replies to an Alex message. Ordinary family conversation is ignored. In private DMs, normal direct messages continue to work without an @mention.
+
+Swipe replies are bound locally to the exact Alex message in the same conversation. For attachments, Alex uses caption first, then explicit quoted-reply context, then a short same-sender recent-instruction pairing when the attachment has no caption.
 
 ## Provider switching
 
@@ -56,6 +64,9 @@ Use ordinary language such as:
 - "Remind me Wednesday at 9am to pay electricity."
 - "Save this for me."
 - "How much did I spend over the weekend?"
+- "How much did the family spend yesterday?"
+- "Show my voice expenses."
+- "Show 10." (after Alex displayed a numbered result list)
 - "Add detergent to the shopping list."
 - "Remind my wife Friday at 9am to renew road tax."
 - "Turn off the living room light."
