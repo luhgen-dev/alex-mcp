@@ -590,66 +590,254 @@ def classify_runtime_error(exc: Exception) -> dict:
     }
 
 
+def _tool_names(specs: list[dict] | None) -> set[str]:
+    names: set[str] = set()
+    for spec in specs or []:
+        try:
+            names.add(str(spec["function"]["name"]))
+        except Exception:
+            continue
+    return names
+
+
+def _auto_needs_full_model(user_text: str, tools: list[dict] | None = None,
+                           vision_parts: list[dict] | None = None,
+                           preflight: dict | None = None) -> bool:
+    """Reserve the stronger Gemini model for genuinely harder/visual turns."""
+    text = (user_text or "").strip()
+    low = text.casefold()
+    if vision_parts:
+        return True
+    if (preflight or {}).get("status") == "compound":
+        return True
+    if len(text) > 900:
+        return True
+    if _tool_names(tools) & PLANNING_TOOLS and re.search(
+        r"\b(?:analyse|analyze|analysis|suggest|recommend|should\s+i|"
+        r"brainstorm|compare|optimi[sz]e|best\s+way|help\s+me\s+plan|"
+        r"what\s+can\s+i\s+do|how\s+should)\b",
+        low,
+    ):
+        return True
+    return False
+
+
+def _provider_routes(settings, *, user_text: str = "", tools: list[dict] | None = None,
+                     vision_parts: list[dict] | None = None,
+                     preflight: dict | None = None) -> list[dict]:
+    """Return a cheapest-capable-first route with paid fallbacks only when needed."""
+    if settings.ai_provider != "auto":
+        provider = settings.ai_provider
+        if not settings.api_key_for(provider):
+            return []
+        return [{
+            "provider": provider,
+            "model": settings.model_for(provider),
+            "reasoning_effort": settings.reasoning_effort,
+            "role": "manual",
+        }]
+
+    routes: list[dict] = []
+    hard = _auto_needs_full_model(user_text, tools, vision_parts, preflight)
+    if settings.gemini_api_key:
+        if hard:
+            routes.append({
+                "provider": "gemini",
+                "model": settings.gemini_model,
+                "reasoning_effort": "low",
+                "role": "primary_quality",
+            })
+        else:
+            routes.append({
+                "provider": "gemini",
+                "model": settings.gemini_lite_model,
+                "reasoning_effort": "low",
+                "role": "primary_saver",
+            })
+            if settings.gemini_model != settings.gemini_lite_model:
+                routes.append({
+                    "provider": "gemini",
+                    "model": settings.gemini_model,
+                    "reasoning_effort": "low",
+                    "role": "quality_fallback",
+                })
+    if settings.xai_api_key:
+        routes.append({
+            "provider": "grok",
+            "model": settings.grok_model,
+            "reasoning_effort": "low",
+            "role": "resilience_fallback",
+        })
+    if settings.openai_api_key:
+        routes.append({
+            "provider": "openai",
+            "model": settings.openai_model,
+            "reasoning_effort": "low",
+            "role": "last_fallback",
+        })
+    return routes
+
+
+def _local_chat_reply(user_text: str) -> str | None:
+    """Zero-token replies for tiny social/health-check messages."""
+    normalized = re.sub(r"[^a-zA-Z\s]", " ", (user_text or "").casefold())
+    normalized = " ".join(normalized.split())
+    if normalized in {"hi", "hello", "hey", "hi alex", "hello alex", "hey alex"}:
+        return "Hi — I'm here. What do you need?"
+    if normalized in {"thanks", "thank you"}:
+        return "You're welcome."
+    if normalized in {"ok", "okay", "got it", "alright", "nice", "great", "cool"}:
+        return "👍"
+    probe = re.sub(r"^(?:hi|hello|hey)\s+", "", normalized)
+    probe = re.sub(r"^alex\s+", "", probe)
+    if probe in {"are you working", "are u working", "you working", "u working",
+                 "are you there", "are u there", "you there", "u there"}:
+        return "Yep — I'm here and working. ✅"
+    if normalized in {"how are you", "how r u"}:
+        return "I'm running fine. What do you need?"
+    return None
+
+
+def _usage_bucket(usage_by_route: dict, route: dict) -> dict:
+    key = (route["provider"], route["model"])
+    if key not in usage_by_route:
+        usage_by_route[key] = {
+            "provider": route["provider"], "model": route["model"],
+            "input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0,
+            "reasoning_tokens": 0, "model_calls": 0, "tool_rounds": 0,
+            "latency_ms": 0, "reported_cost_usd": 0.0,
+            "has_reported_cost": False,
+        }
+    return usage_by_route[key]
+
+
+def _accumulate_usage(usage_by_route: dict, route: dict, usage,
+                      latency_ms: int, *, had_tool_calls: bool = False) -> None:
+    bucket = _usage_bucket(usage_by_route, route)
+    prompt_n, cached_n, completion_n, reasoning_n = _usage_breakdown(usage)
+    bucket["input_tokens"] += prompt_n
+    bucket["cached_input_tokens"] += cached_n
+    bucket["output_tokens"] += completion_n
+    bucket["reasoning_tokens"] += reasoning_n
+    bucket["model_calls"] += 1
+    bucket["latency_ms"] += max(0, int(latency_ms))
+    if had_tool_calls:
+        bucket["tool_rounds"] += 1
+    reported = _provider_reported_cost_usd(route["provider"], usage)
+    if reported is not None:
+        bucket["reported_cost_usd"] += reported
+        bucket["has_reported_cost"] = True
+
+
+def _record_usage_buckets(source_message_id: str | None, usage_by_route: dict) -> None:
+    for bucket in usage_by_route.values():
+        estimated = (
+            round(bucket["reported_cost_usd"], 10)
+            if bucket["has_reported_cost"]
+            else _estimate_cost(
+                bucket["provider"], bucket["model"],
+                bucket["input_tokens"], bucket["output_tokens"],
+                bucket["cached_input_tokens"],
+            )
+        )
+        record_usage(
+            source_message_id, bucket["provider"], bucket["model"],
+            bucket["input_tokens"], bucket["output_tokens"], bucket["tool_rounds"],
+            bucket["latency_ms"], estimated,
+            cached_input_tokens=bucket["cached_input_tokens"],
+            reasoning_tokens=bucket["reasoning_tokens"],
+            model_calls=bucket["model_calls"],
+        )
+
+
+def _completion_kwargs(route: dict, messages: list[dict], tools: list[dict] | None,
+                       actor: ActorContext | None = None) -> dict:
+    kwargs = {
+        "model": route["model"],
+        "messages": messages,
+        "reasoning_effort": route["reasoning_effort"],
+    }
+    if tools:
+        kwargs["tools"] = tools
+        kwargs["tool_choice"] = "auto"
+    if route["provider"] == "grok" and actor is not None:
+        kwargs["extra_headers"] = {
+            "x-grok-conv-id": hashlib.sha256(
+                actor.conversation_id.encode("utf-8")
+            ).hexdigest()[:32]
+        }
+    return kwargs
+
+
 def provider_probe() -> dict:
     settings = get_settings()
     started = time.monotonic()
-    if not settings.api_key:
+    routes = _provider_routes(settings, user_text="Connection check.")
+    if not routes:
         return {
             "status": "error",
             "provider": settings.ai_provider,
             "model": settings.model,
             "category": "api_key_missing",
-            "message": "No API key is configured for the selected provider.",
+            "message": "No API key is configured for the selected routing mode.",
             "latency_ms": 0,
         }
-    try:
-        client = _client()
-        kwargs = {
-            "model": settings.model,
-            "messages": [
-                {"role": "system", "content": "Reply exactly OK."},
-                {"role": "user", "content": "Connection check."},
-            ],
-        }
-        if settings.ai_provider in {"grok", "openai"}:
-            kwargs["reasoning_effort"] = "low"
-        response = client.chat.completions.create(**kwargs)
-        elapsed = int((time.monotonic() - started) * 1000)
-        input_tokens, cached_tokens, output_tokens, reasoning_tokens = _usage_breakdown(
-            getattr(response, "usage", None)
-        )
-        record_usage(
-            None, settings.ai_provider, settings.model, input_tokens, output_tokens,
-            0, elapsed,
-            _estimate_cost(
-                settings.ai_provider, settings.model, input_tokens, output_tokens, cached_tokens
-            ),
-            cached_input_tokens=cached_tokens,
-            reasoning_tokens=reasoning_tokens,
-            model_calls=1,
-        )
-        content = ""
-        if getattr(response, "choices", None):
-            content = _content_text(response.choices[0].message.content).strip()
-        return {
-            "status": "ok",
-            "provider": settings.ai_provider,
-            "model": settings.model,
-            "category": "inference_ready",
-            "message": content[:80] or "Provider returned a valid completion.",
-            "latency_ms": elapsed,
-        }
-    except Exception as exc:
-        info = classify_runtime_error(exc)
-        return {
-            "status": "error",
-            "provider": settings.ai_provider,
-            "model": settings.model,
-            "category": info["category"],
-            "status_code": info.get("status_code"),
-            "message": info["message"],
-            "latency_ms": int((time.monotonic() - started) * 1000),
-        }
+
+    failures: list[dict] = []
+    usage_by_route: dict = {}
+    for route in routes:
+        call_started = time.monotonic()
+        try:
+            client = _client_for(route["provider"], settings)
+            response = client.chat.completions.create(**_completion_kwargs(
+                route,
+                [
+                    {"role": "system", "content": "Reply exactly OK."},
+                    {"role": "user", "content": "Connection check."},
+                ],
+                None,
+            ))
+            call_ms = int((time.monotonic() - call_started) * 1000)
+            _accumulate_usage(
+                usage_by_route, route, getattr(response, "usage", None), call_ms
+            )
+            _record_usage_buckets(None, usage_by_route)
+            content = ""
+            if getattr(response, "choices", None):
+                content = _content_text(response.choices[0].message.content).strip()
+            return {
+                "status": "ok",
+                "provider": route["provider"],
+                "model": route["model"],
+                "routing_mode": settings.ai_provider,
+                "route_role": route["role"],
+                "fallbacks_configured": [
+                    f'{r["provider"]}/{r["model"]}' for r in routes if r is not route
+                ],
+                "category": "inference_ready",
+                "message": content[:80] or "Provider returned a valid completion.",
+                "latency_ms": int((time.monotonic() - started) * 1000),
+                "failed_routes": failures,
+            }
+        except Exception as exc:
+            info = classify_runtime_error(exc)
+            failures.append({
+                "provider": route["provider"], "model": route["model"],
+                "category": info["category"], "status_code": info.get("status_code"),
+            })
+
+    _record_usage_buckets(None, usage_by_route)
+    last = failures[-1] if failures else {}
+    return {
+        "status": "error",
+        "provider": settings.ai_provider,
+        "model": settings.model,
+        "category": last.get("category", "provider_connection_error"),
+        "status_code": last.get("status_code"),
+        "message": "All configured AI routes failed the connection check.",
+        "latency_ms": int((time.monotonic() - started) * 1000),
+        "failed_routes": failures,
+    }
 
 
 def _needs_exact_clock(user_text: str) -> bool:
