@@ -24,7 +24,7 @@ class Settings:
     whisper_model: str = "base"
     ocr_enabled: bool = True
     context_turns: int = 8
-    reasoning_effort: str = "medium"
+    reasoning_effort: str = "low"
     monthly_ai_budget_usd: float = 0.0
     budget_safety_multiplier: float = 2.0
 
