@@ -75,8 +75,16 @@ def process(payload: dict) -> dict:
             media_ids,
         )
         quoted_context = db.resolve_quoted_context(
-            actor.conversation_id, payload.get("quoted_message_id")
+            actor.conversation_id, payload.get("quoted_message_id"), actor.phone
         )
+        if (
+            not quoted_context
+            and media_ids
+            and not str(payload.get("text") or "").strip()
+        ):
+            quoted_context = db.resolve_recent_instruction_context(
+                actor.conversation_id, actor.phone, actor.source_message_id
+            )
         reply, attachments = asyncio.run(
             brain.respond(
                 actor, payload.get("text", "") or "", media_context, vision_parts,
