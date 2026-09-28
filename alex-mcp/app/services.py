@@ -113,6 +113,52 @@ def _parse_event_time(value: str | None, tz_name: str) -> str:
     return dt.astimezone(timezone.utc).isoformat()
 
 
+_TIME_STATED_RE = re.compile(
+    r"(?i)\b\d{1,2}(?::\d{2})?\s*(?:am|pm|a\.m\.|p\.m\.)|"
+    r"\b\d{1,2}[:.]\d{2}\b|"
+    r"\b(?:noon|midnight|morning|afternoon|evening|tonight|last\s+night|"
+    r"lunch|dinner|breakfast|ago|earlier|just\s+now)\b"
+)
+
+
+def _user_stated_time(text: str | None) -> bool:
+    return bool(_TIME_STATED_RE.search(text or ""))
+
+
+def _resolve_new_event_time(actor: ActorContext, event_date_local: str | None) -> str:
+    """Deterministic timestamp for a NEW money record (v0.4.4).
+
+    1. Nothing supplied -> the WhatsApp send time of the message.
+    2. Date only, and it is the message's own local day -> send time (so two
+       records on the same day keep their true order).
+    3. Date only, another day -> that day (local midnight), as before.
+    4. Date AND clock time on the message's own day, but the user never said a
+       time and no receipt/document is attached -> the model invented the clock;
+       use the send time instead.
+    5. Otherwise (user-stated time, or a receipt/document supplied it) -> keep it.
+    """
+    received = getattr(actor, "received_at_utc", "") or utc_now()
+    if not event_date_local or not str(event_date_local).strip():
+        return received
+    raw = str(event_date_local).strip()
+    parsed_utc = _parse_event_time(raw, actor.timezone)
+    try:
+        tz = ZoneInfo(actor.timezone)
+        received_local_day = datetime.fromisoformat(received.replace("Z", "+00:00")).astimezone(tz).date()
+        date_only = bool(re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw))
+        event_local_day = datetime.fromisoformat(parsed_utc).astimezone(tz).date()
+    except Exception:
+        return parsed_utc
+    if event_local_day != received_local_day:
+        return parsed_utc
+    if date_only:
+        return received
+    has_document = getattr(actor, "source", "text") in {"image", "document", "mixed"}
+    if not has_document and not _user_stated_time(getattr(actor, "trusted_text", "")):
+        return received
+    return parsed_utc
+
+
 def _local_bound(date_text: str, tz_name: str, end: bool = False) -> str:
     d = datetime.fromisoformat(date_text).date()
     local = datetime.combine(d, time.max if end else time.min, tzinfo=ZoneInfo(tz_name))
@@ -160,7 +206,7 @@ def log_expense(actor: ActorContext, description: str, amount: float | None = No
             (event_id, actor.action_key, actor.source_message_id, space, actor.user_id, actor.user_id,
              "Income" if event_type.lower() == "income" else "Expense",
              resolved_category, amount_minor, resolved_currency,
-             _parse_event_time(event_date_local, actor.timezone), actor.timezone,
+             _resolve_new_event_time(actor, event_date_local), actor.timezone,
              description.strip()[:300], (reference or "")[:300] or None, status),
         )
         for media_id in actor.media_ids:
@@ -275,7 +321,7 @@ def query_finances(actor: ActorContext, start_date: str | None = None, end_date:
             f"""SELECT event_id,event_type,category,amount_minor,currency,event_date_utc,
                        description,reference_text,space_id
                 FROM financial_events WHERE {where}
-                ORDER BY event_date_utc DESC LIMIT ?""",
+                ORDER BY event_date_utc DESC, created_at_utc DESC, rowid DESC LIMIT ?""",
             params + [max(1, min(100, int(limit)))],
         ).fetchall()]
     finally:
@@ -518,7 +564,19 @@ def save_item(actor: ActorContext, title: str, content: str, tags: str | None = 
         if space not in actor.allowed_spaces:
             raise PermissionError("requested memory space is not accessible")
         item_id = str(uuid.uuid4())
-        media_id = actor.media_ids[0] if actor.media_ids else None
+        # Only a picture/document is a saved item's "original". A voice note is
+        # just how the user spoke the request; linking it would make retrieval
+        # send the recording back instead of the saved content (v0.4.4).
+        media_id = None
+        if actor.media_ids:
+            marks_m = ",".join("?" for _ in actor.media_ids)
+            row_m = conn.execute(
+                f"""SELECT media_id FROM media_objects
+                    WHERE media_id IN ({marks_m}) AND media_type<>'AUDIO'
+                    ORDER BY created_at_utc LIMIT 1""",
+                list(actor.media_ids),
+            ).fetchone()
+            media_id = row_m["media_id"] if row_m else None
         conn.execute(
             """INSERT INTO saved_items(item_id,action_key,source_message_id,space_id,owner_id,title,content,tags,media_id)
                VALUES(?,?,?,?,?,?,?,?,?)""",
@@ -531,24 +589,110 @@ def save_item(actor: ActorContext, title: str, content: str, tags: str | None = 
         conn.close()
 
 
-def search_saved_items(actor: ActorContext, query: str, limit: int = 10) -> dict:
+_SAVED_GENERIC_WORDS = {
+    "a", "an", "the", "my", "me", "i", "you", "your", "to", "for", "of", "in", "on",
+    "and", "or", "that", "this", "those", "these", "what", "which", "all", "any",
+    "every", "everything", "things", "thing", "stuff", "items", "item", "list",
+    "show", "find", "send", "get", "give", "saved", "save", "remember", "remembered",
+    "asked", "ask", "told", "tell", "keep", "kept", "did", "do", "have", "please",
+    "pictures", "picture", "photos", "photo", "images", "image", "pics", "pic",
+    "documents", "document", "docs", "doc", "files", "file", "notes", "note",
+    "privately", "private", "memory", "memories", "later", "about",
+}
+_SAVED_KIND_ALIASES = {
+    "picture": "IMAGE", "pictures": "IMAGE", "photo": "IMAGE", "image": "IMAGE", "images": "IMAGE",
+    "document": "DOCUMENT", "documents": "DOCUMENT", "pdf": "DOCUMENT", "file": "DOCUMENT",
+    "note": "NOTE", "notes": "NOTE", "text": "NOTE",
+}
+
+
+def _saved_local_date(value: str | None, tz_name: str) -> str | None:
+    if not value:
+        return None
+    try:
+        text = str(value).replace("Z", "+00:00")
+        dt = datetime.fromisoformat(text)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(ZoneInfo(tz_name)).strftime("%d %b %Y")
+    except Exception:
+        return None
+
+
+def search_saved_items(actor: ActorContext, query: str | None = None, limit: int = 10,
+                       kind: str | None = None) -> dict:
+    """Find explicitly saved items. Empty/general query = browse newest items.
+
+    v0.4.4: supports browse ("what did I ask you to save"), a picture/document/
+    note filter, and word-level matching when the whole phrase has no match.
+    Space/ACL filtering is unchanged and always applied in SQL.
+    """
     marks, spaces = _spaces_sql(actor)
-    needle = f"%{query.lower()}%"
+    bounded = max(1, min(25, int(limit or 10)))
+    kind_key = _SAVED_KIND_ALIASES.get(str(kind or "").strip().casefold())
+    raw = str(query or "").strip().casefold()
+    words = [w for w in re.findall(r"[\w'-]+", raw) if len(w) > 1 and w not in _SAVED_GENERIC_WORDS]
+
+    base = f"""SELECT s.item_id,s.title,s.content,s.tags,s.created_at_utc,s.media_id,
+                      m.media_type
+               FROM saved_items s
+               LEFT JOIN media_objects m ON m.media_id=s.media_id
+               WHERE s.space_id IN ({marks})"""
+    params: list = spaces[:]
+    if kind_key == "IMAGE":
+        base += " AND m.media_type='IMAGE'"
+    elif kind_key == "DOCUMENT":
+        base += " AND m.media_type IN ('PDF','DOCUMENT')"
+    elif kind_key == "NOTE":
+        base += " AND s.media_id IS NULL"
+
+    def run(extra_sql: str, extra: list) -> list[dict]:
+        rows = conn.execute(
+            base + extra_sql + " ORDER BY s.created_at_utc DESC, s.rowid DESC LIMIT ?",
+            params + extra + [bounded],
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    field = "(LOWER(s.title) LIKE ? OR LOWER(s.content) LIKE ? OR LOWER(COALESCE(s.tags,'')) LIKE ?)"
     conn = connect()
     try:
-        rows = conn.execute(
-            f"""SELECT item_id,title,content,tags,created_at_utc,media_id
-                FROM saved_items
-                WHERE space_id IN ({marks})
-                  AND (LOWER(title) LIKE ? OR LOWER(content) LIKE ? OR LOWER(COALESCE(tags,'')) LIKE ?)
-                ORDER BY created_at_utc DESC LIMIT ?""",
-            spaces + [needle, needle, needle, max(1, min(25, int(limit)))],
-        ).fetchall()
-        matches = [dict(r) for r in rows]
+        mode = "browse"
+        matches: list[dict] = []
+        if words:
+            phrase = " ".join(words)
+            needle = f"%{phrase}%"
+            matches = run(" AND " + field, [needle, needle, needle])
+            mode = "phrase"
+            if not matches and len(words) > 1:
+                clauses, extra = [], []
+                for w in words:
+                    clauses.append(field)
+                    n = f"%{w}%"
+                    extra.extend([n, n, n])
+                matches = run(" AND (" + " OR ".join(clauses) + ")", extra)
+                mode = "words"
+        else:
+            matches = run("", [])
         if matches:
             _store_selection(conn, actor, "SAVED_ITEM", [m["item_id"] for m in matches])
             conn.commit()
-        return {"matches": [{**m, "choice": i + 1} for i, m in enumerate(matches)]}
+        out = []
+        for i, m in enumerate(matches):
+            out.append({
+                "choice": i + 1,
+                "item_id": m["item_id"],
+                "title": m["title"],
+                "content": (m["content"] or "")[:300],
+                "tags": m["tags"],
+                "kind": (
+                    "picture" if m.get("media_type") == "IMAGE"
+                    else "document" if m.get("media_type") in ("PDF", "DOCUMENT")
+                    else "note"
+                ),
+                "has_original": bool(m["media_id"]),
+                "saved_on": _saved_local_date(m["created_at_utc"], actor.timezone),
+            })
+        return {"mode": mode, "count": len(out), "matches": out}
     finally:
         conn.close()
 
@@ -570,7 +714,8 @@ def get_saved_item(actor: ActorContext, item_id: str) -> dict:
             raise PermissionError("saved item not found in your accessible spaces")
         result = {
             "status": "found", "item_id": row["item_id"], "title": row["title"],
-            "content": row["content"], "tags": row["tags"], "created_at_utc": row["created_at_utc"],
+            "content": row["content"], "tags": row["tags"],
+            "saved_on": _saved_local_date(row["created_at_utc"], actor.timezone),
         }
         if row["local_path"]:
             result["_attachments"] = [{

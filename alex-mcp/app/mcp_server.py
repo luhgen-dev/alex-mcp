@@ -19,7 +19,7 @@ import phase2_reports
 
 mcp = MCPServer(
     "Alex Household Tools",
-    version="0.4.3",
+    version="0.4.4",
     instructions="Deterministic household tools. Identity and permissions are injected by Alex and are never model-controlled.",
 )
 
@@ -36,7 +36,7 @@ def log_expense(description: str, actor: Actor, amount: float | None = None,
                 category: str | None = None, currency: str | None = None,
                 event_date_local: str | None = None, reference: str | None = None,
                 event_type: str = "Expense") -> dict:
-    """Record an expense or income. Currency must be explicitly known as MYR or SGD; never guess it. Use null category/amount when genuinely unclear."""
+    """Record an expense or income. Currency must be explicitly known as MYR or SGD; never guess it. Use null category/amount when genuinely unclear. Omit event_date_local unless the user or the receipt states a date/time; Alex stamps the message time automatically and never needs an invented clock time."""
     return services.log_expense(actor, description, amount, category, currency, event_date_local, reference, event_type)
 
 
@@ -93,9 +93,10 @@ def save_item(title: str, content: str, actor: Actor, tags: str | None = None,
 
 
 @mcp.tool()
-def search_saved_items(query: str, actor: Actor, limit: int = 10) -> dict:
-    """Search things the user explicitly asked Alex to remember."""
-    return services.search_saved_items(actor, query, limit)
+def search_saved_items(actor: Actor, query: str | None = None, limit: int = 10,
+                       kind: str | None = None) -> dict:
+    """Search or browse things the user explicitly asked Alex to save/remember. Leave query empty to list everything saved (newest first). kind may be picture, document or note (e.g. "what pictures did I save" -> kind=picture, no query). Results are numbered; the user can then say "show 2". Use get_saved_item to send an original."""
+    return services.search_saved_items(actor, query, limit, kind)
 
 
 @mcp.tool()

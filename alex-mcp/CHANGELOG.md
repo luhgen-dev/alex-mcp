@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.4
+Repair release from the v0.4.3 live smoke test (Claude audit, cross-reviewed with GPT).
+- **Voice = text.** A voice-note transcript is now the message itself, so voice gets exactly the same routing and tools as typed text (reminders, shopping, Home Assistant, saved items, finance). Original audio stays linked; `source=voice` finance filtering is unchanged.
+- **No more cross-context leaks.** Voice notes never inherit an earlier text instruction; orphan pairing now applies only to captionless images/PDFs. Conversation history stores only the user's own words plus markers such as `[voice note]` / `[image attached]`, never OCR/PDF/transcript blobs.
+- **Finance timestamps are deterministic.** New records use WhatsApp's send time unless the user states a time or a receipt supplies one; model-invented clock times are ignored. "Latest" ordering has a deterministic tiebreaker. Existing ledger rows are not modified.
+- **Attachments.** The model is told when files are queued for delivery (no more "I can't send images" followed by the image), duplicate files are sent once, and a turn that found the requested file never ends with a failure message.
+- **Saved items.** Browse everything ("what did I ask you to save"), filter pictures/documents/notes, word-level matching ("that vinyl thing", "my code word"), local dates instead of raw UTC. Space/ACL filtering unchanged.
+- **Routing stopgap.** When the keyword gate recognises no domain for a real request, the model now gets the core read-only tools instead of none (fixes plural "expenses"/"transactions"). Small talk stays tool-light. Full facade routing arrives in 0.5.0.
+- **Family group mentions.** @mention and swipe-reply detection now recognise WhatsApp LID identities as well as phone JIDs. Only the wake gate changed; privacy spaces are untouched. Unmatched group mentions log masked identity forms for diagnosis.
+- **Phase-0 trace.** One compact local `_turn_trace` row per turn in the existing `tool_audit` table (source, tools exposed/called, model route, attachments, outcome). Local only, pruned after 14 days.
+- Added 23 deterministic regression tests (`tests/test_v044.py`).
+
 ## 0.4.3
 - Added **Auto Saver** as the recommended AI mode.
 - Routine turns use Gemini 3.1 Flash-Lite first; harder visual/compound/planning turns start on Gemini 3.8 Flash.

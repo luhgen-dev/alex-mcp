@@ -294,6 +294,28 @@ def _ocr_is_sufficient_financial(text: str) -> bool:
     return has_amount and len((text or "").strip()) >= 40 and (len(lines) >= 3 or anchors >= 3)
 
 
+VOICE_TRANSCRIPT_PREFIX = "Voice-note transcript:\n"
+
+
+def split_voice_transcript(context_lines: list[str]) -> tuple[str, list[str]]:
+    """Separate the user's own voice transcript from untrusted document text.
+
+    v0.4.4: a voice note is the user speaking, so its transcript becomes the
+    turn's trusted text (same routing/tools as typed text). OCR/PDF lines stay
+    in the document context and never count as user intent.
+    """
+    transcript_parts: list[str] = []
+    documents: list[str] = []
+    for line in context_lines or []:
+        if isinstance(line, str) and line.startswith(VOICE_TRANSCRIPT_PREFIX):
+            part = line[len(VOICE_TRANSCRIPT_PREFIX):].strip()
+            if part:
+                transcript_parts.append(part)
+        else:
+            documents.append(line)
+    return "\n".join(transcript_parts).strip(), documents
+
+
 def process_payload_media(payload: dict) -> tuple[list[str], list[str], list[dict]]:
     """Persist media first, cheaply extract text, and use model vision only when OCR is insufficient/non-financial."""
     media_ids: list[str] = []
@@ -330,6 +352,6 @@ def process_payload_media(payload: dict) -> tuple[list[str], list[str], list[dic
         media_ids.append(mid)
         text = transcribe_audio(mid)
         if text:
-            context_lines.append("Voice-note transcript:\n" + text[:12000])
+            context_lines.append(VOICE_TRANSCRIPT_PREFIX + text[:12000])
 
     return media_ids, context_lines, vision_parts

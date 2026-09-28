@@ -96,6 +96,13 @@ def initialize() -> None:
         _ensure_column(conn, "diary_events", "time_known", "INTEGER NOT NULL DEFAULT 1")
         _ensure_column(conn, "plans", "time_known", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(conn, "schedule_conflicts", "source_plan_id", "TEXT")
+        # v0.4.4 Phase-0 trace retention: only the compact per-turn trace rows
+        # are pruned. Real tool audit history is never deleted here.
+        conn.execute(
+            "DELETE FROM tool_audit WHERE tool_name='_turn_trace' "
+            "AND created_at_utc < datetime('now','-14 days')"
+        )
+        conn.commit()
         conn.execute("BEGIN")
         conn.executemany("INSERT OR IGNORE INTO users(user_id,display_name) VALUES(?,?)", [
             ("USR_HUSBAND", "Husband"),

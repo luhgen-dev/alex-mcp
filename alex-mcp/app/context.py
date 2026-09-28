@@ -17,6 +17,16 @@ class ActorContext:
     media_ids: tuple[str, ...]
     timezone: str
     action_key: str = ""
+    # v0.4.4 normalized-Turn metadata. All fields are additive with safe
+    # defaults so existing callers/tests keep working unchanged.
+    # source: text | voice | image | document | mixed
+    source: str = "text"
+    # The user's own words: typed text or the transcript of their voice note.
+    # OCR/PDF text is NEVER placed here (it is untrusted document content).
+    trusted_text: str = ""
+    # When WhatsApp says the message was sent (UTC ISO). Used by the backend
+    # to timestamp records instead of letting the model invent a clock time.
+    received_at_utc: str = ""
 
 
 _current_actor: ContextVar[ActorContext | None] = ContextVar("alex_actor", default=None)
