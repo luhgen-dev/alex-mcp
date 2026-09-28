@@ -115,7 +115,7 @@ def _parse_event_time(value: str | None, tz_name: str) -> str:
 
 _TIME_STATED_RE = re.compile(
     r"(?i)\b\d{1,2}(?::\d{2})?\s*(?:am|pm|a\.m\.|p\.m\.)|"
-    r"\b\d{1,2}[:.]\d{2}\b|"
+    r"\b\d{1,2}:\d{2}\b|"
     r"\b(?:noon|midnight|morning|afternoon|evening|tonight|last\s+night|"
     r"lunch|dinner|breakfast|ago|earlier|just\s+now)\b"
 )

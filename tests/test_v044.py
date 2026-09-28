@@ -236,6 +236,15 @@ class FinanceTimeTests(V044Base):
         r = self.log("f4", "2026-09-28T02:30:00+00:00", "paid RM6 parking yesterday", "2026-09-27")
         self.assertEqual(self.stored(r["event_id"]), "2026-09-26T16:00:00+00:00")
 
+    def test_decimal_amounts_are_not_mistaken_for_clock_times(self):
+        """RM 12.30 / 10.50 must not count as a user-stated time."""
+        for text in ("paid RM 12.30 parking", "paid 10.50 for parking", "parking RM7.99", "RM6.00 parking"):
+            self.assertFalse(services._user_stated_time(text), text)
+        for text in ("parked at 14:30", "paid at 8am", "parking 8.30pm", "paid last night", "just now"):
+            self.assertTrue(services._user_stated_time(text), text)
+        r = self.log("dec1", "2026-09-28T02:30:00+00:00", "paid RM 10.50 parking", "2026-09-28T12:00:00", amount=10.5)
+        self.assertEqual(self.stored(r["event_id"]), "2026-09-28T02:30:00+00:00")
+
     def test_receipt_time_is_trusted(self):
         r = self.log("f5", "2026-09-28T02:30:00+00:00", "", "2026-09-28T09:15:00", source="image")
         self.assertEqual(self.stored(r["event_id"]), "2026-09-28T01:15:00+00:00")
