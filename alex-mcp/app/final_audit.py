@@ -111,12 +111,20 @@ def main() -> dict:
         callable(brain.provider_probe) and callable(brain.classify_runtime_error),
         "live provider probe and sanitized runtime error classifier present",
     )
+    require(
+        callable(brain._provider_routes) and callable(brain._auto_needs_full_model),
+        "automatic cheapest-capable provider router present",
+    )
+    require(
+        brain._local_chat_reply("Hi Alex, are you working?") is not None,
+        "tiny health-check chat can stay fully local and zero-token",
+    )
 
     # 4. Plug-and-play HA configuration carries user-owned facts/secrets.
     config_text = (ROOT / "config.yaml").read_text(encoding="utf-8")
     for key in (
         "ai_provider", "xai_api_key", "gemini_api_key", "openai_api_key",
-        "husband_phone", "wife_phone", "timezone", "stt_provider",
+        "gemini_lite_model", "husband_phone", "wife_phone", "timezone", "stt_provider",
         "income_profiles", "roster_profiles", "overtime_profiles",
         "leave_balances", "recurring_payments", "account_aliases",
         "reminder_preferences", "presence_mappings",
@@ -132,13 +140,18 @@ def main() -> dict:
             "source ships with empty household phone placeholders")
     require('reasoning_effort: "low"' in config_text,
             "default reasoning is low for latency/cost-sensitive household calls")
+    require('ai_provider: "auto"' in config_text
+            and 'list(auto|grok|gemini|openai)' in config_text,
+            "Auto Saver is the shipped provider-neutral default")
 
     # 5. Provider-neutral defaults and no Needle dependency.
     config_py = (APP / "config.py").read_text(encoding="utf-8")
     require('grok_model: str = "grok-4.7"' in config_py,
             "Grok default model configured")
     require('gemini_model: str = "gemini-3.8-flash"' in config_py,
-            "Gemini default model configured")
+            "Gemini quality model configured")
+    require('gemini_lite_model: str = "gemini-3.1-flash-lite"' in config_py,
+            "Gemini low-cost agentic model configured")
     require('openai_model: str = "gpt-5.6-luna"' in config_py,
             "OpenAI default model configured")
     import_lines = []
