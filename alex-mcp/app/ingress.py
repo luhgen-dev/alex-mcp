@@ -5,7 +5,8 @@ import json
 import os
 import sys
 import traceback
-from datetime import datetime, timezone
+from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import brain
@@ -56,6 +57,55 @@ def _record_processing_error(exc: Exception, payload: dict) -> dict:
     return safe
 
 
+def _received_at_utc(payload: dict) -> str:
+    """Prefer WhatsApp's own send timestamp; fall back to arrival time.
+
+    Guards against clock skew or bogus values: anything in the future or more
+    than 7 days old falls back to now.
+    """
+    now = datetime.now(timezone.utc)
+    raw = payload.get("sent_at_ms")
+    try:
+        if raw is not None:
+            sent = datetime.fromtimestamp(int(raw) / 1000, tz=timezone.utc)
+            if now - timedelta(days=7) <= sent <= now + timedelta(minutes=5):
+                return min(sent, now).isoformat()
+    except Exception:
+        pass
+    return now.isoformat()
+
+
+def build_turn(payload: dict, media_lines: list[str]) -> dict:
+    """Normalize one inbound WhatsApp message into a single Turn shape.
+
+    trusted_text  = typed text and/or the user's own voice transcript
+    document_lines = OCR/PDF text (untrusted content, never user intent)
+    """
+    typed = str(payload.get("text") or "").strip()
+    transcript, document_lines = media.split_voice_transcript(media_lines)
+    trusted_text = "\n".join(x for x in (typed, transcript) if x).strip()
+    has_audio = bool(payload.get("audio_data"))
+    has_image = bool(payload.get("image_data"))
+    has_pdf = bool(payload.get("pdf_data"))
+    if has_audio and not (has_image or has_pdf):
+        source = "voice"
+    elif has_image and not (has_audio or has_pdf):
+        source = "image"
+    elif has_pdf and not (has_audio or has_image):
+        source = "document"
+    elif has_audio or has_image or has_pdf:
+        source = "mixed"
+    else:
+        source = "text"
+    return {
+        "trusted_text": trusted_text,
+        "document_lines": document_lines,
+        "source": source,
+        "has_document_media": has_image or has_pdf,
+        "received_at_utc": _received_at_utc(payload),
+    }
+
+
 def process(payload: dict) -> dict:
     required = ("message_id", "conversation_id", "sender_phone")
     if any(not payload.get(k) for k in required):
@@ -66,7 +116,8 @@ def process(payload: dict) -> dict:
         return {"ok": True, "duplicate": True}
 
     try:
-        media_ids, media_context, vision_parts = media.process_payload_media(payload)
+        media_ids, media_lines, vision_parts = media.process_payload_media(payload)
+        turn = build_turn(payload, media_lines)
         actor = db.resolve_actor(
             payload["sender_phone"],
             payload["conversation_id"],
@@ -74,20 +125,31 @@ def process(payload: dict) -> dict:
             payload["message_id"],
             media_ids,
         )
+        # Turn metadata is attached by code; privacy spaces were already fixed
+        # by resolve_actor and are never influenced by the model or the Turn.
+        actor = replace(
+            actor,
+            source=turn["source"],
+            trusted_text=turn["trusted_text"],
+            received_at_utc=turn["received_at_utc"],
+        )
         quoted_context = db.resolve_quoted_context(
             actor.conversation_id, payload.get("quoted_message_id"), actor.phone
         )
+        # Orphan-attachment pairing applies ONLY to a genuinely captionless
+        # image/PDF. Voice notes are the user's own words and must never
+        # inherit an earlier, unrelated text instruction (v0.4.3 vinyl leak).
         if (
             not quoted_context
-            and media_ids
-            and not str(payload.get("text") or "").strip()
+            and turn["has_document_media"]
+            and not turn["trusted_text"]
         ):
             quoted_context = db.resolve_recent_instruction_context(
                 actor.conversation_id, actor.phone, actor.source_message_id
             )
         reply, attachments = asyncio.run(
             brain.respond(
-                actor, payload.get("text", "") or "", media_context, vision_parts,
+                actor, turn["trusted_text"], turn["document_lines"], vision_parts,
                 quoted_context=quoted_context,
             )
         )
@@ -95,10 +157,12 @@ def process(payload: dict) -> dict:
             actor.conversation_id, "TEXT", text=reply,
             source_message_id=actor.source_message_id,
         )
+        sent_paths: set[str] = set()
         for item in attachments:
             path = item.get("path")
             kind = item.get("kind", "DOCUMENT")
-            if path:
+            if path and path not in sent_paths:
+                sent_paths.add(path)
                 db.queue_outbound(
                     actor.conversation_id,
                     "IMAGE" if kind == "IMAGE" else "DOCUMENT",

@@ -72,6 +72,10 @@ For Home Assistant, never invent an entity_id. Find the entity first when needed
 If a tool returns previous_attempt_uncertain, never repeat that mutation automatically. Explain that the prior attempt may already have happened and verify the relevant state first or ask the user before a fresh retry.
 
 Use local calculator/tool results instead of mental arithmetic when exactness matters. Keep normal WhatsApp replies short and natural; provide detail when requested.
+
+Files and images: when a tool result contains "_delivery" with attachments_queued, Alex sends those original files with your reply automatically. Never say you cannot send images or files, and do not describe the file in detail unless asked; a short line such as "Here it is." is enough.
+Timestamps: Alex stamps new money records with the time the message was sent. Only pass event_date_local when the user or the receipt gives a date or time; never invent a clock time. Show times in local time and never show UTC.
+Voice notes: a voice note is the user's own message, transcribed. It has exactly the same meaning and capabilities as typed text; allow for small transcription errors in names and numbers.
 """
 
 
@@ -218,6 +222,16 @@ LEGACY_SIMPLE_PLANNING = {
 
 TOOL_EXPOSURE_MAX = 6
 MAX_MODEL_CALLS = 4
+
+# v0.4.4 stopgap until the v0.5.0 facade: when the keyword gate recognises no
+# domain for a genuine (non-chat) request, the model previously received ZERO
+# data tools and answered "I don't have access" (e.g. plural "expenses",
+# "transactions", "what pictures did I save"). Read-only tools cannot change
+# data or devices, so exposing them is safe; writes still need the gate.
+CORE_READ_FALLBACK = (
+    "query_finances", "list_reminders", "list_shopping_items",
+    "search_saved_items", "get_agenda_range",
+)
 
 
 def _tool_priority(name: str, text: str, has_media: bool) -> int:
@@ -478,6 +492,21 @@ def _pure_chat(user_text: str, media_context: list[str] | None = None) -> bool:
     }
 
 
+_CASUAL_WORDS = {
+    "hi", "hello", "hey", "alex", "how", "are", "you", "u", "r", "doing", "is", "it",
+    "going", "good", "morning", "afternoon", "evening", "night", "thanks", "thank",
+    "ok", "okay", "nice", "great", "cool", "lol", "haha", "hahaha", "yes", "no",
+    "yep", "nope", "sure", "bye", "see", "ya", "later", "welcome", "awesome", "fine",
+    "im", "i", "am", "too", "all", "well", "wow", "hmm", "noted", "alright", "right",
+}
+
+
+def _casual_chat(user_text: str) -> bool:
+    """Small talk that needs no household data (keeps chit-chat token-light)."""
+    words = re.findall(r"[a-z]+", (user_text or "").casefold().replace("'", ""))
+    return bool(words) and len(words) <= 8 and all(w in _CASUAL_WORDS for w in words)
+
+
 def _money_only_reply(user_text: str) -> bool:
     text = (user_text or "").strip()
     return bool(re.fullmatch(
@@ -511,6 +540,8 @@ async def _tool_specs(user_text: str, media_context: list[str] | None = None,
         # paths available. The model still has to recover the description from
         # trusted quote/history and must not invent one.
         wanted |= {"list_pending_expenses", "confirm_expense", "log_expense", "query_finances"}
+    if not wanted and not _casual_chat(user_text):
+        wanted = set(CORE_READ_FALLBACK)
     wanted = _cap_tool_names(wanted, user_text, media_context)
     specs = await _tool_specs_for_names(wanted)
     # The discovery tool is a tiny safety valve for typo-heavy, incomplete,
@@ -1149,30 +1180,132 @@ async def _call_mcp(actor: ActorContext, tool_name: str, args: dict, action_key:
         raise
 
 
+def _history_user_text(actor: ActorContext, user_text: str,
+                       media_context: list[str] | None,
+                       vision_parts: list[dict] | None) -> str:
+    """What gets remembered as the user's turn.
+
+    v0.4.4: never persist OCR/PDF/transcript blobs into conversation history;
+    replaying them later leaked unrelated content into new turns. Store only
+    the user's own words plus compact markers.
+    """
+    markers: list[str] = []
+    source = getattr(actor, "source", "text") or "text"
+    if source == "voice":
+        markers.append("[voice note]")
+    has_image = bool(vision_parts) or any(
+        isinstance(x, str) and x.startswith("Local OCR from attached image") for x in (media_context or [])
+    )
+    has_doc = any(
+        isinstance(x, str) and x.startswith("Text extracted from attached PDF") for x in (media_context or [])
+    )
+    if source in {"image", "mixed"} or has_image:
+        markers.append("[image attached]")
+    if source == "document" or has_doc:
+        markers.append("[document attached]")
+    text = (user_text or "").strip()
+    out = " ".join(markers + ([text] if text else [])).strip()
+    return out or "[attachment]"
+
+
+def _trace_turn(actor: ActorContext, trace: dict) -> None:
+    """Phase-0 evidence: one compact local row per turn in the existing audit table.
+
+    Stored only in the local SQLite database (never sent to a model or chat),
+    truncated, and pruned after 14 days on startup.
+    """
+    try:
+        _audit(
+            actor, "_turn_trace",
+            {
+                "source": getattr(actor, "source", "text"),
+                "conversation_type": actor.conversation_type,
+                "exposed_tools": sorted(trace.get("exposed_tools") or []),
+                "history_turns": trace.get("history_turns", 0),
+                "quoted_context": bool(trace.get("quoted_context")),
+            },
+            {
+                "routes": trace.get("routes") or [],
+                "tools_called": trace.get("tools_called") or [],
+                "attachments_queued": trace.get("attachments_queued", 0),
+                "outcome": trace.get("outcome"),
+            },
+            True, 0, "trace:" + str(actor.source_message_id),
+        )
+    except Exception:
+        pass
+
+
+_ATTACHMENT_RETRIEVAL_TOOLS = {
+    "find_receipts", "get_receipt", "search_saved_items",
+    "get_saved_item", "resolve_numbered_choice",
+}
+
+
+def _looks_compound_request(user_text: str) -> bool:
+    """Conservative signal used only to avoid claiming a partial turn fully succeeded."""
+    text = (user_text or "").casefold()
+    if not re.search(r"\b(?:and|also|then)\b", text):
+        return False
+    signals = re.findall(
+        r"\b(?:send|show|open|get|find|tell|check|list|calculate|"
+        r"how\s+much|what|when|where|why|turn|add|remove|change|remind)\b",
+        text,
+    )
+    return len(signals) >= 2
+
+
+def _attachment_request_finished(trace: dict) -> bool:
+    """True only when queued files are the complete result, not one part of a compound turn."""
+    if trace.get("compound"):
+        return False
+    called = [str(x) for x in (trace.get("tools_called") or [])]
+    if any(x.endswith(":error") for x in called):
+        return False
+    meaningful = [x for x in called if x != DISCOVERY_TOOL_NAME]
+    return bool(meaningful) and all(x in _ATTACHMENT_RETRIEVAL_TOOLS for x in meaningful)
+
+
 async def respond(actor: ActorContext, user_text: str, media_context: list[str] | None = None,
                   vision_parts: list[dict] | None = None,
                   quoted_context: dict | None = None) -> tuple[str, list[dict]]:
+    history_user = _history_user_text(actor, user_text, media_context, vision_parts)
+    trace = {
+        "exposed_tools": [],
+        "history_turns": 0,
+        "quoted_context": quoted_context,
+        "routes": [], "tools_called": [], "attachments_queued": 0,
+    }
+
     # A deterministic no-write gate handles the small class of phrases that
     # are genuinely ambiguous across household domains.
     preflight = phase2_intent.classify_write_intent(
         user_text or "", has_media=bool(media_context or vision_parts)
     )
+    trace["compound"] = (
+        preflight.get("status") == "compound" or _looks_compound_request(user_text)
+    )
     if preflight.get("requires_clarification"):
         question = str(preflight.get("question") or "What would you like me to do with that?")
-        add_turn(actor.user_id, actor.conversation_id, "user", (user_text or "").strip())
+        add_turn(actor.user_id, actor.conversation_id, "user", history_user)
         add_turn(actor.user_id, actor.conversation_id, "assistant", question)
+        trace["outcome"] = "clarification"
+        _trace_turn(actor, trace)
         return question, []
 
     # Tiny social/health-check messages do not need any paid model at all.
     if not media_context and not vision_parts and not quoted_context:
         local_reply = _local_chat_reply(user_text)
         if local_reply is not None:
-            add_turn(actor.user_id, actor.conversation_id, "user", (user_text or "").strip())
+            add_turn(actor.user_id, actor.conversation_id, "user", history_user)
             add_turn(actor.user_id, actor.conversation_id, "assistant", local_reply)
+            trace["outcome"] = "local_reply"
+            _trace_turn(actor, trace)
             return local_reply, []
 
     settings = get_settings()
     tools = await _tool_specs(user_text, media_context, quoted_context)
+    trace["exposed_tools"] = [x["function"]["name"] for x in tools] if tools else []
     routes = _provider_routes(
         settings, user_text=user_text, tools=tools,
         vision_parts=vision_parts, preflight=preflight,
@@ -1182,8 +1315,10 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
             "Alex has no usable AI provider configured. Add a Gemini, Grok, or OpenAI "
             "API key in Alex MCP → Configuration."
         )
-        add_turn(actor.user_id, actor.conversation_id, "user", (user_text or "").strip())
+        add_turn(actor.user_id, actor.conversation_id, "user", history_user)
         add_turn(actor.user_id, actor.conversation_id, "assistant", final)
+        trace["outcome"] = "no_provider"
+        _trace_turn(actor, trace)
         return final, []
 
     messages: list[dict] = [
@@ -1191,9 +1326,15 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
         {"role": "system", "content": _runtime_context(actor, user_text)},
     ]
     history_limit = _history_turn_limit(user_text, settings.context_turns, quoted_context)
+    trace["history_turns"] = history_limit
     if history_limit:
         for turn in recent_turns(actor.conversation_id, history_limit):
             messages.append({"role": turn["role"], "content": turn["content"]})
+    if getattr(actor, "source", "text") == "voice":
+        messages.append({
+            "role": "system",
+            "content": "The current user message is a transcribed WhatsApp voice note from the user.",
+        })
     trusted_quote = _quoted_context_message(quoted_context)
     if trusted_quote:
         messages.append({"role": "system", "content": trusted_quote})
@@ -1219,11 +1360,14 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                 "Alex's optional monthly AI budget guard is reached. "
                 "No AI request was sent. You can raise or disable the limit in Alex MCP → Configuration."
             )
-            add_turn(actor.user_id, actor.conversation_id, "user", current or "[attachment]")
+            add_turn(actor.user_id, actor.conversation_id, "user", history_user)
             add_turn(actor.user_id, actor.conversation_id, "assistant", final)
+            trace["outcome"] = "budget_guard"
+            _trace_turn(actor, trace)
             return final, []
 
     attachments: list[dict] = []
+    seen_attachment_paths: set[str] = set()
     usage_by_route: dict = {}
     tool_rounds = 0
     occurrence: dict[str, int] = {}
@@ -1258,6 +1402,7 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                 )
                 call_ms = int((time.monotonic() - call_started) * 1000)
                 active_route = route
+                trace["routes"].append(f"{route['provider']}:{route['model']}")
                 break
             except Exception as exc:
                 info = classify_runtime_error(exc)
@@ -1272,12 +1417,20 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
 
         if response is None or active_route is None:
             _record_usage_buckets(actor.source_message_id, usage_by_route)
-            final = (
-                "I couldn't finish that because the configured AI providers are temporarily "
-                "unavailable. I won't repeat any household action automatically; please try once more later."
-            )
-            add_turn(actor.user_id, actor.conversation_id, "user", current or "[attachment]")
+            if attachments and _attachment_request_finished(trace):
+                final = "Here it is."
+            elif attachments:
+                final = "I sent the file, but I couldn't finish the rest of that request."
+            else:
+                final = (
+                    "I couldn't finish that because the configured AI providers are temporarily "
+                    "unavailable. I won't repeat any household action automatically; please try once more later."
+                )
+            add_turn(actor.user_id, actor.conversation_id, "user", history_user)
             add_turn(actor.user_id, actor.conversation_id, "assistant", final)
+            trace["outcome"] = "provider_unavailable"
+            trace["attachments_queued"] = len(attachments)
+            _trace_turn(actor, trace)
             return final, attachments
 
         msg = response.choices[0].message
@@ -1288,10 +1441,13 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
         )
 
         if not calls:
-            final = _content_text(msg.content).strip() or "Done."
+            final = _content_text(msg.content).strip() or ("Here it is." if attachments else "Done.")
             _record_usage_buckets(actor.source_message_id, usage_by_route)
-            add_turn(actor.user_id, actor.conversation_id, "user", current or "[attachment]")
+            add_turn(actor.user_id, actor.conversation_id, "user", history_user)
             add_turn(actor.user_id, actor.conversation_id, "assistant", final)
+            trace["outcome"] = "answered"
+            trace["attachments_queued"] = len(attachments)
+            _trace_turn(actor, trace)
             return final, attachments
 
         tool_rounds += 1
@@ -1307,10 +1463,14 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                 args = {}
 
             if name == DISCOVERY_TOOL_NAME:
+                trace["tools_called"].append(name)
                 normalized = str(args.get("intent") or "").strip()
                 discovered = _select_tool_names(normalized, media_context)
                 discovered_specs = await _tool_specs_for_names(discovered)
                 tools = discovered_specs[:TOOL_EXPOSURE_MAX - 1] + [DISCOVERY_TOOL]
+                trace["exposed_tools"] = sorted(set(trace["exposed_tools"]) | {
+                    x["function"]["name"] for x in tools
+                })
                 messages.append({
                     "role": "tool",
                     "tool_call_id": call.id,
@@ -1331,10 +1491,26 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
 
             try:
                 result, files = await _call_mcp(actor, name, args, action_key)
-                attachments.extend(files)
-                payload = result
+                new_files = []
+                for item in files or []:
+                    path = item.get("path") if isinstance(item, dict) else None
+                    if path and path not in seen_attachment_paths:
+                        seen_attachment_paths.add(path)
+                        new_files.append(item)
+                attachments.extend(new_files)
+                payload = dict(result) if isinstance(result, dict) else {"result": result}
+                if files:
+                    # Tell the model delivery is automatic so it never claims
+                    # it "cannot send images" while the file is being sent.
+                    payload["_delivery"] = {
+                        "attachments_queued": len(attachments),
+                        "already_queued_earlier": len(files) - len(new_files),
+                        "note": "Alex sends these original files with your reply automatically.",
+                    }
+                trace["tools_called"].append(name)
             except Exception as exc:
                 payload = {"error": str(exc)[:1000]}
+                trace["tools_called"].append(name + ":error")
                 _audit(actor, name, args, payload, False, 0, action_key)
 
             messages.append({
@@ -1344,8 +1520,17 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
             })
 
     _record_usage_buckets(actor.source_message_id, usage_by_route)
-    final = "I couldn't complete that safely after several tool steps. Nothing else was changed."
-    add_turn(actor.user_id, actor.conversation_id, "user", current or "[attachment]")
+    if attachments and _attachment_request_finished(trace):
+        # A retrieval-only turn found the requested original; delivery is the complete result.
+        final = "Here it is."
+    elif attachments:
+        final = "I sent the file, but I couldn't finish the rest of that request."
+    else:
+        final = "I couldn't complete that safely after several tool steps. Nothing else was changed."
+    add_turn(actor.user_id, actor.conversation_id, "user", history_user)
     add_turn(actor.user_id, actor.conversation_id, "assistant", final)
+    trace["outcome"] = "max_steps"
+    trace["attachments_queued"] = len(attachments)
+    _trace_turn(actor, trace)
     return final, attachments
 

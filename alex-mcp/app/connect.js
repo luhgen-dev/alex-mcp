@@ -121,18 +121,69 @@ function jidUser(value) {
   return cleanNumber(String(value || '').split('@')[0].split(':')[0]);
 }
 
-function isAlexMentioned(message) {
-  const ctx = extractContextInfo(message);
-  const self = jidUser(currentSock && currentSock.user ? currentSock.user.id : '');
-  if (!ctx || !self || !Array.isArray(ctx.mentionedJid)) return false;
-  return ctx.mentionedJid.some(jid => jidUser(jid) === self);
+// v0.4.4: WhatsApp groups increasingly identify people by LID
+// ("12345@lid") instead of phone JIDs. Alex's own identity therefore has two
+// forms, and a mention/reply may use either. This only affects the group WAKE
+// gate; privacy spaces are still decided later by Python resolve_actor.
+function selfIdentityUsers() {
+  const ids = new Set();
+  const user = currentSock && currentSock.user ? currentSock.user : null;
+  if (!user) return ids;
+  const pn = jidUser(user.id || '');
+  const lid = jidUser(user.lid || '');
+  if (pn) ids.add(pn);
+  if (lid) ids.add(lid);
+  return ids;
 }
 
-function isReplyToAlex(message) {
+async function jidMatchesSelf(jid, selfIds) {
+  if (!jid) return false;
+  if (selfIds.has(jidUser(jid))) return true;
+  if (String(jid).endsWith('@lid') && currentSock && currentSock.signalRepository
+      && currentSock.signalRepository.lidMapping) {
+    try {
+      const pn = await currentSock.signalRepository.lidMapping.getPNForLID(jid);
+      if (pn && selfIds.has(jidUser(pn))) return true;
+    } catch (_err) {}
+  }
+  return false;
+}
+
+function messageTimestampMs(message) {
+  const ts = message ? message.messageTimestamp : null;
+  if (ts === null || ts === undefined) return null;
+  let seconds = null;
+  if (typeof ts === 'number') seconds = ts;
+  else if (typeof ts === 'bigint') seconds = Number(ts);
+  else if (typeof ts === 'object' && typeof ts.toNumber === 'function') seconds = ts.toNumber();
+  else seconds = Number(ts);
+  return Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds * 1000) : null;
+}
+
+function maskId(value) {
+  const text = jidUser(value);
+  if (text.length <= 4) return '***';
+  return text.slice(0, 2) + '***' + text.slice(-2) + (String(value).endsWith('@lid') ? '@lid' : '');
+}
+
+async function isAlexMentioned(message) {
   const ctx = extractContextInfo(message);
-  const self = jidUser(currentSock && currentSock.user ? currentSock.user.id : '');
-  if (!ctx || !self || !ctx.stanzaId || !ctx.quotedMessage) return false;
-  return jidUser(ctx.participant || ctx.remoteJid || '') === self;
+  const selfIds = selfIdentityUsers();
+  if (!ctx || !selfIds.size || !Array.isArray(ctx.mentionedJid) || !ctx.mentionedJid.length) return false;
+  for (const jid of ctx.mentionedJid) {
+    if (await jidMatchesSelf(jid, selfIds)) return true;
+  }
+  // Masked evidence for diagnosing identity-format mismatches (no content).
+  console.log('[Alex MCP] Group mention not matched: mentioned=' +
+    ctx.mentionedJid.map(maskId).join(',') + ' self=' + Array.from(selfIds).map(maskId).join(','));
+  return false;
+}
+
+async function isReplyToAlex(message) {
+  const ctx = extractContextInfo(message);
+  const selfIds = selfIdentityUsers();
+  if (!ctx || !selfIds.size || !ctx.stanzaId || !ctx.quotedMessage) return false;
+  return jidMatchesSelf(ctx.participant || ctx.remoteJid || '', selfIds);
 }
 
 function detectMedia(message) {
@@ -226,7 +277,7 @@ async function handleIncoming(message) {
     if (!familyGroup || familyGroup !== remoteJid) return;
     // Family Shared is intentionally opt-in per message: Alex responds only
     // when explicitly @mentioned or when someone swipe-replies to Alex.
-    if (!isAlexMentioned(message) && !isReplyToAlex(message)) return;
+    if (!(await isAlexMentioned(message)) && !(await isReplyToAlex(message))) return;
   }
 
   const media = detectMedia(message);
@@ -247,6 +298,7 @@ async function handleIncoming(message) {
     sender_phone: '+' + senderPhone,
     text: rawText,
     quoted_message_id: extractQuotedId(message),
+    sent_at_ms: messageTimestampMs(message),
     image_data: media.type === 'image' && mediaData ? mediaData.data : null,
     image_mime_type: media.type === 'image' && mediaData ? mediaData.mimeType : null,
     audio_data: media.type === 'audio' && mediaData ? mediaData.data : null,
