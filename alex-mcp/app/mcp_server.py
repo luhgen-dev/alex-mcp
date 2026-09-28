@@ -19,7 +19,7 @@ import phase2_reports
 
 mcp = MCPServer(
     "Alex Household Tools",
-    version="0.4.0",
+    version="0.4.2",
     instructions="Deterministic household tools. Identity and permissions are injected by Alex and are never model-controlled.",
 )
 
@@ -50,9 +50,12 @@ def confirm_expense(event_id: str, actor: Actor, approve: bool = True,
 @mcp.tool()
 def query_finances(actor: Actor, start_date: str | None = None, end_date: str | None = None,
                    category: str | None = None, search: str | None = None,
-                   currency: str | None = None, limit: int = 20) -> dict:
-    """Read true ledger totals and matching transactions. Use ISO dates YYYY-MM-DD for date filters."""
-    return services.query_finances(actor, start_date, end_date, category, search, currency, limit)
+                   currency: str | None = None, limit: int = 20,
+                   scope: str | None = None, source: str | None = None) -> dict:
+    """Read true ledger totals and matching transactions. Use ISO dates YYYY-MM-DD. scope may be all/family/private. source may be all/voice/receipt/text. For today/tomorrow/yesterday, resolve the runtime date and set both start_date and end_date."""
+    return services.query_finances(
+        actor, start_date, end_date, category, search, currency, limit, scope, source
+    )
 
 
 @mcp.tool()
@@ -181,9 +184,10 @@ def add_shopping_item(item: str, actor: Actor, quantity: str | None = None,
 
 
 @mcp.tool()
-def list_shopping_items(actor: Actor, include_purchased: bool = False, limit: int = 50) -> dict:
-    """List shopping items visible to the authenticated household user."""
-    return services.list_shopping_items(actor, include_purchased, limit)
+def list_shopping_items(actor: Actor, include_purchased: bool = False, limit: int = 50,
+                        scope: str | None = None) -> dict:
+    """List shopping items visible to the authenticated household user. scope may be all, family, or private."""
+    return services.list_shopping_items(actor, include_purchased, limit, scope)
 
 
 @mcp.tool()

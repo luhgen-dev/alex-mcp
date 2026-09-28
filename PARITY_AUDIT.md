@@ -1,6 +1,6 @@
 # Alex MCP Final Parity Audit
 
-Audit date: 2026-09-27
+Audit date: 2026-09-28
 
 Reference sources:
 - Old Alex repaired release commit: `09edea2876b36560aa00a11a2b23085f34ce818c`
@@ -39,7 +39,11 @@ Alex MCP is architecturally sound and its current CI is green, but the audit fou
 - Deterministic cash-flow baseline excluding OT/variable cash
 - Bounded Home Assistant entity lookup/state/control
 - Durable outbound queue/retry, inbound idempotency/recovery
-- Usage/tool audit and sanitized system diagnostics
+- Usage/tool audit and sanitized system diagnostics, including cached/reasoning/model-call telemetry
+- Token-minimizing provider surface (maximum six relevant tools), low-reasoning default and bounded model-call loop
+- Swipe-to-reply exact context binding and caption/quote/recent-instruction attachment pairing
+- Family Shared explicit-mention/reply invocation gate
+- Deterministic family/private finance and shopping read scopes plus voice-source finance filtering
 - Plug-and-play HA configuration, QR pairing Web UI and family-group pairing command
 - No Needle dependency
 
@@ -69,11 +73,7 @@ Alex MCP is architecturally sound and its current CI is green, but the audit fou
    - MCP has the work 1/2/3 gate.
    - Still need existing-Diary overlap preflight, 48-hour ticket expiry, and the old explicit keep/shift/cancel choice when moving/cancelling events with linked reminders. Current MCP linked-reminder behavior is automatic and must be changed.
 
-7. **Token-minimizing tool exposure**
-   - Old Phase 2 deliberately exposed only a small relevant tool subset.
-   - MCP currently advertises the full tool catalog on each model turn. This works but conflicts with the low-token design goal.
-
-8. **Phase-3 simulator parity**
+7. **Phase-3 simulator parity**
    - MCP has startup diagnostics and 29 deterministic regression tests.
    - It does not yet reproduce the repaired old Alex Phase-3 broad user-simulation/adversarial suite. A provider-backed MCP scenario harness is required before production promotion.
 

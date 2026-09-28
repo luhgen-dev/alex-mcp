@@ -78,7 +78,16 @@ def initialize() -> None:
         _ensure_column(conn, "reminders", "defer_reason", "TEXT")
         _ensure_column(conn, "outbound_messages", "context_kind", "TEXT")
         _ensure_column(conn, "outbound_messages", "context_id", "TEXT")
+        _ensure_column(conn, "outbound_messages", "provider_message_id", "TEXT")
+        _ensure_column(conn, "inbound_messages", "quoted_message_id", "TEXT")
         _ensure_column(conn, "ai_usage", "estimated_cost_usd", "REAL")
+        _ensure_column(conn, "ai_usage", "cached_input_tokens", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(conn, "ai_usage", "reasoning_tokens", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(conn, "ai_usage", "model_calls", "INTEGER NOT NULL DEFAULT 0")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_outbound_provider_message "
+            "ON outbound_messages(conversation_id,provider_message_id)"
+        )
         _ensure_column(conn, "schedule_conflicts", "conflicting_diary_id", "TEXT")
         _ensure_column(conn, "schedule_conflicts", "conflict_kind", "TEXT NOT NULL DEFAULT 'WORK'")
         _ensure_column(conn, "schedule_conflicts", "expires_at_utc", "TEXT")
@@ -238,8 +247,8 @@ def claim_inbound(payload: dict) -> str:
         conn.execute(
             """INSERT INTO inbound_messages(
                 message_id,provider_name,conversation_id,conversation_type,sender_phone,raw_text,
-                processing_state,attempt_count,processing_started_at_utc
-               ) VALUES(?,?,?,?,?,?, 'PROCESSING',1,?)""",
+                quoted_message_id,processing_state,attempt_count,processing_started_at_utc
+               ) VALUES(?,?,?,?,?,?,?, 'PROCESSING',1,?)""",
             (
                 payload["message_id"],
                 payload.get("provider","WHATSAPP"),
@@ -247,6 +256,7 @@ def claim_inbound(payload: dict) -> str:
                 payload.get("conversation_type","DIRECT_DM"),
                 normalize_phone(payload["sender_phone"]),
                 payload.get("text","") or "",
+                payload.get("quoted_message_id") or None,
                 now.isoformat(),
             ),
         )
@@ -331,18 +341,113 @@ def queue_outbound(conversation_id: str, kind: str, text: str | None = None,
 
 def record_usage(source_message_id: str, provider: str, model: str,
                  input_tokens: int, output_tokens: int, tool_rounds: int,
-                 latency_ms: int, estimated_cost_usd: float | None = None) -> None:
+                 latency_ms: int, estimated_cost_usd: float | None = None,
+                 cached_input_tokens: int = 0, reasoning_tokens: int = 0,
+                 model_calls: int = 0) -> None:
     conn = connect()
     try:
         conn.execute(
             """INSERT INTO ai_usage(
-                usage_id,source_message_id,provider,model,input_tokens,output_tokens,
-                tool_rounds,latency_ms,estimated_cost_usd
-               ) VALUES(?,?,?,?,?,?,?,?,?)""",
+                usage_id,source_message_id,provider,model,input_tokens,cached_input_tokens,
+                output_tokens,reasoning_tokens,model_calls,tool_rounds,latency_ms,estimated_cost_usd
+               ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
             (str(uuid.uuid4()), source_message_id, provider, model,
-             input_tokens, output_tokens, tool_rounds, latency_ms, estimated_cost_usd),
+             input_tokens, cached_input_tokens, output_tokens, reasoning_tokens,
+             model_calls, tool_rounds, latency_ms, estimated_cost_usd),
         )
         conn.commit()
+    finally:
+        conn.close()
+
+
+def resolve_quoted_context(conversation_id: str, quoted_message_id: str | None,
+                           sender_phone: str | None = None) -> dict | None:
+    """Resolve a WhatsApp reply inside the same conversation without model guessing."""
+    if not quoted_message_id:
+        return None
+    conn = connect()
+    try:
+        row = conn.execute(
+            """SELECT outbound_id,source_message_id,text_body,context_kind,context_id,
+                      provider_message_id
+               FROM outbound_messages
+               WHERE conversation_id=? AND provider_message_id=?
+               ORDER BY delivered_at_utc DESC,created_at_utc DESC LIMIT 1""",
+            (conversation_id, quoted_message_id),
+        ).fetchone()
+        if row:
+            result = {
+                "quoted_alex_text": row["text_body"] or "",
+                "source_message_id": row["source_message_id"],
+                "context_kind": row["context_kind"],
+                "context_id": row["context_id"],
+            }
+            if row["source_message_id"]:
+                events = conn.execute(
+                    """SELECT event_id,status,event_type,amount_minor,currency,description,category
+                       FROM financial_events
+                       WHERE source_message_id=?
+                         AND status IN ('ACTIVE','PENDING_HUMAN_REVIEW')
+                       ORDER BY created_at_utc DESC""",
+                    (row["source_message_id"],),
+                ).fetchall()
+                if len(events) == 1:
+                    event = events[0]
+                    result["financial_event"] = {
+                        "event_id": event["event_id"],
+                        "status": event["status"],
+                        "type": event["event_type"],
+                        "amount": event["amount_minor"] / 100 if event["amount_minor"] is not None else None,
+                        "currency": event["currency"],
+                        "description": event["description"],
+                        "category": event["category"],
+                    }
+            return result
+
+        # A user may reply to their own earlier instruction while attaching a
+        # file. Bind only the same authenticated sender in the same conversation.
+        if sender_phone:
+            user_row = conn.execute(
+                """SELECT message_id,raw_text FROM inbound_messages
+                   WHERE message_id=? AND conversation_id=? AND sender_phone=? LIMIT 1""",
+                (quoted_message_id, conversation_id, normalize_phone(sender_phone)),
+            ).fetchone()
+            if user_row and str(user_row["raw_text"] or "").strip():
+                return {
+                    "quoted_user_text": str(user_row["raw_text"]).strip()[:2000],
+                    "source_message_id": user_row["message_id"],
+                }
+        return None
+    finally:
+        conn.close()
+
+
+def resolve_recent_instruction_context(conversation_id: str, sender_phone: str,
+                                       current_message_id: str,
+                                       max_age_seconds: int = 120) -> dict | None:
+    """Short same-sender pairing for a captionless attachment after an instruction."""
+    bounded = max(15, min(300, int(max_age_seconds)))
+    conn = connect()
+    try:
+        row = conn.execute(
+            """SELECT message_id,raw_text FROM inbound_messages
+               WHERE conversation_id=? AND sender_phone=? AND message_id<>?
+                 AND processing_state='COMPLETED'
+                 AND TRIM(raw_text)<>''
+                 AND datetime(received_at_utc)>=datetime('now', ?)
+               ORDER BY received_at_utc DESC,rowid DESC LIMIT 1""",
+            (
+                conversation_id, normalize_phone(sender_phone), current_message_id,
+                f"-{bounded} seconds",
+            ),
+        ).fetchone()
+        if not row:
+            return None
+        return {
+            "recent_user_instruction": str(row["raw_text"]).strip()[:2000],
+            "source_message_id": row["message_id"],
+            "pairing": "same_sender_recent_instruction",
+        }
     finally:
         conn.close()
 

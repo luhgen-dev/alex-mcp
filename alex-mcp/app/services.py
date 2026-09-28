@@ -16,9 +16,22 @@ from context import ActorContext
 from db import connect, utc_now
 
 
-def _spaces_sql(actor: ActorContext) -> tuple[str, list[str]]:
-    marks = ",".join("?" for _ in actor.allowed_spaces)
-    return marks, list(actor.allowed_spaces)
+def _spaces_sql(actor: ActorContext, scope: str | None = None) -> tuple[str, list[str]]:
+    resolved = str(scope or "all").strip().casefold()
+    if resolved in {"", "all", "visible", "accessible"}:
+        spaces = list(actor.allowed_spaces)
+    elif resolved in {"family", "shared", "family_shared"}:
+        if "FAMILY_SHARED" not in actor.allowed_spaces:
+            raise PermissionError("family finance/list scope is not accessible in this conversation")
+        spaces = ["FAMILY_SHARED"]
+    elif resolved in {"private", "personal", "my"}:
+        if actor.conversation_type == "GROUP" or actor.private_space not in actor.allowed_spaces:
+            raise PermissionError("private scope is not accessible in the Family Shared group")
+        spaces = [actor.private_space]
+    else:
+        raise ValueError("scope must be all, family, or private")
+    marks = ",".join("?" for _ in spaces)
+    return marks, spaces
 
 
 def _minor(amount: float | int | str | Decimal | None) -> int | None:
@@ -201,11 +214,35 @@ def confirm_expense(actor: ActorContext, event_id: str, approve: bool = True,
 
 def query_finances(actor: ActorContext, start_date: str | None = None, end_date: str | None = None,
                    category: str | None = None, search: str | None = None,
-                   currency: str | None = None, limit: int = 20) -> dict:
+                   currency: str | None = None, limit: int = 20,
+                   scope: str | None = None, source: str | None = None) -> dict:
     """Return exact aggregates over the full match set plus a bounded recent-record sample."""
-    marks, spaces = _spaces_sql(actor)
+    marks, spaces = _spaces_sql(actor, scope)
     where = f"status='ACTIVE' AND space_id IN ({marks})"
     params: list = spaces[:]
+    source_kind = str(source or "all").strip().casefold()
+    if source_kind in {"", "all", "any"}:
+        pass
+    elif source_kind in {"voice", "audio", "voice_note", "voice-note"}:
+        where += """ AND EXISTS (
+            SELECT 1 FROM media_objects srcm
+            WHERE srcm.source_message_id=financial_events.source_message_id
+              AND srcm.media_type='AUDIO'
+        )"""
+    elif source_kind in {"receipt", "document", "media"}:
+        where += """ AND EXISTS (
+            SELECT 1 FROM media_objects srcm
+            WHERE srcm.source_message_id=financial_events.source_message_id
+              AND srcm.media_type IN ('IMAGE','PDF')
+        )"""
+    elif source_kind in {"text", "typed"}:
+        where += """ AND NOT EXISTS (
+            SELECT 1 FROM media_objects srcm
+            WHERE srcm.source_message_id=financial_events.source_message_id
+              AND srcm.media_type IN ('AUDIO','IMAGE','PDF')
+        )"""
+    else:
+        raise ValueError("source must be all, voice, receipt, or text")
     if start_date:
         where += " AND event_date_utc>=?"
         params.append(_local_bound(start_date, actor.timezone, False))
@@ -939,8 +976,9 @@ def add_shopping_item(actor: ActorContext, item: str, quantity: str | None = Non
         conn.close()
 
 
-def list_shopping_items(actor: ActorContext, include_purchased: bool = False, limit: int = 50) -> dict:
-    marks, spaces = _spaces_sql(actor)
+def list_shopping_items(actor: ActorContext, include_purchased: bool = False, limit: int = 50,
+                        scope: str | None = None) -> dict:
+    marks, spaces = _spaces_sql(actor, scope)
     status_clause = "" if include_purchased else " AND status='OPEN'"
     conn = connect()
     try:

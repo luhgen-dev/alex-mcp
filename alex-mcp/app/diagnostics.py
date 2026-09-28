@@ -24,6 +24,48 @@ def _selftest() -> dict | None:
         return None
 
 
+def usage_summary(hours: int = 24) -> dict:
+    """Observed local model usage only; reading this never calls an AI provider."""
+    bounded = max(1, min(24 * 30, int(hours)))
+    cutoff = _cutoff(bounded)
+    conn = connect()
+    try:
+        row = conn.execute(
+            """SELECT COUNT(*) AS interactions,
+                      COALESCE(SUM(CASE WHEN source_message_id IS NULL THEN 1 ELSE 0 END),0) AS probes,
+                      COALESCE(SUM(model_calls),0) AS model_calls,
+                      COALESCE(SUM(input_tokens),0) AS input_tokens,
+                      COALESCE(SUM(cached_input_tokens),0) AS cached_input_tokens,
+                      COALESCE(SUM(output_tokens),0) AS output_tokens,
+                      COALESCE(SUM(reasoning_tokens),0) AS reasoning_tokens,
+                      COALESCE(SUM(tool_rounds),0) AS tool_rounds,
+                      COALESCE(AVG(latency_ms),0) AS avg_latency,
+                      COALESCE(SUM(estimated_cost_usd),0) AS estimated_cost
+               FROM ai_usage WHERE created_at_utc>=?""",
+            (cutoff,),
+        ).fetchone()
+        total_in = int(row["input_tokens"] or 0)
+        cached = min(total_in, int(row["cached_input_tokens"] or 0))
+        return {
+            "window_hours": bounded,
+            "interactions": int(row["interactions"] or 0),
+            "provider_probes": int(row["probes"] or 0),
+            "model_calls": int(row["model_calls"] or 0),
+            "input_tokens": total_in,
+            "cached_input_tokens": cached,
+            "uncached_input_tokens": max(0, total_in - cached),
+            "output_tokens": int(row["output_tokens"] or 0),
+            "reasoning_tokens": int(row["reasoning_tokens"] or 0),
+            "tool_rounds": int(row["tool_rounds"] or 0),
+            "cache_ratio_pct": round((cached / total_in * 100.0) if total_in else 0.0, 1),
+            "average_ai_latency_ms": round(float(row["avg_latency"] or 0), 1),
+            "estimated_ai_cost_usd": round(float(row["estimated_cost"] or 0), 6),
+            "note": "Local telemetry from provider usage fields; no AI request was made to read this.",
+        }
+    finally:
+        conn.close()
+
+
 def system_health(actor, hours: int = 24) -> dict:
     cutoff = _cutoff(hours)
     settings = get_settings()
@@ -46,8 +88,12 @@ def system_health(actor, hours: int = 24) -> dict:
             (cutoff,),
         ).fetchone()[0]
         usage = conn.execute(
-            """SELECT COUNT(*) AS calls,COALESCE(SUM(input_tokens),0) AS input_tokens,
+            """SELECT COUNT(*) AS interactions,
+                      COALESCE(SUM(model_calls),0) AS model_calls,
+                      COALESCE(SUM(input_tokens),0) AS input_tokens,
+                      COALESCE(SUM(cached_input_tokens),0) AS cached_input_tokens,
                       COALESCE(SUM(output_tokens),0) AS output_tokens,
+                      COALESCE(SUM(reasoning_tokens),0) AS reasoning_tokens,
                       COALESCE(AVG(latency_ms),0) AS avg_latency,
                       COALESCE(SUM(estimated_cost_usd),0) AS estimated_cost
                FROM ai_usage WHERE created_at_utc>=?""",
@@ -72,9 +118,12 @@ def system_health(actor, hours: int = 24) -> dict:
                 "pending_outbound": int(pending_outbound),
                 "failed_outbound": int(failed_outbound),
                 "tool_errors": int(tool_errors),
-                "ai_calls": int(usage["calls"] or 0),
+                "ai_interactions": int(usage["interactions"] or 0),
+                "model_calls": int(usage["model_calls"] or 0),
                 "input_tokens": int(usage["input_tokens"] or 0),
+                "cached_input_tokens": int(usage["cached_input_tokens"] or 0),
                 "output_tokens": int(usage["output_tokens"] or 0),
+                "reasoning_tokens": int(usage["reasoning_tokens"] or 0),
                 "average_ai_latency_ms": round(float(usage["avg_latency"] or 0), 1),
                 "estimated_ai_cost_usd": round(float(usage["estimated_cost"] or 0), 6),
                 "last_completed_message_at": last_completed["completed_at_utc"] if last_completed else None,

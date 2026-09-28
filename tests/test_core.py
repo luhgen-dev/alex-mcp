@@ -1191,6 +1191,173 @@ class AlexCoreTests(unittest.TestCase):
         self.assertEqual(result["status"], "previous_attempt_uncertain")
 
 
+    def test_live_financial_correction_phrases_bypass_generic_date_money_clarification(self):
+        phrases = [
+            "Actually, the second RM8 parking transaction today was RM10. Correct it.",
+            "Change today's second parking expense from RM8 to RM10.",
+        ]
+        for phrase in phrases:
+            result = brain.phase2_intent.classify_write_intent(phrase)
+            self.assertEqual(result.get("intent"), "EXPENSE", (phrase, result))
+            self.assertFalse(result.get("requires_clarification"), (phrase, result))
+            selected = brain._select_tool_names(phrase)
+            self.assertIn("correct_expense", selected)
+            self.assertIn("query_finances", selected)
+            self.assertLessEqual(len(selected), brain.TOOL_EXPOSURE_MAX)
+
+    def test_finance_scope_family_private_and_voice_are_deterministic(self):
+        self.claim("scope-private", "+60111111111", "coffee")
+        private_actor = with_action_key(self.actor("scope-private", "+60111111111"), "scope-private-a")
+        services.log_expense(private_actor, "Coffee", 8.5, "food", currency="MYR")
+
+        self.claim("scope-family", "+60111111111", "parking")
+        family_actor = with_action_key(self.actor("scope-family", "+60111111111"), "scope-family-a")
+        services.log_expense(family_actor, "Parking", 10, "transport", currency="MYR")
+
+        self.claim("scope-voice", "+60111111111", "")
+        raw = base64.b64encode(b"dummy-voice").decode("ascii")
+        voice_media = media.save_media("scope-voice", "AUDIO", "audio/ogg", raw)
+        voice_actor = with_action_key(
+            self.actor("scope-voice", "+60111111111", [voice_media]), "scope-voice-a"
+        )
+        services.log_expense(voice_actor, "Voice coffee", 6, "food", currency="MYR")
+
+        reader = self.actor("scope-family", "+60111111111")
+        family = services.query_finances(reader, scope="family")
+        private = services.query_finances(reader, scope="private")
+        voice = services.query_finances(reader, source="voice")
+        self.assertEqual(family["count"], 1)
+        self.assertEqual(family["spending_totals"]["MYR"], 10)
+        self.assertEqual(private["count"], 2)
+        self.assertEqual(voice["count"], 1)
+        self.assertEqual(voice["records"][0]["description"], "Voice coffee")
+
+        group = self.group_actor("scope-group", "+60111111111")
+        with self.assertRaises(PermissionError):
+            services.query_finances(group, scope="private")
+
+    def test_shopping_private_and_family_lists_do_not_collapse_each_other(self):
+        self.claim("shop-scope", "+60111111111", "shopping")
+        actor = self.actor("shop-scope", "+60111111111")
+        family = services.add_shopping_item(
+            with_action_key(actor, "shop-family"), "Milk", shared=True
+        )
+        private = services.add_shopping_item(
+            with_action_key(actor, "shop-private"), "Milk", shared=False
+        )
+        self.assertNotEqual(family["item_id"], private["item_id"])
+        family_list = services.list_shopping_items(actor, scope="family")
+        private_list = services.list_shopping_items(actor, scope="private")
+        self.assertEqual([x["item_id"] for x in family_list["items"]], [family["item_id"]])
+        self.assertEqual([x["item_id"] for x in private_list["items"]], [private["item_id"]])
+
+    def test_swipe_reply_context_resolves_exact_financial_event(self):
+        self.claim("quote-src", "+60111111111", "parking RM8")
+        actor = with_action_key(self.actor("quote-src", "+60111111111"), "quote-expense")
+        event = services.log_expense(actor, "Parking", 8, "transport", currency="MYR")
+        oid = db.queue_outbound(
+            actor.conversation_id, "TEXT", text="Logged RM8 parking.",
+            source_message_id="quote-src",
+        )
+        conn = db.connect()
+        try:
+            conn.execute(
+                "UPDATE outbound_messages SET provider_message_id=?,delivery_status='SENT' WHERE outbound_id=?",
+                ("WA-QUOTE-1", oid),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        context = db.resolve_quoted_context(
+            actor.conversation_id, "WA-QUOTE-1", actor.phone
+        )
+        self.assertEqual(context["financial_event"]["event_id"], event["event_id"])
+        self.assertEqual(context["financial_event"]["amount"], 8)
+        self.assertIsNone(db.resolve_quoted_context(
+            "another@s.whatsapp.net", "WA-QUOTE-1", actor.phone
+        ))
+
+        specs = asyncio.run(brain._tool_specs("RM9", quoted_context=context))
+        names = {x["function"]["name"] for x in specs}
+        self.assertIn("correct_expense", names)
+        self.assertIn("confirm_expense", names)
+
+    def test_reply_to_own_instruction_and_short_attachment_pairing_are_scoped(self):
+        self.claim("instruction-1", "+60111111111", "Save this PDF for me")
+        db.finish_inbound("instruction-1", "Send it here.")
+        conversation = "60111111111@s.whatsapp.net"
+        quoted = db.resolve_quoted_context(
+            conversation, "instruction-1", "+60111111111"
+        )
+        self.assertEqual(quoted["quoted_user_text"], "Save this PDF for me")
+
+        self.claim("attachment-2", "+60111111111", "")
+        recent = db.resolve_recent_instruction_context(
+            conversation, "+60111111111", "attachment-2", max_age_seconds=120
+        )
+        self.assertEqual(recent["recent_user_instruction"], "Save this PDF for me")
+        self.assertIsNone(db.resolve_recent_instruction_context(
+            conversation, "+60222222222", "attachment-2", max_age_seconds=120
+        ))
+
+    def test_numbered_show_ten_retrieves_tenth_item_from_latest_list(self):
+        for idx in range(1, 11):
+            mid = f"saved-ten-{idx}"
+            self.claim(mid, "+60111111111", "save note")
+            actor = with_action_key(self.actor(mid, "+60111111111"), f"save-ten-{idx}")
+            services.save_item(actor, f"Smoke note {idx}", "numbered regression")
+        self.claim("saved-list", "+60111111111", "find smoke notes")
+        reader = self.actor("saved-list", "+60111111111")
+        found = services.search_saved_items(reader, "Smoke note", limit=10)
+        self.assertEqual(len(found["matches"]), 10)
+        picked = services.resolve_numbered_choice(reader, 10)
+        self.assertEqual(picked["item_id"], found["matches"][9]["item_id"])
+        selected = brain._select_tool_names("Show 10")
+        self.assertIn("resolve_numbered_choice", selected)
+
+    def test_cost_telemetry_accounts_for_cached_tokens_and_model_calls(self):
+        self.assertEqual(
+            brain._estimate_cost(
+                "grok", "grok-4.7", 1_000_000, 1_000_000, cached_input_tokens=500_000
+            ),
+            7.25,
+        )
+        db.record_usage(
+            None, "grok", "grok-4.7", 1000, 100, 1, 900, 0.002,
+            cached_input_tokens=600, reasoning_tokens=20, model_calls=2,
+        )
+        usage = diagnostics.usage_summary(24)
+        self.assertEqual(usage["model_calls"], 2)
+        self.assertEqual(usage["cached_input_tokens"], 600)
+        self.assertEqual(usage["uncached_input_tokens"], 400)
+        self.assertEqual(usage["reasoning_tokens"], 20)
+        self.assertEqual(usage["cache_ratio_pct"], 60.0)
+
+    def test_low_cost_context_policy_avoids_history_for_self_contained_requests(self):
+        self.assertEqual(brain.get_settings().reasoning_effort, "low")
+        self.assertEqual(
+            brain._history_turn_limit("How much did I spend yesterday?", 8), 0
+        )
+        self.assertGreater(
+            brain._history_turn_limit("Actually change it to RM10", 8), 0
+        )
+        date_context = brain._runtime_context(
+            self.actor_for_context(), "How much did I spend yesterday?"
+        )
+        self.assertIn("current local date is", date_context)
+        self.assertNotIn("current local datetime is", date_context)
+        clock_context = brain._runtime_context(
+            self.actor_for_context(), "Remind me in 5 minutes"
+        )
+        self.assertIn("current local datetime is", clock_context)
+        self.assertLessEqual(brain.MAX_MODEL_CALLS, 4)
+
+    def actor_for_context(self):
+        self.claim("context-policy", "+60111111111", "context")
+        return self.actor("context-policy", "+60111111111")
+
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
