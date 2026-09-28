@@ -41,6 +41,8 @@ Alex MCP is architecturally sound and its current CI is green, but the audit fou
 - Durable outbound queue/retry, inbound idempotency/recovery
 - Usage/tool audit and sanitized system diagnostics, including cached/reasoning/model-call telemetry
 - Token-minimizing provider surface (maximum six relevant tools), low-reasoning default and bounded model-call loop
+- Auto Saver provider routing: Gemini 3.1 Flash-Lite routine path → Gemini 3.8 Flash quality path → Grok/OpenAI resilience fallbacks
+- Zero-token local replies for tiny greetings/health checks and per-provider cost telemetry
 - Swipe-to-reply exact context binding and caption/quote/recent-instruction attachment pairing
 - Family Shared explicit-mention/reply invocation gate
 - Deterministic family/private finance and shopping read scopes plus voice-source finance filtering

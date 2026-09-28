@@ -392,8 +392,9 @@ function readRuntimeStatus() {
 
 function safeStatus() {
   const opts = readOptions();
-  const provider = opts.ai_provider || 'grok';
+  const provider = opts.ai_provider || 'auto';
   let keyPresent = false;
+  if (provider === 'auto') keyPresent = Boolean(opts.gemini_api_key || opts.xai_api_key || opts.openai_api_key);
   if (provider === 'grok') keyPresent = Boolean(opts.xai_api_key);
   if (provider === 'gemini') keyPresent = Boolean(opts.gemini_api_key);
   if (provider === 'openai') keyPresent = Boolean(opts.openai_api_key);
@@ -411,6 +412,13 @@ function safeStatus() {
       api_key_present: keyPresent,
       family_group_paired: Boolean(getFamilyGroupJid()),
       reasoning_effort: opts.reasoning_effort || 'low',
+      gemini_ready: Boolean(opts.gemini_api_key),
+      grok_ready: Boolean(opts.xai_api_key),
+      openai_ready: Boolean(opts.openai_api_key),
+      auto_route: provider === 'auto'
+        ? 'Gemini Flash-Lite → Gemini 3.8 Flash → Grok → OpenAI'
+        : null,
+      auto_grok_fallback_budget_usd: Number(opts.auto_grok_fallback_budget_usd ?? 0.5),
     },
     selftest: readSelftest(),
     runtime: readRuntimeStatus(),
@@ -439,11 +447,11 @@ const UI_HTML = [
 'const w=s.whatsapp||{};const q=document.getElementById("qr");',
 'document.getElementById("wa").innerHTML="<b>Status:</b> "+esc(w.status||"unknown")+(w.linked_user?"<br><span class=ok>Connected as "+esc(w.linked_user)+"</span>":"")+(w.last_error?"<br><span class=bad>"+esc(w.last_error)+"</span>":"");',
 'if(w.qr_data_url){q.src=w.qr_data_url;q.style.display="block"}else{q.style.display="none"}',
-'const c=s.setup||{};document.getElementById("cfg").innerHTML="<b>AI:</b> "+esc(c.ai_provider||"")+(c.api_key_present?" <span class=ok>✓ key present</span>":" <span class=warn>— API key not set</span>")+"<br><b>Reasoning:</b> "+esc(c.reasoning_effort||"low")+"<br><b>Household numbers configured:</b> "+esc(String(c.configured_numbers||0))+"/2<br><b>Family group:</b> "+(c.family_group_paired?"<span class=ok>paired ✓</span>":"<span class=warn>not paired</span>");',
-'const rt=s.runtime||{};const p=rt.provider_probe||{};let ai="Not tested yet";if(p.status==="ok"){ai="<span class=ok>✓ "+esc(p.provider)+" / "+esc(p.model)+" responding</span><br><span class=muted>"+esc(String(p.latency_ms||0))+" ms</span>"}else if(p.status==="error"){ai="<span class=bad>✗ "+esc(p.category||"provider error")+"</span><br><span class=muted>"+esc(p.message||"")+"</span>"}document.getElementById("ai").innerHTML=ai;',
+'const c=s.setup||{};let route=c.auto_route?"<br><b>Route:</b> "+esc(c.auto_route):"";let keys=c.ai_provider==="auto"?"<br><b>Ready:</b> Gemini "+(c.gemini_ready?"✓":"—")+" · Grok "+(c.grok_ready?"✓":"—")+" · OpenAI "+(c.openai_ready?"✓":"—")+"<br><b>Auto Grok cap:</b> $"+esc(Number(c.auto_grok_fallback_budget_usd||0).toFixed(2))+"/month":"";document.getElementById("cfg").innerHTML="<b>AI mode:</b> "+esc(c.ai_provider||"")+(c.api_key_present?" <span class=ok>✓</span>":" <span class=warn>— API key not set</span>")+route+keys+"<br><b>Reasoning:</b> "+esc(c.reasoning_effort||"low")+"<br><b>Household numbers configured:</b> "+esc(String(c.configured_numbers||0))+"/2<br><b>Family group:</b> "+(c.family_group_paired?"<span class=ok>paired ✓</span>":"<span class=warn>not paired</span>");',
+'const rt=s.runtime||{};const p=rt.provider_probe||{};let ai="Not tested yet";if(p.status==="ok"){let role=p.route_role?" · "+esc(p.route_role):"";ai="<span class=ok>✓ "+esc(p.provider)+" / "+esc(p.model)+" responding</span>"+role+"<br><span class=muted>"+esc(String(p.latency_ms||0))+" ms</span>"}else if(p.status==="error"){ai="<span class=bad>✗ "+esc(p.category||"provider error")+"</span><br><span class=muted>"+esc(p.message||"")+"</span>"}document.getElementById("ai").innerHTML=ai;',
 'const d=s.selftest;if(d){document.getElementById("diag").innerHTML="<span class="+(d.failed===0?"ok":"bad")+">"+d.passed+" passed, "+d.failed+" failed</span>"}else{document.getElementById("diag").textContent="Not run yet"}',
 '}catch(e){document.getElementById("wa").textContent="Status unavailable: "+e}}',
-'async function loadUsage(){try{const r=await fetch("./usage");const u=await r.json();const cost=Number(u.estimated_ai_cost_usd||0).toFixed(6);document.getElementById("usage").innerHTML="<b>Interactions:</b> "+esc(u.interactions||0)+" &nbsp; <b>Model calls:</b> "+esc(u.model_calls||0)+"<br><b>Input:</b> "+esc(u.input_tokens||0)+" &nbsp; <b>Cached:</b> "+esc(u.cached_input_tokens||0)+" ("+esc(u.cache_ratio_pct||0)+"%)<br><b>Output:</b> "+esc(u.output_tokens||0)+" &nbsp; <b>Reasoning:</b> "+esc(u.reasoning_tokens||0)+"<br><b>Average latency:</b> "+esc(u.average_ai_latency_ms||0)+" ms<br><b>Estimated API cost:</b> $"+esc(cost)}catch(e){document.getElementById("usage").textContent="Usage unavailable: "+e}}',
+'async function loadUsage(){try{const r=await fetch("./usage");const u=await r.json();const cost=Number(u.estimated_ai_cost_usd||0).toFixed(6);const rows=(u.by_provider||[]).map(x=>"<br><span class=muted>"+esc(x.provider)+"/"+esc(x.model)+": "+esc(x.model_calls)+" calls · $"+esc(Number(x.cost_usd||0).toFixed(6))+"</span>").join("");document.getElementById("usage").innerHTML="<b>Interactions:</b> "+esc(u.interactions||0)+" &nbsp; <b>Model calls:</b> "+esc(u.model_calls||0)+"<br><b>Input:</b> "+esc(u.input_tokens||0)+" &nbsp; <b>Cached:</b> "+esc(u.cached_input_tokens||0)+" ("+esc(u.cache_ratio_pct||0)+"%)<br><b>Output:</b> "+esc(u.output_tokens||0)+" &nbsp; <b>Reasoning:</b> "+esc(u.reasoning_tokens||0)+"<br><b>Average latency:</b> "+esc(u.average_ai_latency_ms||0)+" ms<br><b>Total API cost:</b> $"+esc(cost)+rows}catch(e){document.getElementById("usage").textContent="Usage unavailable: "+e}}',
 'function esc(x){const e=document.createElement("div");e.textContent=String(x);return e.innerHTML}',
 'async function testAi(){const el=document.getElementById("ai");el.textContent="Testing…";try{await fetch("./test-ai",{method:"POST"});}catch(e){}setTimeout(load,500)}',
 'async function resetPairing(){if(!confirm("Reset WhatsApp pairing and generate a new QR?"))return;await fetch("./reset",{method:"POST"});setTimeout(load,800)}',

@@ -41,6 +41,7 @@ import phase2_presence
 import phase2_reports
 import brain
 from context import use_actor, with_action_key
+from config import Settings
 from mcp import Client
 from mcp_server import mcp
 
@@ -1333,6 +1334,91 @@ class AlexCoreTests(unittest.TestCase):
         self.assertEqual(usage["uncached_input_tokens"], 400)
         self.assertEqual(usage["reasoning_tokens"], 20)
         self.assertEqual(usage["cache_ratio_pct"], 60.0)
+
+    def test_auto_saver_prefers_gemini_lite_then_quality_then_grok(self):
+        settings = Settings(
+            ai_provider="auto",
+            gemini_api_key="gemini-test",
+            xai_api_key="xai-test",
+        )
+        routes = brain._provider_routes(
+            settings, user_text="How much did I spend yesterday?", tools=[]
+        )
+        self.assertEqual(
+            [(r["provider"], r["model"], r["role"]) for r in routes[:3]],
+            [
+                ("gemini", "gemini-3.1-flash-lite", "primary_saver"),
+                ("gemini", "gemini-3.8-flash", "quality_fallback"),
+                ("grok", "grok-4.7", "resilience_fallback"),
+            ],
+        )
+
+    def test_auto_saver_uses_full_gemini_first_for_visual_or_complex_turn(self):
+        settings = Settings(
+            ai_provider="auto",
+            gemini_api_key="gemini-test",
+            xai_api_key="xai-test",
+        )
+        visual = brain._provider_routes(
+            settings, user_text="What is in this image?", tools=[],
+            vision_parts=[{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,AA=="}}],
+        )
+        self.assertEqual(visual[0]["model"], "gemini-3.8-flash")
+        self.assertFalse(any(r["model"] == "gemini-3.1-flash-lite" for r in visual))
+
+        complex_routes = brain._provider_routes(
+            settings,
+            user_text="Analyse my goals and recommend the best way to allocate this extra cash",
+            tools=[{"type": "function", "function": {"name": "planning_brief"}}],
+        )
+        self.assertEqual(complex_routes[0]["model"], "gemini-3.8-flash")
+
+    def test_manual_provider_mode_remains_single_provider(self):
+        settings = Settings(ai_provider="grok", xai_api_key="xai-test")
+        routes = brain._provider_routes(settings, user_text="hello", tools=[])
+        self.assertEqual(len(routes), 1)
+        self.assertEqual(routes[0]["provider"], "grok")
+        self.assertEqual(routes[0]["role"], "manual")
+
+    def test_tiny_chat_health_checks_are_zero_model_candidate(self):
+        self.assertIn("working", brain._local_chat_reply("Hi Alex, are you working?"))
+        self.assertIsNotNone(brain._local_chat_reply("thanks"))
+        self.assertIsNone(brain._local_chat_reply("How much did I spend today?"))
+
+    def test_gemini_lite_cost_telemetry_uses_current_low_cost_rate(self):
+        self.assertEqual(
+            brain._estimate_cost(
+                "gemini", "gemini-3.1-flash-lite",
+                1_000_000, 1_000_000, cached_input_tokens=500_000,
+            ),
+            1.6375,
+        )
+
+    def test_xai_reported_cost_ticks_override_estimate_when_available(self):
+        class Usage:
+            cost_in_usd_ticks = 25_000_000
+        self.assertEqual(
+            brain._provider_reported_cost_usd("grok", Usage()),
+            0.0025,
+        )
+        self.assertIsNone(brain._provider_reported_cost_usd("gemini", Usage()))
+
+    def test_hybrid_usage_rows_count_one_source_message_as_one_interaction(self):
+        self.claim("hybrid-one", "+60111111111", "hybrid")
+        db.record_usage(
+            "hybrid-one", "gemini", "gemini-3.1-flash-lite",
+            100, 10, 1, 100, 0.0001, model_calls=1,
+        )
+        db.record_usage(
+            "hybrid-one", "grok", "grok-4.7",
+            50, 5, 0, 50, 0.0002, model_calls=1,
+        )
+        usage = diagnostics.usage_summary(24)
+        self.assertEqual(usage["interactions"], 1)
+        self.assertEqual(usage["model_calls"], 2)
+        providers = {(x["provider"], x["model"]) for x in usage["by_provider"]}
+        self.assertIn(("gemini", "gemini-3.1-flash-lite"), providers)
+        self.assertIn(("grok", "grok-4.7"), providers)
 
     def test_low_cost_context_policy_avoids_history_for_self_contained_requests(self):
         self.assertEqual(brain.get_settings().reasoning_effort, "low")

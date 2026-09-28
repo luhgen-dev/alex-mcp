@@ -81,9 +81,9 @@ Use local calculator/tool results instead of mental arithmetic when exactness ma
 _DEFAULT_MODEL_PRICES = {
     # (normal input, cached input, output), USD per 1M tokens.
     ("grok", "grok-4.7"): (2.00, 0.50, 6.00),
-    # Until a provider-specific cached rate is deliberately configured, charge
-    # cached tokens at the normal input rate in local telemetry.
-    ("gemini", "gemini-3.8-flash"): (0.75, 0.75, 3.75),
+    # Google standard paid-tier rates current through 2026-12-31.
+    ("gemini", "gemini-3.1-flash-lite"): (0.25, 0.025, 1.50),
+    ("gemini", "gemini-3.8-flash"): (0.75, 0.075, 3.75),
     ("openai", "gpt-5.6-luna"): (0.20, 0.20, 1.20),
 }
 
@@ -121,6 +121,19 @@ def _usage_breakdown(usage) -> tuple[int, int, int, int]:
     cached = _detail_value(getattr(usage, "prompt_tokens_details", None), "cached_tokens")
     reasoning = _detail_value(getattr(usage, "completion_tokens_details", None), "reasoning_tokens")
     return prompt, min(prompt, cached), completion, min(completion, reasoning)
+
+
+def _provider_reported_cost_usd(provider: str, usage) -> float | None:
+    """Use provider billing truth when exposed; currently xAI returns exact cost ticks."""
+    if provider != "grok" or usage is None:
+        return None
+    ticks = getattr(usage, "cost_in_usd_ticks", None)
+    if ticks is None and isinstance(usage, dict):
+        ticks = usage.get("cost_in_usd_ticks")
+    try:
+        return round(float(ticks) / 10_000_000_000, 10) if ticks is not None else None
+    except (TypeError, ValueError):
+        return None
 
 
 def _tool_to_openai(tool) -> dict:
@@ -508,14 +521,30 @@ async def _tool_specs(user_text: str, media_context: list[str] | None = None,
     return specs[:TOOL_EXPOSURE_MAX]
 
 
-def _client():
-    settings = get_settings()
-    if not settings.api_key:
+def _client_for(provider: str, settings=None):
+    settings = settings or get_settings()
+    key = settings.api_key_for(provider)
+    if not key:
         raise RuntimeError(
-            f"No API key configured for {settings.ai_provider}. "
+            f"No API key configured for {provider}. "
             "Enter it in Alex MCP → Configuration and restart."
         )
-    return OpenAI(api_key=settings.api_key, base_url=settings.base_url, timeout=30.0)
+    return OpenAI(
+        api_key=key,
+        base_url=settings.base_url_for(provider),
+        timeout=30.0,
+    )
+
+
+def _client():
+    """Backward-compatible single-provider client used by older tests/helpers."""
+    settings = get_settings()
+    provider = settings.ai_provider if settings.ai_provider != "auto" else (
+        "gemini" if settings.gemini_api_key else (
+            "grok" if settings.xai_api_key else "openai"
+        )
+    )
+    return _client_for(provider, settings)
 
 
 def _scrub_error_text(value: object) -> str:
@@ -561,66 +590,277 @@ def classify_runtime_error(exc: Exception) -> dict:
     }
 
 
+def _tool_names(specs: list[dict] | None) -> set[str]:
+    names: set[str] = set()
+    for spec in specs or []:
+        try:
+            names.add(str(spec["function"]["name"]))
+        except Exception:
+            continue
+    return names
+
+
+def _auto_needs_full_model(user_text: str, tools: list[dict] | None = None,
+                           vision_parts: list[dict] | None = None,
+                           preflight: dict | None = None) -> bool:
+    """Reserve the stronger Gemini model for genuinely harder/visual turns."""
+    text = (user_text or "").strip()
+    low = text.casefold()
+    if vision_parts:
+        return True
+    if (preflight or {}).get("status") == "compound":
+        return True
+    if len(text) > 900:
+        return True
+    if _tool_names(tools) & PLANNING_TOOLS and re.search(
+        r"\b(?:analyse|analyze|analysis|suggest|recommend|should\s+i|"
+        r"brainstorm|compare|optimi[sz]e|best\s+way|help\s+me\s+plan|"
+        r"what\s+can\s+i\s+do|how\s+should)\b",
+        low,
+    ):
+        return True
+    return False
+
+
+def _provider_routes(settings, *, user_text: str = "", tools: list[dict] | None = None,
+                     vision_parts: list[dict] | None = None,
+                     preflight: dict | None = None) -> list[dict]:
+    """Return a cheapest-capable-first route with paid fallbacks only when needed."""
+    if settings.ai_provider != "auto":
+        provider = settings.ai_provider
+        if not settings.api_key_for(provider):
+            return []
+        return [{
+            "provider": provider,
+            "model": settings.model_for(provider),
+            "reasoning_effort": settings.reasoning_effort,
+            "role": "manual",
+        }]
+
+    routes: list[dict] = []
+    hard = _auto_needs_full_model(user_text, tools, vision_parts, preflight)
+    if settings.gemini_api_key:
+        if hard:
+            routes.append({
+                "provider": "gemini",
+                "model": settings.gemini_model,
+                "reasoning_effort": "low",
+                "role": "primary_quality",
+            })
+        else:
+            routes.append({
+                "provider": "gemini",
+                "model": settings.gemini_lite_model,
+                "reasoning_effort": "low",
+                "role": "primary_saver",
+            })
+            if settings.gemini_model != settings.gemini_lite_model:
+                routes.append({
+                    "provider": "gemini",
+                    "model": settings.gemini_model,
+                    "reasoning_effort": "low",
+                    "role": "quality_fallback",
+                })
+    if settings.xai_api_key and settings.auto_grok_fallback_budget_usd > 0:
+        grok_month = current_month_ai_cost("grok")
+        if grok_month < settings.auto_grok_fallback_budget_usd:
+            routes.append({
+                "provider": "grok",
+                "model": settings.grok_model,
+                "reasoning_effort": "low",
+                "role": "resilience_fallback",
+            })
+    if settings.openai_api_key:
+        routes.append({
+            "provider": "openai",
+            "model": settings.openai_model,
+            "reasoning_effort": "low",
+            "role": "last_fallback",
+        })
+    return routes
+
+
+def _local_chat_reply(user_text: str) -> str | None:
+    """Zero-token replies for tiny social/health-check messages."""
+    normalized = re.sub(r"[^a-zA-Z\s]", " ", (user_text or "").casefold())
+    normalized = " ".join(normalized.split())
+    if normalized in {"hi", "hello", "hey", "hi alex", "hello alex", "hey alex"}:
+        return "Hi — I'm here. What do you need?"
+    if normalized in {"thanks", "thank you"}:
+        return "You're welcome."
+    if normalized in {"ok", "okay", "got it", "alright", "nice", "great", "cool"}:
+        return "👍"
+    probe = re.sub(r"^(?:hi|hello|hey)\s+", "", normalized)
+    probe = re.sub(r"^alex\s+", "", probe)
+    if probe in {"are you working", "are u working", "you working", "u working",
+                 "are you there", "are u there", "you there", "u there"}:
+        return "Yep — I'm here and working. ✅"
+    if normalized in {"how are you", "how r u"}:
+        return "I'm running fine. What do you need?"
+    return None
+
+
+def _usage_bucket(usage_by_route: dict, route: dict) -> dict:
+    key = (route["provider"], route["model"])
+    if key not in usage_by_route:
+        usage_by_route[key] = {
+            "provider": route["provider"], "model": route["model"],
+            "input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0,
+            "reasoning_tokens": 0, "model_calls": 0, "tool_rounds": 0,
+            "latency_ms": 0, "reported_cost_usd": 0.0,
+            "has_reported_cost": False,
+        }
+    return usage_by_route[key]
+
+
+def _accumulate_usage(usage_by_route: dict, route: dict, usage,
+                      latency_ms: int, *, had_tool_calls: bool = False) -> None:
+    bucket = _usage_bucket(usage_by_route, route)
+    prompt_n, cached_n, completion_n, reasoning_n = _usage_breakdown(usage)
+    bucket["input_tokens"] += prompt_n
+    bucket["cached_input_tokens"] += cached_n
+    bucket["output_tokens"] += completion_n
+    bucket["reasoning_tokens"] += reasoning_n
+    bucket["model_calls"] += 1
+    bucket["latency_ms"] += max(0, int(latency_ms))
+    if had_tool_calls:
+        bucket["tool_rounds"] += 1
+    reported = _provider_reported_cost_usd(route["provider"], usage)
+    if reported is not None:
+        bucket["reported_cost_usd"] += reported
+        bucket["has_reported_cost"] = True
+
+
+def _record_usage_buckets(source_message_id: str | None, usage_by_route: dict) -> None:
+    for bucket in usage_by_route.values():
+        estimated = (
+            round(bucket["reported_cost_usd"], 10)
+            if bucket["has_reported_cost"]
+            else _estimate_cost(
+                bucket["provider"], bucket["model"],
+                bucket["input_tokens"], bucket["output_tokens"],
+                bucket["cached_input_tokens"],
+            )
+        )
+        record_usage(
+            source_message_id, bucket["provider"], bucket["model"],
+            bucket["input_tokens"], bucket["output_tokens"], bucket["tool_rounds"],
+            bucket["latency_ms"], estimated,
+            cached_input_tokens=bucket["cached_input_tokens"],
+            reasoning_tokens=bucket["reasoning_tokens"],
+            model_calls=bucket["model_calls"],
+        )
+
+
+def _next_route_after_failure(routes: list[dict], current_index: int, info: dict) -> int:
+    """Skip redundant same-provider retries for provider-wide failures."""
+    next_index = current_index + 1
+    category = str(info.get("category") or "")
+    provider_wide = {
+        "provider_authentication_failed",
+        "provider_access_or_billing_blocked",
+        "provider_rate_limit_or_quota",
+        "provider_temporarily_unavailable",
+        "provider_connection_error",
+    }
+    if category in provider_wide and current_index < len(routes):
+        failed_provider = routes[current_index]["provider"]
+        while next_index < len(routes) and routes[next_index]["provider"] == failed_provider:
+            next_index += 1
+    return next_index
+
+
+def _completion_kwargs(route: dict, messages: list[dict], tools: list[dict] | None,
+                       actor: ActorContext | None = None) -> dict:
+    kwargs = {
+        "model": route["model"],
+        "messages": messages,
+        "reasoning_effort": route["reasoning_effort"],
+    }
+    if tools:
+        kwargs["tools"] = tools
+        kwargs["tool_choice"] = "auto"
+    if route["provider"] == "grok" and actor is not None:
+        kwargs["extra_headers"] = {
+            "x-grok-conv-id": hashlib.sha256(
+                actor.conversation_id.encode("utf-8")
+            ).hexdigest()[:32]
+        }
+    return kwargs
+
+
 def provider_probe() -> dict:
     settings = get_settings()
     started = time.monotonic()
-    if not settings.api_key:
+    routes = _provider_routes(settings, user_text="Connection check.")
+    if not routes:
         return {
             "status": "error",
             "provider": settings.ai_provider,
             "model": settings.model,
             "category": "api_key_missing",
-            "message": "No API key is configured for the selected provider.",
+            "message": "No API key is configured for the selected routing mode.",
             "latency_ms": 0,
         }
-    try:
-        client = _client()
-        kwargs = {
-            "model": settings.model,
-            "messages": [
-                {"role": "system", "content": "Reply exactly OK."},
-                {"role": "user", "content": "Connection check."},
-            ],
-        }
-        if settings.ai_provider in {"grok", "openai"}:
-            kwargs["reasoning_effort"] = "low"
-        response = client.chat.completions.create(**kwargs)
-        elapsed = int((time.monotonic() - started) * 1000)
-        input_tokens, cached_tokens, output_tokens, reasoning_tokens = _usage_breakdown(
-            getattr(response, "usage", None)
-        )
-        record_usage(
-            None, settings.ai_provider, settings.model, input_tokens, output_tokens,
-            0, elapsed,
-            _estimate_cost(
-                settings.ai_provider, settings.model, input_tokens, output_tokens, cached_tokens
-            ),
-            cached_input_tokens=cached_tokens,
-            reasoning_tokens=reasoning_tokens,
-            model_calls=1,
-        )
-        content = ""
-        if getattr(response, "choices", None):
-            content = _content_text(response.choices[0].message.content).strip()
-        return {
-            "status": "ok",
-            "provider": settings.ai_provider,
-            "model": settings.model,
-            "category": "inference_ready",
-            "message": content[:80] or "Provider returned a valid completion.",
-            "latency_ms": elapsed,
-        }
-    except Exception as exc:
-        info = classify_runtime_error(exc)
-        return {
-            "status": "error",
-            "provider": settings.ai_provider,
-            "model": settings.model,
-            "category": info["category"],
-            "status_code": info.get("status_code"),
-            "message": info["message"],
-            "latency_ms": int((time.monotonic() - started) * 1000),
-        }
+
+    failures: list[dict] = []
+    usage_by_route: dict = {}
+    route_index = 0
+    while route_index < len(routes):
+        route = routes[route_index]
+        call_started = time.monotonic()
+        try:
+            client = _client_for(route["provider"], settings)
+            response = client.chat.completions.create(**_completion_kwargs(
+                route,
+                [
+                    {"role": "system", "content": "Reply exactly OK."},
+                    {"role": "user", "content": "Connection check."},
+                ],
+                None,
+            ))
+            call_ms = int((time.monotonic() - call_started) * 1000)
+            _accumulate_usage(
+                usage_by_route, route, getattr(response, "usage", None), call_ms
+            )
+            _record_usage_buckets(None, usage_by_route)
+            content = ""
+            if getattr(response, "choices", None):
+                content = _content_text(response.choices[0].message.content).strip()
+            return {
+                "status": "ok",
+                "provider": route["provider"],
+                "model": route["model"],
+                "routing_mode": settings.ai_provider,
+                "route_role": route["role"],
+                "fallbacks_configured": [
+                    f'{r["provider"]}/{r["model"]}' for r in routes if r is not route
+                ],
+                "category": "inference_ready",
+                "message": content[:80] or "Provider returned a valid completion.",
+                "latency_ms": int((time.monotonic() - started) * 1000),
+                "failed_routes": failures,
+            }
+        except Exception as exc:
+            info = classify_runtime_error(exc)
+            failures.append({
+                "provider": route["provider"], "model": route["model"],
+                "category": info["category"], "status_code": info.get("status_code"),
+            })
+            route_index = _next_route_after_failure(routes, route_index, info)
+
+    _record_usage_buckets(None, usage_by_route)
+    last = failures[-1] if failures else {}
+    return {
+        "status": "error",
+        "provider": settings.ai_provider,
+        "model": settings.model,
+        "category": last.get("category", "provider_connection_error"),
+        "status_code": last.get("status_code"),
+        "message": "All configured AI routes failed the connection check.",
+        "latency_ms": int((time.monotonic() - started) * 1000),
+        "failed_routes": failures,
+    }
 
 
 def _needs_exact_clock(user_text: str) -> bool:
@@ -913,8 +1153,7 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                   vision_parts: list[dict] | None = None,
                   quoted_context: dict | None = None) -> tuple[str, list[dict]]:
     # A deterministic no-write gate handles the small class of phrases that
-    # are genuinely ambiguous across household domains. This prevents a strong
-    # language model from confidently choosing a write the user never asked for.
+    # are genuinely ambiguous across household domains.
     preflight = phase2_intent.classify_write_intent(
         user_text or "", has_media=bool(media_context or vision_parts)
     )
@@ -924,10 +1163,28 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
         add_turn(actor.user_id, actor.conversation_id, "assistant", question)
         return question, []
 
+    # Tiny social/health-check messages do not need any paid model at all.
+    if not media_context and not vision_parts and not quoted_context:
+        local_reply = _local_chat_reply(user_text)
+        if local_reply is not None:
+            add_turn(actor.user_id, actor.conversation_id, "user", (user_text or "").strip())
+            add_turn(actor.user_id, actor.conversation_id, "assistant", local_reply)
+            return local_reply, []
+
     settings = get_settings()
-    provider = settings.ai_provider
-    model = settings.model
     tools = await _tool_specs(user_text, media_context, quoted_context)
+    routes = _provider_routes(
+        settings, user_text=user_text, tools=tools,
+        vision_parts=vision_parts, preflight=preflight,
+    )
+    if not routes:
+        final = (
+            "Alex has no usable AI provider configured. Add a Gemini, Grok, or OpenAI "
+            "API key in Alex MCP → Configuration."
+        )
+        add_turn(actor.user_id, actor.conversation_id, "user", (user_text or "").strip())
+        add_turn(actor.user_id, actor.conversation_id, "assistant", final)
+        return final, []
 
     messages: list[dict] = [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -953,9 +1210,7 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
     else:
         messages.append({"role": "user", "content": current})
 
-    # Optional owner-configured budget guard. Zero means disabled. The safety
-    # multiplier deliberately makes the guard conservative without changing
-    # normal Alex behavior for users who leave it disabled.
+    # Owner-configured all-provider budget guard. Zero means disabled.
     if settings.monthly_ai_budget_usd > 0:
         month_cost = current_month_ai_cost()
         guarded = month_cost * settings.budget_safety_multiplier
@@ -968,63 +1223,81 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
             add_turn(actor.user_id, actor.conversation_id, "assistant", final)
             return final, []
 
-    client = _client()
     attachments: list[dict] = []
-    input_tokens = cached_input_tokens = output_tokens = reasoning_tokens = 0
-    model_calls = 0
+    usage_by_route: dict = {}
     tool_rounds = 0
     occurrence: dict[str, int] = {}
-    started = time.monotonic()
+    route_index = 0
+    active_route: dict | None = None
+    provider_failures: list[dict] = []
 
     for _ in range(MAX_MODEL_CALLS):
-        kwargs = {
-            "model": model,
-            "messages": messages,
-            "reasoning_effort": settings.reasoning_effort,
-        }
-        if tools:
-            kwargs["tools"] = tools
-            kwargs["tool_choice"] = "auto"
-        if provider == "grok":
-            # Stable, privacy-preserving conversation affinity improves xAI
-            # prompt-cache reuse without revealing the raw WhatsApp id.
-            kwargs["extra_headers"] = {
-                "x-grok-conv-id": hashlib.sha256(
-                    actor.conversation_id.encode("utf-8")
-                ).hexdigest()[:32]
-            }
-        response = client.chat.completions.create(**kwargs)
-        model_calls += 1
-        prompt_n, cached_n, completion_n, reasoning_n = _usage_breakdown(
-            getattr(response, "usage", None)
-        )
-        input_tokens += prompt_n
-        cached_input_tokens += cached_n
-        output_tokens += completion_n
-        reasoning_tokens += reasoning_n
+        # If the cheap model is genuinely looping through tools, escalate the
+        # next reasoning step to the stronger Gemini model instead of spending
+        # repeated Lite calls. Normal one-tool workflows never pay this cost.
+        if (
+            settings.ai_provider == "auto"
+            and active_route
+            and active_route.get("role") == "primary_saver"
+            and tool_rounds >= 2
+        ):
+            for i in range(route_index + 1, len(routes)):
+                if routes[i].get("role") == "quality_fallback":
+                    route_index = i
+                    active_route = None
+                    break
 
-        msg = response.choices[0].message
-        tool_calls = getattr(msg, "tool_calls", None) or []
-        if not tool_calls:
-            final = _content_text(msg.content).strip() or "Done."
-            elapsed = int((time.monotonic() - started) * 1000)
-            record_usage(
-                actor.source_message_id, provider, model, input_tokens, output_tokens,
-                tool_rounds, elapsed,
-                _estimate_cost(provider, model, input_tokens, output_tokens, cached_input_tokens),
-                cached_input_tokens=cached_input_tokens,
-                reasoning_tokens=reasoning_tokens,
-                model_calls=model_calls,
+        response = None
+        while route_index < len(routes):
+            route = routes[route_index]
+            call_started = time.monotonic()
+            try:
+                client = _client_for(route["provider"], settings)
+                response = client.chat.completions.create(
+                    **_completion_kwargs(route, messages, tools, actor)
+                )
+                call_ms = int((time.monotonic() - call_started) * 1000)
+                active_route = route
+                break
+            except Exception as exc:
+                info = classify_runtime_error(exc)
+                provider_failures.append({
+                    "provider": route["provider"],
+                    "model": route["model"],
+                    "category": info["category"],
+                    "status_code": info.get("status_code"),
+                })
+                route_index = _next_route_after_failure(routes, route_index, info)
+                active_route = None
+
+        if response is None or active_route is None:
+            _record_usage_buckets(actor.source_message_id, usage_by_route)
+            final = (
+                "I couldn't finish that because the configured AI providers are temporarily "
+                "unavailable. I won't repeat any household action automatically; please try once more later."
             )
             add_turn(actor.user_id, actor.conversation_id, "user", current or "[attachment]")
             add_turn(actor.user_id, actor.conversation_id, "assistant", final)
             return final, attachments
 
-        tool_rounds += 1
-        assistant_dump = msg.model_dump(exclude_none=True)
-        messages.append(assistant_dump)
+        msg = response.choices[0].message
+        calls = getattr(msg, "tool_calls", None) or []
+        _accumulate_usage(
+            usage_by_route, active_route, getattr(response, "usage", None),
+            call_ms, had_tool_calls=bool(calls),
+        )
 
-        for call in tool_calls:
+        if not calls:
+            final = _content_text(msg.content).strip() or "Done."
+            _record_usage_buckets(actor.source_message_id, usage_by_route)
+            add_turn(actor.user_id, actor.conversation_id, "user", current or "[attachment]")
+            add_turn(actor.user_id, actor.conversation_id, "assistant", final)
+            return final, attachments
+
+        tool_rounds += 1
+        messages.append(msg.model_dump(exclude_none=True))
+
+        for call in calls:
             name = call.function.name
             try:
                 args = json.loads(call.function.arguments or "{}")
@@ -1037,8 +1310,6 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                 normalized = str(args.get("intent") or "").strip()
                 discovered = _select_tool_names(normalized, media_context)
                 discovered_specs = await _tool_specs_for_names(discovered)
-                # Keep the discovery valve available in case the first normalized
-                # description was still too vague, while never exceeding six schemas.
                 tools = discovered_specs[:TOOL_EXPOSURE_MAX - 1] + [DISCOVERY_TOOL]
                 messages.append({
                     "role": "tool",
@@ -1046,7 +1317,10 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                     "content": json.dumps({
                         "status": "tools_loaded",
                         "normalized_intent": normalized,
-                        "tool_names": [x["function"]["name"] for x in discovered_specs[:TOOL_EXPOSURE_MAX - 1]],
+                        "tool_names": [
+                            x["function"]["name"]
+                            for x in discovered_specs[:TOOL_EXPOSURE_MAX - 1]
+                        ],
                     }, ensure_ascii=False, separators=(",", ":")),
                 })
                 continue
@@ -1069,16 +1343,8 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                 "content": json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
             })
 
+    _record_usage_buckets(actor.source_message_id, usage_by_route)
     final = "I couldn't complete that safely after several tool steps. Nothing else was changed."
-    elapsed = int((time.monotonic() - started) * 1000)
-    record_usage(
-        actor.source_message_id, provider, model, input_tokens, output_tokens,
-        tool_rounds, elapsed,
-        _estimate_cost(provider, model, input_tokens, output_tokens, cached_input_tokens),
-        cached_input_tokens=cached_input_tokens,
-        reasoning_tokens=reasoning_tokens,
-        model_calls=model_calls,
-    )
     add_turn(actor.user_id, actor.conversation_id, "user", current or "[attachment]")
     add_turn(actor.user_id, actor.conversation_id, "assistant", final)
     return final, attachments
