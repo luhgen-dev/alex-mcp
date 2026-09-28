@@ -230,24 +230,88 @@ class FinanceTimeTests(V044Base):
         r = self.log("f2", "2026-09-28T02:30:00+00:00", "paid RM6 parking at 8am", "2026-09-28T08:00:00")
         self.assertEqual(self.stored(r["event_id"]), "2026-09-28T00:00:00+00:00")
 
-    def test_date_only_today_uses_send_time_other_day_kept(self):
+    def test_date_only_uses_message_clock_on_intended_day(self):
         r = self.log("f3", "2026-09-28T02:30:00+00:00", "paid RM6 parking", "2026-09-28")
         self.assertEqual(self.stored(r["event_id"]), "2026-09-28T02:30:00+00:00")
         r = self.log("f4", "2026-09-28T02:30:00+00:00", "paid RM6 parking yesterday", "2026-09-27")
-        self.assertEqual(self.stored(r["event_id"]), "2026-09-26T16:00:00+00:00")
+        self.assertEqual(self.stored(r["event_id"]), "2026-09-27T02:30:00+00:00")
+
+    def test_invented_clock_on_yesterday_is_rejected(self):
+        r = self.log(
+            "fy1", "2026-09-28T02:30:00+00:00",
+            "paid RM6 parking yesterday", "2026-09-27T12:34:00",
+        )
+        self.assertEqual(self.stored(r["event_id"]), "2026-09-27T02:30:00+00:00")
+
+    def test_exact_clock_on_yesterday_is_kept(self):
+        r = self.log(
+            "fy2", "2026-09-28T02:30:00+00:00",
+            "paid RM6 parking yesterday at 8pm", "2026-09-27T20:00:00",
+        )
+        self.assertEqual(self.stored(r["event_id"]), "2026-09-27T12:00:00+00:00")
+
+    def test_vague_time_uses_receive_timestamp(self):
+        r = self.log(
+            "fv1", "2026-09-28T02:30:00+00:00",
+            "paid RM6 parking just now", "2026-09-28T12:00:00",
+        )
+        self.assertEqual(self.stored(r["event_id"]), "2026-09-28T02:30:00+00:00")
+        for text in ("paid last night", "paid this morning", "paid earlier", "paid just now"):
+            self.assertFalse(services._user_stated_time(text), text)
 
     def test_decimal_amounts_are_not_mistaken_for_clock_times(self):
-        """RM 12.30 / 10.50 must not count as a user-stated time."""
+        """RM 12.30 / 10.50 must not count as an exact user-stated time."""
         for text in ("paid RM 12.30 parking", "paid 10.50 for parking", "parking RM7.99", "RM6.00 parking"):
             self.assertFalse(services._user_stated_time(text), text)
-        for text in ("parked at 14:30", "paid at 8am", "parking 8.30pm", "paid last night", "just now"):
+        for text in ("parked at 14:30", "paid at 8am", "parking 8.30pm", "paid at noon"):
             self.assertTrue(services._user_stated_time(text), text)
-        r = self.log("dec1", "2026-09-28T02:30:00+00:00", "paid RM 10.50 parking", "2026-09-28T12:00:00", amount=10.5)
+        r = self.log(
+            "dec1", "2026-09-28T02:30:00+00:00",
+            "paid RM 10.50 parking", "2026-09-28T12:00:00", amount=10.5,
+        )
         self.assertEqual(self.stored(r["event_id"]), "2026-09-28T02:30:00+00:00")
 
     def test_receipt_time_is_trusted(self):
         r = self.log("f5", "2026-09-28T02:30:00+00:00", "", "2026-09-28T09:15:00", source="image")
         self.assertEqual(self.stored(r["event_id"]), "2026-09-28T01:15:00+00:00")
+
+    def test_amount_correction_cannot_silently_change_time(self):
+        parent = self.log(
+            "fc1", "2026-09-28T02:30:00+00:00",
+            "paid RM6 parking", None, amount=6,
+        )
+        parent_time = self.stored(parent["event_id"])
+        self.claim("fc2", text="change today's RM6 parking to RM7")
+        actor = with_action_key(
+            self.actor(
+                "fc2", trusted_text="change today's RM6 parking to RM7",
+                received_at_utc="2026-09-28T03:00:00+00:00",
+            ),
+            "fc2-k",
+        )
+        child = services.correct_expense(
+            actor, parent["event_id"], amount=7,
+            event_date_local="2026-09-28T12:00:00",
+        )
+        self.assertEqual(self.stored(child["event_id"]), parent_time)
+
+    def test_explicit_time_correction_is_allowed(self):
+        parent = self.log(
+            "fc3", "2026-09-28T02:30:00+00:00",
+            "paid RM6 parking", None, amount=6,
+        )
+        self.claim("fc4", text="actually it was yesterday at 8pm")
+        actor = with_action_key(
+            self.actor(
+                "fc4", trusted_text="actually it was yesterday at 8pm",
+                received_at_utc="2026-09-28T03:00:00+00:00",
+            ),
+            "fc4-k",
+        )
+        child = services.correct_expense(
+            actor, parent["event_id"], event_date_local="2026-09-27T20:00:00",
+        )
+        self.assertEqual(self.stored(child["event_id"]), "2026-09-27T12:00:00+00:00")
 
     def test_latest_is_really_latest(self):
         """Smoke: 'latest parking transaction' returned an older record."""
@@ -341,6 +405,8 @@ class FakeClient:
     def create(self, **kwargs):
         self.seen.append(kwargs["messages"])
         msg = self.script.pop(0) if self.script else _message(content="done")
+        if isinstance(msg, Exception):
+            raise msg
         return SimpleNamespace(choices=[SimpleNamespace(message=msg)], usage=None)
 
 
@@ -384,6 +450,23 @@ class TurnLoopTests(V044Base):
         self.assertEqual(reply, "Here it is.")
         self.assertEqual(len(files), 1)
 
+    def test_compound_turn_with_attachment_does_not_claim_full_success(self):
+        item = self.saved_picture()
+        script = [
+            _message([_tool_call("c1", "get_saved_item", {"item_id": item})]),
+            RuntimeError("provider down"),
+        ]
+        reply, files, _ = self.run_turn(
+            script,
+            text="send me the vinyl picture and tell me how much I spent today",
+            mid="compound1",
+        )
+        self.assertEqual(len(files), 1)
+        self.assertEqual(
+            reply,
+            "I sent the file, but I couldn't finish the rest of that request.",
+        )
+
     def test_turn_trace_recorded_and_history_clean(self):
         reply, _, _ = self.run_turn([_message(content="You have no reminders.")],
                                     text="any reminders", mid="tr1", source="voice")
@@ -401,6 +484,41 @@ class TurnLoopTests(V044Base):
         self.assertIn("list_reminders", args["exposed_tools"])
         self.assertEqual(result["outcome"], "answered")
         self.assertEqual(turns, ["[voice note] any reminders"])
+
+    def test_turn_trace_covers_local_reply(self):
+        self.claim("tr-local", text="hi alex")
+        actor = self.actor("tr-local", trusted_text="hi alex")
+        reply, files = asyncio.run(brain.respond(actor, "hi alex"))
+        self.assertEqual(files, [])
+        self.assertIn("here", reply.lower())
+        conn = db.connect()
+        try:
+            row = conn.execute(
+                "SELECT result_json FROM tool_audit "
+                "WHERE tool_name='_turn_trace' AND source_message_id='tr-local'"
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertIsNotNone(row)
+        self.assertEqual(json.loads(row[0])["outcome"], "local_reply")
+
+    def test_turn_trace_records_discovery_and_loaded_tools(self):
+        script = [
+            _message([_tool_call("d1", brain.DISCOVERY_TOOL_NAME, {"intent": "what reminders do I have"})]),
+            _message(content="Done."),
+        ]
+        self.run_turn(script, text="whats coming up for me", mid="tr-discovery")
+        conn = db.connect()
+        try:
+            row = conn.execute(
+                "SELECT arguments_json,result_json FROM tool_audit "
+                "WHERE tool_name='_turn_trace' AND source_message_id='tr-discovery'"
+            ).fetchone()
+        finally:
+            conn.close()
+        args, result = json.loads(row[0]), json.loads(row[1])
+        self.assertIn(brain.DISCOVERY_TOOL_NAME, result["tools_called"])
+        self.assertIn("list_reminders", args["exposed_tools"])
 
 
 if __name__ == "__main__":
