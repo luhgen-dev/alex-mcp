@@ -2,15 +2,57 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sys
 import traceback
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import brain
 import db
 import media
+from config import DATA_DIR
 
 PORT = 5001
+RUNTIME_STATUS = os.path.join(DATA_DIR, "runtime_status.json")
+
+
+def _read_runtime_status() -> dict:
+    try:
+        with open(RUNTIME_STATUS, "r", encoding="utf-8") as f:
+            value = json.load(f)
+            return value if isinstance(value, dict) else {}
+    except Exception:
+        return {}
+
+
+def _write_runtime_status(**updates) -> None:
+    current = _read_runtime_status()
+    current.update(updates)
+    current["updated_at"] = datetime.now(timezone.utc).isoformat()
+    tmp = RUNTIME_STATUS + ".tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(current, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, RUNTIME_STATUS)
+    except Exception:
+        try:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
+        except Exception:
+            pass
+
+
+def _record_processing_error(exc: Exception, payload: dict) -> dict:
+    info = brain.classify_runtime_error(exc)
+    safe = {
+        **info,
+        "message_id": str(payload.get("message_id") or "")[:120],
+        "conversation_type": str(payload.get("conversation_type") or "DIRECT_DM")[:40],
+        "at": datetime.now(timezone.utc).isoformat(),
+    }
+    _write_runtime_status(last_processing_error=safe)
+    return safe
 
 
 def process(payload: dict) -> dict:
@@ -56,6 +98,7 @@ def process(payload: dict) -> dict:
         return {"ok": False, "unauthorized": True}
     except Exception as exc:
         db.fail_inbound(payload["message_id"], str(exc))
+        _record_processing_error(exc, payload)
         try:
             db.queue_outbound(
                 payload["conversation_id"], "TEXT",
@@ -80,10 +123,17 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/health":
             self._json(200, {"status": "alive"})
+        elif self.path == "/runtime-status":
+            self._json(200, _read_runtime_status())
         else:
             self._json(404, {"error": "not found"})
 
     def do_POST(self):
+        if self.path == "/provider-probe":
+            result = brain.provider_probe()
+            _write_runtime_status(provider_probe=result)
+            self._json(200 if result.get("status") == "ok" else 503, result)
+            return
         if self.path != "/ingress":
             self._json(404, {"error": "not found"})
             return
@@ -104,6 +154,8 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     db.initialize()
+    if not os.path.exists(RUNTIME_STATUS):
+        _write_runtime_status(provider_probe={"status": "untested"})
     server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     print(f"[Alex MCP] Ingress ready on 127.0.0.1:{PORT}", flush=True)
     try:
