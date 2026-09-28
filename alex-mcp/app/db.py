@@ -452,14 +452,17 @@ def resolve_recent_instruction_context(conversation_id: str, sender_phone: str,
         conn.close()
 
 
-def current_month_ai_cost() -> float:
+def current_month_ai_cost(provider: str | None = None) -> float:
     conn = connect()
     try:
-        row = conn.execute(
-            """SELECT COALESCE(SUM(estimated_cost_usd),0) AS cost
-               FROM ai_usage
-               WHERE substr(created_at_utc,1,7)=substr(CURRENT_TIMESTAMP,1,7)"""
-        ).fetchone()
+        sql = """SELECT COALESCE(SUM(estimated_cost_usd),0) AS cost
+                 FROM ai_usage
+                 WHERE substr(created_at_utc,1,7)=substr(CURRENT_TIMESTAMP,1,7)"""
+        params: list[str] = []
+        if provider:
+            sql += " AND provider=?"
+            params.append(provider)
+        row = conn.execute(sql, params).fetchone()
         return float(row["cost"] or 0.0)
     finally:
         conn.close()
