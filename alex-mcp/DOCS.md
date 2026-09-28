@@ -38,6 +38,7 @@ Auto mode is designed for the best household experience at the lowest practical 
 - **Gemini 3.1 Flash-Lite** handles routine text/tool turns.
 - **Gemini 3.8 Flash** is selected up front for visual input, compound requests and genuinely analytical planning; it can also take over if a Lite turn becomes unusually multi-step.
 - **Grok 4.7** is a resilience fallback when configured, preserving existing xAI credit instead of spending it on every routine message.
+- Automatic Grok fallback has a separate monthly safety cap (default **$0.50**). Set it to `0` to disable automatic Grok fallback entirely; manual Grok mode is unaffected.
 - **OpenAI** is an optional final fallback when its key is configured.
 - Simple greetings, thanks and Alex health checks are answered locally without any model call.
 - Whisper and OCR remain local-first; Auto mode does not start sending every voice note or receipt directly to a paid multimodal model.
