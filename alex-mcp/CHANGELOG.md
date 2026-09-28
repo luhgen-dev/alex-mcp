@@ -4,6 +4,7 @@
 - Added **Auto Saver** as the recommended AI mode.
 - Routine turns use Gemini 3.1 Flash-Lite first; harder visual/compound/planning turns start on Gemini 3.8 Flash.
 - Grok 4.7 is retained as a resilience fallback, so existing xAI credit is used only when Gemini cannot complete the request.
+- Automatic Grok fallback is capped at $0.50/month by default (configurable; 0 disables it) to prevent a Gemini outage from silently burning xAI credit.
 - OpenAI remains an optional last fallback when configured.
 - Provider fallback happens inside the same bounded MCP turn and preserves deterministic/idempotent tool protections.
 - Tiny greetings, acknowledgements and Alex health checks now reply locally with zero model tokens and near-zero latency.
