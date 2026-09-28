@@ -81,9 +81,9 @@ Use local calculator/tool results instead of mental arithmetic when exactness ma
 _DEFAULT_MODEL_PRICES = {
     # (normal input, cached input, output), USD per 1M tokens.
     ("grok", "grok-4.7"): (2.00, 0.50, 6.00),
-    # Until a provider-specific cached rate is deliberately configured, charge
-    # cached tokens at the normal input rate in local telemetry.
-    ("gemini", "gemini-3.8-flash"): (0.75, 0.75, 3.75),
+    # Google standard paid-tier rates current through 2026-12-31.
+    ("gemini", "gemini-3.1-flash-lite"): (0.25, 0.025, 1.50),
+    ("gemini", "gemini-3.8-flash"): (0.75, 0.075, 3.75),
     ("openai", "gpt-5.6-luna"): (0.20, 0.20, 1.20),
 }
 
@@ -121,6 +121,19 @@ def _usage_breakdown(usage) -> tuple[int, int, int, int]:
     cached = _detail_value(getattr(usage, "prompt_tokens_details", None), "cached_tokens")
     reasoning = _detail_value(getattr(usage, "completion_tokens_details", None), "reasoning_tokens")
     return prompt, min(prompt, cached), completion, min(completion, reasoning)
+
+
+def _provider_reported_cost_usd(provider: str, usage) -> float | None:
+    """Use provider billing truth when exposed; currently xAI returns exact cost ticks."""
+    if provider != "grok" or usage is None:
+        return None
+    ticks = getattr(usage, "cost_in_usd_ticks", None)
+    if ticks is None and isinstance(usage, dict):
+        ticks = usage.get("cost_in_usd_ticks")
+    try:
+        return round(float(ticks) / 10_000_000_000, 10) if ticks is not None else None
+    except (TypeError, ValueError):
+        return None
 
 
 def _tool_to_openai(tool) -> dict:
@@ -508,14 +521,30 @@ async def _tool_specs(user_text: str, media_context: list[str] | None = None,
     return specs[:TOOL_EXPOSURE_MAX]
 
 
-def _client():
-    settings = get_settings()
-    if not settings.api_key:
+def _client_for(provider: str, settings=None):
+    settings = settings or get_settings()
+    key = settings.api_key_for(provider)
+    if not key:
         raise RuntimeError(
-            f"No API key configured for {settings.ai_provider}. "
+            f"No API key configured for {provider}. "
             "Enter it in Alex MCP → Configuration and restart."
         )
-    return OpenAI(api_key=settings.api_key, base_url=settings.base_url, timeout=30.0)
+    return OpenAI(
+        api_key=key,
+        base_url=settings.base_url_for(provider),
+        timeout=30.0,
+    )
+
+
+def _client():
+    """Backward-compatible single-provider client used by older tests/helpers."""
+    settings = get_settings()
+    provider = settings.ai_provider if settings.ai_provider != "auto" else (
+        "gemini" if settings.gemini_api_key else (
+            "grok" if settings.xai_api_key else "openai"
+        )
+    )
+    return _client_for(provider, settings)
 
 
 def _scrub_error_text(value: object) -> str:
