@@ -113,51 +113,75 @@ def _parse_event_time(value: str | None, tz_name: str) -> str:
     return dt.astimezone(timezone.utc).isoformat()
 
 
-_TIME_STATED_RE = re.compile(
-    r"(?i)\b\d{1,2}(?::\d{2})?\s*(?:am|pm|a\.m\.|p\.m\.)|"
-    r"\b\d{1,2}:\d{2}\b|"
-    r"\b(?:noon|midnight|morning|afternoon|evening|tonight|last\s+night|"
-    r"lunch|dinner|breakfast|ago|earlier|just\s+now)\b"
+_EXACT_TIME_STATED_RE = re.compile(
+    r"(?i)(?:"
+    r"\\b\\d{1,2}(?::\\d{2})?\\s*(?:am|pm|a\\.m\\.|p\\.m\\.)\\b|"
+    r"\\b(?:[01]?\\d|2[0-3]):[0-5]\\d\\b|"
+    r"\\b\\d{1,2}\\.[0-5]\\d\\s*(?:am|pm)\\b|"
+    r"\\b(?:noon|midnight)\\b"
+    r")"
 )
 
 
 def _user_stated_time(text: str | None) -> bool:
-    return bool(_TIME_STATED_RE.search(text or ""))
+    """True only when the user supplied an exact clock time.
+
+    Relative/vague phrases such as "just now", "last night" or "afternoon"
+    never authorize a model-invented clock value.
+    """
+    return bool(_EXACT_TIME_STATED_RE.search(text or ""))
+
+
+def _combine_local_date_with_received_clock(event_day, received: str, tz_name: str) -> str:
+    """Use the intended local date with the real message-receive clock."""
+    tz = ZoneInfo(tz_name)
+    received_local = datetime.fromisoformat(received.replace("Z", "+00:00")).astimezone(tz)
+    combined = datetime.combine(event_day, received_local.timetz())
+    return combined.astimezone(timezone.utc).isoformat()
 
 
 def _resolve_new_event_time(actor: ActorContext, event_date_local: str | None) -> str:
     """Deterministic timestamp for a NEW money record (v0.4.4).
 
-    1. Nothing supplied -> the WhatsApp send time of the message.
-    2. Date only, and it is the message's own local day -> send time (so two
-       records on the same day keep their true order).
-    3. Date only, another day -> that day (local midnight), as before.
-    4. Date AND clock time on the message's own day, but the user never said a
-       time and no receipt/document is attached -> the model invented the clock;
-       use the send time instead.
-    5. Otherwise (user-stated time, or a receipt/document supplied it) -> keep it.
+    - No date/time from the model -> WhatsApp receive time.
+    - Receipt/document date/time -> trusted extraction result.
+    - Exact clock explicitly spoken/typed by the user -> keep it.
+    - Otherwise preserve only the intended date and use the real message clock,
+      so vague/date-only phrases never become fake midnight or invented times.
     """
     received = getattr(actor, "received_at_utc", "") or utc_now()
     if not event_date_local or not str(event_date_local).strip():
         return received
+
     raw = str(event_date_local).strip()
     parsed_utc = _parse_event_time(raw, actor.timezone)
     try:
         tz = ZoneInfo(actor.timezone)
-        received_local_day = datetime.fromisoformat(received.replace("Z", "+00:00")).astimezone(tz).date()
-        date_only = bool(re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw))
         event_local_day = datetime.fromisoformat(parsed_utc).astimezone(tz).date()
     except Exception:
         return parsed_utc
-    if event_local_day != received_local_day:
-        return parsed_utc
-    if date_only:
-        return received
-    has_document = getattr(actor, "source", "text") in {"image", "document", "mixed"}
-    if not has_document and not _user_stated_time(getattr(actor, "trusted_text", "")):
-        return received
-    return parsed_utc
 
+    has_document = getattr(actor, "source", "text") in {"image", "document", "mixed"}
+    if has_document:
+        return parsed_utc
+
+    if _user_stated_time(getattr(actor, "trusted_text", "")):
+        return parsed_utc
+
+    return _combine_local_date_with_received_clock(event_local_day, received, actor.timezone)
+
+
+_TEMPORAL_CORRECTION_RE = re.compile(
+    r"(?i)(?:"
+    r"\\b(?:change|correct|fix|update|move|set)\\b.{0,30}\\b(?:date|time|when)\\b|"
+    r"\\b(?:actually|it\\s+was|was|not)\\s+(?:today|yesterday|tomorrow)\\b|"
+    r"\\b(?:on|at)\\s+\\d{4}-\\d{2}-\\d{2}\\b"
+    r")"
+)
+
+
+def _user_requested_event_time_change(text: str | None) -> bool:
+    return bool(_user_stated_time(text) or _TEMPORAL_CORRECTION_RE.search(text or ""))
 
 def _local_bound(date_text: str, tz_name: str, end: bool = False) -> str:
     d = datetime.fromisoformat(date_text).date()
@@ -391,7 +415,13 @@ def correct_expense(actor: ActorContext, event_id: str, amount: float | None = N
                 child_id, actor.action_key, actor.source_message_id, parent["space_id"], actor.user_id,
                 parent["owner_id"], parent["event_type"], category or parent["category"],
                 _minor(amount) if amount is not None else parent["amount_minor"], parent["currency"],
-                _parse_event_time(event_date_local, actor.timezone) if event_date_local else parent["event_date_utc"],
+                (
+                    _resolve_new_event_time(actor, event_date_local)
+                    if event_date_local and _user_requested_event_time_change(
+                        getattr(actor, "trusted_text", "")
+                    )
+                    else parent["event_date_utc"]
+                ),
                 parent["timezone_name"], description or parent["description"], parent["reference_text"],
             ),
         )
