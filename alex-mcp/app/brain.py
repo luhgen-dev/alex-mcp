@@ -470,10 +470,18 @@ async def _tool_specs(user_text: str, media_context: list[str] | None = None,
     if _pure_chat(user_text, media_context) and not quoted_context:
         return []
     wanted = _select_tool_names(user_text, media_context)
-    if quoted_context and quoted_context.get("financial_event"):
-        wanted |= {"query_finances", "correct_expense", "confirm_expense", "list_pending_expenses"}
-    if quoted_context and str(quoted_context.get("context_kind") or "").startswith("REMINDER"):
-        wanted |= REMINDER_TOOLS
+    if quoted_context:
+        carried_intent = (
+            quoted_context.get("quoted_user_text")
+            or quoted_context.get("recent_user_instruction")
+            or ""
+        )
+        if carried_intent:
+            wanted |= _select_tool_names(str(carried_intent), media_context)
+        if quoted_context.get("financial_event"):
+            wanted |= {"query_finances", "correct_expense", "confirm_expense", "list_pending_expenses"}
+        if str(quoted_context.get("context_kind") or "").startswith("REMINDER"):
+            wanted |= REMINDER_TOOLS
     if _money_only_reply(user_text):
         wanted |= {"list_pending_expenses", "confirm_expense"}
     wanted = _cap_tool_names(wanted, user_text, media_context)
@@ -657,6 +665,17 @@ def _quoted_context_message(quoted_context: dict | None) -> str | None:
     quoted = str(quoted_context.get("quoted_alex_text") or "").strip()
     if quoted:
         parts.append(f"Quoted Alex message: {quoted[:500]}")
+    quoted_user = str(quoted_context.get("quoted_user_text") or "").strip()
+    if quoted_user:
+        parts.append(
+            f"The user explicitly replied to their own earlier instruction: {quoted_user[:1000]}"
+        )
+    recent_instruction = str(quoted_context.get("recent_user_instruction") or "").strip()
+    if recent_instruction:
+        parts.append(
+            "Captionless attachment paired locally to the same sender's recent instruction: "
+            + recent_instruction[:1000]
+        )
     event = quoted_context.get("financial_event")
     if isinstance(event, dict) and event.get("event_id"):
         parts.append(
