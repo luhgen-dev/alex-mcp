@@ -80,6 +80,7 @@ def main() -> dict:
 
     # 3. Token budget is architectural, not aspirational.
     require(brain.TOOL_EXPOSURE_MAX <= 6, "provider-facing MCP schema cap is six or fewer")
+    require(brain.MAX_MODEL_CALLS <= 4, "provider orchestration is capped at four model calls")
     representative = [
         "how much did I spend this weekend",
         "remind me tomorrow 9 pay electricity",
@@ -129,6 +130,8 @@ def main() -> dict:
             "source ships with empty provider secrets")
     require('husband_phone: ""' in config_text and 'wife_phone: ""' in config_text,
             "source ships with empty household phone placeholders")
+    require('reasoning_effort: "low"' in config_text,
+            "default reasoning is low for latency/cost-sensitive household calls")
 
     # 5. Provider-neutral defaults and no Needle dependency.
     config_py = (APP / "config.py").read_text(encoding="utf-8")
@@ -164,6 +167,23 @@ def main() -> dict:
     )
     require("alex set family group" in connect.lower(),
             "Family Shared group pairing command present")
+    require(
+        "isAlexMentioned(message)" in connect
+        and "isReplyToAlex(message)" in connect
+        and "if (!isAlexMentioned(message) && !isReplyToAlex(message)) return;" in connect,
+        "Family Shared responds only to explicit mention or swipe reply",
+    )
+    require(
+        "USAGE_URL" in connect and "AI usage — last 24h" in connect,
+        "local no-provider-call usage telemetry is visible in Web UI",
+    )
+    db_text = (APP / "db.py").read_text(encoding="utf-8")
+    require(
+        "resolve_quoted_context" in db_text
+        and "provider_message_id" in db_text
+        and "quoted_message_id" in db_text,
+        "WhatsApp swipe replies bind to durable same-conversation context",
+    )
 
     # 7. Core trust rules are explicit in the brain and cannot rely on memory.
     prompt = brain.SYSTEM_PROMPT
@@ -186,7 +206,11 @@ def main() -> dict:
     require("Alex replies in text only." in docs,
             "voice input/text output owner decision documented")
 
-    # 9. No live external integration is falsely certified here.
+    # 9. Production safety: no test-state wipe script is shipped.
+    reset_script = ROOT / "rootfs" / "etc" / "cont-init.d" / "05-reset-test-state"
+    require(not reset_script.exists(), "production image contains no automatic test-state reset")
+
+    # 10. No live external integration is falsely certified here.
     require("MCP Check" in (ROOT.parent / "PARITY_AUDIT.md").read_text(encoding="utf-8"),
             "live integration gate is explicitly named MCP Check")
 
