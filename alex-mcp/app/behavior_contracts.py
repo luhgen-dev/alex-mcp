@@ -4,17 +4,15 @@ from __future__ import annotations
 
 The existing stress_test.py attacks deterministic service invariants directly.
 This catalog attacks the user-facing language boundary: many natural ways to ask
-for the same thing must expose the same safe capability.  Live mode then drives
-those prompts through brain.respond against a disposable database.
+for the same thing must produce the same safe capability and observable effect.
+Live mode drives synthetic WhatsApp payloads through ingress.process against a
+disposable database and inspects the exact outbound queue/state.
 """
 
 from dataclasses import dataclass
 from typing import Any, Iterable
 
-from behavior_capabilities import (
-    TOOL_COVERAGE_EXEMPTIONS,
-    normalize_capabilities,
-)
+from behavior_capabilities import normalize_capabilities
 
 
 @dataclass(frozen=True)
