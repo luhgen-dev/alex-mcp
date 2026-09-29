@@ -8,6 +8,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "alex-mcp", "app"))
 
@@ -260,6 +261,46 @@ class BehaviourRigJudgeMutationTests(unittest.TestCase):
         second = behavior_cert._adversarial_variants(phrase)
         self.assertEqual(first, second)
         self.assertTrue(first)
+
+    def test_benchmark_live_plan_skips_structurally_impossible_paid_calls(self):
+        fake_offline = {
+            "status": "FAIL",
+            "summary": {"failures": 1},
+            "failures": [{
+                "contract": "p2.tasks.create",
+                "kind": "missing-capability",
+            }],
+            "needs_live": [],
+        }
+        with patch.object(behavior_cert, "offline_certify", return_value=fake_offline):
+            plan = behavior_cert._benchmark_live_plan("phase2", None, 1)
+        skipped = {row["contract"]: row["reason"] for row in plan["skipped"]}
+        self.assertIn("p2.tasks.create", skipped)
+        self.assertIn("structurally absent", skipped["p2.tasks.create"])
+        self.assertFalse(any(
+            row[0].id == "p2.tasks.create" for row in plan["prompts"]
+        ))
+
+    def test_benchmark_live_plan_prioritizes_owner_smoke_regressions(self):
+        fake_offline = {
+            "status": "LIVE_REQUIRED",
+            "summary": {"failures": 0},
+            "failures": [],
+            "needs_live": [{
+                "contract": "p2.diary.detail",
+                "kind": "discovery-dependent",
+            }],
+        }
+        with patch.object(behavior_cert, "offline_certify", return_value=fake_offline):
+            plan = behavior_cert._benchmark_live_plan("phase2", None, 1)
+        self.assertTrue(plan["prompts"])
+        first_priority = plan["prompts"][0][4]
+        self.assertEqual(first_priority, 0)
+        priority_zero_ids = {
+            row[0].id for row in plan["prompts"] if row[4] == 0
+        }
+        self.assertIn("p2.diary.detail", priority_zero_ids)
+        self.assertIn("p2.goals.create", priority_zero_ids)
 
     def test_shared_clock_obeys_certification_instant(self):
         import runtime_clock
