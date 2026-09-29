@@ -24,6 +24,7 @@ metadata and real scheduled delivery remain explicit manual gates.
 import argparse
 import asyncio
 import base64
+import hashlib
 import json
 import os
 import statistics
@@ -533,6 +534,112 @@ def _initialize_sandbox():
     phase2_delegation.ensure_schema()
 
 
+_STATE_FINGERPRINT_EXCLUDE = {
+    # Transport/telemetry/focus artifacts are evidence about a turn, not the
+    # user's durable household state.
+    "inbound_messages", "outbound_messages", "conversation_turns",
+    "tool_execution_claims", "tool_audit", "ai_usage", "selection_sets",
+    "diagnostic_runs",
+}
+
+
+def _state_fingerprint() -> dict[str, dict[str, Any]]:
+    """Privacy-safe durable-state fingerprint: counts + hashes, never row contents."""
+    import db
+
+    conn = db.connect()
+    try:
+        tables = [
+            row["name"] for row in conn.execute(
+                """SELECT name FROM sqlite_master
+                   WHERE type='table' AND name NOT LIKE 'sqlite_%'
+                   ORDER BY name"""
+            ).fetchall()
+            if row["name"] not in _STATE_FINGERPRINT_EXCLUDE
+        ]
+        out: dict[str, dict[str, Any]] = {}
+        for table in tables:
+            rows = conn.execute(f'SELECT * FROM "{table}"').fetchall()
+            encoded = sorted(
+                json.dumps(dict(row), ensure_ascii=False, sort_keys=True, default=str)
+                for row in rows
+            )
+            digest = hashlib.sha256("\n".join(encoded).encode("utf-8")).hexdigest()[:16]
+            out[table] = {"count": len(rows), "hash": digest}
+        return out
+    finally:
+        conn.close()
+
+
+def _state_diff(before: dict, after: dict) -> dict[str, dict[str, Any]]:
+    changed: dict[str, dict[str, Any]] = {}
+    for table in sorted(set(before) | set(after)):
+        b = before.get(table, {"count": 0, "hash": ""})
+        a = after.get(table, {"count": 0, "hash": ""})
+        if b != a:
+            changed[table] = {
+                "before_count": b.get("count", 0),
+                "after_count": a.get("count", 0),
+                "content_changed": b.get("hash") != a.get("hash"),
+            }
+    return changed
+
+
+def _turn_cost_usd(mid: str) -> float:
+    import db
+
+    conn = db.connect()
+    try:
+        row = conn.execute(
+            """SELECT COALESCE(SUM(estimated_cost_usd),0) AS cost
+               FROM ai_usage WHERE source_message_id=?""",
+            (mid,),
+        ).fetchone()
+        return round(float(row["cost"] or 0.0), 10)
+    finally:
+        conn.close()
+
+
+def _validate_seed(seed: str | None) -> None:
+    if seed != "core":
+        return
+    import db
+
+    conn = db.connect()
+    try:
+        expectations = {
+            "financial_events": 1,
+            "saved_items": 2,
+            "shopping_items": 2,
+            "diary_events": 1,
+            "reminders": 1,
+            "plans": 1,
+            "alex_phase2_goals": 1,
+        }
+        bad = []
+        for table, minimum in expectations.items():
+            count = int(conn.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0])
+            if count < minimum:
+                bad.append(f"{table}={count} expected>={minimum}")
+        if bad:
+            raise RuntimeError("CERTIFICATION SEED INVALID: " + "; ".join(bad))
+    finally:
+        conn.close()
+
+
+def _reset_case_database(sandbox_dir: Path, seed: str | None) -> str:
+    """Give every prompt variant an independent DB so one wording cannot contaminate another."""
+    import db
+
+    case_path = sandbox_dir / f"case-{uuid.uuid4().hex}.db"
+    db.DB_PATH = str(case_path)
+    _initialize_sandbox()
+    if seed == "core":
+        _seed_core()
+    _validate_seed(seed)
+    return str(case_path)
+
+
 def _claim(mid: str, text: str, conv: str, phone: str = HUSBAND):
     import db
 
@@ -713,12 +820,16 @@ def _live_one(contract: PromptContract, prompt: str, source: str,
 
     mid = f"cert-{contract.id}-{uuid.uuid4().hex[:12]}"
     conv = f"{contract.id}-{uuid.uuid4().hex[:8]}@s.whatsapp.net"
+    state_before = _state_fingerprint()
     _claim(mid, prompt, conv)
     actor = _actor(mid, conv, prompt, source=source)
     started = time.monotonic()
     reply, attachments = asyncio.run(brain.respond(actor, prompt))
     elapsed_ms = int((time.monotonic() - started) * 1000)
     trace = _trace(mid)
+    state_after = _state_fingerprint()
+    state_changes = _state_diff(state_before, state_after)
+    cost_usd = _turn_cost_usd(mid)
     called = {
         c["tool"] for c in trace["calls"]
         if not c["tool"].startswith("_")
@@ -751,6 +862,13 @@ def _live_one(contract: PromptContract, prompt: str, source: str,
                 )
     if source == "voice" and prompt.isascii() and _looks_malay(reply):
         problems.append("English voice transcript received an unsolicited Malay reply")
+    persistent_mutation_called = any(
+        brain._is_mutating_tool(call["tool"]) and call["tool"] != "ha_control"
+        for call in trace["calls"]
+        if not call["tool"].startswith("_")
+    )
+    if persistent_mutation_called and not state_changes:
+        problems.append("mutating tool returned without any durable household-state change")
     if elapsed_ms > hard_latency_ms:
         problems.append(f"hard latency exceeded: {elapsed_ms}ms > {hard_latency_ms}ms")
     return {
@@ -762,6 +880,8 @@ def _live_one(contract: PromptContract, prompt: str, source: str,
         "reply": reply,
         "attachment_count": len(attachments),
         "elapsed_ms": elapsed_ms,
+        "estimated_cost_usd": cost_usd,
+        "durable_state_diff": state_changes,
         "trace": trace,
         "status": "PASS" if not problems else "FAIL",
         "problems": problems,
@@ -775,12 +895,16 @@ def _live_conversation(contract, source: str, hard_latency_ms: int) -> dict:
     rows = []
     for index, step in enumerate(contract.steps, 1):
         mid = f"cert-{contract.id}-{source}-{index}-{uuid.uuid4().hex[:8]}"
+        state_before = _state_fingerprint()
         _claim(mid, step.prompt, conv)
         actor = _actor(mid, conv, step.prompt, source=source)
         started = time.monotonic()
         reply, attachments = asyncio.run(brain.respond(actor, step.prompt))
         elapsed_ms = int((time.monotonic() - started) * 1000)
         trace = _trace(mid)
+        state_after = _state_fingerprint()
+        state_changes = _state_diff(state_before, state_after)
+        cost_usd = _turn_cost_usd(mid)
         called = {c["tool"] for c in trace["calls"] if not c["tool"].startswith("_")}
         problems = []
         if not (called & step.required_any):
@@ -807,6 +931,13 @@ def _live_conversation(contract, source: str, hard_latency_ms: int) -> dict:
             problems.append("turn exhausted model/tool step budget")
         if source == "voice" and step.prompt.isascii() and _looks_malay(reply):
             problems.append("English voice transcript received an unsolicited Malay reply")
+        persistent_mutation_called = any(
+            brain._is_mutating_tool(call["tool"]) and call["tool"] != "ha_control"
+            for call in trace["calls"]
+            if not call["tool"].startswith("_")
+        )
+        if persistent_mutation_called and not state_changes:
+            problems.append("mutating tool returned without any durable household-state change")
         if elapsed_ms > hard_latency_ms:
             problems.append(f"hard latency exceeded: {elapsed_ms}ms > {hard_latency_ms}ms")
         rows.append({
@@ -815,6 +946,8 @@ def _live_conversation(contract, source: str, hard_latency_ms: int) -> dict:
             "reply": reply,
             "attachment_count": len(attachments),
             "elapsed_ms": elapsed_ms,
+            "estimated_cost_usd": cost_usd,
+            "durable_state_diff": state_changes,
             "trace": trace,
             "status": "PASS" if not problems else "FAIL",
             "problems": problems,
@@ -830,7 +963,8 @@ def _live_conversation(contract, source: str, hard_latency_ms: int) -> dict:
 
 
 def live_certify(phase: str, provider: str, source_options: str | None,
-                 hard_latency_ms: int, report_path: str | None) -> dict:
+                 hard_latency_ms: int, report_path: str | None,
+                 max_live_cost_usd: float) -> dict:
     source = _load_source_options(source_options)
     creds = _credential_options(provider, source)
     sandbox = tempfile.TemporaryDirectory(prefix="alex-behavior-cert-")
@@ -840,6 +974,10 @@ def live_certify(phase: str, provider: str, source_options: str | None,
         json.dumps(_sandbox_options(provider, creds), ensure_ascii=False),
         encoding="utf-8",
     )
+    try:
+        options_path.chmod(0o600)
+    except OSError:
+        pass
     os.environ["ALEX_DATA_DIR"] = str(sandbox_dir)
     os.environ["ALEX_OPTIONS_PATH"] = str(options_path)
 
@@ -852,25 +990,46 @@ def live_certify(phase: str, provider: str, source_options: str | None,
     if not Path(db.DB_PATH).resolve().is_relative_to(sandbox_dir.resolve()):
         raise RuntimeError("CERTIFICATION SAFETY STOP: database escaped disposable sandbox")
 
-    _initialize_sandbox()
     _install_fake_ha()
     _install_fixed_clock()
-    _seed_core()
 
     rows = []
+    conversations = []
+    accumulated_cost = 0.0
+    budget_stopped = False
+
     for contract in contracts_for_phase(phase):
         if not contract.live:
             continue
         for source_kind in contract.sources:
             for prompt in contract.variants:
-                rows.append(_live_one(contract, prompt, source_kind, hard_latency_ms))
+                if max_live_cost_usd > 0 and accumulated_cost >= max_live_cost_usd:
+                    budget_stopped = True
+                    break
+                _reset_case_database(sandbox_dir, contract.seed)
+                row = _live_one(contract, prompt, source_kind, hard_latency_ms)
+                rows.append(row)
+                accumulated_cost += float(row.get("estimated_cost_usd") or 0.0)
+            if budget_stopped:
+                break
+        if budget_stopped:
+            break
 
-    conversations = []
-    for contract in conversations_for_phase(phase):
-        for source_kind in contract.sources:
-            conversations.append(
-                _live_conversation(contract, source_kind, hard_latency_ms)
-            )
+    if not budget_stopped:
+        for contract in conversations_for_phase(phase):
+            for source_kind in contract.sources:
+                if max_live_cost_usd > 0 and accumulated_cost >= max_live_cost_usd:
+                    budget_stopped = True
+                    break
+                _reset_case_database(sandbox_dir, contract.seed)
+                conversation = _live_conversation(contract, source_kind, hard_latency_ms)
+                conversations.append(conversation)
+                accumulated_cost += sum(
+                    float(step.get("estimated_cost_usd") or 0.0)
+                    for step in conversation["steps"]
+                )
+            if budget_stopped:
+                break
 
     elapsed = [r["elapsed_ms"] for r in rows]
     for conv in conversations:
@@ -878,17 +1037,24 @@ def live_certify(phase: str, provider: str, source_options: str | None,
     failures = [r for r in rows if r["status"] == "FAIL"]
     failures += [r for r in conversations if r["status"] == "FAIL"]
 
+    live_status = (
+        "FAIL" if failures else
+        ("INCOMPLETE_BUDGET" if budget_stopped else "PASS")
+    )
     report = {
         "mode": "live",
         "phase": phase,
         "provider": provider,
-        "status": "PASS" if not failures else "FAIL",
+        "status": live_status,
         "sandbox": True,
         "production_data_touched": False,
         "summary": {
             "prompt_runs": len(rows),
             "conversation_runs": len(conversations),
             "failures": len(failures),
+            "budget_stopped": budget_stopped,
+            "estimated_cost_usd": round(accumulated_cost, 8),
+            "max_live_cost_usd": max_live_cost_usd,
             "latency_ms_p50": int(statistics.median(elapsed)) if elapsed else 0,
             "latency_ms_max": max(elapsed) if elapsed else 0,
             "hard_latency_ms": hard_latency_ms,
@@ -923,6 +1089,10 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--report", default=None)
     p.add_argument("--hard-latency-ms", type=int, default=20000)
     p.add_argument(
+        "--max-live-cost-usd", type=float, default=0.25,
+        help="hard runner-level estimated provider spend cap for live certification; 0 disables",
+    )
+    p.add_argument(
         "--no-fail-exit", action="store_true",
         help="emit failures but exit 0; useful only while repairing a known-bad release",
     )
@@ -941,6 +1111,7 @@ def main() -> dict:
         report = live_certify(
             args.phase, args.provider, args.source_options,
             max(1000, args.hard_latency_ms), args.report,
+            max(0.0, float(args.max_live_cost_usd)),
         )
     if report["status"] != "PASS" and not args.no_fail_exit:
         raise SystemExit(1)
