@@ -1162,6 +1162,70 @@ def check_spouse_availability(actor: ActorContext, start_local: str,
         conn.close()
 
 
+_MONTHS = {
+    "jan": 1, "january": 1, "feb": 2, "february": 2,
+    "mar": 3, "march": 3, "apr": 4, "april": 4, "may": 5,
+    "jun": 6, "june": 6, "jul": 7, "july": 7,
+    "aug": 8, "august": 8, "sep": 9, "sept": 9, "september": 9,
+    "oct": 10, "october": 10, "nov": 11, "november": 11,
+    "dec": 12, "december": 12,
+}
+_WEEKDAYS = {
+    "mon": 0, "monday": 0, "tue": 1, "tues": 1, "tuesday": 1,
+    "wed": 2, "wednesday": 2, "thu": 3, "thur": 3, "thurs": 3, "thursday": 3,
+    "fri": 4, "friday": 4, "sat": 5, "saturday": 5,
+    "sun": 6, "sunday": 6,
+}
+
+
+def _natural_single_date(low: str, today: date) -> date | None:
+    """Resolve one ordinary household date without model date arithmetic."""
+    weekday = re.search(
+        r"\\b(?:(?:next|this|coming)\\s+)?"
+        r"(monday|mon|tuesday|tues|tue|wednesday|wed|"
+        r"thursday|thurs|thur|thu|friday|fri|saturday|sat|sunday|sun)\\b",
+        low,
+    )
+    if weekday:
+        target = _WEEKDAYS[weekday.group(1)]
+        # Owner semantics: "next Thursday" means the next occurrence after now,
+        # not "Thursday of next week". Same-day weekday wording stays today
+        # unless the user explicitly says "next".
+        delta = (target - today.weekday()) % 7
+        if delta == 0 and re.search(r"\\bnext\\s+", low):
+            delta = 7
+        return today + timedelta(days=delta)
+
+    day_first = re.search(
+        r"\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+"
+        r"(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|"
+        r"jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|"
+        r"oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)"
+        r"(?:\\s+(\\d{4}))?\\b",
+        low,
+    )
+    month_first = re.search(
+        r"\\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|"
+        r"jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|"
+        r"oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\\s+"
+        r"(\\d{1,2})(?:st|nd|rd|th)?(?:,)?(?:\\s+(\\d{4}))?\\b",
+        low,
+    )
+    if day_first:
+        day, month_name, year_text = day_first.groups()
+    elif month_first:
+        month_name, day, year_text = month_first.groups()
+    else:
+        return None
+
+    month = _MONTHS[month_name]
+    year = int(year_text) if year_text else today.year
+    candidate = date(year, month, int(day))
+    if not year_text and candidate < today:
+        candidate = date(year + 1, month, int(day))
+    return candidate
+
+
 def resolve_date_range(phrase: str, timezone_name: str,
                        reference_date: str | None = None) -> dict:
     """Resolve common household date ranges deterministically."""
@@ -1186,12 +1250,19 @@ def resolve_date_range(phrase: str, timezone_name: str,
         start = today
         end = today + timedelta(days=6)
     else:
-        # Exact ISO date/range is also deterministic.
-        match = re.search(r"(\d{4}-\d{2}-\d{2})(?:\s*(?:to|through|until|-)\s*(\d{4}-\d{2}-\d{2}))?", low)
-        if not match:
-            raise ValueError("Use today, tomorrow, this week, next week, next 7 days, or an ISO date/range")
-        start = date.fromisoformat(match.group(1))
-        end = date.fromisoformat(match.group(2)) if match.group(2) else start
+        # Exact ISO date/range remains the strongest explicit representation.
+        match = re.search(r"(\\d{4}-\\d{2}-\\d{2})(?:\\s*(?:to|through|until|-)\\s*(\\d{4}-\\d{2}-\\d{2}))?", low)
+        if match:
+            start = date.fromisoformat(match.group(1))
+            end = date.fromisoformat(match.group(2)) if match.group(2) else start
+        else:
+            natural = _natural_single_date(low, today)
+            if not natural:
+                raise ValueError(
+                    "Use today, tomorrow, a weekday, a calendar date, this/next week, "
+                    "next 7 days, or an ISO date/range"
+                )
+            start = end = natural
     return {"start_date": start.isoformat(), "end_date": end.isoformat()}
 
 
@@ -1256,7 +1327,27 @@ def get_agenda(actor: ActorContext, start_date: str, end_date: str,
                     ORDER BY COALESCE(start_at_utc,created_at_utc)""",
                 list(actor.allowed_spaces) + [start_utc, end_utc],
             ).fetchall()]
+        def local_iso(value):
+            if not value:
+                return None
+            return datetime.fromisoformat(value).astimezone(
+                ZoneInfo(actor.timezone)
+            ).isoformat()
+
+        for item in diary:
+            item["start_local"] = local_iso(item.get("start_at_utc"))
+            item["end_local"] = local_iso(item.get("end_at_utc"))
+        for item in reminders:
+            item["due_local"] = local_iso(item.get("start_at_utc"))
+        for item in roster:
+            item["start_local"] = local_iso(item.get("start_at_utc"))
+            item["end_local"] = local_iso(item.get("end_at_utc"))
+        for item in plans:
+            item["start_local"] = local_iso(item.get("start_at_utc"))
+            item["end_local"] = local_iso(item.get("end_at_utc"))
+
         return {"start_date": start_date, "end_date": end_date,
+                "timezone": actor.timezone,
                 "diary": diary, "reminders": reminders, "roster": roster,
                 "leave": leave, "plans": plans}
     finally:
