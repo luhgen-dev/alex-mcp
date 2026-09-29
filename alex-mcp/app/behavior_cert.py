@@ -634,6 +634,7 @@ def _reset_case_database(sandbox_dir: Path, seed: str | None) -> str:
     case_path = sandbox_dir / f"case-{uuid.uuid4().hex}.db"
     db.DB_PATH = str(case_path)
     _initialize_sandbox()
+    _install_fake_ha()
     if seed == "core":
         _seed_core()
     _validate_seed(seed)
