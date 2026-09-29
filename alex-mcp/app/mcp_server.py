@@ -19,7 +19,7 @@ import phase2_reports
 
 mcp = MCPServer(
     "Alex Household Tools",
-    version="0.4.4",
+    version="0.4.4.2",
     instructions="Deterministic household tools. Identity and permissions are injected by Alex and are never model-controlled.",
 )
 
@@ -147,6 +147,53 @@ def update_reminder(reminder_id: str, status: str, actor: Actor,
 def reminder_history(reminder_id: str, actor: Actor) -> dict:
     """Read the durable state-transition history for one authorized reminder."""
     return services.reminder_history(actor, reminder_id)
+
+
+@mcp.tool()
+def create_task(title: str, actor: Actor, notes: str | None = None,
+                assignee: str = "unassigned", shared: bool = False,
+                due_local: str | None = None, plan_id: str | None = None,
+                reminder_id: str | None = None) -> dict:
+    """Create a first-class task with OPEN lifecycle state. due_local and plan_id are optional. A reminder is never created implicitly; reminder_id only links an already-created authorized reminder. DM defaults private, while group/shared tasks are family-visible."""
+    return phase2.create_task(
+        actor, title, notes, assignee, shared, due_local, plan_id, reminder_id
+    )
+
+
+@mcp.tool()
+def list_tasks(actor: Actor, status: str = "open",
+               plan_id: str | None = None, limit: int = 50) -> dict:
+    """List authorized tasks. status may be open, done, cancelled, or all; plan_id optionally narrows to one accessible plan."""
+    return phase2.list_tasks(actor, status, plan_id, limit)
+
+
+@mcp.tool()
+def update_task(task_id: str, actor: Actor, title: str | None = None,
+                notes: str | None = None, due_local: str | None = None,
+                assignee: str | None = None, plan_id: str | None = None,
+                reminder_id: str | None = None) -> dict:
+    """Edit task fields without changing task lifecycle state. Empty due_local/plan_id/reminder_id clears that optional link/value. This never creates a reminder or rewrites the linked plan."""
+    return phase2.update_task(
+        actor, task_id, title, notes, due_local, assignee, plan_id, reminder_id
+    )
+
+
+@mcp.tool()
+def complete_task(task_id: str, actor: Actor) -> dict:
+    """Mark an OPEN task DONE while preserving its lifecycle history and linked plan/reminder state."""
+    return phase2.complete_task(actor, task_id)
+
+
+@mcp.tool()
+def reopen_task(task_id: str, actor: Actor) -> dict:
+    """Explicitly reopen a DONE task back to OPEN while preserving lifecycle history."""
+    return phase2.reopen_task(actor, task_id)
+
+
+@mcp.tool()
+def cancel_task(task_id: str, actor: Actor) -> dict:
+    """Cancel a task without deleting or changing any linked plan or reminder."""
+    return phase2.cancel_task(actor, task_id)
 
 
 @mcp.tool()
@@ -370,14 +417,14 @@ def update_diary_event(diary_id: str, actor: Actor, status: str | None = None,
 @mcp.tool()
 def get_agenda(start_date: str, end_date: str, actor: Actor,
                include_plans: bool = True) -> dict:
-    """Combined read-only agenda: diary + reminders + own work roster + own leave + accessible plans."""
+    """Combined read-only agenda. Use returned start_local/end_local/due_local fields for user-facing times; stored *_utc fields are internal evidence."""
     return phase2.get_agenda(actor, start_date, end_date, include_plans)
 
 
 @mcp.tool()
 def get_agenda_range(phrase: str, actor: Actor, reference_date: str | None = None,
                      include_plans: bool = True) -> dict:
-    """Resolve today/tomorrow/this week/next week/next 7 days deterministically and return the combined agenda."""
+    """Resolve natural dates/ranges deterministically and return the combined agenda. Use returned local-time fields for replies."""
     return phase2.get_agenda_range(actor, phrase, reference_date, include_plans)
 
 
@@ -423,10 +470,11 @@ def recent_failures(actor: Actor, hours: int = 24, limit: int = 20) -> dict:
 
 
 @mcp.tool()
-def planning_create_goal(name: str, target_amount: float, baseline_monthly: float, actor: Actor,
+def planning_create_goal(name: str, target_amount: float, actor: Actor,
+                         baseline_monthly: float = 0,
                          currency: str = "MYR", target_date: str | None = None,
-                         status: str = "ACTIVE", shared: bool = False) -> dict:
-    """Create a goal with a recurring baseline. One-off contributions never silently change this baseline."""
+                         status: str = "DRAFT", shared: bool = False) -> dict:
+    """Create an unlocked draft goal. baseline_monthly is optional and defaults to zero; never invent a contribution."""
     return phase2_finance.create_goal(
         name, target_amount, baseline_monthly, actor.phone, actor.conversation_type,
         "family" if shared or actor.conversation_type == "GROUP" else "private",
@@ -644,15 +692,21 @@ def planning_list_goals(actor: Actor) -> dict:
 @mcp.tool()
 def bills_list(actor: Actor, period: str | None = None,
                as_of_date: str | None = None) -> dict:
-    """List expected/paid/partial/deferred/unconfirmed/confirmed-unpaid recurring obligations. as_of_date is YYYY-MM-DD; if omitted, current local date is used."""
-    from datetime import datetime
-    from zoneinfo import ZoneInfo
+    """List recurring obligations. If period is omitted, materialize the current and next local month so 'coming up' does not falsely return empty."""
+    from datetime import date, timedelta
+    import runtime_clock
 
+    effective_date = as_of_date or runtime_clock.today(actor.timezone).isoformat()
+    effective_day = date.fromisoformat(effective_date)
     if period:
+        periods = [period]
+    else:
+        next_month = (effective_day.replace(day=28) + timedelta(days=4)).replace(day=1)
+        periods = [effective_day.strftime("%Y-%m"), next_month.strftime("%Y-%m")]
+    for target_period in periods:
         phase2_finance.ensure_obligation_instances(
-            period, actor.phone, actor.conversation_type, "all"
+            target_period, actor.phone, actor.conversation_type, "all"
         )
-    effective_date = as_of_date or datetime.now(ZoneInfo(actor.timezone)).date().isoformat()
     phase2_finance.refresh_obligation_states(
         effective_date, actor.phone, actor.conversation_type, "all"
     )

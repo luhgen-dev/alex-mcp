@@ -53,7 +53,8 @@ class V044Base(unittest.TestCase):
         try:
             for table in (
                 "tool_audit", "tool_execution_claims", "ai_usage", "outbound_messages",
-                "conversation_turns", "selection_sets", "event_media_links",
+                "conversation_turns", "selection_sets", "task_reminder_links",
+                "task_events", "tasks", "event_media_links",
                 "financial_event_corrections", "financial_events", "saved_items",
                 "media_objects", "inbound_messages",
             ):
@@ -190,6 +191,102 @@ class RoutingTests(V044Base):
         self.assertIn("query_finances", names)
         names = _names(asyncio.run(brain._tool_specs("don't turn off the AC light")))
         self.assertNotIn("ha_control", names)
+
+    def test_direct_route_repairs_preserve_forbidden_mutation_guards(self):
+        correction = _names(asyncio.run(brain._tool_specs(
+            "eh alex can u actually, change that parking expense to RM8.50."
+        )))
+        self.assertIn("correct_expense", correction)
+        self.assertIn("query_finances", correction)
+        self.assertNotIn("log_expense", correction)
+
+        shopping = _names(asyncio.run(brain._tool_specs(
+            "eh alex can u remove bananas from the family shopping list."
+        )))
+        self.assertIn("update_shopping_item", shopping)
+        self.assertNotIn("add_shopping_item", shopping)
+
+        negated = _names(asyncio.run(brain._tool_specs(
+            "eh alex can u i am not asking you to switch the AC off."
+        )))
+        self.assertIn("ha_find_entities", negated)
+        self.assertIn("ha_get_state", negated)
+        self.assertNotIn("ha_control", negated)
+
+    def test_task_lifecycle_routes_do_not_degrade_to_plan_or_reminder(self):
+        cases = {
+            "I need a task for the Malacca trip: check our passports.": "create_task",
+            "What tasks do I still have for the Malacca trip?": "list_tasks",
+            "Update the Malacca passport task with a note to check every passport.": "update_task",
+            "Complete the Malacca passport task.": "complete_task",
+            "Reopen the passport-check task.": "reopen_task",
+            "Cancel the passport-check task.": "cancel_task",
+        }
+        for phrase, required in cases.items():
+            names = _names(asyncio.run(brain._tool_specs(phrase)))
+            self.assertIn(required, names, phrase)
+            self.assertLessEqual(len(names), brain.TOOL_EXPOSURE_MAX, phrase)
+            if required != "list_tasks":
+                self.assertNotIn("create_reminder", names, phrase)
+            self.assertNotIn("create_plan", names, phrase)
+
+    def test_discovery_dependent_contracts_have_direct_primary_routes(self):
+        cases = [
+            ("eh alex can u add RM12.50 parking to my expenses.", {"log_expense"}),
+            ("eh alex can u show the pending expenses.", {"list_pending_expenses"}),
+            ("eh alex can u yes, approve that pending expense.", {"confirm_expense", "list_pending_expenses"}),
+            ("eh alex can u confirm that one as food.", {"confirm_expense", "list_pending_expenses"}),
+            ("eh alex can u keep a note that the code word is cobalt.", {"save_item"}),
+            ("eh alex can u maybe we need coffee.", {"add_shopping_item"}),
+            ("eh alex can u add bananas and milk for the family.", {"add_shopping_item"}),
+            ("eh alex can u show my household assets.", {"asset_list", "warranty_expiring"}),
+            ("Any warranties I should know about?", {"warranty_expiring"}),
+            ("eh alex can u make me a cash pool named Holiday Buffer.", {"planning_create_cash_pool"}),
+            ("eh alex can u show the balance of my Holiday Buffer cash pool.", {"planning_cash_pool_balance"}),
+            ("eh alex can u show me recent Alex errors.", {"recent_failures", "system_health"}),
+            ("eh alex can u 1", {"resolve_latest_diary_conflict", "resolve_numbered_choice"}),
+            ("Move my dentist apointment to 5pm.", {"update_diary_event"}),
+            ("eh alex can u compare this month's holiday contribution with the target.", {"planning_goal_deviation"}),
+            ("eh alex can u switch the living room light off.", {"ha_control"}),
+            ("eh alex can u what leave do I have recorded?", {"list_leave_records", "work_leave_balance"}),
+            ("eh alex can u list my planned and taken leave.", {"list_leave_records"}),
+            ("eh alex can u summarize my financial plan.", {"planning_brief"}),
+            ("eh alex can u delete the private cobalt memory.", {"remove_saved_item"}),
+            ("eh alex can u list the amounts I have explicitly set aside each month.", {"planning_list_reserves", "planning_baseline"}),
+        ]
+        for phrase, required in cases:
+            names = _names(asyncio.run(brain._tool_specs(phrase)))
+            self.assertTrue(required <= names, (phrase, required, names))
+            self.assertLessEqual(len(names), brain.TOOL_EXPOSURE_MAX, phrase)
+
+        for phrase in (
+            "eh alex can u log this management fee receipt.",
+            "eh alex can u log this payment receipt.",
+        ):
+            names = _names(asyncio.run(brain._tool_specs(
+                phrase, ["Local document content from attached receipt"]
+            )))
+            self.assertIn("log_expense", names, phrase)
+            self.assertLessEqual(len(names), brain.TOOL_EXPOSURE_MAX, phrase)
+
+    def test_repaired_write_variants_keep_primary_mutator(self):
+        cases = {
+            "Spent RM12.50 on parking just now.": "log_expense",
+            "spent rm12.50 on parking just now": "log_expense",
+            "eh alex can u spent RM12.50 on parking just now.": "log_expense",
+            "rm400 ot just came in; keep it unallocated for now": "planning_record_cash",
+            "start a rm5,000 family holiday goal, but leave the monthly amount undecided": "planning_create_goal",
+            "from now on, make the holiday goal baseline rm300 monthly": "planning_change_goal_baseline",
+        }
+        for phrase, required in cases.items():
+            names = _names(asyncio.run(brain._tool_specs(phrase)))
+            self.assertIn(required, names, phrase)
+            self.assertLessEqual(len(names), brain.TOOL_EXPOSURE_MAX, phrase)
+
+        agency = _names(asyncio.run(brain._tool_specs(
+            "start a rm5,000 family holiday goal, but leave the monthly amount undecided"
+        )))
+        self.assertNotIn("planning_change_goal_baseline", agency)
 
 
 # ------------------------------------------------------------ history hygiene

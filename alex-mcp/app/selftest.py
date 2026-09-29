@@ -19,7 +19,7 @@ REQUIRED_TABLES = {
     "inbound_messages","users","user_phone_history","spaces","memberships","routing_rules",
     "financial_events","financial_event_corrections","media_objects","event_media_links",
     "saved_items","shopping_items","reminders","savings_goals","money_buckets","leave_state",
-    "work_roster","leave_records","diary_events","diary_reminder_links","plans","plan_diary_links","schedule_conflicts",
+    "work_roster","leave_records","diary_events","diary_reminder_links","plans","tasks","task_events","task_reminder_links","plan_diary_links","schedule_conflicts",
     "cashflow_baselines","selection_sets","reminder_events","monitor_notifications","tool_execution_claims",
     "alex_profile_config_versions","alex_phase2_goals","alex_phase2_goal_baseline_versions",
     "alex_phase2_goal_period_targets","alex_phase2_goal_contributions","alex_phase2_cash_events",

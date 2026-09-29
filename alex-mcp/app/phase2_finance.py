@@ -341,7 +341,7 @@ def create_goal(name, target_amount, baseline_monthly, sender_phone,
         return {
             "goal_id": ident, "name": str(name).strip(), "space": space_id,
             "target": _money(target_minor), "baseline_monthly": _money(baseline_minor),
-            "currency": currency,
+            "currency": currency, "status": status,
             "baseline_effective_period": effective_period,
         }
     finally:
