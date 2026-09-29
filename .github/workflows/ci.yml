@@ -45,14 +45,25 @@ jobs:
           python - <<'PY'
           import json
           report = json.load(open("/tmp/alex-behavior-offline.json", encoding="utf-8"))
+          baseline = json.load(open("alex-mcp/app/behavior_known_failures.json", encoding="utf-8"))
+          current = set(report.get("failure_signatures", []))
+          known = set(baseline.get("failure_signatures", []))
+          new_failures = sorted(current - known)
+          resolved = sorted(known - current)
           print(json.dumps({
               "status": report["status"],
               "contracts": report["summary"]["contracts"],
               "variant_checks_passed": report["summary"]["variant_checks_passed"],
               "discovery_dependent": report["summary"].get("discovery_dependent_checks", 0),
               "failures_found": report["summary"]["failures"],
-              "failure_signatures": report.get("failure_signatures", []),
+              "known_failures_remaining": len(current & known),
+              "resolved_known_failures": len(resolved),
+              "new_failure_signatures": new_failures,
           }, indent=2))
+          if new_failures:
+              raise SystemExit(
+                  "Behaviour regression ratchet failed: new offline failure signatures detected"
+              )
           PY
 
       - name: Run final parity architecture audit
