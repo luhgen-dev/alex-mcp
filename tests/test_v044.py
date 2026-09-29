@@ -155,6 +155,12 @@ class TurnTests(V044Base):
         self.assertTrue(brain._looks_like_false_capability_denial(
             "I don't have the ability to update shopping items as bought."
         ))
+        self.assertFalse(brain._looks_like_false_capability_denial(
+            "I can't access your spouse's private saved items."
+        ))
+        self.assertFalse(brain._looks_like_false_capability_denial(
+            "I am not authorized to remove another person's private memory."
+        ))
         self.assertTrue(brain._looks_like_wrong_language_reply(
             "Mohon maaf, apakah Anda bermaksud sesuatu? Silakan beri tahu saya.",
             "add toothpaste to my shopping list",
