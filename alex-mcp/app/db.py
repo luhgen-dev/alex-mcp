@@ -13,6 +13,7 @@ from context import ActorContext
 
 DB_PATH = os.path.join(DATA_DIR, "alex_mcp.db")
 SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "schema.sql")
+INBOUND_PROCESSING_LEASE_SECONDS = 900
 
 
 def utc_now() -> str:
@@ -236,7 +237,7 @@ def claim_inbound(payload: dict) -> str:
                     if started.tzinfo is None:
                         started = started.replace(tzinfo=timezone.utc)
                     age = (now - started).total_seconds()
-                    if state == "PROCESSING" and age < 120:
+                    if state == "PROCESSING" and age < INBOUND_PROCESSING_LEASE_SECONDS:
                         return "DUPLICATE"
                     # The Node bridge retries non-2xx responses immediately. A
                     # short FAILED cooldown makes those transport retries no-op
@@ -272,6 +273,26 @@ def claim_inbound(payload: dict) -> str:
         )
         conn.commit()
         return "CLAIMED"
+    finally:
+        conn.close()
+
+
+def touch_inbound_processing(message_id: str) -> None:
+    """Refresh the processing lease around slow media/model stages.
+
+    First-use Whisper download plus multiple local passes can take several
+    minutes. Refreshing the lease prevents a concurrent transport retry from
+    re-entering the same WhatsApp message while the original worker is alive.
+    """
+    conn = connect()
+    try:
+        conn.execute(
+            """UPDATE inbound_messages
+               SET processing_started_at_utc=?
+               WHERE message_id=? AND processing_state='PROCESSING'""",
+            (runtime_clock.now_utc().isoformat(), message_id),
+        )
+        conn.commit()
     finally:
         conn.close()
 
