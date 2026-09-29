@@ -282,6 +282,18 @@ not a PASS list and must not be expanded merely to silence a regression.
 
 ### Live — opt-in, spend-capped, sandboxed
 
+On Home Assistant release **0.4.4.1+**, the Alex MCP ingress panel has a
+**Run live benchmark — max $3** button. It starts the benchmark inside the
+add-on, so the runner can read the already-configured provider credentials from
+`/data/options.json`. The keys are copied only into the disposable
+certification child configuration and are never included in the report.
+
+The panel shows progress, cost, run counts and failure count, and exposes the
+sanitized JSON report after completion. The benchmark process never starts the
+WhatsApp outbox worker and mocks Home Assistant, so it cannot send certification
+messages or control real devices.
+
+
 Two paid strategies exist.
 
 **Benchmark** (default) is the cost-efficient diagnostic mode:

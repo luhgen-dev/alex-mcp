@@ -3,7 +3,9 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import subprocess
 import sys
+import threading
 import traceback
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
@@ -19,6 +21,14 @@ from config import DATA_DIR
 
 PORT = 5001
 RUNTIME_STATUS = os.path.join(DATA_DIR, "runtime_status.json")
+CERT_DIR = os.path.join(DATA_DIR, "certification")
+CERT_STATUS = os.path.join(CERT_DIR, "live_benchmark_status.json")
+CERT_REPORT = os.path.join(CERT_DIR, "live_benchmark_report.json")
+CERT_LOG = os.path.join(CERT_DIR, "live_benchmark.log")
+CERT_SOURCE_OPTIONS = os.path.join(DATA_DIR, "options.json")
+CERT_BUDGET_USD = 3.0
+_CERT_LOCK = threading.Lock()
+_CERT_PROCESS = None
 
 
 def _read_runtime_status() -> dict:
@@ -57,6 +67,196 @@ def _record_processing_error(exc: Exception, payload: dict) -> dict:
     }
     _write_runtime_status(last_processing_error=safe)
     return safe
+
+
+
+def _write_cert_status(payload: dict) -> None:
+    os.makedirs(CERT_DIR, exist_ok=True)
+    tmp = CERT_STATUS + ".tmp"
+    body = {
+        **payload,
+        "updated_at": runtime_clock.utc_iso(),
+    }
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(body, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, CERT_STATUS)
+
+
+def _read_cert_status() -> dict:
+    try:
+        with open(CERT_STATUS, "r", encoding="utf-8") as f:
+            value = json.load(f)
+            return value if isinstance(value, dict) else {}
+    except Exception:
+        return {"state": "idle", "budget_usd": CERT_BUDGET_USD}
+
+
+def _cert_report_summary() -> dict | None:
+    try:
+        with open(CERT_REPORT, "r", encoding="utf-8") as f:
+            report = json.load(f)
+    except Exception:
+        return None
+    summary = report.get("summary") if isinstance(report, dict) else None
+    if not isinstance(summary, dict):
+        return None
+    failures = []
+    for row in report.get("prompt_results", []) if isinstance(report, dict) else []:
+        if row.get("status") != "FAIL":
+            continue
+        failures.append({
+            "contract": row.get("contract"),
+            "domain": row.get("domain"),
+            "source": row.get("source"),
+            "problems": list(row.get("problems") or [])[:4],
+        })
+        if len(failures) >= 12:
+            break
+    if len(failures) < 12:
+        for row in report.get("conversation_results", []) if isinstance(report, dict) else []:
+            if row.get("status") != "FAIL":
+                continue
+            failures.append({
+                "contract": row.get("contract"),
+                "domain": row.get("domain"),
+                "source": row.get("source"),
+                "problems": [
+                    problem
+                    for step in row.get("steps", [])
+                    for problem in (step.get("problems") or [])
+                ][:4],
+            })
+            if len(failures) >= 12:
+                break
+    return {
+        "result_status": report.get("status"),
+        "summary": {
+            "prompt_runs": summary.get("prompt_runs", 0),
+            "conversation_runs": summary.get("conversation_runs", 0),
+            "failures": summary.get("failures", 0),
+            "budget_stopped": bool(summary.get("budget_stopped")),
+            "estimated_cost_usd": summary.get("estimated_cost_usd", 0.0),
+            "max_live_cost_usd": summary.get("max_live_cost_usd", CERT_BUDGET_USD),
+            "planned_prompt_runs": summary.get("planned_prompt_runs", 0),
+            "planned_conversation_runs": summary.get("planned_conversation_runs", 0),
+            "skipped_paid_contracts": summary.get("skipped_paid_contracts", 0),
+            "offline_failures": summary.get("offline_failures"),
+            "latency_ms_p50": summary.get("latency_ms_p50", 0),
+            "latency_ms_max": summary.get("latency_ms_max", 0),
+        },
+        "failures_preview": failures,
+    }
+
+
+def certification_status() -> dict:
+    status = _read_cert_status()
+    report = _cert_report_summary()
+    if report:
+        status = {**status, **report}
+    status["report_available"] = os.path.exists(CERT_REPORT)
+    return status
+
+
+def _monitor_certification(proc: subprocess.Popen, log_handle) -> None:
+    global _CERT_PROCESS
+    returncode = proc.wait()
+    try:
+        log_handle.flush()
+        log_handle.close()
+    except Exception:
+        pass
+    report = _cert_report_summary()
+    state = "completed" if report is not None else "error"
+    _write_cert_status({
+        "state": state,
+        "pid": None,
+        "returncode": returncode,
+        "budget_usd": CERT_BUDGET_USD,
+        "finished_at": runtime_clock.utc_iso(),
+        "message": (
+            "Live benchmark finished."
+            if report is not None
+            else "Live benchmark ended without a readable report. Check the benchmark log."
+        ),
+    })
+    with _CERT_LOCK:
+        if _CERT_PROCESS is proc:
+            _CERT_PROCESS = None
+
+
+def start_live_certification() -> dict:
+    """Start one sandboxed paid benchmark using Alex's configured provider keys.
+
+    The child reads only provider credentials from /data/options.json, then
+    behavior_cert.py rebinds all Alex state to a disposable sandbox and mocks HA.
+    """
+    global _CERT_PROCESS
+    with _CERT_LOCK:
+        if _CERT_PROCESS is not None and _CERT_PROCESS.poll() is None:
+            return {
+                "ok": True,
+                "already_running": True,
+                **certification_status(),
+            }
+
+        os.makedirs(CERT_DIR, exist_ok=True)
+        try:
+            if os.path.exists(CERT_REPORT):
+                os.unlink(CERT_REPORT)
+        except OSError:
+            pass
+
+        log_handle = open(CERT_LOG, "w", encoding="utf-8")
+        cmd = [
+            sys.executable,
+            os.path.join(os.path.dirname(__file__), "behavior_cert.py"),
+            "--mode", "live",
+            "--phase", "all",
+            "--provider", "auto",
+            "--source-options", CERT_SOURCE_OPTIONS,
+            "--live-strategy", "benchmark",
+            "--max-live-cost-usd", str(CERT_BUDGET_USD),
+            "--live-adversarial-per-contract", "1",
+            "--hard-latency-ms", "20000",
+            "--no-fail-exit",
+            "--report", CERT_REPORT,
+        ]
+        env = os.environ.copy()
+        # Defence in depth: the child itself also isolates state and HA. These
+        # values make the intent explicit before it imports application modules.
+        env["ALEX_CERT_SOURCE_OPTIONS"] = CERT_SOURCE_OPTIONS
+        env["ALEX_HA_API_URL"] = "http://127.0.0.1:9/certification-no-ha"
+        env.pop("SUPERVISOR_TOKEN", None)
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                cwd=os.path.dirname(__file__),
+                env=env,
+                stdout=log_handle,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+        except Exception:
+            log_handle.close()
+            raise
+        _CERT_PROCESS = proc
+        _write_cert_status({
+            "state": "running",
+            "pid": proc.pid,
+            "returncode": None,
+            "budget_usd": CERT_BUDGET_USD,
+            "started_at": runtime_clock.utc_iso(),
+            "message": (
+                "Live benchmark is running in a disposable sandbox. "
+                "No WhatsApp messages or physical HA actions are sent."
+            ),
+        })
+        threading.Thread(
+            target=_monitor_certification,
+            args=(proc, log_handle),
+            daemon=True,
+        ).start()
+        return {"ok": True, **certification_status()}
 
 
 def _received_at_utc(payload: dict) -> str:
@@ -208,6 +408,15 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, _read_runtime_status())
         elif self.path == "/usage-summary":
             self._json(200, diagnostics.usage_summary(24))
+        elif self.path == "/certification-status":
+            self._json(200, certification_status())
+        elif self.path == "/certification-report":
+            try:
+                with open(CERT_REPORT, "r", encoding="utf-8") as f:
+                    report = json.load(f)
+                self._json(200, report)
+            except Exception:
+                self._json(404, {"error": "certification report not available"})
         else:
             self._json(404, {"error": "not found"})
 
@@ -216,6 +425,13 @@ class Handler(BaseHTTPRequestHandler):
             result = brain.provider_probe()
             _write_runtime_status(provider_probe=result)
             self._json(200 if result.get("status") == "ok" else 503, result)
+            return
+        if self.path == "/certification-live":
+            try:
+                result = start_live_certification()
+                self._json(202, result)
+            except Exception as exc:
+                self._json(500, {"ok": False, "error": str(exc)[:500]})
             return
         if self.path != "/ingress":
             self._json(404, {"error": "not found"})
