@@ -189,13 +189,17 @@ class BehaviourRigJudgeMutationTests(unittest.TestCase):
     def test_core_seed_is_valid(self):
         import db
         original_db = db.DB_PATH
+        old_clock = os.environ.get("ALEX_CERT_NOW")
         with tempfile.TemporaryDirectory(prefix="alex-rig-seed-test-") as tmp:
             try:
                 behavior_cert._reset_case_database(Path(tmp), "core")
                 behavior_cert._validate_seed("core")
             finally:
                 db.DB_PATH = original_db
-                os.environ["ALEX_CERT_NOW"] = behavior_cert.CERT_NOW_UTC
+                if old_clock is None:
+                    os.environ.pop("ALEX_CERT_NOW", None)
+                else:
+                    os.environ["ALEX_CERT_NOW"] = old_clock
 
     def test_shared_clock_obeys_certification_instant(self):
         import runtime_clock
