@@ -459,6 +459,24 @@ CREATE TABLE IF NOT EXISTS conversation_turns (
 
 CREATE INDEX IF NOT EXISTS idx_turns_conversation ON conversation_turns(conversation_id, created_at_utc);
 
+-- Short-lived conversational pointers.  Only stable object IDs / compact
+-- routing payloads live here; the underlying object remains authoritative and
+-- its ACL is re-checked whenever a tool dereferences the ID.
+CREATE TABLE IF NOT EXISTS conversation_focus (
+    user_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    focus_key TEXT NOT NULL,
+    object_type TEXT,
+    object_id TEXT,
+    payload_json TEXT,
+    source_message_id TEXT,
+    created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at_utc TEXT NOT NULL,
+    PRIMARY KEY(user_id, conversation_id, focus_key)
+);
+CREATE INDEX IF NOT EXISTS idx_focus_expiry
+ON conversation_focus(expires_at_utc);
+
 CREATE TABLE IF NOT EXISTS outbound_messages (
     outbound_id TEXT PRIMARY KEY,
     source_message_id TEXT,

@@ -12,10 +12,13 @@ WhatsApp/Home Assistant acceptance test.
 The intended release path is now:
 
 1. External Lab: deterministic tests + Tier A + Tier B offline routing.
-2. Repair failures and rerun externally until clean.
-3. Optional real-provider Tier B benchmark against the same contracts.
-4. Install the candidate Home Assistant add-on.
-5. Run only the genuinely external checks: WhatsApp mention/reply metadata,
+2. GPT-5.6 Sol external-oracle replay: held-out model-authored household
+   decisions are checked against the real provider facade and underlying MCP
+   schemas without making a paid provider call.
+3. Repair failures and rerun the whole product externally until clean.
+4. Optional real-provider Tier B benchmark against the same contracts.
+5. Install the candidate Home Assistant app.
+6. Run only the genuinely external checks: WhatsApp mention/reply metadata,
    phone-side delivery/rendering, real audio transport, scheduler delivery,
    QR/session persistence and physical Home Assistant devices.
 
@@ -36,6 +39,17 @@ Every run writes:
 - `alex-lab-report.json` — compact gate/check summary.
 - `alex-lab-failures.jsonl` — one diagnosis packet per offline failure or
   discovery-dependent case.
+- an `external_chatgpt_oracle` check built from
+  `chatgpt_oracle_cases.json`. The decisions in that corpus were authored by
+  GPT-5.6 Sol outside Alex's routing code. The replay verifies provider-facing
+  tool exposure, bounded specialist-pack reachability, voice/text parity where
+  paired, facade-to-MCP translation and translated argument compatibility with
+  the real MCP schemas.
+
+The oracle is deliberately replayable: GitHub Actions does **not** secretly call
+ChatGPT or a paid API. It preserves an external model's independent decisions as
+held-out certification evidence, while Alex's actual deterministic services
+remain the implementation under test.
 
 A prior live-provider JSON report may be supplied with `--live-report`. The lab
 does not rerun or spend against that report; it only converts failed prompt and
@@ -105,7 +119,10 @@ instead of paying to repeat the whole benchmark.
 
 ## Important boundary
 
-A green External Lab means Alex's internally simulatable behaviour is clean. It
-does **not** claim that WhatsApp transport, linked-device metadata, phone
-rendering, physical device state or QR/session persistence have been tested.
-Those remain the short final production acceptance.
+A green External Lab means Alex's internally simulatable behaviour is clean,
+including the deterministic core, the v0.5 provider facade and the external
+GPT-5.6 Sol oracle replay. It does **not** claim that real WhatsApp audio
+transport/STT acoustics, linked-device metadata, phone rendering/auto-scroll,
+wall-clock delivery, physical Home Assistant device state or QR/session
+persistence have been tested. Those remain the short final production
+acceptance.

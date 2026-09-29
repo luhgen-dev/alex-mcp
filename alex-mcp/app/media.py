@@ -176,8 +176,66 @@ def _ensure_whisper_model(model_name: str) -> str:
         raise
 
 
-def _local_whisper(path: str, model_name: str) -> str:
+_VOICE_INTENT_WORDS = {
+    "add", "buy", "bought", "shopping", "list", "mark", "remove", "delete",
+    "remind", "reminder", "save", "remember", "show", "find", "receipt",
+    "expense", "spent", "paid", "payment", "task", "plan", "diary",
+    "appointment", "meeting", "goal", "cash", "money", "turn", "switch",
+    "light", "fan", "what", "when", "where", "how", "check", "tell",
+}
+_WHISPER_HALLUCINATION_MARKERS = (
+    "thank you for watching", "thanks for watching", "subscribe to",
+    "subtitles by", "amara.org", "www.", "captioned by",
+)
+
+
+def _transcript_command_score(text: str) -> int:
+    """Cheap signal used only to choose between local Whisper hypotheses."""
+    value = str(text or "").strip()
+    if not value:
+        return -100
+    low = value.casefold()
+    score = 0
+    if any(marker in low for marker in _WHISPER_HALLUCINATION_MARKERS):
+        score -= 20
+    words = re.findall(r"[a-z]+", low)
+    score += sum(3 for word in words if word in _VOICE_INTENT_WORDS)
+    if re.search(r"[\u0B80-\u0BFF]", value):
+        # Tamil script is a valid household-language hypothesis, not noise.
+        score += 6
+    if len(set(words)) <= 2 and len(words) >= 8:
+        score -= 8
+    if len(value) >= 3:
+        score += 1
+    return score
+
+
+def _local_transcript_suspicious(text: str) -> bool:
+    value = str(text or "").strip()
+    if not value:
+        return True
+    low = value.casefold()
+    if any(marker in low for marker in _WHISPER_HALLUCINATION_MARKERS):
+        return True
+    words = re.findall(r"[a-z]+", low)
+    if len(words) >= 8 and len(set(words)) <= 2:
+        return True
+    # A longer Latin-script turn with no household/query signal gets one
+    # second local pass forced to English.  We still keep the original unless
+    # the retry is materially stronger, so Malay/Tanglish small talk is not
+    # silently rewritten.
+    return (
+        not re.search(r"[\u0B80-\u0BFF]", value)
+        and len(words) >= 4
+        and _transcript_command_score(value) <= 1
+    )
+
+
+def _local_whisper(path: str, model_name: str, language: str = "auto") -> str:
     model_path = _ensure_whisper_model(model_name)
+    lang = str(language or "auto").strip().lower()
+    if lang not in {"auto", "en", "ta", "ms"}:
+        lang = "auto"
     with tempfile.TemporaryDirectory(prefix="alex-whisper-") as tmp:
         wav_path = os.path.join(tmp, "voice.wav")
         prefix = os.path.join(tmp, "transcript")
@@ -187,7 +245,7 @@ def _local_whisper(path: str, model_name: str) -> str:
             capture_output=True, text=True, timeout=90, check=True,
         )
         subprocess.run(
-            ["whisper-cli", "-m", model_path, "-f", wav_path, "-l", "auto",
+            ["whisper-cli", "-m", model_path, "-f", wav_path, "-l", lang,
              "-nt", "-otxt", "-of", prefix, "-np"],
             capture_output=True, text=True, timeout=180, check=True,
         )
@@ -196,6 +254,33 @@ def _local_whisper(path: str, model_name: str) -> str:
             raise RuntimeError("Local Whisper did not produce a transcript")
         with open(output_path, "r", encoding="utf-8", errors="replace") as transcript:
             return transcript.read().strip()
+
+
+def _best_local_whisper(path: str, model_name: str) -> tuple[str, bool]:
+    """Return best local hypothesis and whether it remains obviously unsafe.
+
+    Real smoke tests showed that a non-empty auto-language transcript can still
+    be a confident wrong-language hallucination.  Non-empty is therefore no
+    longer treated as sufficient evidence.
+    """
+    primary = _local_whisper(path, model_name, "auto")
+    best = primary
+    if _local_transcript_suspicious(primary):
+        try:
+            english = _local_whisper(path, model_name, "en")
+            if _transcript_command_score(english) >= _transcript_command_score(primary) + 2:
+                best = english
+        except Exception:
+            pass
+    obvious_junk = (
+        not best.strip()
+        or any(m in best.casefold() for m in _WHISPER_HALLUCINATION_MARKERS)
+        or (
+            len(re.findall(r"[a-z]+", best.casefold())) >= 8
+            and len(set(re.findall(r"[a-z]+", best.casefold()))) <= 2
+        )
+    )
+    return best.strip(), obvious_junk
 
 
 def _xai_stt(path: str, mime: str, key: str) -> str:
@@ -247,10 +332,22 @@ def transcribe_audio(media_id: str) -> str:
     # transcription off the conversational AI bill and supports Tamil.
     order = [requested] if requested != "auto" else ["local_whisper", "gemini", "openai", "xai"]
     last_error = None
+    best_local = ""
     for provider in order:
         try:
             if provider == "local_whisper":
-                text = _local_whisper(row["local_path"], settings.whisper_model)
+                text, obvious_junk = _best_local_whisper(
+                    row["local_path"], settings.whisper_model
+                )
+                best_local = text
+                # Explicit local_whisper means local-only by owner choice.
+                # Auto mode may continue to a configured cloud STT only when
+                # the local output is obvious hallucinated/repetitive junk.
+                if text and (requested != "auto" or not obvious_junk):
+                    _update_text(media_id, "transcript_text", text)
+                    return text
+                if requested == "auto":
+                    continue
             elif provider == "xai" and settings.xai_api_key:
                 text = _xai_stt(row["local_path"], row["mime_type"], settings.xai_api_key)
             elif provider == "openai" and settings.openai_api_key:
@@ -264,6 +361,13 @@ def transcribe_audio(media_id: str) -> str:
                 return text
         except Exception as exc:
             last_error = exc
+    # If cloud fallbacks were unavailable but local Whisper produced something,
+    # return that evidence rather than pretending transcription did not happen.
+    # The conversation model receives a strong voice/source hint and may ask one
+    # clarification instead of a false successful mutation.
+    if best_local:
+        _update_text(media_id, "transcript_text", best_local)
+        return best_local
     if last_error:
         raise RuntimeError(f"Voice transcription failed: {last_error}")
     raise RuntimeError("No speech-to-text provider is configured")

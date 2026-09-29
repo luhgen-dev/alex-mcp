@@ -27,7 +27,7 @@ REQUIRED_TABLES = {
     "alex_phase2_plan_reserves","alex_phase2_obligation_instances","alex_phase2_evidence_facts",
     "alex_phase2_work_events","alex_phase2_assets","alex_phase2_asset_documents",
     "alex_phase2_delegations","alex_phase2_leave_plans","alex_phase2_commitments",
-    "conversation_turns","outbound_messages","tool_audit","ai_usage","diagnostic_runs",
+    "conversation_turns","conversation_focus","outbound_messages","tool_audit","ai_usage","diagnostic_runs",
 }
 
 

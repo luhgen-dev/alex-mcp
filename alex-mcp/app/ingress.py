@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -308,6 +309,45 @@ def build_turn(payload: dict, media_lines: list[str]) -> dict:
     }
 
 
+_SAVE_NEXT_RE = re.compile(
+    r"(?i)\b(?:save|remember|keep)\s+(?:the\s+)?next\s+"
+    r"(?P<kind>picture|photo|image|document|pdf|file)\b"
+    r"(?:\s+(?:as|called|named)\s+(?P<title>.+?))?[.!?]*\s*$"
+)
+
+
+def _save_next_request(text: str) -> dict | None:
+    match = _SAVE_NEXT_RE.search(str(text or "").strip())
+    if not match:
+        return None
+    kind = match.group("kind").casefold()
+    title = str(match.group("title") or "").strip().strip("'\\\" ")
+    if not title:
+        title = "Next " + ("picture" if kind in {"picture", "photo", "image"} else "document")
+    return {"kind": kind, "title": title[:200]}
+
+
+def _save_next_context(actor, turn: dict) -> dict | None:
+    if not turn.get("has_document_media") or turn.get("trusted_text"):
+        return None
+    focus = db.get_focus(actor, "save_next", consume=True)
+    if not focus:
+        return None
+    payload = focus.get("payload") if isinstance(focus, dict) else {}
+    payload = payload if isinstance(payload, dict) else {}
+    title = str(payload.get("title") or "Saved item").strip()[:200]
+    return {
+        "recent_user_instruction": f"Save this attached item as {title}",
+        "save_next": {
+            "title": title,
+            "kind": str(payload.get("kind") or "item")[:40],
+            "focus_created_at_utc": focus.get("created_at_utc"),
+        },
+        "source_message_id": focus.get("source_message_id"),
+        "pairing": "explicit_save_next_focus",
+    }
+
+
 def process(payload: dict) -> dict:
     required = ("message_id", "conversation_id", "sender_phone")
     if any(not payload.get(k) for k in required):
@@ -335,12 +375,49 @@ def process(payload: dict) -> dict:
             trusted_text=turn["trusted_text"],
             received_at_utc=turn["received_at_utc"],
         )
+
+        # Explicit "save the next picture/document" is a short-lived,
+        # single-use actor+chat focus.  It is deterministic and costs no model
+        # call until the attachment actually arrives.
+        save_next = (
+            _save_next_request(turn["trusted_text"])
+            if not actor.media_ids else None
+        )
+        if save_next:
+            db.set_focus(
+                actor, "save_next", object_type="pending_attachment",
+                payload=save_next, ttl_seconds=180,
+            )
+            kind_label = (
+                "picture"
+                if save_next["kind"] in {"picture", "photo", "image"}
+                else "document"
+            )
+            reply = (
+                f"Sure — send the next {kind_label} within 3 minutes and "
+                f"I’ll save it as “{save_next['title']}”."
+            )
+            db.add_turn(actor.user_id, actor.conversation_id, "user", turn["trusted_text"])
+            db.add_turn(actor.user_id, actor.conversation_id, "assistant", reply)
+            db.queue_outbound(
+                actor.conversation_id, "TEXT", text=reply,
+                source_message_id=actor.source_message_id,
+            )
+            db.finish_inbound(actor.source_message_id, reply)
+            return {"ok": True, "save_next_armed": True}
+
         quoted_context = db.resolve_quoted_context(
             actor.conversation_id, payload.get("quoted_message_id"), actor.phone
         )
         # Orphan-attachment pairing applies ONLY to a genuinely captionless
         # image/PDF. Voice notes are the user's own words and must never
         # inherit an earlier, unrelated text instruction (v0.4.3 vinyl leak).
+        if (
+            not quoted_context
+            and turn["has_document_media"]
+            and not turn["trusted_text"]
+        ):
+            quoted_context = _save_next_context(actor, turn)
         if (
             not quoted_context
             and turn["has_document_media"]

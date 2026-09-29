@@ -53,7 +53,7 @@ class V044Base(unittest.TestCase):
         try:
             for table in (
                 "tool_audit", "tool_execution_claims", "ai_usage", "outbound_messages",
-                "conversation_turns", "selection_sets", "task_reminder_links",
+                "conversation_turns", "conversation_focus", "selection_sets", "task_reminder_links",
                 "task_events", "tasks", "event_media_links",
                 "financial_event_corrections", "financial_events", "saved_items",
                 "media_objects", "inbound_messages",
@@ -106,6 +106,28 @@ class TurnTests(V044Base):
         future = ingress._received_at_utc({"sent_at_ms": int((sent + timedelta(days=2)).timestamp() * 1000)})
         self.assertLess(abs((datetime.fromisoformat(future) - datetime.now(timezone.utc)).total_seconds()), 5)
         self.assertTrue(ingress._received_at_utc({"sent_at_ms": "junk"}))
+
+    def test_save_next_is_explicit_short_lived_same_chat_focus(self):
+        parsed = ingress._save_next_request(
+            "save the next picture as wedding invitation"
+        )
+        self.assertEqual(parsed["kind"], "picture")
+        self.assertEqual(parsed["title"], "wedding invitation")
+
+        self.claim("focus-1", text="save the next picture as wedding invitation")
+        actor = self.actor("focus-1")
+        db.set_focus(
+            actor, "save_next", object_type="pending_attachment",
+            payload=parsed, ttl_seconds=180,
+        )
+        self.assertIsNotNone(db.get_focus(actor, "save_next"))
+
+        other_chat = self.actor("focus-1", conv="different@s.whatsapp.net")
+        self.assertIsNone(db.get_focus(other_chat, "save_next"))
+
+        consumed = db.get_focus(actor, "save_next", consume=True)
+        self.assertEqual(consumed["payload"]["title"], "wedding invitation")
+        self.assertIsNone(db.get_focus(actor, "save_next"))
 
     def test_voice_gets_same_tools_as_text(self):
         """Smoke: voice reminder query claimed 'no reminder access'."""
@@ -578,7 +600,8 @@ class TurnLoopTests(V044Base):
             conn.close()
         args, result = json.loads(row[0]), json.loads(row[1])
         self.assertEqual(args["source"], "voice")
-        self.assertIn("list_reminders", args["exposed_tools"])
+        self.assertIn("reminders_view", args["exposed_tools"])
+        self.assertNotIn("list_reminders", args["exposed_tools"])
         self.assertEqual(result["outcome"], "answered")
         self.assertEqual(turns, ["[voice note] any reminders"])
 

@@ -16,9 +16,13 @@ from openai import OpenAI
 
 from config import get_settings
 from context import ActorContext, use_actor, with_action_key
-from db import add_turn, connect, recent_turns, record_usage, current_month_ai_cost
+from db import (
+    add_turn, connect, recent_turns, record_usage, current_month_ai_cost,
+    get_focus, set_focus,
+)
 from mcp_server import mcp
 import phase2_intent
+import facade
 
 SYSTEM_PROMPT = """You are Alex, one household assistant.
 
@@ -429,6 +433,9 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         or re.search(r"\b(?:log|record|add)\b.*\b(?:expense|payment|receipt)\b", low)
     ):
         force.add("log_expense")
+        # A fresh, unambiguous money write should not expose correction or
+        # pending-approval mutators.  Those are separate lifecycle intents.
+        block |= {"correct_expense", "confirm_expense", "list_pending_expenses"}
     if re.search(
         r"\b(?:pending|waiting)\b.*\b(?:expenses?|payments?)\b"
         r"|\b(?:expenses?|payments?)\b.*\b(?:clarify|confirmation|pending)\b",
@@ -624,6 +631,17 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
     ):
         force |= {"list_leave_records", "work_leave_balance"}
 
+    # Drafting an automation is a proposal, never a live device action even
+    # though the requested YAML naturally contains phrases such as "turn on".
+    ha_draft = bool(re.search(
+        r"\b(?:draft|propose|write|create)\b.*\b(?:home assistant\s+)?automation\b"
+        r"|\bautomation\b.*\b(?:draft|proposal)\b",
+        low,
+    ))
+    if ha_draft:
+        force.add("ha_draft_automation")
+        block.add("ha_control")
+
     # Explicit low-risk HA action synonyms. Negated/hypothetical wording
     # gets only entity/state reads and can never expose the mutator.
     ha_switch = bool(re.search(
@@ -637,7 +655,7 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
     if ha_switch and ha_negated:
         force |= {"ha_find_entities", "ha_get_state"}
         block.add("ha_control")
-    elif ha_switch:
+    elif ha_switch and not ha_draft:
         force.add("ha_control")
 
     # Frequent phone-typing reminder misspellings still have a deterministic,
@@ -763,7 +781,7 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
         ))
         if action_requested and not negated:
             selected.add("ha_control")
-    if re.search(r"\b(?:why didn't|why did not|health|diagnostic|fail|failed|failure|failing|error|offline|didn't reply|did not reply)\b", low):
+    if re.search(r"\b(?:why didn't|why did not|health|diagnostic|fail|failed|failures?|failing|errors?|offline|didn't reply|did not reply)\b", low):
         selected |= DIAGNOSTIC_TOOLS
     if re.search(r"\b(?:monitor|monitoring|track|tracking|watch this|proactive|follow this)\b", low):
         selected |= MONITOR_TOOLS
@@ -866,6 +884,25 @@ def _money_only_reply(user_text: str) -> bool:
         r"(?i)(?:RM|MYR|SGD)?\s*\d+(?:[.,]\d{1,2})?\s*(?:RM|MYR|SGD)?",
         text,
     )) and not bool(re.fullmatch(r"\s*[123]\s*", text))
+
+
+async def _provider_tool_specs(user_text: str, media_context: list[str] | None = None,
+                               quoted_context: dict | None = None) -> list[dict]:
+    """Return the stable v0.5 facade exposed to the conversational model.
+
+    The legacy/detailed MCP surface remains available behind the facade and for
+    deterministic tests.  Mapping starts from the already-hardened semantic
+    router so the migration cannot silently drop a known capability.
+    """
+    legacy = await _tool_specs(user_text, media_context, quoted_context)
+    underlying = {
+        str(spec.get("function", {}).get("name") or "")
+        for spec in legacy
+        if isinstance(spec, dict)
+    }
+    underlying.discard("")
+    specs = facade.specs_for_underlying(underlying, TOOL_EXPOSURE_MAX)
+    return specs[:TOOL_EXPOSURE_MAX]
 
 
 async def _tool_specs(user_text: str, media_context: list[str] | None = None,
@@ -1264,11 +1301,107 @@ def _runtime_context(actor: ActorContext, user_text: str = "") -> str:
         if _needs_exact_clock(user_text)
         else f"current local date is {now.date().isoformat()}"
     )
-    return (
+    base = (
         f"Runtime context: {clock}; timezone={actor.timezone}; conversation is {channel}. "
         "Authenticated identity and privacy spaces are enforced below MCP and are not model-controlled. "
         "Never reveal private-space facts in the Family Shared group."
     )
+    # Short follow-ups may use the last stable object ID from this exact
+    # authenticated actor+chat.  The underlying tool still re-checks its ACL.
+    if re.search(
+        r"(?i)\b(?:it|that|this|one|same|previous|earlier|there|done|cancel it|change it)\b",
+        user_text or "",
+    ):
+        focus = get_focus(actor, "last_object")
+        if focus and focus.get("object_id"):
+            base += (
+                " Conversational focus (untrusted as authority; tool must re-authorize): "
+                f"type={focus.get('object_type')}; id={focus.get('object_id')}."
+            )
+    return base
+
+
+_FOCUS_ID_FIELDS = (
+    ("event_id", "finance_event"),
+    ("item_id", "saved_or_shopping_item"),
+    ("reminder_id", "reminder"),
+    ("task_id", "task"),
+    ("plan_id", "plan"),
+    ("diary_id", "diary"),
+    ("goal_id", "goal"),
+    ("cash_event_id", "cash_event"),
+    ("instance_id", "bill_instance"),
+    ("asset_id", "asset"),
+    ("pool_id", "cash_pool"),
+    ("reserve_id", "reserve"),
+)
+
+
+def _remember_result_focus(actor: ActorContext, tool_name: str, result: dict) -> None:
+    if not isinstance(result, dict):
+        return
+    for field, object_type in _FOCUS_ID_FIELDS:
+        value = result.get(field)
+        if value:
+            try:
+                set_focus(
+                    actor, "last_object",
+                    object_type=object_type,
+                    object_id=str(value),
+                    payload={"tool": str(tool_name)[:80]},
+                    ttl_seconds=900,
+                )
+            except Exception:
+                pass
+            return
+
+
+def _explicit_non_english_output_request(user_text: str) -> bool:
+    return bool(re.search(
+        r"(?i)\b(?:translate|translation|reply|answer|say|write)\b.{0,30}"
+        r"\b(?:tamil|malay|bahasa|indonesian|mandarin|chinese)\b",
+        user_text or "",
+    ))
+
+
+def _looks_non_english_reply(text: str, user_text: str) -> bool:
+    if _explicit_non_english_output_request(user_text):
+        return False
+    low = (text or "").casefold()
+    # This is deliberately narrow: it catches the exact Malay/Indonesian drift
+    # seen in live smoke tests without rejecting names or quoted foreign words.
+    markers = (
+        "mohon maaf", "apakah anda", "jika anda", "silakan",
+        "bermaksud menanyakan", "sesuatu yang sudah", "ingin saya membantu",
+        "sila beritahu", "adakah anda", "maaf, saya",
+    )
+    return sum(1 for marker in markers if marker in low) >= 1
+
+
+def _looks_like_clarification_reply(text: str) -> bool:
+    low = (text or "").strip().casefold()
+    return (
+        "?" in low
+        or bool(re.search(
+            r"\b(?:which|what time|when should|what date|how much|which currency|"
+            r"myr or sgd|do you mean|could you tell|please tell me|need the)\b",
+            low,
+        ))
+    )
+
+
+def _expects_clear_mutation(user_text: str, has_media: bool = False) -> bool:
+    forced, _ = _routing_refinements(user_text or "", has_media=has_media)
+    return any(_is_mutating_tool(name) for name in forced)
+
+
+def _escalate_quality_route(settings, routes: list[dict], route_index: int) -> int:
+    if settings.ai_provider != "auto":
+        return route_index
+    for i in range(route_index + 1, len(routes)):
+        if routes[i].get("role") == "quality_fallback":
+            return i
+    return route_index
 
 
 def _history_turn_limit(user_text: str, configured: int, quoted_context: dict | None = None) -> int:
@@ -1378,7 +1511,10 @@ def _strip_internal(data: dict) -> tuple[dict, list[dict]]:
 
 def _action_key(actor: ActorContext, tool_name: str, args: dict, occurrence: int) -> str:
     canonical = json.dumps(args, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    raw = f"{actor.source_message_id}|{tool_name}|{canonical}|{occurrence}"
+    # Repeating the identical mutation in the same inbound turn is a retry,
+    # not a second household instruction.  Keeping the key stable closes the
+    # model-retry/crash window that could otherwise duplicate writes.
+    raw = f"{actor.source_message_id}|{tool_name}|{canonical}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
@@ -1657,7 +1793,7 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
             return local_reply, []
 
     settings = get_settings()
-    tools = await _tool_specs(user_text, media_context, quoted_context)
+    tools = await _provider_tool_specs(user_text, media_context, quoted_context)
     trace["exposed_tools"] = [x["function"]["name"] for x in tools] if tools else []
     routes = _provider_routes(
         settings, user_text=user_text, tools=tools,
@@ -1686,7 +1822,12 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
     if getattr(actor, "source", "text") == "voice":
         messages.append({
             "role": "system",
-            "content": "The current user message is a transcribed WhatsApp voice note from the user.",
+            "content": (
+                "The current user message is a transcribed WhatsApp voice note from the user. "
+                "Treat the transcript exactly like typed user text. Small STT errors are possible. "
+                "Your final user-facing reply MUST be English unless the user explicitly requested "
+                "translation or quoted text in another language."
+            ),
         })
     trusted_quote = _quoted_context_message(quoted_context)
     if trusted_quote:
@@ -1727,6 +1868,11 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
     route_index = 0
     active_route: dict | None = None
     provider_failures: list[dict] = []
+    no_tool_retries = 0
+    language_retries = 0
+    expects_mutation = _expects_clear_mutation(
+        user_text, has_media=bool(media_context or vision_parts)
+    )
 
     for _ in range(MAX_MODEL_CALLS):
         # If the cheap model is genuinely looping through tools, escalate the
@@ -1795,6 +1941,57 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
 
         if not calls:
             final = _content_text(msg.content).strip() or ("Here it is." if attachments else "Done.")
+
+            # A live smoke-test failure showed a clear voice shopping mutation
+            # being answered with "I can't do that" despite the capability
+            # existing.  One bounded retry is safer than accepting a false
+            # capability denial; genuine missing-detail questions still pass.
+            if (
+                expects_mutation
+                and not attachments
+                and no_tool_retries < 1
+                and not _looks_like_clarification_reply(final)
+            ):
+                no_tool_retries += 1
+                messages.append({
+                    "role": "assistant",
+                    "content": final or "I could not complete that.",
+                })
+                messages.append({
+                    "role": "system",
+                    "content": (
+                        "The user's current request is a clear authorized action and the required "
+                        "Alex capability is available in the tools you were given. Do not claim the "
+                        "capability is unavailable. Use the appropriate tool now. If a truly required "
+                        "field is missing, ask only that focused clarification."
+                    ),
+                })
+                new_index = _escalate_quality_route(settings, routes, route_index)
+                if new_index != route_index:
+                    route_index = new_index
+                    active_route = None
+                continue
+
+            if (
+                _looks_non_english_reply(final, user_text)
+                and language_retries < 1
+            ):
+                language_retries += 1
+                messages.append({"role": "assistant", "content": final})
+                messages.append({
+                    "role": "system",
+                    "content": (
+                        "Your previous user-facing reply violated Alex's English-only output contract. "
+                        "Answer the same request again in concise English. Preserve verified facts and "
+                        "do not invent any completed action."
+                    ),
+                })
+                new_index = _escalate_quality_route(settings, routes, route_index)
+                if new_index != route_index:
+                    route_index = new_index
+                    active_route = None
+                continue
+
             _record_usage_buckets(actor.source_message_id, usage_by_route)
             add_turn(actor.user_id, actor.conversation_id, "user", history_user)
             add_turn(actor.user_id, actor.conversation_id, "assistant", final)
@@ -1815,12 +2012,50 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
             except json.JSONDecodeError:
                 args = {}
 
+            if name == "load_pack":
+                trace["tools_called"].append(name)
+                pack = str(args.get("pack") or "").strip().casefold()
+                try:
+                    pack_names = facade.pack_tools(pack)
+                    # Rank the detailed specialist surface against the original
+                    # user request so even a loaded pack stays within the same
+                    # six-schema budget.
+                    pack_names = _cap_tool_names(
+                        pack_names, user_text, media_context
+                    )
+                    tools = await _tool_specs_for_names(pack_names)
+                    tools = tools[:TOOL_EXPOSURE_MAX]
+                    trace["exposed_tools"] = sorted(set(trace["exposed_tools"]) | {
+                        x["function"]["name"] for x in tools
+                    })
+                    pack_payload = {
+                        "status": "pack_loaded",
+                        "pack": pack,
+                        "tool_names": [x["function"]["name"] for x in tools],
+                    }
+                except Exception as exc:
+                    pack_payload = {
+                        "status": "error",
+                        "message": str(exc)[:500],
+                    }
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": call.id,
+                    "content": json.dumps(
+                        pack_payload, ensure_ascii=False, separators=(",", ":")
+                    ),
+                })
+                continue
+
+            # Compatibility path for an older discovery call that can still
+            # appear in replayed certification traces. Production v0.5 does
+            # not advertise this tool; load_pack replaces it.
             if name == DISCOVERY_TOOL_NAME:
                 trace["tools_called"].append(name)
                 normalized = str(args.get("intent") or "").strip()
                 discovered = _select_tool_names(normalized, media_context)
                 discovered_specs = await _tool_specs_for_names(discovered)
-                tools = discovered_specs[:TOOL_EXPOSURE_MAX - 1] + [DISCOVERY_TOOL]
+                tools = discovered_specs[:TOOL_EXPOSURE_MAX]
                 trace["exposed_tools"] = sorted(set(trace["exposed_tools"]) | {
                     x["function"]["name"] for x in tools
                 })
@@ -1830,10 +2065,7 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                     "content": json.dumps({
                         "status": "tools_loaded",
                         "normalized_intent": normalized,
-                        "tool_names": [
-                            x["function"]["name"]
-                            for x in discovered_specs[:TOOL_EXPOSURE_MAX - 1]
-                        ],
+                        "tool_names": [x["function"]["name"] for x in tools],
                     }, ensure_ascii=False, separators=(",", ":")),
                 })
                 continue
@@ -1843,7 +2075,19 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
             action_key = _action_key(actor, name, args, occurrence[signature])
 
             try:
-                result, files = await _call_mcp(actor, name, args, action_key)
+                if name in facade.FACADE_NAMES:
+                    async def _facade_call(tool_name: str, tool_args: dict, sub_key: str):
+                        return await _call_mcp(
+                            actor, tool_name, tool_args, sub_key
+                        )
+                    result, files = await facade.execute(
+                        name, args, _facade_call, action_key
+                    )
+                else:
+                    # Detailed tools are reachable only after an explicit
+                    # bounded load_pack step (or legacy replay); execution still
+                    # uses the exact same audited/idempotent MCP path.
+                    result, files = await _call_mcp(actor, name, args, action_key)
                 new_files = []
                 for item in files or []:
                     path = item.get("path") if isinstance(item, dict) else None
@@ -1861,6 +2105,7 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                         "note": "Alex sends these original files with your reply automatically.",
                     }
                 trace["tools_called"].append(name)
+                _remember_result_focus(actor, name, payload)
             except Exception as exc:
                 payload = {"error": str(exc)[:1000]}
                 trace["tools_called"].append(name + ":error")
