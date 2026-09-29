@@ -346,14 +346,52 @@ class BehaviourRigJudgeMutationTests(unittest.TestCase):
             }],
             "conversation_history": [],
         }
-        decisions = [{
-            "packet_id": "hai-private-delete",
-            "decision": "tools",
-            "tools": ["remove_saved_item"],
-            "reply_language": "en",
-        }]
+        decisions = [
+            {"_meta": {
+                "corpus_fingerprint": human_ai_lab._corpus_fingerprint([packet]),
+            }},
+            {
+                "packet_id": "hai-private-delete",
+                "decision": "tools",
+                "tools": ["remove_saved_item"],
+                "reply_language": "en",
+            },
+        ]
         report = human_ai_lab.score_packets([packet], decisions, "all")
         self.assertEqual(report["status"], "PASS", report["failures"])
+
+    def test_human_ai_score_rejects_stale_review_corpus(self):
+        import human_ai_lab
+        packet = {
+            "packet_version": 2,
+            "packet_id": "hai-stale",
+            "_contract_id": "p1.finance.write",
+            "_phase": "phase1",
+            "_domain": "finance",
+            "source": "text",
+            "conversation_type": "DIRECT_DM",
+            "actor": "husband",
+            "prompt": "I paid RM12.50 for parking.",
+            "available_tools": [{
+                "name": "log_expense",
+                "description": "log",
+                "parameters": {},
+            }],
+            "conversation_history": [],
+        }
+        decisions = [
+            {"_meta": {"corpus_fingerprint": "stale-fingerprint"}},
+            {
+                "packet_id": "hai-stale",
+                "decision": "tools",
+                "tools": ["log_expense"],
+                "reply_language": "en",
+            },
+        ]
+        report = human_ai_lab.score_packets([packet], decisions, "all")
+        self.assertEqual(report["status"], "FAIL")
+        self.assertFalse(report["summary"]["corpus_match"])
+        self.assertTrue(report["meta_failures"])
 
     def test_human_ai_packet_audit_rejects_impossible_packet(self):
         import human_ai_lab
