@@ -980,13 +980,82 @@ def _money_only_reply(user_text: str) -> bool:
     )) and not bool(re.fullmatch(r"\s*[123]\s*", text))
 
 
+def _is_contextual_followup(user_text: str) -> bool:
+    """Whether a turn is unsafe to route without the preceding user intent."""
+    text = (user_text or "").strip()
+    low = text.casefold()
+    if not text:
+        return False
+    if len(text) <= 80 and re.search(
+        r"^(?:actually|yes|no|yep|nope|okay|ok|same|instead|then|also)\b",
+        low,
+    ):
+        return True
+    return bool(re.search(
+        r"\b(?:that|it|this|those|them|same one|again|previous|earlier)\b",
+        low,
+    )) and len(text) <= 140
+
+
+def _contextual_tool_hints(user_text: str, prior_user_text: str | None) -> tuple[set[str], set[str]]:
+    """Recover the *domain* of a short follow-up without replaying old writes.
+
+    Conversation history is useful for intent focus, but the previous mutator
+    must never be blindly replayed. The returned pair is (add, block).
+    """
+    if not prior_user_text or not _is_contextual_followup(user_text):
+        return set(), set()
+
+    current = (user_text or "").casefold()
+    previous = (prior_user_text or "").casefold()
+    prior_tools = _select_tool_names(prior_user_text)
+    add: set[str] = set()
+    block: set[str] = set()
+
+    # Carry read/retrieval context freely; these cannot duplicate a write.
+    add |= {name for name in prior_tools if name in READ_ONLY_TOOLS}
+
+    # "Actually it was RM12.80" after a financial write is a correction, not a
+    # second expense. This is the exact multi-turn failure family from smoke.
+    if (
+        (prior_tools & {"log_expense", "query_finances", "correct_expense"})
+        and (
+            re.search(r"\b(?:actually|correction|wrong|instead)\b", current)
+            or _money_only_reply(user_text)
+        )
+    ):
+        add |= {"query_finances", "correct_expense"}
+        block |= {"log_expense", "confirm_expense"}
+
+    # Attachment/record retrieval follow-ups such as "send me that again".
+    if prior_tools & {"find_receipts", "get_receipt"}:
+        add |= {"find_receipts", "get_receipt"}
+    if prior_tools & {"search_saved_items", "get_saved_item"}:
+        add |= {"search_saved_items", "get_saved_item"}
+
+    # Keep object lifecycle context, but do not repeat the previous mutation.
+    lifecycle_reads = {
+        "list_reminders", "list_shopping_items", "list_tasks", "list_plans",
+        "get_agenda", "get_agenda_range", "planning_list_goals",
+        "planning_goal_progress", "bills_list",
+    }
+    add |= prior_tools & lifecycle_reads
+    return add, block
+
+
 async def _tool_specs(user_text: str, media_context: list[str] | None = None,
-                      quoted_context: dict | None = None) -> list[dict]:
+                      quoted_context: dict | None = None,
+                      prior_user_text: str | None = None) -> list[dict]:
     # Casual conversation stays model-only unless a trusted WhatsApp reply
     # carries a persisted object that the user is explicitly continuing.
     if _pure_chat(user_text, media_context) and not quoted_context:
         return []
     wanted = _select_tool_names(user_text, media_context)
+    contextual_add, contextual_block = _contextual_tool_hints(
+        user_text, prior_user_text
+    )
+    wanted |= contextual_add
+    wanted -= contextual_block
     if quoted_context:
         carried_intent = (
             quoted_context.get("quoted_user_text")
@@ -1007,7 +1076,9 @@ async def _tool_specs(user_text: str, media_context: list[str] | None = None,
         wanted |= {"list_pending_expenses", "confirm_expense", "log_expense", "query_finances"}
     if not wanted and not _casual_chat(user_text):
         wanted = set(CORE_READ_FALLBACK)
-    wanted = _cap_tool_names(wanted, user_text, media_context)
+    wanted = _cap_tool_names(
+        wanted, user_text, media_context, required=contextual_add
+    )
     specs = await _tool_specs_for_names(wanted)
     # The discovery tool is a tiny safety valve for typo-heavy, incomplete,
     # Tanglish or otherwise novel phrasing. It lets the LLM normalize intent
@@ -1807,7 +1878,19 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
             return local_reply, []
 
     settings = get_settings()
-    tools = await _tool_specs(user_text, media_context, quoted_context)
+    prior_turns = recent_turns(actor.conversation_id, 6)
+    prior_user_text = next(
+        (
+            str(turn["content"])
+            for turn in reversed(prior_turns)
+            if turn["role"] == "user"
+        ),
+        None,
+    )
+    tools = await _tool_specs(
+        user_text, media_context, quoted_context,
+        prior_user_text=prior_user_text,
+    )
     trace["exposed_tools"] = [x["function"]["name"] for x in tools] if tools else []
     routes = _provider_routes(
         settings, user_text=user_text, tools=tools,
