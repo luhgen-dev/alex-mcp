@@ -640,24 +640,26 @@ def _reset_case_database(sandbox_dir: Path, seed: str | None) -> str:
     return str(case_path)
 
 
-def _claim(mid: str, text: str, conv: str, phone: str = HUSBAND):
+def _claim(mid: str, text: str, conv: str, phone: str = HUSBAND,
+           conversation_type: str = "DIRECT_DM"):
     import db
 
     db.claim_inbound({
         "message_id": mid,
         "provider": "CERTIFICATION",
         "conversation_id": conv,
-        "conversation_type": "DIRECT_DM",
+        "conversation_type": conversation_type,
         "sender_phone": phone,
         "text": text,
     })
 
 
 def _actor(mid: str, conv: str, text: str = "", source: str = "text",
-           phone: str = HUSBAND, media_ids: list[str] | None = None):
+           phone: str = HUSBAND, media_ids: list[str] | None = None,
+           conversation_type: str = "DIRECT_DM"):
     import db
 
-    actor = db.resolve_actor(phone, conv, "DIRECT_DM", mid, media_ids or [])
+    actor = db.resolve_actor(phone, conv, conversation_type, mid, media_ids or [])
     return replace(
         actor,
         source=source,
@@ -819,10 +821,19 @@ def _live_one(contract: PromptContract, prompt: str, source: str,
     import brain
 
     mid = f"cert-{contract.id}-{uuid.uuid4().hex[:12]}"
-    conv = f"{contract.id}-{uuid.uuid4().hex[:8]}@s.whatsapp.net"
+    phone = WIFE if contract.actor == "wife" else HUSBAND
+    ctype = contract.conversation_type
+    conv = (
+        f"{contract.id}-{uuid.uuid4().hex[:8]}@g.us"
+        if ctype == "GROUP"
+        else f"{contract.id}-{uuid.uuid4().hex[:8]}@s.whatsapp.net"
+    )
     state_before = _state_fingerprint()
-    _claim(mid, prompt, conv)
-    actor = _actor(mid, conv, prompt, source=source)
+    _claim(mid, prompt, conv, phone=phone, conversation_type=ctype)
+    actor = _actor(
+        mid, conv, prompt, source=source, phone=phone,
+        conversation_type=ctype,
+    )
     started = time.monotonic()
     reply, attachments = asyncio.run(brain.respond(actor, prompt))
     elapsed_ms = int((time.monotonic() - started) * 1000)
@@ -876,6 +887,8 @@ def _live_one(contract: PromptContract, prompt: str, source: str,
         "phase": contract.phase,
         "domain": contract.domain,
         "source": source,
+        "actor": contract.actor,
+        "conversation_type": contract.conversation_type,
         "prompt": prompt,
         "reply": reply,
         "attachment_count": len(attachments),
