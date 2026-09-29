@@ -254,6 +254,11 @@ _VOICE_ACTION_PATTERNS = (
     r"\b(?:goal|cash|salary|bonus|overtime|\bot\b|reserve|bill)\b",
     r"\b(?:turn|switch|light|fan|air conditioner|\bac\b|home)\b",
     r"\b(?:what|when|where|how|list|check|tell)\b",
+    # Malay household-action vocabulary. Malay is valid user input; only
+    # assistant-like apology boilerplate is penalized below.
+    r"\b(?:tambah|letak|buang|padam|beli|dibeli|senarai|barang)\b",
+    r"\b(?:ingatkan|esok|hari ini|malam ini|bayar|bil|belanja|resit)\b",
+    r"\b(?:simpan|ingat|cari|tunjuk|buka|lampu|kipas|tutup|hidupkan)\b",
 )
 
 
