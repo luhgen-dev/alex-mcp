@@ -27,6 +27,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 import statistics
 import sys
 import tempfile
@@ -67,12 +68,49 @@ CERT_FIXTURES: dict[str, Any] = {}
 _FAKE_HA_STATES: dict[str, dict[str, Any]] = {}
 
 
+_SECRET_PATTERNS = (
+    re.compile(r"(?i)bearer\\s+[A-Za-z0-9._-]+"),
+    re.compile(r"(?i)\\b(?:xai-|sk-)[A-Za-z0-9._-]{8,}"),
+    re.compile(r"(?i)(api[_-]?key[\\s=:]+)[^\\s,}\"]+"),
+)
+
+
+def _redact_scalar(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    text = value
+    for pattern in _SECRET_PATTERNS:
+        if "api" in pattern.pattern.casefold():
+            text = pattern.sub(r"\\1[redacted]", text)
+        else:
+            text = pattern.sub("[redacted]", text)
+    return text
+
+
+def _redact_report(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            str(k): (
+                "[redacted]"
+                if any(token in str(k).casefold() for token in ("api_key", "authorization", "token"))
+                else _redact_report(v)
+            )
+            for k, v in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_report(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_redact_report(item) for item in value)
+    return _redact_scalar(value)
+
+
 def _emit(report: dict, report_path: str | None) -> dict:
-    payload = json.dumps(report, indent=2, ensure_ascii=False)
+    safe_report = _redact_report(report)
+    payload = json.dumps(safe_report, indent=2, ensure_ascii=False)
     print(payload)
     if report_path:
         Path(report_path).write_text(payload + "\n", encoding="utf-8")
-    return report
+    return safe_report
 
 
 def catalog_audit() -> dict:
@@ -637,6 +675,36 @@ def _turn_cost_usd(mid: str) -> float:
         conn.close()
 
 
+def _latency_breakdown(mid: str, trace: dict, total_ms: int) -> dict[str, Any]:
+    """Expose where time was spent without guessing phone/network latency."""
+    import db
+
+    conn = db.connect()
+    try:
+        rows = conn.execute(
+            """SELECT provider,model,model_calls,tool_rounds,latency_ms
+               FROM ai_usage WHERE source_message_id=? ORDER BY rowid""",
+            (mid,),
+        ).fetchall()
+    finally:
+        conn.close()
+    provider_ms = sum(int(row["latency_ms"] or 0) for row in rows)
+    model_calls = sum(int(row["model_calls"] or 0) for row in rows)
+    tool_rounds = sum(int(row["tool_rounds"] or 0) for row in rows)
+    tool_ms = sum(int(call.get("latency_ms") or 0) for call in trace.get("calls", []))
+    return {
+        "total_brain_ingress_ms": int(total_ms),
+        "provider_ms": provider_ms,
+        "tool_ms": tool_ms,
+        "model_calls": model_calls,
+        "tool_rounds": tool_rounds,
+        "providers": [
+            {"provider": row["provider"], "model": row["model"], "latency_ms": int(row["latency_ms"] or 0)}
+            for row in rows
+        ],
+    }
+
+
 def _validate_seed(seed: str | None) -> None:
     if seed != "core":
         return
@@ -1097,7 +1165,7 @@ def _judge_observation(
     problems: list[str] = []
     if ingress_result is not None and not ingress_result.get("ok"):
         problems.append("production ingress path returned failure")
-    if not (called_caps & required_caps):
+    if not contract.expect_clarification and not (called_caps & required_caps):
         problems.append(
             "required capability was not actually executed: "
             + " / ".join(sorted(required_caps))
@@ -1290,6 +1358,7 @@ def _live_one(contract: PromptContract, prompt: str, source: str,
         "outbound_count": len(observed["outbounds"]),
         "attachment_count": len(_attachment_rows(observed["outbounds"])),
         "elapsed_ms": observed["elapsed_ms"],
+        "latency": _latency_breakdown(mid, observed["trace"], observed["elapsed_ms"]),
         "estimated_cost_usd": cost_usd,
         "durable_state_diff": observed["durable_state_diff"],
         "trace": observed["trace"],
@@ -1349,6 +1418,7 @@ def _live_conversation(contract, source: str, hard_latency_ms: int) -> dict:
             "outbound_count": len(observed["outbounds"]),
             "attachment_count": len(_attachment_rows(observed["outbounds"])),
             "elapsed_ms": observed["elapsed_ms"],
+            "latency": _latency_breakdown(mid, observed["trace"], observed["elapsed_ms"]),
             "estimated_cost_usd": _turn_cost_usd(mid),
             "durable_state_diff": observed["durable_state_diff"],
             "trace": observed["trace"],
@@ -1444,6 +1514,30 @@ def live_certify(phase: str, provider: str, source_options: str | None,
         "FAIL" if failures else
         ("INCOMPLETE_BUDGET" if budget_stopped else "PASS")
     )
+    domain_latency: dict[str, list[int]] = {}
+    for row in rows:
+        domain_latency.setdefault(row["domain"], []).append(int(row["elapsed_ms"]))
+    for conv in conversations:
+        for step in conv["steps"]:
+            domain_latency.setdefault(conv["domain"], []).append(int(step["elapsed_ms"]))
+
+    def _p95(values: list[int]) -> int:
+        if not values:
+            return 0
+        ordered = sorted(values)
+        index = max(0, min(len(ordered) - 1, int(round(0.95 * (len(ordered) - 1)))))
+        return int(ordered[index])
+
+    latency_by_domain = {
+        domain: {
+            "count": len(values),
+            "p50_ms": int(statistics.median(values)),
+            "p95_ms": _p95(values),
+            "max_ms": max(values),
+        }
+        for domain, values in sorted(domain_latency.items())
+    }
+
     report = {
         "mode": "live",
         "phase": phase,
@@ -1460,6 +1554,7 @@ def live_certify(phase: str, provider: str, source_options: str | None,
             "max_live_cost_usd": max_live_cost_usd,
             "latency_ms_p50": int(statistics.median(elapsed)) if elapsed else 0,
             "latency_ms_max": max(elapsed) if elapsed else 0,
+            "latency_by_domain": latency_by_domain,
             "hard_latency_ms": hard_latency_ms,
         },
         "prompt_results": rows,
