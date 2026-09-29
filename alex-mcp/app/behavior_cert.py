@@ -719,6 +719,12 @@ def _install_fake_ha():
             },
             "last_changed": CERT_NOW_UTC,
         },
+        "light.hall": {
+            "entity_id": "light.hall",
+            "state": "off",
+            "attributes": {"friendly_name": "Hall Light"},
+            "last_changed": CERT_NOW_UTC,
+        },
         # Start ON so "turn it off" must produce an observable target change.
         "light.living_room": {
             "entity_id": "light.living_room",
