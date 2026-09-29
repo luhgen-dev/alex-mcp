@@ -323,6 +323,13 @@ def _adversarial_variants(phrase: str) -> tuple[str, ...]:
     return tuple(unique)
 
 
+def _report_prompt(prompt: str, variant_kind: str) -> str:
+    if variant_kind == "heldout":
+        digest = hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:12]
+        return f"[heldout:{digest}]"
+    return prompt
+
+
 def _contract_phrases(
     contract,
     heldout: dict[str, tuple[str, ...]] | None = None,
@@ -399,7 +406,7 @@ def offline_certify(phase: str, heldout_path: str | None = None) -> dict:
                     "phase": contract.phase,
                     "domain": contract.domain,
                     "source": source,
-                    "prompt": phrase,
+                    "prompt": _report_prompt(phrase, variant_kind),
                     "variant_kind": variant_kind,
                     "required_capabilities": sorted(required_caps),
                     "provider_facing_capabilities": sorted(selected_caps),
@@ -1645,6 +1652,7 @@ def live_certify(phase: str, provider: str, source_options: str | None,
                 _reset_case_database(sandbox_dir, contract.seed)
                 row = _live_one(contract, prompt, source_kind, hard_latency_ms)
                 row["variant_kind"] = variant_kind
+                row["prompt"] = _report_prompt(prompt, variant_kind)
                 rows.append(row)
                 accumulated_cost += float(row.get("estimated_cost_usd") or 0.0)
             if budget_stopped:
