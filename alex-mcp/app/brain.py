@@ -448,6 +448,12 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
     # Receipt retrieval is a distinct evidence domain from explicit saved memory.
     # Natural wording such as "what receipts have I saved recently?" refers to
     # automatically retained financial evidence, not save_item/search_saved_items.
+    explicit_saved_receipt_memory = bool(re.search(
+        r"\b(?:asked|told)\s+(?:you|alex)\s+to\s+(?:save|remember)\b"
+        r"|\b(?:saved|remembered)\s+(?:this|that|the)?\s*receipt\b"
+        r"|\breceipt\b.*\b(?:saved memory|memory note)\b",
+        low,
+    ))
     receipt_read = bool(
         re.search(r"\breceipts?\b", low)
         and re.search(r"\b(?:find|show|send|open|get|have|saved|recent|recently|still)\b", low)
@@ -455,7 +461,12 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
     )
     if receipt_read:
         force |= {"find_receipts", "get_receipt"}
-        block |= {"save_item", "search_saved_items", "get_saved_item", "remove_saved_item"}
+        if explicit_saved_receipt_memory:
+            # "Show the receipt photo I asked you to save" explicitly targets
+            # the saved-memory index even though the subject is a receipt.
+            force |= {"search_saved_items", "get_saved_item"}
+        else:
+            block |= {"save_item", "search_saved_items", "get_saved_item", "remove_saved_item"}
 
     # Explicit saved-memory creation/removal phrasing that does not necessarily
     # contain the historical "save this" / "remember" keywords.
@@ -873,7 +884,42 @@ def _semantic_mutation_requested(intent: str) -> bool:
     return bool(_semantic_terms(intent) & _SEMANTIC_MUTATION_WORDS)
 
 
-async def _discover_tool_specs(intent: str, media_context: list[str] | None = None) -> list[dict]:
+_TRUSTED_MUTATION_RE = re.compile(
+    r"\b(?:add|create|record|log|save|remember|remove|delete|mark|complete|finish|"
+    r"reopen|cancel|update|change|edit|correct|fix|move|reschedule|allocate|channel|"
+    r"lock|activate|defer|turn|switch|set|link|share|publish|confirm|approve|"
+    r"spent|paid|bought|received|credited|came\s+in)\b",
+    re.IGNORECASE,
+)
+_TRUSTED_MUTATION_NEGATION_RE = re.compile(
+    r"\b(?:do\s+not|don't|dont|not\s+asking|not\s+actually|without\s+actually|"
+    r"hypothetical(?:ly)?|what\s+would|how\s+would|just\s+explain|"
+    r"don't\s+actually|dont\s+actually)\b",
+    re.IGNORECASE,
+)
+
+
+def _trusted_mutation_requested(text: str) -> bool:
+    """Conservative mutation gate based only on trusted user-authored context.
+
+    The discovery model may normalize wording, but it may never grant itself
+    permission to expose a mutator. Ambiguous/negated phrasing therefore
+    receives read-only semantic rescue unless deterministic routing already
+    exposed the needed mutation.
+    """
+    value = (text or "").strip()
+    if not value or _TRUSTED_MUTATION_NEGATION_RE.search(value):
+        return False
+    return bool(_TRUSTED_MUTATION_RE.search(value))
+
+
+async def _discover_tool_specs(
+    intent: str,
+    media_context: list[str] | None = None,
+    *,
+    original_user_text: str | None = None,
+    trusted_context_text: str | None = None,
+) -> list[dict]:
     """v0.5 semantic rescue for the model-facing discovery façade.
 
     Direct deterministic routing remains first because it encodes owner safety
@@ -882,7 +928,27 @@ async def _discover_tool_specs(intent: str, media_context: list[str] | None = No
     Read-only candidates may be added freely; mutators are added semantically
     only when the normalized intent contains an explicit action verb.
     """
+    trusted_basis = " ".join(
+        part.strip()
+        for part in (original_user_text or "", trusted_context_text or "")
+        if str(part or "").strip()
+    ).strip() or (original_user_text or "")
+    allow_mutation = _trusted_mutation_requested(trusted_basis)
+
+    # Re-apply the owner-authored block rules from the ORIGINAL trusted text.
+    # A model-produced normalized intent must never resurrect a mutation that
+    # the user's wording explicitly negated or routed to a read-only domain.
+    _, original_blocked = _routing_refinements(
+        trusted_basis,
+        has_media=bool(media_context),
+    )
+
     direct = _select_tool_names(intent, media_context)
+    direct = {
+        name for name in direct
+        if name not in original_blocked
+        and (not _is_mutating_tool(name) or allow_mutation)
+    }
     direct_specs = await _tool_specs_for_names(direct)
     by_name = {
         spec["function"]["name"]: spec
@@ -901,8 +967,8 @@ async def _discover_tool_specs(intent: str, media_context: list[str] | None = No
     terms = _semantic_terms(intent)
     if not terms:
         return list(by_name.values())[:TOOL_EXPOSURE_MAX - 1]
-    allow_mutation = _semantic_mutation_requested(intent)
-
+    # Semantic action words in a model-written normalization are insufficient
+    # to authorize writes; only the trusted user/quoted context can do that.
     async with Client(mcp) as client:
         result = await client.list_tools()
 
@@ -910,6 +976,8 @@ async def _discover_tool_specs(intent: str, media_context: list[str] | None = No
     for tool in result.tools:
         name = str(tool.name)
         if name in by_name or name in LEGACY_SIMPLE_PLANNING:
+            continue
+        if name in original_blocked:
             continue
         if _is_mutating_tool(name) and not allow_mutation:
             continue
@@ -2133,7 +2201,19 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
             if name == DISCOVERY_TOOL_NAME:
                 trace["tools_called"].append(name)
                 normalized = str(args.get("intent") or "").strip()
-                discovered_specs = await _discover_tool_specs(normalized, media_context)
+                trusted_context_text = ""
+                if quoted_context:
+                    trusted_context_text = str(
+                        quoted_context.get("quoted_user_text")
+                        or quoted_context.get("recent_user_instruction")
+                        or ""
+                    )
+                discovered_specs = await _discover_tool_specs(
+                    normalized,
+                    media_context,
+                    original_user_text=user_text,
+                    trusted_context_text=trusted_context_text,
+                )
                 tools = discovered_specs[:TOOL_EXPOSURE_MAX - 1] + [DISCOVERY_TOOL]
                 trace["exposed_tools"] = sorted(set(trace["exposed_tools"]) | {
                     x["function"]["name"] for x in tools
