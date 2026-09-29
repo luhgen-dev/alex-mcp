@@ -86,6 +86,7 @@ def initialize() -> None:
         _ensure_column(conn, "ai_usage", "cached_input_tokens", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(conn, "ai_usage", "reasoning_tokens", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(conn, "ai_usage", "model_calls", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(conn, "media_objects", "transcript_meta_json", "TEXT")
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_outbound_provider_message "
             "ON outbound_messages(conversation_id,provider_message_id)"
