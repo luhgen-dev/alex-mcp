@@ -52,8 +52,8 @@ class BehaviourRigCatalogTests(unittest.TestCase):
 
     def test_goal_owner_agency_is_contractually_required(self):
         contract = next(c for c in contracts.PROMPT_CONTRACTS if c.id == "p2.goals.agency")
-        self.assertIn("planning_create_goal", contract.required_any)
-        self.assertIn("planning_change_goal_baseline", contract.forbidden)
+        self.assertIn("goal.create", contract.required_any)
+        self.assertIn("goal.baseline.change", contract.forbidden)
 
 
 if __name__ == "__main__":
