@@ -397,6 +397,17 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
     ),
 
     PromptContract(
+        "p1.media.voice.get", "phase1", "media",
+        "A request for an original voice recording must expose original-media retrieval.",
+        (
+            "Send me the original voice note again.",
+            "Open the original audio note I sent.",
+            "Get that preserved voice recording for me.",
+        ),
+        _fs("get_media_original"), seed="core", live=False,
+    ),
+
+    PromptContract(
         "p1.finance.pending", "phase1", "finance",
         "Pending/ambiguous financial items must be recoverable for clarification.",
         (
