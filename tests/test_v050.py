@@ -67,6 +67,20 @@ class FacadeContractTests(unittest.TestCase):
             voice_names = _names(asyncio.run(brain._provider_tool_specs(prompt)))
             self.assertEqual(text_names, voice_names, prompt)
 
+    def test_fresh_finance_write_does_not_expose_correction_mutator(self):
+        names = _names(asyncio.run(
+            brain._provider_tool_specs("I paid RM12.50 for parking.")
+        ))
+        self.assertIn("finance_log", names)
+        self.assertNotIn("finance_correct", names)
+
+    def test_ha_automation_draft_never_exposes_live_control(self):
+        names = _names(asyncio.run(brain._provider_tool_specs(
+            "Draft an automation: when hallway motion is detected, turn on the hallway light."
+        )))
+        self.assertIn("home_state", names)
+        self.assertNotIn("home_control", names)
+
     def test_specialist_domains_use_bounded_pack_loader(self):
         for prompt in (
             "Create a task to renew passports",
