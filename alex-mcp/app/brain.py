@@ -584,7 +584,7 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         r"|\b(?:set aside|explicitly set aside)\b.*\b(?:month|monthly)\b",
         low,
     ):
-        force |= {"planning_list_reserves", "planning_baseline")
+        force |= {"planning_list_reserves", "planning_baseline"}
 
     if re.search(r"\b(?:monitor|track)\b.*\b(?:goal|payment|bill|subject)\b", low):
         force.add("monitor_delegate")
