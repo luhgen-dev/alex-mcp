@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 import uuid
 from datetime import date, datetime, timedelta, timezone
+
+import runtime_clock
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from zoneinfo import ZoneInfo
 
@@ -600,7 +602,7 @@ def _ticket_expired(row) -> bool:
         expiry = datetime.fromisoformat(row["expires_at_utc"])
         if expiry.tzinfo is None:
             expiry = expiry.replace(tzinfo=timezone.utc)
-        return datetime.now(timezone.utc) > expiry.astimezone(timezone.utc)
+        return runtime_clock.now_utc() > expiry.astimezone(timezone.utc)
     except Exception:
         return True
 
@@ -754,7 +756,7 @@ def add_diary_event(actor: ActorContext, title: str, start_local: str,
 
         if roster:
             cid = str(uuid.uuid4())
-            expiry = (datetime.now(timezone.utc) + timedelta(hours=48)).isoformat()
+            expiry = (runtime_clock.now_utc() + timedelta(hours=48)).isoformat()
             conn.execute(
                 """INSERT INTO schedule_conflicts(
                     conflict_id,action_key,owner_id,space_id,title,start_at_utc,end_at_utc,
@@ -782,7 +784,7 @@ def add_diary_event(actor: ActorContext, title: str, start_local: str,
         )
         if diary_clash:
             cid = str(uuid.uuid4())
-            expiry = (datetime.now(timezone.utc) + timedelta(hours=48)).isoformat()
+            expiry = (runtime_clock.now_utc() + timedelta(hours=48)).isoformat()
             conn.execute(
                 """INSERT INTO schedule_conflicts(
                     conflict_id,action_key,owner_id,space_id,title,start_at_utc,end_at_utc,
@@ -1166,7 +1168,7 @@ def resolve_date_range(phrase: str, timezone_name: str,
     if reference_date:
         today = date.fromisoformat(str(reference_date)[:10])
     else:
-        today = datetime.now(ZoneInfo(timezone_name)).date()
+        today = runtime_clock.today(timezone_name)
     low = " ".join(str(phrase or "").casefold().split())
 
     if low in {"today", "tdy"} or " today" in " " + low:

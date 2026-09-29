@@ -8,6 +8,8 @@ import uuid
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import runtime_clock
+
 from mcp import Client
 from mcp.types import TextContent
 from openai import OpenAI
@@ -25,7 +27,7 @@ Your highest priorities are:
 2) think precisely;
 3) give a precise, concise answer.
 
-The user may type incomplete sentences, spelling mistakes, Tamil, English, Malay, Tanglish, or mix languages. Understand naturally. Ask a clarification only when the ambiguity can materially change data or an action.
+The user may type incomplete sentences, spelling mistakes, Tamil, English, Malay, Tanglish, or mix languages. Understand naturally. Ask a clarification only when the ambiguity can materially change data or an action.\nAlways reply in English, regardless of the input language or language mix. Only produce another language when the user explicitly asks for a translation or quoted text in that language.
 
 Personal facts are never guessed. If the answer depends on household records, receipts, reminders, goals, leave, or saved information, use the appropriate tool. Tool results are the source of truth.
 
@@ -904,7 +906,7 @@ def _needs_exact_clock(user_text: str) -> bool:
 
 
 def _runtime_context(actor: ActorContext, user_text: str = "") -> str:
-    now = datetime.now(ZoneInfo(actor.timezone))
+    now = runtime_clock.now_in(actor.timezone)
     channel = "the Family Shared WhatsApp group" if actor.conversation_type == "GROUP" else "a private WhatsApp DM"
     clock = (
         f"current local datetime is {now.isoformat()}"

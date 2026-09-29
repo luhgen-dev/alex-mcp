@@ -7,6 +7,8 @@ unchanged.
 from __future__ import annotations
 
 import calendar
+
+import runtime_clock
 import json
 import sqlite3
 import uuid
@@ -244,7 +246,7 @@ def _money(minor):
 
 def _period(value=None):
     if value is None:
-        value = date.today()
+        value = runtime_clock.today()
     if isinstance(value, str):
         value = date.fromisoformat(value[:10])
     return f"{value.year:04d}-{value.month:02d}"
@@ -714,7 +716,7 @@ def cash_event_status(cash_event_id, sender_phone, conversation_type="DIRECT_DM"
 
 def allocate_cash_to_goal(cash_event_id, goal_id, amount, sender_phone,
                           conversation_type="DIRECT_DM", contribution_date=None):
-    contribution_date = contribution_date or date.today().isoformat()
+    contribution_date = contribution_date or runtime_clock.today().isoformat()
     value = _minor(amount)
     if value <= 0:
         raise ValueError("Allocation must be greater than zero")

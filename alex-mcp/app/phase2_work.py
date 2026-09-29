@@ -8,6 +8,8 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime, timedelta
 
+import runtime_clock
+
 import profile_config
 import compat_tools as tools
 
@@ -65,7 +67,7 @@ def resolve_work_query_date(day, month, *, reference_date=None, year=None):
     The language layer may pass an explicit year when the user supplied one.
     Otherwise the reference year's value is used exactly as agreed.
     """
-    ref = _parse_date(reference_date) if reference_date else date.today()
+    ref = _parse_date(reference_date) if reference_date else runtime_clock.today()
     target_year = int(year) if year is not None else ref.year
     if isinstance(month, int):
         target_month = month
@@ -579,7 +581,7 @@ def leave_balance(leave_id, sender_phone, conversation_type="DIRECT_DM",
     rec = wanted[0]
     payload = rec["payload"]
     snapshot_date = _parse_date(payload["as_of_date"])
-    end = _parse_date(as_of_date) if as_of_date else date.today()
+    end = _parse_date(as_of_date) if as_of_date else runtime_clock.today()
     event_type = (
         "ANNUAL_LEAVE" if leave_id in ("annual", "annual_leave", "al")
         else "MEDICAL_LEAVE" if leave_id in ("medical", "medical_leave", "mc")

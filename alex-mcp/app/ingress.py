@@ -7,6 +7,8 @@ import sys
 import traceback
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
+
+import runtime_clock
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import brain
@@ -31,7 +33,7 @@ def _read_runtime_status() -> dict:
 def _write_runtime_status(**updates) -> None:
     current = _read_runtime_status()
     current.update(updates)
-    current["updated_at"] = datetime.now(timezone.utc).isoformat()
+    current["updated_at"] = runtime_clock.utc_iso()
     tmp = RUNTIME_STATUS + ".tmp"
     try:
         with open(tmp, "w", encoding="utf-8") as f:
@@ -51,7 +53,7 @@ def _record_processing_error(exc: Exception, payload: dict) -> dict:
         **info,
         "message_id": str(payload.get("message_id") or "")[:120],
         "conversation_type": str(payload.get("conversation_type") or "DIRECT_DM")[:40],
-        "at": datetime.now(timezone.utc).isoformat(),
+        "at": runtime_clock.utc_iso(),
     }
     _write_runtime_status(last_processing_error=safe)
     return safe
@@ -63,7 +65,7 @@ def _received_at_utc(payload: dict) -> str:
     Guards against clock skew or bogus values: anything in the future or more
     than 7 days old falls back to now.
     """
-    now = datetime.now(timezone.utc)
+    now = runtime_clock.now_utc()
     raw = payload.get("sent_at_ms")
     try:
         if raw is not None:

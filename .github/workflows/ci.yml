@@ -35,6 +35,37 @@ jobs:
       - name: Run Phase 3 stress harness
         run: python alex-mcp/app/stress_test.py
 
+      - name: Audit Phase 3 Tier-B behaviour certification catalog
+        run: python alex-mcp/app/behavior_cert.py --mode catalog
+
+      - name: Exercise Tier-B offline certification runner
+        run: |
+          python alex-mcp/app/behavior_cert.py --mode offline --phase all --no-fail-exit \
+            --report /tmp/alex-behavior-offline.json >/tmp/alex-behavior-offline.log
+          python - <<'PY'
+          import json
+          report = json.load(open("/tmp/alex-behavior-offline.json", encoding="utf-8"))
+          baseline = json.load(open("alex-mcp/app/behavior_known_failures.json", encoding="utf-8"))
+          current = set(report.get("failure_signatures", []))
+          known = set(baseline.get("failure_signatures", []))
+          new_failures = sorted(current - known)
+          resolved = sorted(known - current)
+          print(json.dumps({
+              "status": report["status"],
+              "contracts": report["summary"]["contracts"],
+              "variant_checks_passed": report["summary"]["variant_checks_passed"],
+              "discovery_dependent": report["summary"].get("discovery_dependent_checks", 0),
+              "failures_found": report["summary"]["failures"],
+              "known_failures_remaining": len(current & known),
+              "resolved_known_failures": len(resolved),
+              "new_failure_signatures": new_failures,
+          }, indent=2))
+          if new_failures:
+              raise SystemExit(
+                  "Behaviour regression ratchet failed: new offline failure signatures detected"
+              )
+          PY
+
       - name: Run final parity architecture audit
         run: python alex-mcp/app/final_audit.py
 
