@@ -6,6 +6,8 @@ import sqlite3
 import uuid
 from datetime import datetime, timezone
 
+import runtime_clock
+
 from config import DATA_DIR, get_settings, normalize_phone
 from context import ActorContext
 
@@ -14,7 +16,7 @@ SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "schema.sql")
 
 
 def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return runtime_clock.utc_iso()
 
 
 def connect(path: str | None = None) -> sqlite3.Connection:
@@ -462,9 +464,10 @@ def resolve_recent_instruction_context(conversation_id: str, sender_phone: str,
 def current_month_ai_cost(provider: str | None = None) -> float:
     conn = connect()
     try:
+        month = runtime_clock.now_utc().strftime("%Y-%m")
         sql = """SELECT COALESCE(SUM(estimated_cost_usd),0) AS cost
                  FROM ai_usage
-                 WHERE substr(created_at_utc,1,7)=substr(CURRENT_TIMESTAMP,1,7)"""
+                 WHERE substr(created_at_utc,1,7)=?"""
         params: list[str] = [month]
         if provider:
             sql += " AND provider=?"
