@@ -345,6 +345,62 @@ CREATE TABLE IF NOT EXISTS plans (
 );
 CREATE INDEX IF NOT EXISTS idx_plans_space_time ON plans(space_id,start_at_utc,status);
 
+-- Tasks are first-class lifecycle objects, separate from plans and reminders.
+-- Creation is idempotent by action_key; subsequent mutations are idempotent
+-- through task_events. A task may reference a plan/reminder, but lifecycle
+-- changes never mutate those linked objects implicitly.
+CREATE TABLE IF NOT EXISTS tasks (
+    task_id TEXT PRIMARY KEY,
+    action_key TEXT NOT NULL UNIQUE,
+    source_message_id TEXT,
+    owner_id TEXT NOT NULL,
+    space_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    notes TEXT,
+    status TEXT NOT NULL CHECK(status IN ('OPEN','DONE','CANCELLED')) DEFAULT 'OPEN',
+    assignee TEXT NOT NULL CHECK(assignee IN ('me','spouse','both','unassigned')) DEFAULT 'unassigned',
+    due_at_utc TEXT,
+    due_date_local TEXT,
+    timezone_name TEXT NOT NULL,
+    plan_id TEXT,
+    created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(source_message_id) REFERENCES inbound_messages(message_id),
+    FOREIGN KEY(owner_id) REFERENCES users(user_id),
+    FOREIGN KEY(space_id) REFERENCES spaces(space_id),
+    FOREIGN KEY(plan_id) REFERENCES plans(plan_id)
+);
+CREATE INDEX IF NOT EXISTS idx_tasks_space_status
+ON tasks(space_id,status,updated_at_utc);
+CREATE INDEX IF NOT EXISTS idx_tasks_plan
+ON tasks(plan_id,status,updated_at_utc);
+
+CREATE TABLE IF NOT EXISTS task_events (
+    event_id TEXT PRIMARY KEY,
+    action_key TEXT NOT NULL UNIQUE,
+    task_id TEXT NOT NULL,
+    actor_id TEXT NOT NULL,
+    event_type TEXT NOT NULL CHECK(event_type IN ('CREATED','UPDATED','COMPLETED','REOPENED','CANCELLED')),
+    from_status TEXT,
+    to_status TEXT NOT NULL CHECK(to_status IN ('OPEN','DONE','CANCELLED')),
+    title_snapshot TEXT NOT NULL,
+    notes_snapshot TEXT,
+    created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(task_id) REFERENCES tasks(task_id),
+    FOREIGN KEY(actor_id) REFERENCES users(user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_task_events_task
+ON task_events(task_id,created_at_utc);
+
+CREATE TABLE IF NOT EXISTS task_reminder_links (
+    task_id TEXT NOT NULL,
+    reminder_id TEXT NOT NULL UNIQUE,
+    created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY(task_id,reminder_id),
+    FOREIGN KEY(task_id) REFERENCES tasks(task_id),
+    FOREIGN KEY(reminder_id) REFERENCES reminders(reminder_id)
+);
+
 CREATE TABLE IF NOT EXISTS plan_diary_links (
     plan_id TEXT PRIMARY KEY,
     diary_id TEXT NOT NULL UNIQUE,
