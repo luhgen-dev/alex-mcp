@@ -413,8 +413,8 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
     ):
         force.add("log_expense")
     if re.search(
-        r"\b(?:pending|waiting)\b.*\b(?:expense|payment)\b"
-        r"|\b(?:expense|payment)\b.*\b(?:clarify|confirmation|pending)\b",
+        r"\b(?:pending|waiting)\b.*\b(?:expenses?|payments?)\b"
+        r"|\b(?:expenses?|payments?)\b.*\b(?:clarify|confirmation|pending)\b",
         low,
     ):
         force.add("list_pending_expenses")
@@ -454,10 +454,8 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         force.add("add_shopping_item")
 
     # Dedicated read/diagnostic domains must survive the six-tool cap.
-    if re.search(r"\b(?:appliances?|assets?)\b", low):
-        force.add("asset_list")
-    if re.search(r"\bwarrant(?:y|ies)\b", low):
-        force.add("warranty_expiring")
+    if re.search(r"\b(?:appliances?|assets?|warrant(?:y|ies))\b", low):
+        force |= {"asset_list", "warranty_expiring"}
     if re.search(r"\b(?:recent\s+alex\s+errors?|alex\s+healthy|alex\s+health|why did alex fail)\b", low):
         force |= {"recent_failures", "system_health"}
 
@@ -599,12 +597,11 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         force.add("work_record_event")
     if re.search(
         r"\b(?:recorded leave|leave entries|planned and taken leave|leave records?)\b"
-        r"|\bwhat leave do i have recorded\b",
+        r"|\bwhat leave do i have recorded\b"
+        r"|\b(?:leave balance|annual leave .*left|how much .*leave .*left)\b",
         low,
     ):
-        force.add("list_leave_records")
-    if re.search(r"\b(?:leave balance|annual leave .*left|how much .*leave .*left)\b", low):
-        force.add("work_leave_balance")
+        force |= {"list_leave_records", "work_leave_balance"}
 
     # Explicit low-risk HA action synonyms. Read-only/negated HA wording is
     # still protected by the existing negation gate below.
