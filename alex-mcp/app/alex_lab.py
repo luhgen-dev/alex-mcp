@@ -26,7 +26,7 @@ REPO = APP.parents[1]
 CERT_NOW = "2026-09-29T02:00:00+00:00"
 
 
-def _isolated_env(root: Path, label: str) -> dict[str, str]:
+def _isolated_env(root: Path, label: str, *, fixed_clock: bool = False) -> dict[str, str]:
     env = os.environ.copy()
     data_dir = root / label / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -45,7 +45,10 @@ def _isolated_env(root: Path, label: str) -> dict[str, str]:
     env["ALEX_DATA_DIR"] = str(data_dir)
     env["ALEX_OPTIONS_PATH"] = str(options_path)
     env["ALEX_HA_API_URL"] = "http://127.0.0.1:9/alex-lab-no-ha"
-    env["ALEX_CERT_NOW"] = CERT_NOW
+    if fixed_clock:
+        env["ALEX_CERT_NOW"] = CERT_NOW
+    else:
+        env.pop("ALEX_CERT_NOW", None)
     env.pop("SUPERVISOR_TOKEN", None)
     return env
 
@@ -214,7 +217,7 @@ def run_lab(phase: str, imported_live: dict[str, Any] | None) -> tuple[dict[str,
             "tier_b_catalog",
             [py, "alex-mcp/app/behavior_cert.py", "--mode", "catalog",
              "--report", str(catalog_path)],
-            _isolated_env(root, "catalog"),
+            _isolated_env(root, "catalog", fixed_clock=True),
             catalog_path,
         ))
 
@@ -223,7 +226,7 @@ def run_lab(phase: str, imported_live: dict[str, Any] | None) -> tuple[dict[str,
             "tier_b_offline",
             [py, "alex-mcp/app/behavior_cert.py", "--mode", "offline",
              "--phase", phase, "--no-fail-exit", "--report", str(offline_path)],
-            _isolated_env(root, "offline"),
+            _isolated_env(root, "offline", fixed_clock=True),
             offline_path,
         )
         checks.append(offline)
