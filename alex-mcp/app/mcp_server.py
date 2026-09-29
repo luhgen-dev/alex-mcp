@@ -931,11 +931,27 @@ def asset_create(name: str, actor: Actor, category: str | None = None,
 
 
 @mcp.tool()
-def asset_link_document(asset_id: str, document_type: str, evidence_ref: str,
-                        actor: Actor, note: str | None = None) -> dict:
-    """Link an already-preserved receipt/warranty/manual evidence reference to an authorized asset."""
+def asset_link_document(document_type: str, actor: Actor,
+                        asset_id: str | None = None,
+                        asset_name: str | None = None,
+                        evidence_ref: str | None = None,
+                        note: str | None = None) -> dict:
+    """Link preserved receipt/warranty/manual/photo evidence to an authorized asset. Use asset_name instead of inventing an asset UUID. When linking the attachment on this exact message, omit evidence_ref and Alex binds the single preserved current media object automatically."""
+    resolved_asset = phase2_library.resolve_asset_reference(
+        asset_id, asset_name, actor.phone, actor.conversation_type
+    )
+    resolved_evidence = str(evidence_ref or "").strip()
+    if not resolved_evidence:
+        media_ids = [str(value) for value in (actor.media_ids or []) if value]
+        if len(media_ids) != 1:
+            raise ValueError(
+                "The current message must contain exactly one preserved attachment "
+                "when evidence_ref is omitted."
+            )
+        resolved_evidence = media_ids[0]
     return phase2_library.link_document(
-        asset_id, document_type, evidence_ref, actor.phone, actor.conversation_type,
+        resolved_asset, document_type, resolved_evidence,
+        actor.phone, actor.conversation_type,
         actor.source_message_id, note,
     )
 
