@@ -37,6 +37,40 @@ const logger = pino({ level: process.env.ALEX_LOG_LEVEL || 'silent' });
 let currentSock = null;
 let cachedVersion = null;
 let starting = false;
+const recentInboundMessages = new Map();
+const INBOUND_QUOTE_TTL_MS = 2 * 60 * 60 * 1000;
+const INBOUND_QUOTE_MAX = 500;
+
+function inboundQuoteKey(jid, messageId) {
+  return String(jid || '') + '|' + String(messageId || '');
+}
+
+function rememberInboundForReply(message) {
+  const jid = message && message.key ? message.key.remoteJid : null;
+  const id = message && message.key ? message.key.id : null;
+  if (!jid || !id) return;
+  const now = Date.now();
+  recentInboundMessages.set(inboundQuoteKey(jid, id), { message, storedAt: now });
+  for (const [key, entry] of recentInboundMessages) {
+    if (now - entry.storedAt > INBOUND_QUOTE_TTL_MS) recentInboundMessages.delete(key);
+  }
+  while (recentInboundMessages.size > INBOUND_QUOTE_MAX) {
+    const first = recentInboundMessages.keys().next().value;
+    recentInboundMessages.delete(first);
+  }
+}
+
+function rememberedInboundForReply(jid, messageId) {
+  if (!jid || !messageId) return undefined;
+  const key = inboundQuoteKey(jid, messageId);
+  const entry = recentInboundMessages.get(key);
+  if (!entry) return undefined;
+  if (Date.now() - entry.storedAt > INBOUND_QUOTE_TTL_MS) {
+    recentInboundMessages.delete(key);
+    return undefined;
+  }
+  return entry.message;
+}
 let manualReset = false;
 let pairing = {
   status: 'starting',
@@ -292,6 +326,12 @@ async function handleIncoming(message) {
   const media = detectMedia(message);
   if (!rawText && !media.type) return;
 
+  // Keep the exact inbound WAMessage briefly so the durable final response can
+  // render as a real WhatsApp reply to the user's original message. If Alex is
+  // restarted before delivery, the response still sends normally without the
+  // quote rather than fabricating a partial WAMessage.
+  rememberInboundForReply(message);
+
   try {
     if (currentSock) await currentSock.sendPresenceUpdate('composing', remoteJid);
   } catch (_err) {}
@@ -320,7 +360,11 @@ async function handleIncoming(message) {
     slowAckTimer = setTimeout(async function() {
       try {
         if (currentSock) {
-          await currentSock.sendMessage(remoteJid, { text: SLOW_ACK_TEXT });
+          await currentSock.sendMessage(
+            remoteJid,
+            { text: SLOW_ACK_TEXT },
+            { quoted: message }
+          );
           // Keep the visible working state after the interim acknowledgement.
           try { await currentSock.sendPresenceUpdate('composing', remoteJid); } catch (_err) {}
         }
@@ -660,7 +704,10 @@ function startEgress() {
         if (!to) throw new Error('Missing target conversation');
 
         let sent;
-        const sendOptions = payload.message_id ? { messageId: String(payload.message_id) } : {};
+        const quoted = rememberedInboundForReply(to, payload.reply_to_message_id);
+        const sendOptions = {};
+        if (payload.message_id) sendOptions.messageId = String(payload.message_id);
+        if (quoted) sendOptions.quoted = quoted;
         if (payload.kind === 'text') {
           sent = await currentSock.sendMessage(to, { text: payload.text || '' }, sendOptions);
         } else if (payload.kind === 'image') {
