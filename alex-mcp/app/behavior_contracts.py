@@ -500,6 +500,42 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         _fs("list_tasks", "task_list"), seed="core",
     ),
     PromptContract(
+        "p2.tasks.update", "phase2", "tasks",
+        "A task can be edited without turning into a reminder or plan note.",
+        (
+            "Change the passport-check task title to Check all passport expiry dates.",
+            "Update the Malacca passport task with a note to check every passport.",
+        ),
+        _fs("task.update"), seed="core",
+    ),
+    PromptContract(
+        "p2.tasks.complete", "phase2", "tasks",
+        "A task can be completed while preserving its lifecycle history.",
+        (
+            "Mark the passport-check task done.",
+            "Complete the Malacca passport task.",
+        ),
+        _fs("task.complete"), seed="core",
+    ),
+    PromptContract(
+        "p2.tasks.reopen", "phase2", "tasks",
+        "A completed task can be reopened only on explicit owner instruction.",
+        (
+            "Reopen the passport-check task.",
+            "Put the passport task back to open.",
+        ),
+        _fs("task.reopen"), seed="core",
+    ),
+    PromptContract(
+        "p2.tasks.cancel", "phase2", "tasks",
+        "A task can be cancelled without deleting unrelated plan state.",
+        (
+            "Cancel the passport-check task.",
+            "Remove the passport task from my active tasks.",
+        ),
+        _fs("task.cancel"), seed="core",
+    ),
+    PromptContract(
         "p2.cash.record", "phase2", "cash_planning",
         "Variable cash must be recorded as unallocated rather than silently redirected.",
         (
