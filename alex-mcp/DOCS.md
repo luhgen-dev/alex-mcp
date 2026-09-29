@@ -29,7 +29,7 @@ No API key, phone number, provider or pairing credential is stored in source cod
 - WhatsApp session state
 - startup structural diagnostics
 
-The AI layer is used only for natural-language understanding, reasoning, tool selection and final wording. Normal household calls default to low reasoning, expose at most six relevant MCP tools and avoid replaying conversation history unless the new message is actually a follow-up.
+The AI layer is used only for natural-language understanding, reasoning, tool selection and final wording. Normal household calls default to low reasoning and expose at most six relevant MCP tools. Short follow-ups inherit only the minimum safe domain context needed to resolve phrases such as “actually it was…” or “send me that again”; prior mutating actions are never replayed merely because they are in history.
 
 ### Auto Saver routing
 
@@ -61,7 +61,9 @@ Changing Auto ↔ Grok ↔ Gemini ↔ OpenAI is an app setting. The MCP tools an
 
 Voice notes are transcribed before the conversational model sees the request. With `stt_provider=auto`, Alex uses **local multilingual Whisper first**. This uses no AI API tokens and is the preferred path for Tamil/English/Tanglish voice notes.
 
-The default local model is `base`. It downloads automatically on the first voice note and is then kept under persistent `/data/models`. You can select `small` in Configuration later if you want to trade more storage/RAM for harder multilingual transcription. If local transcription fails, configured cloud transcription providers are fallback options.
+Short commands are now guarded against auto-language drift. If Whisper's automatic-language pass does not look like a coherent household request, Alex locally retries English and Tamil decoding and chooses the strongest candidate. Only when local candidates remain weak does Auto mode use a configured cloud STT provider as a rescue. Alex records the chosen ASR path and confidence metadata locally for diagnostics without exposing the transcript in health reports.
+
+The default local model is `base`. It downloads automatically on the first voice note and is then kept under persistent `/data/models`. You can select `small` in Configuration later if you want to trade more storage/RAM for harder multilingual transcription.
 
 Alex replies in text only.
 
