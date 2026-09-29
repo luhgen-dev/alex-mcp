@@ -566,6 +566,15 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         _fs("planning_reopen_goal"), seed="core", live=False,
     ),
     PromptContract(
+        "p2.goals.baseline.change", "phase2", "goals",
+        "Recurring baseline changes must happen only when the owner explicitly asks.",
+        (
+            "Change my Family Holiday Savings contribution to RM300 every month.",
+            "From now on, make the holiday goal baseline RM300 monthly.",
+        ),
+        _fs("planning_change_goal_baseline"), seed="core", live=False,
+    ),
+    PromptContract(
         "p2.goals.period", "phase2", "goals",
         "A one-month target exception must not silently rewrite the recurring baseline.",
         (
