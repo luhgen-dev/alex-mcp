@@ -25,7 +25,7 @@ import human_ai_lab
 
 # Frozen deterministic regression corpus. Any prompt/tool-surface change
 # invalidates this oracle until its regression expectations are reviewed.
-REVIEWED_CORPUS_FINGERPRINT = "b18c7ad37ebf9473e8b172451b5a4c8697df4b618e996b576e5ddea16c2b253e"
+REVIEWED_CORPUS_FINGERPRINT = "c9710998dc597b5038e71de661be26bc53b2d4bd9e85d209442e852c3a323eb1"
 
 
 def _low(value: str) -> str:
@@ -124,6 +124,18 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
         )
     if text == "send me that again." and "receipt" in prior:
         return result("tools", _one(tools, "get_receipt", "find_receipts"))
+
+    # Contextual HA follow-up: prior user text supplies the device focus,
+    # while the current imperative supplies write authority.
+    if (
+        re.search(r"\b(?:turn|switch)\s+(?:it|that)\s+(?:on|off)\b", text)
+        and re.search(r"\b(?:ac|air conditioner|light|fan|switch|thermostat)\b", prior)
+    ):
+        return result(
+            "tools",
+            _pick(tools, "ha_find_entities", "ha_control")
+            or _one(tools, "ha_control"),
+        )
 
     # Original media provenance/replay. This is regression logic only; the
     # real-AI snapshot makes its own independent choices for these packets.
@@ -463,6 +475,14 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
             )
         return result("tools", _one(tools, "search_saved_items"))
 
+    # Explicitly denied reminder mutations stay read-only.
+    if (
+        re.search(r"\b(?:don't|do not|dont|not asking(?: you)? to)\b", text)
+        and re.search(r"\b(?:delete|remove|cancel|complete|reschedule|change|update)\b", text)
+        and re.search(r"\b(?:reminder|remnder|remidn|remindn|remidr)\b", text)
+    ):
+        return result("tools", _one(tools, "list_reminders"))
+
     # Reminders.
     if (
         "remind" in text
@@ -753,7 +773,17 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
             r"\b(?:eligible for ot|what ot|overtime status)\b", text
         ):
             return result("tools", _one(tools, "work_ot_status"))
-        if "leave home" in text or "departure" in text:
+        if (
+            "leave home" in text
+            or "departure" in text
+            or re.search(r"\b(?:what time|when)\s+(?:should|do)\s+i\s+leave\b", text)
+        ):
+            if re.search(r"\b(?:shift|work)\b", text):
+                return result(
+                    "tools",
+                    _pick(tools, "work_schedule", "work_departure_plan")
+                    or _one(tools, "work_departure_plan"),
+                )
             return result("tools", _one(tools, "work_departure_plan"))
         return result("tools", _one(tools, "work_schedule", "work_day"))
 
@@ -780,6 +810,33 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
         if re.search(r"\b(?:what|show|list)\b", text):
             return result("tools", _one(tools, "monitor_list"))
         return result("tools", _one(tools, "monitor_delegate"))
+
+    # HA automation drafting is never a live control request.
+    if (
+        "ha_draft_automation" in tools
+        and re.search(r"\b(?:draft|prepare|create|make|write)\b.*\bautomation\b", text)
+    ):
+        return result("tools", ["ha_draft_automation"])
+
+    # Explicit live control supports both "switch off the AC" and
+    # "turn the hall AC off" word orderings.
+    if (
+        "ha_control" in tools
+        and re.search(
+            r"\b(?:turn|switch)\s+(?:on|off)\b"
+            r"|\b(?:turn|switch)\b.*\b(?:on|off)\b",
+            text,
+        )
+        and not re.search(
+            r"\b(?:don't|do not|dont|without actually|not asking|what would|how would|hypothetical)\b",
+            text,
+        )
+    ):
+        return result(
+            "tools",
+            _pick(tools, "ha_find_entities", "ha_control")
+            or ["ha_control"],
+        )
 
     # Home Assistant.
     if any(
