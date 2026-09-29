@@ -8,8 +8,35 @@ for the same thing must expose the same safe capability.  Live mode then drives
 those prompts through brain.respond against a disposable database.
 """
 
-from dataclasses import dataclass, field
-from typing import Iterable
+from dataclasses import dataclass
+from typing import Any, Iterable
+
+from behavior_capabilities import (
+    TOOL_COVERAGE_EXEMPTIONS,
+    normalize_capabilities,
+)
+
+
+@dataclass(frozen=True)
+class StateExpectation:
+    """Declarative durable-state assertion evaluated after the turn.
+
+    where/fields are tuples so the contract stays immutable. Special values
+    $MID, $HUSBAND and $WIFE are resolved by the certification runner.
+    delta is the required change in the number of matching rows.
+    """
+    table: str
+    where: tuple[tuple[str, Any], ...] = ()
+    fields: tuple[tuple[str, Any], ...] = ()
+    count: int | None = None
+    delta: int | None = None
+
+
+@dataclass(frozen=True)
+class HAExpectation:
+    entity_id: str
+    state: str
+    unchanged: bool = False
 
 
 @dataclass(frozen=True)
@@ -26,10 +53,17 @@ class PromptContract:
     forbidden_terms: tuple[str, ...] = ()
     nonzero_forbidden_args: tuple[str, ...] = ()
     expect_attachment: bool = False
+    expect_attachment_of: str | None = None
+    state_expectations: tuple[StateExpectation, ...] = ()
+    unchanged_tables: tuple[str, ...] = ()
+    ha_expectations: tuple[HAExpectation, ...] = ()
+    forbid_private_fixture_leak: bool = False
+    expect_clarification: bool = False
     seed: str | None = None
     live: bool = True
     conversation_type: str = "DIRECT_DM"
     actor: str = "husband"
+    reply_language: str = "en"
 
 
 @dataclass(frozen=True)
@@ -40,6 +74,14 @@ class ConversationStep:
     forbidden_terms: tuple[str, ...] = ()
     nonzero_forbidden_args: tuple[str, ...] = ()
     expect_attachment: bool = False
+    expect_attachment_of: str | None = None
+    state_expectations: tuple[StateExpectation, ...] = ()
+    unchanged_tables: tuple[str, ...] = ()
+    ha_expectations: tuple[HAExpectation, ...] = ()
+    forbid_private_fixture_leak: bool = False
+    expect_clarification: bool = False
+    quote_previous: bool = False
+    reply_language: str = "en"
 
 
 @dataclass(frozen=True)
@@ -63,7 +105,10 @@ class ManualGate:
 
 
 def _fs(*items: str) -> frozenset[str]:
-    return frozenset(items)
+    # Backward-compatible authoring helper: old tool aliases are normalized
+    # immediately into stable semantic capabilities. The stored contract no
+    # longer depends on today's MCP function names.
+    return normalize_capabilities(items)
 
 
 PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
@@ -1197,18 +1242,6 @@ REQUIRED_OWNER_TOOL_COVERAGE = {
 }
 
 
-
-
-# Legacy/simple MCP tools intentionally superseded by the advanced Phase-2
-# surfaces. They remain in mcp_server for compatibility but are removed from
-# provider exposure by brain.LEGACY_SIMPLE_PLANNING, so Tier B does not certify
-# them as user-facing routes.
-TOOL_COVERAGE_EXEMPTIONS = {
-    "set_goal", "list_goals",
-    "get_leave_balance", "set_leave_balance", "set_work_roster",
-    "set_cashflow_baseline", "get_cashflow_baseline",
-    "set_money_bucket", "list_money_buckets",
-}
 
 
 def contracts_for_phase(phase: str | None) -> Iterable[PromptContract]:
