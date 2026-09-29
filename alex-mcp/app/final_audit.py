@@ -188,7 +188,7 @@ def main() -> dict:
             "confirm_plan", "list_plans",
         },
         "Move my dentist appointment to 5pm": {
-            "update_diary_event", "get_agenda_range",
+            "update_diary_event",
         },
         "Record the TNB bill as paid": {
             "bills_record_payment", "bills_list",
@@ -203,6 +203,14 @@ def main() -> dict:
             expected <= exposed,
             "opaque-id action is grounded: " + phrase,
         )
+
+    diary_grounding = asyncio.run(exposed_for(
+        "Move my dentist appointment to 5pm"
+    ))
+    require(
+        bool(diary_grounding & {"get_agenda", "get_agenda_range"}),
+        "diary update has an agenda resolver for its opaque diary id",
+    )
 
     require(
         brain.DISCOVERY_TOOL_NAME == "discover_alex_tools",
