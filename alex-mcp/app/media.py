@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import difflib
 import hashlib
 import json
 import mimetypes
@@ -20,6 +21,10 @@ MEDIA_DIR = os.path.join(DATA_DIR, "media")
 MODEL_DIR = os.path.join(DATA_DIR, "models")
 WHISPER_MODELS = {"tiny", "base", "small"}
 WHISPER_MODEL_URL = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-{model}.bin"
+
+
+class VoiceTranscriptionUncertain(RuntimeError):
+    """Raised when acting on the local ASR result would be less safe than asking again."""
 
 
 def _safe_ext(mime_type: str, media_type: str) -> str:
@@ -96,15 +101,17 @@ def _update_transcript(media_id: str, text: str, meta: dict | None = None) -> No
 
 
 def _transcript_meta(candidates: list[tuple[str, str]], chosen: str,
-                     *, mode: str, cloud_rescue: bool = False) -> dict:
+                     *, mode: str, cloud_rescue: bool = False,
+                     confidence: str = "accepted") -> dict:
     return {
         "mode": mode,
         "chosen": chosen,
+        "confidence": confidence,
         "cloud_rescue": bool(cloud_rescue),
         "candidates": [
             {
                 "label": label,
-                "score": _voice_intent_score(text),
+                "score": _candidate_voice_score(label, text),
                 "chars": len(text or ""),
             }
             for label, text in candidates
@@ -254,52 +261,161 @@ _VOICE_ACTION_PATTERNS = (
     r"\b(?:goal|cash|salary|bonus|overtime|\bot\b|reserve|bill)\b",
     r"\b(?:turn|switch|light|fan|air conditioner|\bac\b|home)\b",
     r"\b(?:what|when|where|how|list|check|tell)\b",
-    # Malay household-action vocabulary. Malay is valid user input; only
-    # assistant-like apology boilerplate is penalized below.
+    # Malay is a supported input language. These are useful household terms,
+    # but action vocabulary alone is not enough to authorize a write.
     r"\b(?:tambah|letak|buang|padam|beli|dibeli|senarai|barang)\b",
     r"\b(?:ingatkan|esok|hari ini|malam ini|bayar|bil|belanja|resit)\b",
     r"\b(?:simpan|ingat|cari|tunjuk|buka|lampu|kipas|tutup|hidupkan)\b",
 )
 
+_VOICE_MUTATION_RE = re.compile(
+    r"\b(?:add|put|remove|delete|mark|buy|bought|spent|paid|save|remember|"
+    r"remind|notify|create|record|log|update|change|correct|fix|turn|switch|"
+    r"set|cancel|complete|reopen|reschedule|allocate|received|credited|"
+    r"tambah|letak|buang|padam|beli|dibeli|bayar|ingatkan|simpan|tutup|hidupkan)\b"
+    r"|(?:நினைவூட்டு|சேமி|வாங்க|அழி|மாற்று)",
+    re.IGNORECASE,
+)
+_VOICE_DRIFT_RE = re.compile(
+    r"\b(?:mohon maaf|silakan|apakah anda|bermaksud|sebelumnya)\b",
+    re.IGNORECASE,
+)
+_LOCAL_LABELS = {"local_auto", "local_en", "local_ta"}
+_LABEL_TIE_PRIORITY = {
+    "local_auto": 5,
+    "local_en": 4,
+    "gemini": 3,
+    "openai": 3,
+    "xai": 3,
+    "local_ta": 2,
+}
+
 
 def _voice_intent_score(text: str) -> int:
     """Score whether a transcript resembles a useful household utterance.
 
-    This is not a language classifier and never decides the action.  It is only
-    used to choose between ASR candidates for the same audio.
+    This is a lexical plausibility score, not acoustic confidence and never an
+    authorization decision.
     """
     value = (text or "").strip()
     if not value:
         return -100
     low = value.casefold()
-    score = 0
-    score += min(4, sum(1 for pattern in _VOICE_ACTION_PATTERNS if re.search(pattern, low)))
+    score = min(
+        4,
+        sum(1 for pattern in _VOICE_ACTION_PATTERNS if re.search(pattern, low)),
+    )
     if re.search(r"[\u0B80-\u0BFF]", value):
-        score += 3
-    if re.search(r"\b(?:நினைவூட்டு|சேமி|காட்டு|வாங்க|பட்டியல்)\b", value):
+        score += 1
+    if re.search(r"(?:நினைவூட்டு|சேமி|காட்டு|வாங்க|பட்டியல்)", value):
         score += 2
-    # Strong signals of the exact wrong-language drift observed in live smoke
-    # tests. Malay itself remains supported input; these phrases are penalized
-    # only when competing ASR candidates exist for the same audio.
-    if re.search(r"\b(?:mohon maaf|silakan|apakah anda|bermaksud|sebelumnya)\b", low):
-        score -= 4
+    if _VOICE_DRIFT_RE.search(value):
+        score -= 5
     words = re.findall(r"[\w'-]+", value, re.UNICODE)
     if 2 <= len(words) <= 40:
         score += 1
     return score
 
 
+def _voice_is_mutation_like(text: str) -> bool:
+    return bool(_VOICE_MUTATION_RE.search(text or ""))
+
+
+def _candidate_voice_score(label: str, text: str) -> int:
+    """Rank ASR candidates without pretending a forced language is evidence."""
+    value = (text or "").strip()
+    score = _voice_intent_score(value)
+    tamil_chars = len(re.findall(r"[\u0B80-\u0BFF]", value))
+
+    # A forced Tamil pass can emit Tamil-looking gibberish even for English
+    # audio. Tamil script therefore gets no large unconditional bonus. A forced
+    # Tamil candidate that contains no Tamil at all is especially weak.
+    if label == "local_ta" and tamil_chars == 0:
+        score -= 3
+    if label == "local_en" and tamil_chars >= 4:
+        score -= 2
+    return score
+
+
+def _normalize_asr(value: str) -> str:
+    value = re.sub(r"[^\w\u0B80-\u0BFF]+", " ", (value or "").casefold())
+    return " ".join(value.split())
+
+
+def _transcript_similarity(left: str, right: str) -> float:
+    a = _normalize_asr(left)
+    b = _normalize_asr(right)
+    if not a or not b:
+        return 0.0
+    seq = difflib.SequenceMatcher(None, a, b).ratio()
+    ta = set(a.split())
+    tb = set(b.split())
+    jac = len(ta & tb) / max(1, len(ta | tb))
+    return max(seq, jac)
+
+
+def _local_consensus(
+    chosen_label: str,
+    chosen_text: str,
+    candidates: list[tuple[str, str]],
+) -> bool:
+    """Require two independent local decoding passes to substantially agree."""
+    for label, text in candidates:
+        if label == chosen_label or label not in _LOCAL_LABELS:
+            continue
+        if _transcript_similarity(chosen_text, text) >= 0.60:
+            return True
+    return False
+
+
 def _choose_voice_transcript(candidates: list[tuple[str, str]]) -> tuple[str, str]:
-    """Choose the most actionable non-empty transcript deterministically."""
-    usable = [(label, (text or "").strip()) for label, text in candidates if (text or "").strip()]
+    """Choose the strongest non-empty transcript without rewarding verbosity."""
+    usable = [
+        (label, (text or "").strip())
+        for label, text in candidates
+        if (text or "").strip()
+    ]
     if not usable:
         return "", ""
     ranked = sorted(
         usable,
-        key=lambda row: (_voice_intent_score(row[1]), min(len(row[1]), 240)),
+        key=lambda row: (
+            _candidate_voice_score(row[0], row[1]),
+            _LABEL_TIE_PRIORITY.get(row[0], 1),
+            -min(len(row[1]), 240),
+        ),
         reverse=True,
     )
     return ranked[0]
+
+
+def _local_voice_confident(
+    label: str,
+    text: str,
+    candidates: list[tuple[str, str]],
+) -> bool:
+    if not text or _VOICE_DRIFT_RE.search(text):
+        return False
+    score = _candidate_voice_score(label, text)
+    if _voice_is_mutation_like(text):
+        # A mutating command must be backed by a second local decode. This is
+        # the main defence against an incorrect forced-language pass changing
+        # household state.
+        return score >= 2 and _local_consensus(label, text, candidates)
+    # Read-only/conversational voice can be less strict because a bad transcript
+    # cannot directly mutate state and can be corrected conversationally.
+    return score >= 1
+
+
+def _cloud_voice_confident(text: str) -> bool:
+    value = (text or "").strip()
+    if not value or _VOICE_DRIFT_RE.search(value):
+        return False
+    # Cloud rescue is an explicit owner opt-in. Require a plausible household
+    # utterance for mutations; ordinary read/chat speech may be accepted.
+    score = _voice_intent_score(value)
+    return score >= (2 if _voice_is_mutation_like(value) else 1)
+
 
 
 def _xai_stt(path: str, mime: str, key: str) -> str:
@@ -349,10 +465,9 @@ def transcribe_audio(media_id: str) -> str:
     requested = settings.stt_provider
     last_error = None
 
-    # Explicit STT modes remain deterministic and do exactly what the owner
-    # selected. Auto is more defensive: use one local multilingual pass first,
-    # then locally verify a suspicious short command before spending any cloud
-    # transcription call.
+    # Explicit cloud STT selection is itself an owner opt-in. Auto mode is
+    # local-first and may send audio to cloud only when the separate
+    # cloud_stt_rescue_enabled switch is true.
     if requested != "auto":
         try:
             if requested == "local_whisper":
@@ -379,7 +494,9 @@ def transcribe_audio(media_id: str) -> str:
                     media_id, text,
                     _transcript_meta(
                         [(requested, text)], requested,
-                        mode="explicit", cloud_rescue=requested != "local_whisper",
+                        mode="explicit",
+                        cloud_rescue=requested != "local_whisper",
+                        confidence="explicit_provider",
                     ),
                 )
                 return text
@@ -396,22 +513,28 @@ def transcribe_audio(media_id: str) -> str:
         )
         if auto_text:
             candidates.append(("local_auto", auto_text))
-            # A clearly actionable transcript is accepted immediately: this is
-            # the zero-token fast path for the overwhelming majority of notes.
-            if _voice_intent_score(auto_text) >= 2:
+            # Only non-mutating speech may use the one-pass fast path. Commands
+            # that could change household state always get an independent local
+            # verification pass.
+            if (
+                not _voice_is_mutation_like(auto_text)
+                and _candidate_voice_score("local_auto", auto_text) >= 2
+                and not _VOICE_DRIFT_RE.search(auto_text)
+            ):
                 _update_transcript(
                     media_id, auto_text,
                     _transcript_meta(
-                        candidates, "local_auto", mode="auto_fast"
+                        candidates, "local_auto",
+                        mode="auto_fast_readonly",
+                        confidence="high_local",
                     ),
                 )
                 return auto_text
     except Exception as exc:
         last_error = exc
 
-    # Verification passes are local and only happen when auto-language decoding
-    # did not look like a coherent household turn. English and Tamil cover the
-    # owner's actual voice use, including many Tanglish utterances.
+    # English and Tamil verification passes are local. The candidate selector
+    # never treats forced-language output as acoustic evidence on its own.
     for lang in ("en", "ta"):
         try:
             candidate = _local_whisper(
@@ -423,58 +546,82 @@ def transcribe_audio(media_id: str) -> str:
             last_error = exc
 
     label, best = _choose_voice_transcript(candidates)
-    if best and _voice_intent_score(best) >= 2:
+    if best and _local_voice_confident(label, best, candidates):
         _update_transcript(
             media_id, best,
             _transcript_meta(
-                candidates, label, mode="auto_local_verify"
+                candidates, label,
+                mode="auto_local_verified",
+                confidence="high_local" if _voice_is_mutation_like(best) else "accepted_local",
             ),
         )
         return best
 
-    # Only now use a configured cloud STT as a rescue. This is not a required
-    # paid path: if no cloud key exists, the best local transcript is returned.
-    for provider in ("gemini", "openai", "xai"):
-        try:
-            if provider == "gemini" and settings.gemini_api_key:
-                text = _gemini_stt(
-                    row["local_path"], row["mime_type"],
-                    settings.gemini_api_key, settings.gemini_model,
-                )
-            elif provider == "openai" and settings.openai_api_key:
-                text = _openai_stt(
-                    row["local_path"], settings.openai_api_key
-                )
-            elif provider == "xai" and settings.xai_api_key:
-                text = _xai_stt(
-                    row["local_path"], row["mime_type"], settings.xai_api_key
-                )
-            else:
-                continue
-            if text:
+    # Cloud rescue is deliberately separate from chat-provider configuration.
+    # Merely entering a Gemini/OpenAI/xAI key must not upload voice audio.
+    if settings.cloud_stt_rescue_enabled:
+        for provider in ("gemini", "openai", "xai"):
+            try:
+                if provider == "gemini" and settings.gemini_api_key:
+                    text = _gemini_stt(
+                        row["local_path"], row["mime_type"],
+                        settings.gemini_api_key, settings.gemini_model,
+                    )
+                elif provider == "openai" and settings.openai_api_key:
+                    text = _openai_stt(
+                        row["local_path"], settings.openai_api_key
+                    )
+                elif provider == "xai" and settings.xai_api_key:
+                    text = _xai_stt(
+                        row["local_path"], row["mime_type"], settings.xai_api_key
+                    )
+                else:
+                    continue
+                if not text:
+                    continue
                 candidates.append((provider, text))
-                chosen_label, chosen = _choose_voice_transcript(candidates)
-                if chosen:
+                if _cloud_voice_confident(text):
                     _update_transcript(
-                        media_id, chosen,
+                        media_id, text,
                         _transcript_meta(
-                            candidates, chosen_label,
-                            mode="auto_cloud_rescue", cloud_rescue=True,
+                            candidates, provider,
+                            mode="auto_cloud_rescue",
+                            cloud_rescue=True,
+                            confidence="cloud_rescue",
                         ),
                     )
-                    return chosen
-        except Exception as exc:
-            last_error = exc
+                    return text
+            except Exception as exc:
+                last_error = exc
 
-    chosen_label, best = _choose_voice_transcript(candidates)
-    if best:
+    # A non-mutating local utterance may still be useful even without strong
+    # household keywords. A mutating utterance with disagreeing decoders is
+    # never allowed to proceed silently.
+    label, best = _choose_voice_transcript(candidates)
+    if best and not _voice_is_mutation_like(best) and not _VOICE_DRIFT_RE.search(best):
         _update_transcript(
             media_id, best,
             _transcript_meta(
-                candidates, chosen_label, mode="auto_local_fallback"
+                candidates, label,
+                mode="auto_local_readonly_fallback",
+                confidence="low_readonly",
             ),
         )
         return best
+
+    if candidates:
+        _update_transcript(
+            media_id, best or "",
+            _transcript_meta(
+                candidates, label,
+                mode="auto_uncertain",
+                confidence="uncertain",
+            ),
+        )
+        raise VoiceTranscriptionUncertain(
+            "I could not transcribe that voice command confidently enough to act."
+        )
+
     if last_error:
         raise RuntimeError(f"Voice transcription failed: {last_error}")
     raise RuntimeError("No speech-to-text provider is configured")
