@@ -248,6 +248,19 @@ class BehaviourRigJudgeMutationTests(unittest.TestCase):
                 else:
                     os.environ["ALEX_CERT_NOW"] = old_clock
 
+    def test_heldout_phrase_is_not_emitted_verbatim(self):
+        secret = "this is my private real historical wording"
+        rendered = behavior_cert._report_prompt(secret, "heldout")
+        self.assertNotIn(secret, rendered)
+        self.assertTrue(rendered.startswith("[heldout:"))
+
+    def test_adversarial_mutator_is_deterministic(self):
+        phrase = "Remind me tomorrow at 9am."
+        first = behavior_cert._adversarial_variants(phrase)
+        second = behavior_cert._adversarial_variants(phrase)
+        self.assertEqual(first, second)
+        self.assertTrue(first)
+
     def test_shared_clock_obeys_certification_instant(self):
         import runtime_clock
         old = os.environ.get("ALEX_CERT_NOW")
