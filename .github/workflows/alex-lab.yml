@@ -57,6 +57,7 @@ jobs:
             /tmp/alex-lab-failures.jsonl
             /tmp/alex-human-ai-packets.jsonl
             /tmp/alex-human-ai-report.json
+            /tmp/alex-chatgpt-reasoning-review.json
           if-no-files-found: error
           retention-days: 14
 
