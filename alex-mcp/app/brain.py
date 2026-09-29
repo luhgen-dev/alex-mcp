@@ -272,7 +272,7 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
         "confirm_plan": (r"confirm|lock|booked|make.*real", 120),
         "update_plan": (r"change|update|cancel.*plan|for .*plan|keep .*draft|make .*kid|date .*undecided|back home|home by", 132),
         "share_plan": (r"share|family|wife|husband", 105),
-        "list_plans": (r"plans|what.*plan|show.*plan|show.*draft|malacca.*draft|plan.*so far", 126),
+        "list_plans": (r"plans|what.*plan|show.*plan|show.*draft|malacca.*draft|malacca.*plan|for .*plan|plan.*so far", 132),
         "check_my_availability": (r"am i free|my availability|do i have", 110),
         "check_spouse_availability": (r"wife.*free|husband.*free|spouse.*free|partner.*free", 110),
         "work_schedule": (r"roster|shift|work schedule|working", 110),
@@ -468,6 +468,8 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
     # six-tool cap, accidentally exposed an alphabetic subset unrelated to the
     # user's intent. Discovery lets the model normalize Tamil/mixed input to a
     # short English intent and then loads the correct narrow tool set.
+    if re.search(r"[\u0B80-\u0BFF]", text) and not selected:
+        selected.add(DISCOVERY_TOOL_NAME)
     # An explicit "save/remember this" attachment is memory-only unless the
     # user also explicitly asked for a financial write. This closes the old
     # Smoke-4 failure where saving a receipt could accidentally log an expense.
@@ -496,7 +498,12 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
         selected.discard("create_plan")
         selected |= {"list_plans"}
     if plan_refine and not re.search(r"\b(?:start|create|new)\b", low):
-        selected.discard("create_plan")
+        selected -= {
+            "create_plan", "add_diary_event", "update_diary_event",
+            "resolve_diary_conflict", "resolve_latest_diary_conflict",
+            "check_my_availability", "check_spouse_availability",
+            "confirm_plan", "share_plan", "set_leave_record", "list_leave_records",
+        }
         selected |= {"list_plans", "update_plan"}
 
     diary_detail_read = bool(re.search(
