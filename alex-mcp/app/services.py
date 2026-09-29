@@ -618,6 +618,200 @@ def get_receipt(actor: ActorContext, media_id: str) -> dict:
     finally:
         conn.close()
 
+def _media_access_clause(actor: ActorContext) -> tuple[str, list]:
+    """SQL predicate proving access to an original media object.
+
+    DM callers may retrieve their own original uploads plus material already
+    attached to spaces they can read. Group callers are structurally restricted
+    to FAMILY_SHARED-origin/linked material.
+    """
+    spaces = list(actor.allowed_spaces)
+    clauses: list[str] = []
+    params: list = []
+
+    if actor.conversation_type != "GROUP":
+        clauses.append("i.sender_phone=?")
+        params.append(actor.phone)
+
+    if "FAMILY_SHARED" in spaces:
+        clauses.append("i.conversation_type='GROUP'")
+
+    if spaces:
+        marks = ",".join("?" for _ in spaces)
+        clauses.append(
+            f"""EXISTS (
+                SELECT 1
+                FROM event_media_links em
+                JOIN financial_events fe ON fe.event_id=em.event_id
+                WHERE em.media_id=m.media_id
+                  AND fe.space_id IN ({marks})
+                  AND fe.status IN ('ACTIVE','PENDING_HUMAN_REVIEW')
+            )"""
+        )
+        params.extend(spaces)
+        clauses.append(
+            f"""EXISTS (
+                SELECT 1 FROM saved_items si
+                WHERE si.media_id=m.media_id
+                  AND si.space_id IN ({marks})
+            )"""
+        )
+        params.extend(spaces)
+
+    if not clauses:
+        return "0", []
+    return "(" + " OR ".join(clauses) + ")", params
+
+
+def _media_type_token(value: str | None) -> str | None:
+    token = str(value or "all").strip().casefold().replace("-", "_")
+    if token in {"", "all", "any", "media"}:
+        return None
+    mapping = {
+        "voice": "AUDIO", "voice_note": "AUDIO", "audio": "AUDIO",
+        "recording": "AUDIO", "recordings": "AUDIO",
+        "image": "IMAGE", "images": "IMAGE", "photo": "IMAGE", "photos": "IMAGE",
+        "picture": "IMAGE", "pictures": "IMAGE",
+        "pdf": "PDF", "document": "PDF", "documents": "PDF",
+    }
+    if token not in mapping:
+        raise ValueError("media_type must be all, voice, image, or document")
+    return mapping[token]
+
+
+def _store_media_selection(conn, actor: ActorContext, media_type: str | None,
+                           ids: list[str]) -> str:
+    selection_id = str(uuid.uuid4())
+    expires = (runtime_clock.now_utc() + timedelta(hours=48)).isoformat()
+    conn.execute(
+        """INSERT INTO media_selection_sets(
+            selection_id,user_id,conversation_id,media_type,items_json,
+            created_at_utc,expires_at_utc
+           ) VALUES(?,?,?,?,?,?,?)""",
+        (
+            selection_id, actor.user_id, actor.conversation_id, media_type,
+            json.dumps(ids, ensure_ascii=False), utc_now(), expires,
+        ),
+    )
+    return selection_id
+
+
+def find_media(actor: ActorContext, media_type: str | None = "all",
+               query: str | None = None, start_date: str | None = None,
+               end_date: str | None = None, limit: int = 10) -> dict:
+    """Browse preserved original voice/image/document inputs without crossing ACLs."""
+    resolved_type = _media_type_token(media_type)
+    bounded = max(1, min(25, int(limit)))
+    access_sql, access_params = _media_access_clause(actor)
+    where = [access_sql]
+    params: list = list(access_params)
+
+    if resolved_type:
+        where.append("m.media_type=?")
+        params.append(resolved_type)
+    if start_date:
+        where.append("m.created_at_utc>=?")
+        params.append(_local_bound(start_date, actor.timezone, False))
+    if end_date:
+        where.append("m.created_at_utc<=?")
+        params.append(_local_bound(end_date, actor.timezone, True))
+    if query:
+        needle = f"%{str(query).casefold()}%"
+        where.append(
+            """(
+                LOWER(COALESCE(m.transcript_text,'')) LIKE ?
+                OR LOWER(COALESCE(m.ocr_text,'')) LIKE ?
+                OR LOWER(COALESCE(i.raw_text,'')) LIKE ?
+            )"""
+        )
+        params.extend([needle, needle, needle])
+
+    sql = f"""SELECT DISTINCT
+                     m.media_id,m.media_type,m.mime_type,m.created_at_utc,
+                     m.original_name,m.transcript_text,m.ocr_text,i.raw_text
+              FROM media_objects m
+              JOIN inbound_messages i ON i.message_id=m.source_message_id
+              WHERE {' AND '.join(where)}
+              ORDER BY m.created_at_utc DESC
+              LIMIT ?"""
+    params.append(bounded)
+
+    conn = connect()
+    try:
+        rows = conn.execute(sql, params).fetchall()
+        matches = []
+        for row in rows:
+            preview = (
+                row["transcript_text"]
+                if row["media_type"] == "AUDIO"
+                else row["ocr_text"]
+            ) or row["raw_text"] or ""
+            preview = " ".join(str(preview).split())[:180]
+            matches.append({
+                "media_id": row["media_id"],
+                "media_type": row["media_type"],
+                "mime_type": row["mime_type"],
+                "created_at_utc": row["created_at_utc"],
+                "original_name": row["original_name"],
+                "preview": preview or None,
+            })
+        if matches:
+            _store_media_selection(
+                conn, actor, resolved_type,
+                [row["media_id"] for row in matches],
+            )
+            conn.commit()
+        return {
+            "media_type": resolved_type or "ALL",
+            "matches": [
+                {**row, "choice": index + 1}
+                for index, row in enumerate(matches)
+            ],
+            "note": (
+                "Original media is retained by design for household provenance. "
+                "Use get_media_original or a numbered follow-up to retrieve it."
+            ),
+        }
+    finally:
+        conn.close()
+
+
+def get_media_original(actor: ActorContext, media_id: str) -> dict:
+    """Retrieve one authorized original media object, including a voice note."""
+    access_sql, access_params = _media_access_clause(actor)
+    conn = connect()
+    try:
+        row = conn.execute(
+            f"""SELECT m.*,i.raw_text
+                FROM media_objects m
+                JOIN inbound_messages i ON i.message_id=m.source_message_id
+                WHERE m.media_id=? AND {access_sql}
+                LIMIT 1""",
+            [media_id] + access_params,
+        ).fetchone()
+        if not row:
+            raise PermissionError("media not found in your accessible data")
+        kind = "IMAGE" if row["media_type"] == "IMAGE" else "DOCUMENT"
+        return {
+            "status": "found",
+            "media_id": row["media_id"],
+            "media_type": row["media_type"],
+            "created_at_utc": row["created_at_utc"],
+            "preview": (
+                (row["transcript_text"] if row["media_type"] == "AUDIO" else row["ocr_text"])
+                or row["raw_text"]
+                or ""
+            )[:300],
+            "_attachments": [{
+                "path": row["local_path"],
+                "mime_type": row["mime_type"],
+                "kind": kind,
+            }],
+        }
+    finally:
+        conn.close()
+
+
 def save_item(actor: ActorContext, title: str, content: str, tags: str | None = None,
               shared: bool = False) -> dict:
     if not actor.action_key:
@@ -816,20 +1010,29 @@ def remove_saved_item(actor: ActorContext, item_id: str) -> dict:
 
 
 def resolve_numbered_choice(actor: ActorContext, choice: int) -> dict:
-    """Resolve the newest unexpired receipt/saved-memory numbered list."""
+    """Resolve the newest unexpired receipt/saved-memory/original-media list."""
     index = int(choice)
     if index < 1:
         raise ValueError("choice must be 1 or greater")
+    now = utc_now()
     conn = connect()
     try:
         rows = conn.execute(
-            """SELECT * FROM selection_sets
-               WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
-               ORDER BY created_at_utc DESC LIMIT 10""",
-            (actor.user_id, actor.conversation_id, utc_now()),
+            """SELECT selection_kind AS selection_kind,items_json,created_at_utc
+                 FROM selection_sets
+                WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
+               UNION ALL
+               SELECT 'MEDIA' AS selection_kind,items_json,created_at_utc
+                 FROM media_selection_sets
+                WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
+               ORDER BY created_at_utc DESC LIMIT 1""",
+            (
+                actor.user_id, actor.conversation_id, now,
+                actor.user_id, actor.conversation_id, now,
+            ),
         ).fetchall()
         if not rows:
-            raise ValueError("no numbered receipt or saved-memory list is waiting")
+            raise ValueError("no numbered receipt, saved-memory, or media list is waiting")
         latest = rows[0]
         ids = json.loads(latest["items_json"])
         if index > len(ids):
@@ -842,6 +1045,8 @@ def resolve_numbered_choice(actor: ActorContext, choice: int) -> dict:
         return get_receipt(actor, target)
     if kind == "SAVED_ITEM":
         return get_saved_item(actor, target)
+    if kind == "MEDIA":
+        return get_media_original(actor, target)
     raise ValueError("unsupported numbered choice type")
 
 
