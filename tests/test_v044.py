@@ -192,6 +192,27 @@ class RoutingTests(V044Base):
         names = _names(asyncio.run(brain._tool_specs("don't turn off the AC light")))
         self.assertNotIn("ha_control", names)
 
+    def test_direct_route_repairs_preserve_forbidden_mutation_guards(self):
+        correction = _names(asyncio.run(brain._tool_specs(
+            "eh alex can u actually, change that parking expense to RM8.50."
+        )))
+        self.assertIn("correct_expense", correction)
+        self.assertIn("query_finances", correction)
+        self.assertNotIn("log_expense", correction)
+
+        shopping = _names(asyncio.run(brain._tool_specs(
+            "eh alex can u remove bananas from the family shopping list."
+        )))
+        self.assertIn("update_shopping_item", shopping)
+        self.assertNotIn("add_shopping_item", shopping)
+
+        negated = _names(asyncio.run(brain._tool_specs(
+            "eh alex can u i am not asking you to switch the AC off."
+        )))
+        self.assertIn("ha_find_entities", negated)
+        self.assertIn("ha_get_state", negated)
+        self.assertNotIn("ha_control", negated)
+
     def test_task_lifecycle_routes_do_not_degrade_to_plan_or_reminder(self):
         cases = {
             "I need a task for the Malacca trip: check our passports.": "create_task",
