@@ -12,11 +12,15 @@ WhatsApp/Home Assistant acceptance test.
 The intended release path is now:
 
 1. External Lab: deterministic tests + Tier A + Tier B offline routing.
-2. Repair failures and rerun externally until clean.
-3. Optional real-provider Tier B benchmark against the same contracts.
-4. Install the candidate Home Assistant add-on.
-5. Run only the genuinely external checks: WhatsApp mention/reply metadata,
-   phone-side delivery/rendering, real audio transport, scheduler delivery,
+2. Build the **blind human/ChatGPT reasoning corpus** from the exact MCP tools
+   Alex would expose for every representative turn.
+3. Run an independent ChatGPT/human reasoning pass over those blind packets and
+   score its tool/clarify/refuse choices against the same owner contracts.
+4. Repair product **and lab blind spots**, then rerun the whole internal suite.
+5. Optional real-provider Tier B benchmark against the same contracts.
+6. Install the candidate Home Assistant app.
+7. Run only genuinely external checks: WhatsApp mention/reply metadata,
+   phone-side delivery/rendering, real audio/STT transport, scheduler delivery,
    QR/session persistence and physical Home Assistant devices.
 
 ## Safety
@@ -36,6 +40,17 @@ Every run writes:
 - `alex-lab-report.json` — compact gate/check summary.
 - `alex-lab-failures.jsonl` — one diagnosis packet per offline failure or
   discovery-dependent case.
+- `alex-human-ai-packets.jsonl` — blind provider-shaped reasoning turns using
+  synthetic identities/state and Alex's **actual exposed MCP schemas**.
+- `alex-human-ai-report.json` — packet-integrity evidence.
+
+The reasoning packet IDs are opaque and exported packets deliberately omit
+contract/domain/expected-answer metadata. A ChatGPT or human reasoning pass
+therefore cannot simply read the certification answer from the packet. The
+external reasoner chooses supplied tools (or clarify/refuse/answer), and
+`human_ai_lab.py --mode score` checks those decisions against the private
+contract catalog. This is a reasoning-layer test only: database writes, privacy,
+idempotency and state transitions remain the job of the deterministic lab.
 
 A prior live-provider JSON report may be supplied with `--live-report`. The lab
 does not rerun or spend against that report; it only converts failed prompt and
@@ -79,8 +94,8 @@ artifact is preserved while repairs are in progress.
 ## GitHub Actions
 
 `.github/workflows/alex-lab.yml` runs on pull requests and can also be started
-manually. It uploads both evidence files as the `alex-lab-evidence` artifact
-for 14 days.
+manually. It uploads the deterministic evidence **and the blind human-AI
+reasoning corpus** as the `alex-lab-evidence` artifact for 14 days.
 
 The workflow intentionally does not contain provider secrets. This keeps the default
 external repair loop zero-cost and deterministic.
