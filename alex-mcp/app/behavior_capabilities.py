@@ -135,6 +135,36 @@ CAPABILITY_TO_TOOLS: dict[str, frozenset[str]] = {
 # Compatibility-only MCP tools intentionally superseded by the advanced surface.
 # They remain classified so catalog drift is explicit, but behavioural contracts
 # do not need to route users through them.
+TASK_LIFECYCLE_SPEC = {
+    "states": frozenset({"OPEN", "DONE", "CANCELLED"}),
+    "required_actions": frozenset({
+        "task.create", "task.read", "task.update",
+        "task.complete", "task.reopen", "task.cancel",
+    }),
+    # These are behavioural fields, not necessarily today's MCP argument names.
+    # due_at, assignee and plan_id are optional at creation, but the lifecycle
+    # must preserve them when present. A reminder is a separate object/action.
+    "fields": {
+        "title": "required",
+        "status": "required",
+        "assignee": "optional:user|spouse|both|unassigned",
+        "visibility": "required:private|family",
+        "due_at": "optional",
+        "plan_id": "optional",
+        "notes": "optional",
+        "reminder_id": "optional-separate-link",
+    },
+    "rules": (
+        "task stays a task; never degrade to plan note",
+        "due date is optional",
+        "reminder is separate and only created when explicitly requested",
+        "complete preserves history",
+        "reopen is explicit",
+        "cancel does not delete unrelated plan/reminder state",
+    ),
+}
+
+
 TOOL_COVERAGE_EXEMPTIONS = frozenset({
     "set_goal", "list_goals",
     "get_leave_balance", "set_leave_balance", "set_work_roster",
