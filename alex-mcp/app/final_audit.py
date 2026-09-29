@@ -43,11 +43,15 @@ def main() -> dict:
             "all required deterministic domain modules present")
 
     # 2. MCP surface contains every owner-approved responsibility.
-    async def names():
+    async def surface():
         async with Client(mcp) as client:
             listed = await client.list_tools()
-            return {t.name for t in listed.tools}
-    tool_names = asyncio.run(names())
+            return {
+                t.name: (t.input_schema or {})
+                for t in listed.tools
+            }
+    tool_schemas = asyncio.run(surface())
+    tool_names = set(tool_schemas)
     required_tools = {
         # Core ledger / receipts / explicit memory
         "log_expense", "query_finances", "correct_expense",
@@ -79,6 +83,51 @@ def main() -> dict:
     }
     missing_tools = sorted(required_tools - tool_names)
     require(not missing_tools, "all agreed MCP responsibility tools present")
+
+    # 2b. User-facing mutators must be groundable from natural household
+    # language. A green capability route is not sufficient when the model would
+    # otherwise have to invent an opaque SQLite UUID.
+    def schema_parts(name):
+        schema = tool_schemas.get(name, {})
+        return set(schema.get("properties") or {}), set(schema.get("required") or [])
+
+    natural_reference_contracts = {
+        "planning_lock_goal": ({"goal_name"}, {"goal_id"}),
+        "planning_reopen_goal": ({"goal_name"}, {"goal_id"}),
+        "planning_set_period_target": ({"goal_name"}, {"goal_id", "period"}),
+        "planning_change_goal_baseline": ({"goal_name"}, {"goal_id"}),
+        "planning_record_goal_contribution": (
+            {"goal_name"}, {"goal_id", "contribution_date"}
+        ),
+        "planning_goal_progress": ({"goal_name"}, {"goal_id"}),
+        "planning_goal_deviation": (
+            {"goal_name"}, {"goal_id", "actual_amount", "period"}
+        ),
+        "planning_compare_salary": (
+            {"event_date", "amount"}, {"cash_event_id"}
+        ),
+        "planning_cash_status": (
+            {"event_type", "event_date", "amount"}, {"cash_event_id"}
+        ),
+        "planning_allocate_cash_to_goal": (
+            {"cash_event_type", "cash_event_date", "cash_event_amount", "goal_name"},
+            {"cash_event_id", "goal_id"},
+        ),
+        "planning_cash_pool_balance": ({"pool_name"}, {"pool_id"}),
+        "planning_allocate_cash_to_pool": (
+            {"cash_event_type", "cash_event_date", "cash_event_amount", "pool_name"},
+            {"cash_event_id", "pool_id"},
+        ),
+        "planning_update_reserve": ({"reserve_name"}, {"reserve_id"}),
+        "planning_goal_projection": ({"goal_name"}, {"goal_id"}),
+        "asset_link_document": ({"asset_name"}, {"asset_id", "evidence_ref"}),
+    }
+    for name, (natural_fields, opaque_optional) in natural_reference_contracts.items():
+        props, required = schema_parts(name)
+        require(
+            natural_fields <= props and not (opaque_optional & required),
+            f"{name} is groundable without inventing opaque ids",
+        )
 
     # 3. Token budget is architectural, not aspirational.
     require(brain.TOOL_EXPOSURE_MAX <= 6, "provider-facing MCP schema cap is six or fewer")
