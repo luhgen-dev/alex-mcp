@@ -53,7 +53,8 @@ class V044Base(unittest.TestCase):
         try:
             for table in (
                 "tool_audit", "tool_execution_claims", "ai_usage", "outbound_messages",
-                "conversation_turns", "selection_sets", "event_media_links",
+                "conversation_turns", "selection_sets", "task_reminder_links",
+                "task_events", "tasks", "event_media_links",
                 "financial_event_corrections", "financial_events", "saved_items",
                 "media_objects", "inbound_messages",
             ):
@@ -190,6 +191,23 @@ class RoutingTests(V044Base):
         self.assertIn("query_finances", names)
         names = _names(asyncio.run(brain._tool_specs("don't turn off the AC light")))
         self.assertNotIn("ha_control", names)
+
+    def test_task_lifecycle_routes_do_not_degrade_to_plan_or_reminder(self):
+        cases = {
+            "I need a task for the Malacca trip: check our passports.": "create_task",
+            "What tasks do I still have for the Malacca trip?": "list_tasks",
+            "Update the Malacca passport task with a note to check every passport.": "update_task",
+            "Complete the Malacca passport task.": "complete_task",
+            "Reopen the passport-check task.": "reopen_task",
+            "Cancel the passport-check task.": "cancel_task",
+        }
+        for phrase, required in cases.items():
+            names = _names(asyncio.run(brain._tool_specs(phrase)))
+            self.assertIn(required, names, phrase)
+            self.assertLessEqual(len(names), brain.TOOL_EXPOSURE_MAX, phrase)
+            if required != "list_tasks":
+                self.assertNotIn("create_reminder", names, phrase)
+            self.assertNotIn("create_plan", names, phrase)
 
     def test_repaired_write_variants_keep_primary_mutator(self):
         cases = {
