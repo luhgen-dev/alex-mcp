@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import re
 import uuid
-from datetime import date, datetime, timedelta, timezone\n\nimport runtime_clock
+from datetime import date, datetime, timedelta, timezone
+
+import runtime_clock
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from zoneinfo import ZoneInfo
 
