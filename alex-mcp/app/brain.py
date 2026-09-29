@@ -260,35 +260,38 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
         "search_saved_items": (r"find|search|remember|saved", 105),
         "get_saved_item": (r"show|open|original|saved", 95),
         "remove_saved_item": (r"remove|delete|forget", 110),
-        "add_diary_event": (r"diary|appointment|meeting|event|put.*calendar", 110),
+        "add_diary_event": (r"(?:add|put|schedule|book).*?(?:diary|appointment|meeting|event|calendar)", 122),
         "update_diary_event": (r"move|reschedule|cancel|change.*diary|change.*event", 118),
-        "get_agenda_range": (r"agenda|what.*have|schedule.*week|schedule.*today", 112),
+        "get_agenda_range": (r"agenda|what.*have|what time|when is|when's|show.*appointment|schedule.*week|schedule.*today", 128),
         "get_agenda": (r"agenda", 100),
         "resolve_latest_diary_conflict": (r"^\s*[123]\s*$", 145),
-        "create_plan": (r"plan|trip|holiday|vacation|brainstorm", 90),
+        "create_plan": (r"(?:start|create|new|brainstorm).*?(?:plan|trip|holiday|vacation)|let's plan", 120),
         "confirm_plan": (r"confirm|lock|booked|make.*real", 120),
-        "update_plan": (r"change|update|cancel.*plan", 105),
+        "update_plan": (r"update|change.*plan|cancel.*plan|for the .*plan|for the .*draft|keep the date|make it .*friendly", 126),
         "share_plan": (r"share|family|wife|husband", 105),
-        "list_plans": (r"plans|what.*plan", 90),
+        "list_plans": (r"plans|what.*plan|show.*(?:plan|draft)|draft.*so far|what do we have.*trip", 124),
         "check_my_availability": (r"am i free|my availability|do i have", 110),
         "check_spouse_availability": (r"wife.*free|husband.*free|spouse.*free|partner.*free", 110),
         "work_schedule": (r"roster|shift|work schedule|working", 110),
         "work_day": (r"work.*today|work.*tomorrow|shift.*today|shift.*tomorrow", 112),
         "work_record_event": (r"leave|mc|shift swap|ot worked|ot planned|overtime", 102),
         "work_ot_status": (r"ot|overtime", 108),
-        "work_leave_balance": (r"leave balance|annual leave|medical leave", 110),
-        "work_departure_plan": (r"leave home|depart|alarm|travel time", 115),
+        "work_leave_balance": (r"leave balance|annual leave|medical leave|leave.*left", 125),
+        "list_leave_records": (r"leave entries|leave records|recorded leave|show.*leave", 124),
+        "list_work_roster": (r"roster entries|roster records|show.*roster", 118),
+        "work_departure_plan": (r"leave home|depart|departure|alarm|travel time", 126),
         "planning_create_goal": (r"create.*goal|new goal|save for|savings?\s+goal|goal.*target", 128),
         "planning_lock_goal": (r"lock.*goal|activate.*goal|confirm.*goal", 122),
         "planning_reopen_goal": (r"reopen.*goal|resume.*goal", 120),
         "planning_set_period_target": (r"this month|this period|only this month|enough this month", 124),
         "planning_change_goal_baseline": (r"every month|monthly.*change|change.*baseline", 125),
         "planning_record_goal_contribution": (r"contributed|deposit.*goal|put.*goal", 112),
-        "planning_goal_progress": (r"goal.*progress|how much.*goal|remaining.*goal", 112),
+        "planning_goal_progress": (r"goal.*progress|how much.*goal|remaining.*goal|monthly contribution|show.*savings", 124),
         "planning_goal_deviation": (r"below plan|above plan|this month", 95),
-        "planning_record_cash": (r"bonus|refund|extra cash|ot.*paid|salary.*received", 110),
+        "planning_record_cash": (r"bonus|refund|extra cash|ot.*paid|got.*\bot\b|received.*\bot\b|salary.*received", 128),
         "planning_cash_status": (r"unallocated|extra cash|cash.*left", 105),
         "planning_allocate_cash_to_goal": (r"allocate|put.*goal|channel.*goal", 118),
+        "planning_create_cash_pool": (r"create.*(?:stash|pool)|new.*(?:stash|pool)|stash called", 130),
         "planning_cash_pool_balance": (r"stash.*balance|pool.*balance|how much.*stash", 118),
         "planning_allocate_cash_to_pool": (r"put.*stash|allocate.*pool|channel.*stash", 120),
         "planning_add_reserve": (r"reserve|allowance|keep aside|set aside", 112),
@@ -299,7 +302,7 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
         "planning_goal_projection": (r"goal.*projection|when.*reach|how long.*goal", 112),
         "planning_cashflow": (r"cashflow|cash flow|budget|forecast", 110),
         "planning_brief": (r"plan my money|money plan|planning|budget|financial plan", 118),
-        "planning_list_goals": (r"goals|goal list", 95),
+        "planning_list_goals": (r"goals|goal list|holiday savings|show.*savings|monthly contribution", 122),
         "bills_list": (r"bill|bills|due|obligation|tnb|electricity|water|unifi", 108),
         "bills_match_payment": (r"payment|paid|receipt|match", 115),
         "bills_record_payment": (r"record.*payment|paid.*bill|bill.*paid", 112),
@@ -405,10 +408,14 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
         selected |= BILL_TOOLS | {"query_finances","find_receipts"}
     if re.search(r"\b(?:goal|goals|saving|savings|budget|cashflow|cash flow|money plan|baseline|stash|allowance|salary|income|bonus|extra cash|allocate|allocation|reserve|reserves)\b", low):
         selected |= PLANNING_TOOLS | BILL_TOOLS
-    if re.search(r"\b(?:roster|shift|working|work schedule|overtime|\bot\b|mc|medical leave|annual leave|leave balance|swap shift)\b", low):
+    if re.search(r"\b(?:roster|shift|working|work schedule|work today|work tomorrow|leave home.*work|departure|overtime|\bot\b|mc|medical leave|annual leave|leave balance|leave entries|leave records|swap shift)\b", low):
         selected |= WORK_TOOLS | {"set_leave_record","list_leave_records"}
     if re.search(r"\b(?:diary|agenda|appointment|wedding|party|meeting|event|schedule|holiday|vacation|trip|plan|draft)\b", low):
         selected |= DIARY_TOOLS
+    if re.search(r"\b(?:am i free|my availability|do i have time)\b", low):
+        selected |= {"check_my_availability", "get_agenda_range", "get_agenda"}
+    if re.search(r"\b(?:wife|husband|spouse|partner)\b.*\b(?:free|available|availability)\b", low):
+        selected |= {"check_spouse_availability", "get_agenda_range"}
     if re.search(r"\b(?:remind|reminder|reminders|notify|due today|later|snooze|acknowledge)\b", low):
         selected |= REMINDER_TOOLS
     if re.search(
