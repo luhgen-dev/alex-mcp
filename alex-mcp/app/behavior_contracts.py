@@ -150,6 +150,17 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
             "Add RM12.50 parking to my expenses.",
         ),
         _fs("log_expense"), seed="empty",
+        state_expectations=(
+            StateExpectation(
+                "financial_events",
+                where=(("source_message_id", "$MID"),),
+                fields=(
+                    ("amount_minor", 1250), ("currency", "MYR"),
+                    ("event_type", "Expense"), ("status", "ACTIVE"),
+                ),
+                count=1, delta=1,
+            ),
+        ),
     ),
     PromptContract(
         "p1.receipt.find", "phase1", "receipts",
@@ -198,6 +209,14 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
             "I need a reminder tomorrow at 9am for the clinic.",
         ),
         _fs("create_reminder"), seed="empty",
+        state_expectations=(
+            StateExpectation(
+                "reminders",
+                where=(("source_message_id", "$MID"),),
+                fields=(("status", "OPEN"),),
+                count=1, delta=1,
+            ),
+        ),
     ),
     PromptContract(
         "p1.shopping.read", "phase1", "shopping",
@@ -243,6 +262,7 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
             "Open the vinyl setup image I asked you to keep.",
         ),
         _fs("search_saved_items", "get_saved_item"), seed="core",
+        expect_attachment=True, expect_attachment_of="vinyl",
     ),
 
 
@@ -336,7 +356,7 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
             "Show my schedule for 1 October 2026.",
         ),
         _fs("get_agenda_range", "get_agenda"), seed="core",
-        expected_terms=("Dentist", "4:00"),
+        expected_terms=("Dentist", "5:00"),
     ),
     PromptContract(
         "p2.agenda.relative", "phase2", "agenda",
@@ -360,7 +380,7 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
             "Tell me the time for my dentist appointment.",
             "What time did we set the dentist for?",
         ),
-        _fs("get_agenda_range", "get_agenda"), seed="core", expected_terms=("4",),
+        _fs("get_agenda_range", "get_agenda"), seed="core", expected_terms=("5",),
     ),
     PromptContract(
         "p2.plan.read", "phase2", "plans",
@@ -407,6 +427,14 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
             "Start a goal called Family Holiday Savings with a RM5,000 target.",
         ),
         _fs("planning_create_goal"), seed="empty",
+        nonzero_forbidden_args=("baseline_monthly",),
+        state_expectations=(
+            StateExpectation(
+                "alex_phase2_goals",
+                fields=(("target_minor", 500000), ("baseline_monthly_minor", 0)),
+                count=1, delta=1,
+            ),
+        ),
     ),
     PromptContract(
         "p2.goals.agency", "phase2", "goals",
@@ -417,6 +445,16 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         ),
         _fs("planning_create_goal"), forbidden=_fs("planning_change_goal_baseline"),
         nonzero_forbidden_args=("baseline_monthly",), seed="empty",
+        state_expectations=(
+            StateExpectation(
+                "alex_phase2_goals",
+                fields=(
+                    ("target_minor", 500000), ("baseline_monthly_minor", 0),
+                    ("status", "DRAFT"),
+                ),
+                count=1, delta=1,
+            ),
+        ),
     ),
     PromptContract(
         "p2.work.read", "phase2", "work",
@@ -569,6 +607,7 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         ),
         _fs("search_saved_items"), seed="core",
         forbidden_terms=("cobalt", "Vinyl Setup"),
+        forbid_private_fixture_leak=True,
         conversation_type="GROUP",
     ),
     PromptContract(
@@ -580,6 +619,7 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         ),
         _fs("search_saved_items"), seed="core",
         forbidden_terms=("cobalt", "Vinyl Setup"),
+        forbid_private_fixture_leak=True,
         actor="wife",
     ),
     PromptContract(
@@ -993,6 +1033,10 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
             "Switch the living room light off.",
         ),
         _fs("ha_control"), seed="empty", expected_terms=("off",),
+        ha_expectations=(
+            HAExpectation("light.living_room", "off"),
+            HAExpectation("climate.hall_ac", "on", unchanged=True),
+        ),
     ),
     PromptContract(
         "p2.report.export", "phase2", "reports",
@@ -1043,7 +1087,15 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
             "rember me tomorow 9am pay bill",
             "alex set remnder tmr 9 electricity",
         ),
-        _fs("create_reminder", "discover_alex_tools"), seed="empty",
+        _fs("create_reminder"), seed="empty",
+        state_expectations=(
+            StateExpectation(
+                "reminders",
+                where=(("source_message_id", "$MID"),),
+                fields=(("status", "OPEN"),),
+                count=1, delta=1,
+            ),
+        ),
     ),
     PromptContract(
         "p3.language.tamil", "phase3", "language",
@@ -1052,7 +1104,7 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
             "நாளைக்கு காலை 9 மணிக்கு மின்சார பில் கட்ட நினைவூட்டு",
             "என் சேமித்த விஷயங்களை காட்டு",
         ),
-        _fs("create_reminder", "search_saved_items", "discover_alex_tools"),
+        _fs("create_reminder", "search_saved_items"),
         seed="core",
     ),
     PromptContract(
@@ -1083,12 +1135,13 @@ CONVERSATION_CONTRACTS: tuple[ConversationContract, ...] = (
             ConversationStep(
                 "Send me the management receipt.",
                 _fs("get_receipt"),
-                expect_attachment=True,
+                expect_attachment=True, expect_attachment_of="management_receipt",
             ),
             ConversationStep(
                 "Send me that again.",
                 _fs("get_receipt"),
-                expect_attachment=True,
+                expect_attachment=True, expect_attachment_of="management_receipt",
+                quote_previous=True,
             ),
         ),
     ),
