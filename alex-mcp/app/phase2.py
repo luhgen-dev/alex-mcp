@@ -1181,9 +1181,9 @@ _WEEKDAYS = {
 def _natural_single_date(low: str, today: date) -> date | None:
     """Resolve one ordinary household date without model date arithmetic."""
     weekday = re.search(
-        r"\\b(?:(?:next|this|coming)\\s+)?"
+        r"\b(?:(?:next|this|coming)\s+)?"
         r"(monday|mon|tuesday|tues|tue|wednesday|wed|"
-        r"thursday|thurs|thur|thu|friday|fri|saturday|sat|sunday|sun)\\b",
+        r"thursday|thurs|thur|thu|friday|fri|saturday|sat|sunday|sun)\b",
         low,
     )
     if weekday:
@@ -1192,23 +1192,23 @@ def _natural_single_date(low: str, today: date) -> date | None:
         # not "Thursday of next week". Same-day weekday wording stays today
         # unless the user explicitly says "next".
         delta = (target - today.weekday()) % 7
-        if delta == 0 and re.search(r"\\bnext\\s+", low):
+        if delta == 0 and re.search(r"\bnext\s+", low):
             delta = 7
         return today + timedelta(days=delta)
 
     day_first = re.search(
-        r"\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+"
+        r"\b(\d{1,2})(?:st|nd|rd|th)?\s+"
         r"(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|"
         r"jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|"
         r"oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)"
-        r"(?:\\s+(\\d{4}))?\\b",
+        r"(?:\s+(\d{4}))?\b",
         low,
     )
     month_first = re.search(
-        r"\\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|"
+        r"\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|"
         r"jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|"
-        r"oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\\s+"
-        r"(\\d{1,2})(?:st|nd|rd|th)?(?:,)?(?:\\s+(\\d{4}))?\\b",
+        r"oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+"
+        r"(\d{1,2})(?:st|nd|rd|th)?(?:,)?(?:\s+(\d{4}))?\b",
         low,
     )
     if day_first:
@@ -1224,7 +1224,6 @@ def _natural_single_date(low: str, today: date) -> date | None:
     if not year_text and candidate < today:
         candidate = date(year + 1, month, int(day))
     return candidate
-
 
 def resolve_date_range(phrase: str, timezone_name: str,
                        reference_date: str | None = None) -> dict:
