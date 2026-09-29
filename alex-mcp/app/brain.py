@@ -409,12 +409,19 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         r"\b(?:expenses?|transactions?|spending|last few things .*paid|how many .*expenses?)\b",
         low,
     ))
+    finance_confirmation = bool(re.search(
+        r"\b(?:yes\s*,?\s*)?(?:approve|confirm)\b.*\b(?:pending expense|that one)\b"
+        r"|\bconfirm that one\b",
+        low,
+    ))
     if finance_correction:
         force |= {"query_finances", "correct_expense"}
         block.add("log_expense")
     elif finance_read and not explicit_expense_write:
         force.add("query_finances")
-        block |= {"log_expense", "correct_expense", "confirm_expense"}
+        block |= {"log_expense", "correct_expense"}
+        if not finance_confirmation:
+            block.add("confirm_expense")
 
     # Clear finance lifecycle wording gets a deterministic narrow route.
     if explicit_expense_write and (
@@ -428,11 +435,7 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         low,
     ):
         force.add("list_pending_expenses")
-    if re.search(
-        r"\b(?:yes\s*,?\s*)?(?:approve|confirm)\b.*\b(?:pending expense|that one)\b"
-        r"|\bconfirm that one\b",
-        low,
-    ):
+    if finance_confirmation:
         force |= {"list_pending_expenses", "confirm_expense"}
 
     # Captioned receipt/payment media are financial writes. The media itself
