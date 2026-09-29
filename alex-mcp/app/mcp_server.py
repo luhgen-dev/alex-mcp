@@ -370,14 +370,14 @@ def update_diary_event(diary_id: str, actor: Actor, status: str | None = None,
 @mcp.tool()
 def get_agenda(start_date: str, end_date: str, actor: Actor,
                include_plans: bool = True) -> dict:
-    """Combined read-only agenda: diary + reminders + own work roster + own leave + accessible plans."""
+    """Combined read-only agenda. Use returned start_local/end_local/due_local fields for user-facing times; stored *_utc fields are internal evidence."""
     return phase2.get_agenda(actor, start_date, end_date, include_plans)
 
 
 @mcp.tool()
 def get_agenda_range(phrase: str, actor: Actor, reference_date: str | None = None,
                      include_plans: bool = True) -> dict:
-    """Resolve today/tomorrow/this week/next week/next 7 days deterministically and return the combined agenda."""
+    """Resolve natural dates/ranges deterministically and return the combined agenda. Use returned local-time fields for replies."""
     return phase2.get_agenda_range(actor, phrase, reference_date, include_plans)
 
 
