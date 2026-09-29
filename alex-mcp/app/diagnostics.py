@@ -216,6 +216,36 @@ def system_health(actor, hours: int = 24) -> dict:
             """SELECT completed_at_utc FROM inbound_messages
                WHERE processing_state='COMPLETED' ORDER BY completed_at_utc DESC LIMIT 1"""
         ).fetchone()
+        voice_rows = conn.execute(
+            """SELECT transcript_meta_json,created_at_utc
+               FROM media_objects
+               WHERE media_type='AUDIO' AND created_at_utc>=?
+               ORDER BY created_at_utc DESC LIMIT 100""",
+            (cutoff,),
+        ).fetchall()
+        voice_meta = []
+        for voice_row in voice_rows:
+            try:
+                meta = json.loads(voice_row["transcript_meta_json"] or "{}")
+            except (TypeError, json.JSONDecodeError):
+                meta = {}
+            if isinstance(meta, dict):
+                voice_meta.append(meta)
+        voice_rescues = sum(
+            1 for meta in voice_meta
+            if meta.get("cloud_rescue")
+            or str(meta.get("mode") or "").endswith("_verify")
+        )
+        voice_low_confidence = 0
+        for meta in voice_meta:
+            candidates = meta.get("candidates") or []
+            chosen = str(meta.get("chosen") or "")
+            selected = next(
+                (row for row in candidates if str(row.get("label") or "") == chosen),
+                None,
+            )
+            if selected is not None and int(selected.get("score") or 0) < 2:
+                voice_low_confidence += 1
         selftest = _selftest()
         return {
             "window_hours": max(1, min(24 * 30, int(hours))),
@@ -248,6 +278,20 @@ def system_health(actor, hours: int = 24) -> dict:
                 "estimated_ai_cost_usd": round(float(usage["estimated_cost"] or 0), 6),
                 "last_completed_message_at": last_completed["completed_at_utc"] if last_completed else None,
                 "delivery_latency": delivery_latency_summary(hours),
+                "voice_transcription": {
+                    "audio_notes": len(voice_rows),
+                    "verified_or_rescued": voice_rescues,
+                    "low_confidence_selected": voice_low_confidence,
+                    "latest_mode": (
+                        voice_meta[0].get("mode") if voice_meta else None
+                    ),
+                    "latest_chosen_path": (
+                        voice_meta[0].get("chosen") if voice_meta else None
+                    ),
+                    "note": (
+                        "No transcript text is exposed here; only local ASR path/quality metadata."
+                    ),
+                },
             },
             "note": "These are observed local facts only. A cause must not be claimed unless supported by a recorded error.",
         }
