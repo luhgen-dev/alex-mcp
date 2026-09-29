@@ -360,13 +360,19 @@ def _contract_phrases(
 
 
 def _offline_failure_signature(item: dict[str, Any]) -> str:
+    """Stable regression key for an already-known failing behavioural case.
+
+    Deliberately excludes free-form detail text. If diagnostics wording improves
+    while the same contract/variant is still failing, CI should not treat that
+    as a brand-new product regression. A different contract, failure kind,
+    source, variant provenance or prompt still produces a new signature.
+    """
     basis = "|".join([
         str(item.get("contract") or ""),
         str(item.get("kind") or ""),
         str(item.get("source") or ""),
         str(item.get("variant_kind") or ""),
         str(item.get("prompt") or ""),
-        str(item.get("detail") or ""),
     ])
     digest = hashlib.sha256(basis.encode("utf-8")).hexdigest()[:16]
     return f"{item.get('contract','unknown')}:{item.get('kind','unknown')}:{digest}"
