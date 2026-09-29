@@ -1,0 +1,81 @@
+name: External Alex Lab
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      phase:
+        description: "Phase to exercise"
+        required: false
+        default: "all"
+        type: choice
+        options: [all, phase1, phase2, phase3]
+      gate:
+        description: "Fail the workflow if Alex behaviour is not clean"
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  lab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies
+        run: pip install -r alex-mcp/app/requirements.txt
+
+      - name: Run external Alex Lab
+        shell: bash
+        run: |
+          PHASE="${{ github.event.inputs.phase || 'all' }}"
+          GATE=""
+          if [ "${{ github.event.inputs.gate || 'false' }}" = "true" ]; then
+            GATE="--gate"
+          fi
+          python alex-mcp/app/alex_lab.py \
+            --phase "$PHASE" \
+            --report /tmp/alex-lab-report.json \
+            --packets /tmp/alex-lab-failures.jsonl \
+            $GATE
+
+      - name: Upload Alex Lab evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: alex-lab-evidence
+          path: |
+            /tmp/alex-lab-report.json
+            /tmp/alex-lab-failures.jsonl
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Print concise Alex Lab result
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path("/tmp/alex-lab-report.json")
+          if not path.exists():
+              raise SystemExit("Alex Lab report was not produced")
+          report = json.loads(path.read_text(encoding="utf-8"))
+          print(json.dumps({
+              "status": report.get("status"),
+              "summary": report.get("summary"),
+              "checks": [
+                  {
+                      "label": row.get("label"),
+                      "status": row.get("status"),
+                      "returncode": row.get("returncode"),
+                  }
+                  for row in report.get("checks", [])
+              ],
+          }, indent=2))
+          PY
