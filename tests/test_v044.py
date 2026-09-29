@@ -847,6 +847,7 @@ class FinalHardeningTests(V044Base):
             with open(path, "wb") as handle:
                 handle.write(b"voice-bytes")
             row = {
+                "outbound_id": "audio-outbound-1",
                 "conversation_id": DM,
                 "kind": "DOCUMENT",
                 "text_body": "",
@@ -856,6 +857,18 @@ class FinalHardeningTests(V044Base):
             payload = outbox._payload(row)
             self.assertEqual(payload["kind"], "audio")
             self.assertEqual(payload["mimetype"], "audio/ogg")
+            self.assertEqual(
+                payload["message_id"],
+                outbox._whatsapp_message_id("audio-outbound-1"),
+            )
+            self.assertEqual(
+                outbox._whatsapp_message_id("audio-outbound-1"),
+                outbox._whatsapp_message_id("audio-outbound-1"),
+            )
+            self.assertNotEqual(
+                outbox._whatsapp_message_id("audio-outbound-1"),
+                outbox._whatsapp_message_id("audio-outbound-2"),
+            )
         finally:
             os.unlink(path)
 
