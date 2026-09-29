@@ -1073,6 +1073,22 @@ def _resolve_expectation_value(value: Any, mid: str) -> Any:
         return "USR_HUSBAND"
     if value == "$WIFE":
         return "USR_WIFE"
+    if value in {"$SOURCE_MEDIA_ID", "$SOURCE_EVENT_ID"}:
+        import db
+        table, column = (
+            ("media_objects", "media_id")
+            if value == "$SOURCE_MEDIA_ID"
+            else ("financial_events", "event_id")
+        )
+        conn = db.connect()
+        try:
+            row = conn.execute(
+                f'SELECT "{column}" FROM "{table}" WHERE source_message_id=? ORDER BY rowid DESC LIMIT 1',
+                (mid,),
+            ).fetchone()
+            return row[column] if row else "__CERT_EXPECTATION_MISSING__"
+        finally:
+            conn.close()
     return value
 
 
