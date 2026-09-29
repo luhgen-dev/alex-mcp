@@ -355,9 +355,23 @@ def process(payload: dict) -> dict:
                 quoted_context=quoted_context,
             )
         )
+        # If a turn returned one exact durable object, bind that identity to
+        # both the text reply and the queued file. A later WhatsApp swipe-reply
+        # such as "send that again" can then resolve the exact receipt/saved
+        # item without guessing from prose or conversation history.
+        context_pairs = {
+            (str(item.get("context_kind")), str(item.get("context_id")))
+            for item in attachments
+            if item.get("context_kind") and item.get("context_id")
+        }
+        reply_context_kind = reply_context_id = None
+        if len(context_pairs) == 1:
+            reply_context_kind, reply_context_id = next(iter(context_pairs))
         db.queue_outbound(
             actor.conversation_id, "TEXT", text=reply,
             source_message_id=actor.source_message_id,
+            context_kind=reply_context_kind,
+            context_id=reply_context_id,
         )
         sent_paths: set[str] = set()
         for item in attachments:
@@ -371,6 +385,8 @@ def process(payload: dict) -> dict:
                     local_path=path,
                     mime_type=item.get("mime_type"),
                     source_message_id=actor.source_message_id,
+                    context_kind=item.get("context_kind"),
+                    context_id=item.get("context_id"),
                 )
         db.finish_inbound(actor.source_message_id, reply)
         return {"ok": True}
