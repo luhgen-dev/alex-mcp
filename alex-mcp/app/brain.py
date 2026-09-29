@@ -389,10 +389,10 @@ def _ha_action_requested(text: str) -> bool:
     low = (text or "").casefold()
     return bool(
         re.search(
-            rf"\b(?:turn|switch)\s+(?:the\s+)?{_HA_DEVICE}\s+(?:on|off)\b"
-            rf"|\b(?:turn|switch)\s+(?:on|off)\s+(?:the\s+)?{_HA_DEVICE}\b"
-            rf"|\btoggle\b.*\b{_HA_DEVICE}\b"
-            rf"|\bset\b.*\b{_HA_DEVICE}\b.*(?:%|degrees?|temperature)"
+            rf"\b(?:turn|switch)\s+(?:on|off)\b.{{0,60}}\b{_HA_DEVICE}\b"
+            rf"|\b(?:turn|switch)\b.{{0,60}}\b{_HA_DEVICE}\b.{{0,30}}\b(?:on|off)\b"
+            rf"|\btoggle\b.{{0,60}}\b{_HA_DEVICE}\b"
+            rf"|\bset\b.{{0,60}}\b{_HA_DEVICE}\b.*(?:%|degrees?|temperature)"
             rf"|\b(?:play|pause)\b.*\b(?:media player|speaker|tv)\b",
             low,
         )
