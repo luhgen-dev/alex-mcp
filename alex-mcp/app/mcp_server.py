@@ -150,6 +150,53 @@ def reminder_history(reminder_id: str, actor: Actor) -> dict:
 
 
 @mcp.tool()
+def create_task(title: str, actor: Actor, notes: str | None = None,
+                assignee: str = "unassigned", shared: bool = False,
+                due_local: str | None = None, plan_id: str | None = None,
+                reminder_id: str | None = None) -> dict:
+    """Create a first-class task with OPEN lifecycle state. due_local and plan_id are optional. A reminder is never created implicitly; reminder_id only links an already-created authorized reminder. DM defaults private, while group/shared tasks are family-visible."""
+    return phase2.create_task(
+        actor, title, notes, assignee, shared, due_local, plan_id, reminder_id
+    )
+
+
+@mcp.tool()
+def list_tasks(actor: Actor, status: str = "open",
+               plan_id: str | None = None, limit: int = 50) -> dict:
+    """List authorized tasks. status may be open, done, cancelled, or all; plan_id optionally narrows to one accessible plan."""
+    return phase2.list_tasks(actor, status, plan_id, limit)
+
+
+@mcp.tool()
+def update_task(task_id: str, actor: Actor, title: str | None = None,
+                notes: str | None = None, due_local: str | None = None,
+                assignee: str | None = None, plan_id: str | None = None,
+                reminder_id: str | None = None) -> dict:
+    """Edit task fields without changing task lifecycle state. Empty due_local/plan_id/reminder_id clears that optional link/value. This never creates a reminder or rewrites the linked plan."""
+    return phase2.update_task(
+        actor, task_id, title, notes, due_local, assignee, plan_id, reminder_id
+    )
+
+
+@mcp.tool()
+def complete_task(task_id: str, actor: Actor) -> dict:
+    """Mark an OPEN task DONE while preserving its lifecycle history and linked plan/reminder state."""
+    return phase2.complete_task(actor, task_id)
+
+
+@mcp.tool()
+def reopen_task(task_id: str, actor: Actor) -> dict:
+    """Explicitly reopen a DONE task back to OPEN while preserving lifecycle history."""
+    return phase2.reopen_task(actor, task_id)
+
+
+@mcp.tool()
+def cancel_task(task_id: str, actor: Actor) -> dict:
+    """Cancel a task without deleting or changing any linked plan or reminder."""
+    return phase2.cancel_task(actor, task_id)
+
+
+@mcp.tool()
 def set_goal(name: str, actor: Actor, target_amount: float | None = None,
              current_amount: float | None = None, currency: str = "MYR",
              target_date: str | None = None, notes: str | None = None,
