@@ -38,6 +38,21 @@ jobs:
       - name: Audit Phase 3 Tier-B behaviour certification catalog
         run: python alex-mcp/app/behavior_cert.py --mode catalog
 
+      - name: Exercise Tier-B offline certification runner
+        run: |
+          python alex-mcp/app/behavior_cert.py --mode offline --phase all --no-fail-exit \
+            --report /tmp/alex-behavior-offline.json >/tmp/alex-behavior-offline.log
+          python - <<'PY'
+          import json
+          report = json.load(open("/tmp/alex-behavior-offline.json", encoding="utf-8"))
+          print(json.dumps({
+              "status": report["status"],
+              "contracts": report["summary"]["contracts"],
+              "variant_checks_passed": report["summary"]["variant_checks_passed"],
+              "failures_found": report["summary"]["failures"],
+          }, indent=2))
+          PY
+
       - name: Run final parity architecture audit
         run: python alex-mcp/app/final_audit.py
 
