@@ -189,11 +189,13 @@ This is opt-in because it consumes provider tokens.
 
 Safety properties:
 - a new `TemporaryDirectory` becomes `ALEX_DATA_DIR`;
-- a temporary options file becomes `ALEX_OPTIONS_PATH`;
+- a temporary options file becomes `ALEX_OPTIONS_PATH` and is permission-hardened where supported;
+- each prompt variant and each multi-turn scenario receives its own fresh SQLite database inside that temporary directory, so one wording cannot contaminate another;
+- synthetic fixture integrity is checked before each core-seeded case;
 - only provider credentials are copied from the source options file;
 - credentials are never printed into the report;
 - the rig verifies the bound DB path is inside the temporary directory;
-- Home Assistant is replaced with an in-memory fake before behavioural calls;
+- Home Assistant is replaced with a freshly reset in-memory fake for every live case;
 - HA read/control/summary/report/automation reasoning is therefore testable
   internally without touching a physical device; the real physical effect remains
   a manual gate;
