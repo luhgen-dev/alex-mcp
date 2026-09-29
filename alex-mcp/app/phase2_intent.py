@@ -137,15 +137,27 @@ def classify_write_intent(text, *, has_media=False):
     if re.search(r"\b(?:add|put|save|record)\b.{0,25}\b(?:my|our|the)?\s*diary\b|"
                  r"\b(?:diary|calendar)\s+(?:entry|event)\b", low):
         explicit.append("DIARY")
-    if re.search(r"\b(?:log|record|add)\b.{0,25}\bexpense\b|"
-                 r"\b(?:log|record|add)\b.{0,25}\b(?:rm|myr|sgd)\s*\d|"
-                 r"\b(?:i\s+)?(?:spent|paid)\s+(?:RM|MYR|SGD|\d)", low, re.I):
-        explicit.append("EXPENSE")
-    if re.search(
+
+    cash_write = bool(re.search(
         r"\b(?:record|log)\b.{0,30}\b(?:ot|overtime|bonus|salary|refund|extra cash)\b",
         low,
-    ):
+    ))
+    if cash_write:
         explicit.append("CASH")
+
+    # A generic "record RM..." is an expense only when it is not clearly a
+    # variable-income/cash instruction. This prevents one cash message from
+    # advertising both ledger-expense and planning-cash writers.
+    if (
+        not cash_write
+        and re.search(
+            r"\b(?:log|record|add)\b.{0,25}\bexpense\b|"
+            r"\b(?:log|record|add)\b.{0,25}\b(?:rm|myr|sgd)\s*\d|"
+            r"\b(?:i\s+)?(?:spent|paid)\s+(?:RM|MYR|SGD|\d)",
+            low, re.I,
+        )
+    ):
+        explicit.append("EXPENSE")
     if re.search(r"\b(?:bill|payment|instalment|installment)\b.{0,25}"
                  r"\b(?:due|payable|need\s+to\s+pay)\b", low):
         explicit.append("OBLIGATION")
@@ -193,7 +205,9 @@ def classify_write_intent(text, *, has_media=False):
         r"\b(?:bought|purchase(?:d)?|cost\s+me|paid\s+for)\b", low)
         and has_money)
     diary_natural = bool(
-        has_date and re.search(
+        has_date
+        and not re.search(r"\b(?:expenses?|transactions?|payments?|spending)\b", low)
+        and re.search(
             r"\b(?:i|we)\s+(?:have|got|am\s+going\s+to|are\s+going\s+to|"
             r"will\s+attend|am\s+attending|are\s+attending)\b|"
             r"\b(?:wedding|birthday|party|appointment|service|meeting|flight|"
