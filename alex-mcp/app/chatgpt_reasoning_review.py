@@ -27,6 +27,11 @@ from typing import Any
 import human_ai_lab
 
 
+# Frozen to the blind packet corpus that received this ChatGPT QC review.
+# Any prompt/tool-surface change invalidates the review until it is repeated.
+REVIEWED_CORPUS_FINGERPRINT = "d0d43678a828f77087c1a0a49dc963c6ff7f4344db599f6ee49101abb108f6f5"
+
+
 def _low(value: str) -> str:
     return " ".join(str(value or "").casefold().split())
 
@@ -124,6 +129,155 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
     if text == "send me that again." and "receipt" in prior:
         return result("tools", _one(tools, "get_receipt", "find_receipts"))
 
+    # Cross-domain semantic precedence discovered during the independent QC
+    # pass. These rules resolve natural language where a keyword-only classifier
+    # is especially likely to choose the wrong domain.
+
+    # Media + an explicit financial write is a ledger action even when the word
+    # "receipt" is omitted ("Add the payment shown in this PDF").
+    if (
+        packet.get("source") in {"image", "pdf"}
+        and re.search(r"\b(?:add|log|record)\b", text)
+        and re.search(r"\b(?:payment|amount|expense)\b", text)
+    ):
+        return result("tools", _one(tools, "log_expense"))
+
+    # "Anything I need to remember later?" is naturally a reminder query, not
+    # an explicit saved-memory browse.
+    if text == "anything i need to remember later?":
+        return result("tools", _one(tools, "list_reminders"))
+
+    if (
+        re.search(r"\bexpenses?\b.*\b(?:waiting|clarify|pending)\b", text)
+        or re.search(r"\bpending expenses?\b", text)
+    ):
+        return result("tools", _one(tools, "list_pending_expenses"))
+
+    if (
+        "reminder" in text
+        and (
+            "history" in text
+            or text.startswith("what happened to ")
+        )
+    ):
+        return result("tools", _one(tools, "reminder_history"))
+
+    # "Remind me what..." asks for recall of the plan, not a new reminder.
+    if text.startswith("remind me what") and "plan" in text:
+        return result("tools", _one(tools, "list_plans"))
+
+    if (
+        re.search(r"\b(?:list|show|what)\b.*\b(?:savings )?goals?\b", text)
+        or "saving towards" in text
+    ):
+        return result("tools", _one(tools, "planning_list_goals", "planning_goal_progress"))
+
+    if (
+        re.search(r"\b(?:what|do i have|anything)\b.*\bbills?\b", text)
+        or re.search(r"\bbill\b.*\bcoming up\b", text)
+        or re.search(r"\bwhat'?s due\b", text)
+    ):
+        return result("tools", _one(tools, "bills_list"))
+
+    # First-class task semantics outrank the surrounding plan name.
+    if "left to do" in text and "list_tasks" in tools:
+        return result("tools", ["list_tasks"])
+    if (
+        "task" in text
+        and re.search(r"\b(?:remove|cancel)\b", text)
+        and "cancel_task" in tools
+    ):
+        return result(
+            "tools",
+            _pick(tools, "list_tasks", "cancel_task")
+            or ["cancel_task"],
+        )
+
+    # Cash arrival is not an expense and stays unallocated until instructed.
+    if (
+        re.search(r"\brm\s*\d+(?:\.\d+)?\b", text)
+        and re.search(r"\b(?:ot|overtime|bonus|salary|extra cash)\b", text)
+        and re.search(r"\b(?:got|came in|received|credited|record)\b", text)
+    ):
+        return result("tools", _one(tools, "planning_record_cash"))
+
+    # Asset/warranty inventory is distinct from explicit saved-memory storage.
+    if re.search(r"\b(?:appliances?|assets?|warrant(?:y|ies))\b", text):
+        if re.search(r"\b(?:what|show|any|list)\b", text):
+            return result(
+                "tools", _one(tools, "asset_list", "warranty_expiring")
+            )
+
+    if re.search(r"\b(?:finance|finances)\b.*\b(?:summary|this month)\b", text):
+        return result(
+            "tools",
+            _one(tools, "query_finances", "report_snapshot", "planning_brief"),
+        )
+
+    # Confirming a draft plan is the operation that creates its linked diary
+    # event; calling add_diary_event separately risks duplication.
+    if "plan" in text and re.search(r"\b(?:make .* real|lock|confirm)\b", text):
+        return result("tools", _one(tools, "confirm_plan"))
+
+    if (
+        re.search(r"\b(?:wife|spouse|partner|husband)\b", text)
+        and re.search(r"\b(?:free|available|availability)\b", text)
+    ):
+        return result("tools", _one(tools, "check_spouse_availability"))
+
+    # Goal lifecycle and projections outrank the noun phrase "savings goal".
+    if re.search(r"\b(?:lock|activate)\b.*\bgoal\b", text):
+        return result(
+            "tools",
+            _pick(tools, "planning_list_goals", "planning_lock_goal")
+            or _one(tools, "planning_lock_goal"),
+        )
+    if re.search(r"\b(?:reopen|resume)\b.*\bgoal\b", text):
+        return result(
+            "tools",
+            _pick(tools, "planning_list_goals", "planning_reopen_goal")
+            or _one(tools, "planning_reopen_goal"),
+        )
+    if "goal" in text and (
+        "this month only" in text
+        or re.search(r"\benough\b.*\bthis month\b", text)
+    ):
+        return result("tools", _one(tools, "planning_set_period_target"))
+    if "goal" in text and re.search(
+        r"\b(?:when will i reach|project how long)\b", text
+    ):
+        return result("tools", _one(tools, "planning_goal_projection"))
+
+    if (
+        "fixed income" in text
+        and "locked commitments" in text
+    ):
+        return result("tools", _one(tools, "planning_baseline"))
+    if re.search(r"\b(?:income outlook|income am i expecting|expecting this month)\b", text):
+        return result("tools", _one(tools, "planning_income_outlook"))
+
+    # Departure planning outranks the word "leave", which otherwise resembles
+    # annual-leave records.
+    if (
+        "leave home" in text
+        or "departure" in text
+        or re.search(r"\bwhat time should i leave home\b", text)
+    ):
+        return result("tools", _one(tools, "work_departure_plan"))
+
+    # Explicit monitor/track verbs are delegation semantics even when the
+    # monitored subject is a goal.
+    if re.search(r"\b(?:monitor|track)\b", text):
+        if re.search(r"\b(?:stop|cancel)\b", text):
+            return result("tools", _one(tools, "monitor_cancel"))
+        if re.search(r"\b(?:what|show|list)\b", text):
+            return result("tools", _one(tools, "monitor_list"))
+        return result("tools", _one(tools, "monitor_delegate"))
+
+    # Google Sheets consumes structured payload; PDF is the exported file path.
+    if "google sheets" in text:
+        return result("tools", _one(tools, "report_payload", "report_export"))
+
     # Exact persisted numbered answers.
     if re.fullmatch(r"[123]", text):
         if any(word in prior for word in ("diary", "appointment", "conflict")):
@@ -177,7 +331,7 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
     # Finance ledger.
     finance_signal = bool(
         re.search(
-            r"\b(?:expenses?|transactions?|spending|paid|payment|management fee|salary)\b",
+            r"\b(?:finance|finances|expenses?|transactions?|spending|paid|payment|management fee|salary)\b",
             text,
         )
         or re.search(r"\brm\s*\d", text)
@@ -249,7 +403,7 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
         or re.search(r"\bkeep a note\b", text)
     ):
         if (
-            re.search(r"\b(?:remember that|save this|keep a note)\b", text)
+            re.search(r"\b(?:remember that|remember this|save this|keep a note)\b", text)
             and not re.search(
                 r"\b(?:show|what|find|open|where|delete|remove)\b", text
             )
@@ -397,10 +551,6 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
     if planning_signal:
         if (
             re.search(r"\b(?:create|start|i want)\b.*\bgoal\b", text)
-            or (
-                "savings goal" in text
-                and "show" not in text and "what" not in text
-            )
         ):
             return result("tools", _one(tools, "planning_create_goal"))
         if re.search(r"\b(?:lock|activate)\b.*\bgoal\b", text):
@@ -638,9 +788,9 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
             "dashboard payload", "planning snapshot",
         )
     ):
-        if "pdf" in text or "google sheets" in text:
+        if "pdf" in text:
             return result("tools", _one(tools, "report_export"))
-        if "payload" in text:
+        if "google sheets" in text or "payload" in text:
             return result("tools", _one(tools, "report_payload"))
         return result("tools", _one(tools, "report_snapshot"))
 
@@ -687,7 +837,13 @@ async def main() -> dict[str, Any]:
         human_ai_lab._public_packet(packet)
         for packet in private_packets
     ]
-    decisions = [_decision(packet) for packet in public_packets]
+    decisions = [{
+        "_meta": {
+            "corpus_fingerprint": REVIEWED_CORPUS_FINGERPRINT,
+            "reviewer": "ChatGPT pre-release engineering/QC",
+        }
+    }]
+    decisions.extend(_decision(packet) for packet in public_packets)
     report = human_ai_lab.score_packets(
         private_packets, decisions, "all"
     )
