@@ -32,6 +32,7 @@ import media  # noqa: E402
 import services  # noqa: E402
 import brain  # noqa: E402
 import ingress  # noqa: E402
+import outbox  # noqa: E402
 from context import with_action_key  # noqa: E402
 
 HUSBAND = "+60111111111"
@@ -216,6 +217,60 @@ class TurnTests(V044Base):
         label, transcript = media._choose_voice_transcript(candidates)
         self.assertIn(label, {"local_auto", "local_en"})
         self.assertIn("shopping list", transcript)
+
+    def test_auto_stt_never_uses_cloud_without_explicit_rescue_opt_in(self):
+        fake_settings = SimpleNamespace(
+            stt_provider="auto", whisper_model="base",
+            cloud_stt_rescue_enabled=False,
+            gemini_api_key="configured-chat-key",
+            openai_api_key="", xai_api_key="",
+            gemini_model="gemini-test",
+        )
+
+        def fake_local(_path, _model, language="auto"):
+            return {
+                "auto": "add toothpaste to my shopping list",
+                "en": "what time is my appointment",
+                "ta": "நாளைக்கு வானிலை எப்படி",
+            }[language]
+
+        with patch.object(media, "get_media", return_value={
+            "media_id": "voice-cloud-off", "media_type": "AUDIO",
+            "local_path": "/tmp/fake.ogg", "mime_type": "audio/ogg",
+        }), patch.object(media, "get_settings", return_value=fake_settings), \
+                patch.object(media, "_local_whisper", side_effect=fake_local), \
+                patch.object(media, "_gemini_stt") as cloud:
+            with self.assertRaises(media.VoiceTranscriptionUncertain):
+                media.transcribe_audio("voice-cloud-off")
+            cloud.assert_not_called()
+
+    def test_auto_stt_cloud_rescue_requires_opt_in_and_can_resolve_disagreement(self):
+        fake_settings = SimpleNamespace(
+            stt_provider="auto", whisper_model="base",
+            cloud_stt_rescue_enabled=True,
+            gemini_api_key="configured-chat-key",
+            openai_api_key="", xai_api_key="",
+            gemini_model="gemini-test",
+        )
+
+        def fake_local(_path, _model, language="auto"):
+            return {
+                "auto": "add toothpaste to my shopping list",
+                "en": "what time is my appointment",
+                "ta": "நாளைக்கு வானிலை எப்படி",
+            }[language]
+
+        with patch.object(media, "get_media", return_value={
+            "media_id": "voice-cloud-on", "media_type": "AUDIO",
+            "local_path": "/tmp/fake.ogg", "mime_type": "audio/ogg",
+        }), patch.object(media, "get_settings", return_value=fake_settings), \
+                patch.object(media, "_local_whisper", side_effect=fake_local), \
+                patch.object(media, "_gemini_stt", return_value="add toothpaste to my shopping list") as cloud:
+            self.assertEqual(
+                media.transcribe_audio("voice-cloud-on"),
+                "add toothpaste to my shopping list",
+            )
+            cloud.assert_called_once()
 
     def test_voice_note_never_paired_with_earlier_text(self):
         """Smoke: unrelated vinyl picture appeared during a reminder voice note."""
@@ -751,6 +806,59 @@ class TurnLoopTests(V044Base):
 
 
 class FinalHardeningTests(V044Base):
+    def test_uncertain_voice_is_completed_with_safe_retry_prompt_not_reprocessed(self):
+        payload = {
+            "message_id": "voice-uncertain-ingress",
+            "conversation_id": DM,
+            "conversation_type": "DIRECT_DM",
+            "sender_phone": HUSBAND,
+            "text": "",
+            "audio_data": base64.b64encode(b"voice").decode(),
+            "audio_mime_type": "audio/ogg",
+        }
+        with patch.object(
+            media, "process_payload_media",
+            side_effect=media.VoiceTranscriptionUncertain("uncertain"),
+        ), patch.object(brain, "respond") as responder:
+            result = ingress.process(payload)
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["voice_uncertain"])
+        responder.assert_not_called()
+        conn = db.connect()
+        try:
+            inbound = conn.execute(
+                "SELECT processing_state,cached_response FROM inbound_messages WHERE message_id=?",
+                ("voice-uncertain-ingress",),
+            ).fetchone()
+            outbound = conn.execute(
+                "SELECT text_body FROM outbound_messages WHERE source_message_id=?",
+                ("voice-uncertain-ingress",),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(inbound["processing_state"], "COMPLETED")
+        self.assertIn("couldn't understand", inbound["cached_response"])
+        self.assertIn("couldn't understand", outbound["text_body"])
+
+    def test_audio_attachment_is_emitted_as_whatsapp_audio_payload(self):
+        fd, path = tempfile.mkstemp(suffix=".ogg")
+        os.close(fd)
+        try:
+            with open(path, "wb") as handle:
+                handle.write(b"voice-bytes")
+            row = {
+                "conversation_id": DM,
+                "kind": "DOCUMENT",
+                "text_body": "",
+                "local_path": path,
+                "mime_type": "audio/ogg",
+            }
+            payload = outbox._payload(row)
+            self.assertEqual(payload["kind"], "audio")
+            self.assertEqual(payload["mimetype"], "audio/ogg")
+        finally:
+            os.unlink(path)
+
     def test_semantic_discovery_cannot_resurrect_negated_home_control(self):
         specs = asyncio.run(brain._discover_tool_specs(
             "turn off the hall light",
