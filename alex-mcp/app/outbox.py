@@ -51,10 +51,16 @@ def _whatsapp_message_id(outbound_id: str) -> str:
 def _payload(row) -> dict:
     kind = row["kind"]
     message_id = _whatsapp_message_id(row["outbound_id"])
+    reply_to = (
+        row["source_message_id"]
+        if row["source_message_id"] and not row["context_kind"]
+        else None
+    )
     if kind == "TEXT":
         return {
             "to": row["conversation_id"], "kind": "text",
             "text": row["text_body"] or "", "message_id": message_id,
+            "reply_to_message_id": reply_to,
         }
     path = row["local_path"]
     if not path or not os.path.isfile(path):
@@ -74,6 +80,7 @@ def _payload(row) -> dict:
         "filename": os.path.basename(path),
         "caption": row["text_body"] or "",
         "message_id": message_id,
+        "reply_to_message_id": reply_to,
     }
 
 
