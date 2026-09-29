@@ -365,6 +365,26 @@ def main() -> dict:
             "human-AI reasoning packets are blind to certification answer labels",
         )
 
+    chatgpt_review = APP / "chatgpt_reasoning_review.py"
+    require(
+        chatgpt_review.exists(),
+        "independent ChatGPT reasoning QC is shipped with the certification rig",
+    )
+    if chatgpt_review.exists():
+        review_text = chatgpt_review.read_text(encoding="utf-8")
+        require(
+            "REVIEWED_CORPUS_FINGERPRINT" in review_text
+            and "_public_packet" in review_text
+            and "independent_public_packet_only" in review_text,
+            "ChatGPT reasoning QC is blind and fingerprint-bound",
+        )
+    lab_text = (APP / "alex_lab.py").read_text(encoding="utf-8")
+    require(
+        "run_chatgpt_reasoning_review" in lab_text
+        and '"chatgpt_reasoning_review"' in lab_text,
+        "External Alex Lab gates on the independent ChatGPT reasoning review",
+    )
+
     # Version metadata must never drift between the HA card, server and image.
     server_text = (APP / "mcp_server.py").read_text(encoding="utf-8")
     config_version = re.search(r'^version:\s*"([^"]+)"', config_text, re.M)
