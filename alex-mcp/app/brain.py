@@ -1650,9 +1650,16 @@ def _strip_internal(data: dict) -> tuple[dict, list[dict]]:
     return clean, attachments if isinstance(attachments, list) else []
 
 
-def _action_key(actor: ActorContext, tool_name: str, args: dict, occurrence: int) -> str:
+def _action_key(actor: ActorContext, tool_name: str, args: dict, occurrence: int = 1) -> str:
+    """Stable per-message/tool/arguments idempotency key.
+
+    The model may accidentally emit the exact same tool call twice in one turn
+    or repeat it after a tool round. Including an occurrence counter would turn
+    those retries into different mutations. Exact duplicate calls from one
+    inbound WhatsApp message therefore share one key and collapse safely.
+    """
     canonical = json.dumps(args, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    raw = f"{actor.source_message_id}|{tool_name}|{canonical}|{occurrence}"
+    raw = f"{actor.source_message_id}|{tool_name}|{canonical}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
