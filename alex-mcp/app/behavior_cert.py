@@ -286,7 +286,7 @@ def _adversarial_variants(phrase: str) -> tuple[str, ...]:
     out: list[str] = []
 
     # Natural phone-typing form: lowercase, no terminal punctuation.
-    compact = re.sub(r"[.!?,;:]+", "", original).casefold()
+    # Preserve punctuation inside values (especially 12.50); only strip terminal prose punctuation.\n    compact = re.sub(r"[!?;,.:]+$", "", original).casefold()
     compact = re.sub(r"\\s+", " ", compact).strip()
     if compact and compact != original:
         out.append(compact)
