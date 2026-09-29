@@ -65,7 +65,7 @@ Short commands are guarded against auto-language drift. Alex can compare automat
 
 With `stt_provider=auto`, cloud STT rescue is attempted only when **`cloud_stt_rescue_enabled=true`** and local decoding is still not trustworthy. Enabling it means the complete voice-note audio may be sent to a configured STT-capable provider (Gemini first, then OpenAI/xAI as configured). Leave it off to keep Auto voice transcription entirely local. Alex records the chosen ASR path and confidence metadata locally for diagnostics without exposing transcript text in health reports.
 
-The default local model is `base`. It downloads automatically on the first voice note and is then kept under persistent `/data/models`. First use can therefore take longer than later voice notes. You can select `small` in Configuration later if you want to trade more storage/RAM for harder multilingual transcription.
+The default local model is `base`. It downloads automatically on the first voice note, is verified against the published whisper.cpp checksum, and is then kept under persistent `/data/models`. A corrupt or unexpected cached model is rejected and re-downloaded. First use can therefore take longer than later voice notes. You can select `small` in Configuration later if you want to trade more storage/RAM for harder multilingual transcription.
 
 Alex replies in text only.
 
