@@ -348,15 +348,140 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
 
 
 def _cap_tool_names(selected: set[str], user_text: str,
-                    media_context: list[str] | None = None) -> set[str]:
+                    media_context: list[str] | None = None,
+                    required: set[str] | None = None) -> set[str]:
+    """Keep the provider surface small without dropping a high-confidence route.
+
+    Broad domain expansion is deliberately generous so novel wording still has
+    a recovery path.  When a deterministic language rule has identified the
+    primary capability, reserve that tool before filling the remaining slots by
+    normal priority.  This prevents unrelated same-domain tools from evicting
+    the actual requested action under the six-tool budget.
+    """
+    required = (required or set()) & selected
     if len(selected) <= TOOL_EXPOSURE_MAX:
         return selected
     has_media = bool(media_context)
-    ranked = sorted(
-        selected,
+    required_ranked = sorted(
+        required,
         key=lambda name: (-_tool_priority(name, user_text, has_media), name),
     )
-    return set(ranked[:TOOL_EXPOSURE_MAX])
+    remaining = sorted(
+        selected - required,
+        key=lambda name: (-_tool_priority(name, user_text, has_media), name),
+    )
+    return set((required_ranked + remaining)[:TOOL_EXPOSURE_MAX])
+
+
+def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str], set[str]]:
+    """Return deterministic force/block hints for unambiguous natural language.
+
+    These are intentionally narrow.  They do not execute anything; they only
+    decide which MCP tools the model is allowed to see.  Force protects the
+    primary capability from the exposure cap.  Block removes a mutation only
+    when the wording itself is clearly a read/recall request.
+    """
+    low = (text or "").casefold()
+    force: set[str] = set()
+    block: set[str] = set()
+
+    money = bool(re.search(r"\\b(?:rm|myr|sgd)\\s*\\d|\\b\\d+(?:[.,]\\d+)?\\s*(?:rm|myr|sgd)\\b", low))
+    explicit_expense_write = bool(
+        (money and re.search(r"\\b(?:i\\s+)?(?:spent|paid|bought)\\b", low))
+        or re.search(r"\\b(?:log|record|add)\\b.*\\b(?:expense|rm|myr|sgd)\\b", low)
+        or re.search(r"\\b(?:correct|fix|wrong amount|actually)\\b", low)
+    )
+    finance_read = bool(re.search(
+        r"\\b(?:expenses?|transactions?|spending|last few things .*paid|how many .*expenses?)\\b",
+        low,
+    ))
+    if finance_read and not explicit_expense_write:
+        force.add("query_finances")
+        block |= {"log_expense", "correct_expense", "confirm_expense"}
+
+    # Captioned payment documents are financial writes, not report-export asks.
+    if re.search(r"\\b(?:add|log|record)\\b.*\\b(?:payment|receipt)\\b.*\\b(?:pdf|document|image)\\b", low):
+        force.add("log_expense")
+
+    plan_read = bool(
+        re.search(r"\\b(?:show|what|remind me what)\\b.*\\b(?:plan|draft|planned|decided)\\b", low)
+        or re.search(r"\\bwhat (?:do we have planned|have we decided)\\b", low)
+    )
+    plan_create = bool(
+        re.search(r"\\b(?:start|create|brainstorm)\\b.*\\b(?:plan|draft)\\b", low)
+        or re.search(r"\\blet'?s (?:start )?planning\\b", low)
+    )
+    if plan_read and not plan_create:
+        force.add("list_plans")
+        block.add("create_plan")
+        if re.search(r"\\bremind me what\\b", low):
+            block.add("create_reminder")
+    if plan_create:
+        force.add("create_plan")
+        block.add("add_diary_event")
+
+    diary_read = bool(re.search(
+        r"\\b(?:what information|show|what do i have|what have i got|when is|when's)\\b.*"
+        r"\\b(?:appointment|meeting|event|calendar|agenda)\\b",
+        low,
+    ))
+    if diary_read:
+        force.add("get_agenda_range")
+        block.add("add_diary_event")
+
+    if re.search(r"\\b(?:put|allocate|channel)\\b.*\\b(?:stash|cash pool|buffer)\\b", low):
+        force.add("planning_allocate_cash_to_pool")
+    if money and re.search(
+        r"\\b(?:got|received|credited|came in|record)\\b.*\\b(?:ot|overtime|bonus|salary|refund|extra cash)\\b"
+        r"|\\b(?:ot|overtime|bonus|salary|refund|extra cash)\\b.*\\b(?:came in|received|credited)\\b",
+        low,
+    ):
+        force.add("planning_record_cash")
+    if re.search(r"\\b(?:what'?s|what is|how much).*\\bleft\\b.*\\b(?:ot|overtime|cash|money)\\b", low):
+        force.add("planning_cash_status")
+
+    if re.search(r"\\b(?:which goal.*refer to|match .*alias|alias .*goal|match .*account.*goal)\\b", low):
+        force.add("planning_match_goal_alias")
+    if re.search(
+        r"\\b(?:contribution|contributed)\\b.*\\b(?:goal|saving|holiday)\\b"
+        r"|\\bput\\b.*\\b(?:goal|savings?)\\b",
+        low,
+    ):
+        force.add("planning_record_goal_contribution")
+    if re.search(r"\\b(?:what am i saving towards|show my goals|list .*goals|what goals)\\b", low):
+        force.add("planning_list_goals")
+    if re.search(r"\\b(?:compare .*salary|salary .*different|normal salary|configured salary)\\b", low):
+        force.add("planning_compare_salary")
+    if re.search(r"\\b(?:safe monthly baseline|fixed income .*locked commitments|locked commitments.*fixed income)\\b", low):
+        force.add("planning_baseline")
+
+    if re.search(r"\\b(?:monitor|track)\\b.*\\b(?:goal|payment|bill|subject)\\b", low):
+        force.add("monitor_delegate")
+    if re.search(r"\\b(?:stop monitoring|cancel .*tracking|stop tracking)\\b", low):
+        force.discard("monitor_delegate")
+        force.add("monitor_cancel")
+
+    if re.search(
+        r"\\b(?:i worked .*\\bot\\b|worked .*overtime|shift .*swapp(?:ed)?|took mc|record .*mc)\\b",
+        low,
+    ):
+        force.add("work_record_event")
+
+    # Frequent phone-typing reminder misspellings still have a deterministic,
+    # safe action path instead of being crowded out by bill tools.
+    if re.search(r"\\b(?:rember|remnder|remidn|remindn|remidr)\\b", low):
+        force.add("create_reminder")
+
+    if re.search(r"[\\u0B80-\\u0BFF]", text or ""):
+        # Tamil intent hints. Unknown Tamil still falls through to the broad
+        # multilingual safety valve below; known reminder/memory wording stays
+        # narrow enough to survive the tool cap.
+        if "நினைவூட்டு" in text or "நினைவூட்ட" in text:
+            force.add("create_reminder")
+        if re.search(r"(?:சேமித்த|சேமிக்க|சேமி)", text or "") and "காட்டு" in (text or ""):
+            force.add("search_saved_items")
+
+    return force, block
 
 
 def _select_tool_names(user_text: str, media_context: list[str] | None = None) -> set[str]:
@@ -408,17 +533,22 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
         if re.search(r"warrant|manual|serial|appliance|product", low):
             selected |= ASSET_TOOLS
 
-    if re.search(r"\b(?:spent|spend|expense|paid|payment|transaction|receipt|duitnow|bank|how much|total|breakdown|refund)\b", low):
+    if re.search(r"\b(?:spent|spend|expenses?|paid|payments?|transactions?|receipt|duitnow|bank|how much|how many|total|breakdown|refund|spending)\b", low):
+        money_signal = bool(re.search(
+            r"\b(?:rm|myr|sgd)\s*\d|\b\d+(?:[.,]\d+)?\s*(?:rm|myr|sgd)\b",
+            low,
+        ))
         write_money = bool(
             re.search(r"\b(?:log|record|add)\b.*\b(?:rm|myr|sgd|expense)\b", low)
-            or re.search(r"\bi\s+(?:spent|paid|bought)\b", low)
+            or (money_signal and re.search(r"\b(?:i\s+)?(?:spent|paid|bought)\b", low))
             or re.search(r"\b(?:correct|fix|actually|wrong amount)\b", low)
+            or re.search(r"\b(?:add|log|record)\b.*\b(?:payment|receipt)\b.*\b(?:pdf|document|image)\b", low)
         )
         selected |= CORE_FINANCE if write_money else FINANCE_READ_TOOLS
     if re.search(r"\b(?:bill|bills|due|overdue|instalment|installment|obligation|tnb|water bill|electricity|unifi|insurance|road tax)\b", low):
         selected |= BILL_TOOLS | {"query_finances","find_receipts"}
-    if re.search(r"\b(?:goal|goals|saving|savings|budget|cashflow|cash flow|money plan|baseline|stash|allowance|salary|income|bonus|extra cash|allocate|allocation|reserve|reserves)\b", low):
-        selected |= PLANNING_TOOLS | BILL_TOOLS
+    if re.search(r"\b(?:goal|goals|saving|savings|budget|cashflow|cash flow|money plan|baseline|stash|allowance|salary|income|bonus|extra cash|allocate|allocation|reserve|reserves|ot money|overtime pay)\b", low):
+        selected |= PLANNING_TOOLS
     if re.search(r"\b(?:roster|shift|working|work schedule|work today|work tomorrow|leave home.*work|departure|overtime|\bot\b|mc|medical leave|annual leave|leave balance|leave entries|leave records|swap shift)\b", low):
         selected |= WORK_TOOLS | {"set_leave_record","list_leave_records"}
     if re.search(r"\b(?:holiday|vacation|trip|plan|draft)\b", low):
@@ -429,7 +559,7 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
         selected |= {"check_my_availability", "get_agenda_range", "get_agenda"}
     if re.search(r"\b(?:wife|husband|spouse|partner)\b.*\b(?:free|available|availability)\b", low):
         selected |= {"check_spouse_availability", "get_agenda_range"}
-    if re.search(r"\b(?:remind|reminder|reminders|notify|due today|later|snooze|acknowledge)\b", low):
+    if re.search(r"\b(?:remind|reminder|reminders|notify|rember|remnder|remidn|remindn|due today|later|snooze|acknowledge)\b", low):
         selected |= REMINDER_TOOLS
     if re.search(
         r"\b(?:shopping list|grocery list|add .*list|buy|bought|purchased|"
@@ -460,20 +590,26 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
             selected.add("ha_control")
     if re.search(r"\b(?:why didn't|why did not|health|diagnostic|fail|failed|failure|failing|error|offline|didn't reply|did not reply)\b", low):
         selected |= DIAGNOSTIC_TOOLS
-    if re.search(r"\b(?:monitor|monitoring|track this|tracking|watch this|proactive|follow this)\b", low):
+    if re.search(r"\b(?:monitor|monitoring|track|tracking|watch this|proactive|follow this)\b", low):
         selected |= MONITOR_TOOLS
-    if re.search(r"\b(?:report|snapshot|export|pdf|csv|google sheets|dashboard|tv payload)\b", low):
+    if re.search(r"\b(?:report|snapshot|export|csv|google sheets|dashboard|tv payload)\b|\bpdf\b.*\breport\b|\breport\b.*\bpdf\b", low):
         selected |= REPORT_TOOLS
     if re.search(r"\b(?:calculate|calculator|minus|plus|subtract|add up|times|multiplied|divided)\b", low):
         selected.add("calculate")
 
-    # Tamil script: favor coverage over a false-negative router. It is still a
-    # much smaller catalog than advertising every MCP tool on every turn.
+    # Tamil script: use deterministic intent hints when known; otherwise favor
+    # broad read/continuation coverage over a false-negative router.
     if re.search(r"[\u0B80-\u0BFF]", text):
-        selected |= (
-            CORE_FINANCE | REMINDER_TOOLS | MEMORY_TOOLS | SHOPPING_TOOLS
-            | {"get_agenda","work_schedule","planning_brief","bills_list"}
-        )
+        if "நினைவூட்டு" in text or "நினைவூட்ட" in text:
+            selected |= REMINDER_TOOLS
+        elif re.search(r"(?:சேமித்த|சேமிக்க|சேமி)", text) and "காட்டு" in text:
+            selected |= MEMORY_TOOLS
+        else:
+            selected |= (
+                FINANCE_READ_TOOLS | {"list_reminders", "list_shopping_items",
+                "search_saved_items", "get_agenda", "work_schedule",
+                "planning_brief", "bills_list"}
+            )
 
     # An explicit "save/remember this" attachment is memory-only unless the
     # user also explicitly asked for a financial write. This closes the old
@@ -488,7 +624,11 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
     # Do not advertise superseded simple planning tools when the advanced
     # proven engine is available.
     selected -= LEGACY_SIMPLE_PLANNING
-    return _cap_tool_names(selected, text, media_context)
+
+    forced, blocked = _routing_refinements(text, has_media=has_media)
+    selected |= forced
+    selected -= blocked
+    return _cap_tool_names(selected, text, media_context, required=forced)
 
 
 async def _tool_specs_for_names(wanted: set[str]) -> list[dict]:
