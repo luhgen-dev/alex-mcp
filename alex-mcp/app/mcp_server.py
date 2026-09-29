@@ -131,9 +131,10 @@ def create_reminder(task: str, due_local: str, actor: Actor,
 
 
 @mcp.tool()
-def list_reminders(actor: Actor, include_completed: bool = False, limit: int = 20) -> dict:
-    """List upcoming/open reminders from spaces this user is allowed to see."""
-    return services.list_reminders(actor, include_completed, limit)
+def list_reminders(actor: Actor, include_completed: bool = False, limit: int = 20,
+                   when: str | None = None) -> dict:
+    """List authorized reminders. For date-specific wording pass the user's phrase in 'when' (for example today, tomorrow, next Thursday, or 1 October 2026); Alex resolves it deterministically and returns due_local."""
+    return services.list_reminders(actor, include_completed, limit, when)
 
 
 @mcp.tool()
@@ -423,14 +424,16 @@ def recent_failures(actor: Actor, hours: int = 24, limit: int = 20) -> dict:
 
 
 @mcp.tool()
-def planning_create_goal(name: str, target_amount: float, baseline_monthly: float, actor: Actor,
+def planning_create_goal(name: str, target_amount: float, actor: Actor,
+                         baseline_monthly: float | None = None,
                          currency: str = "MYR", target_date: str | None = None,
-                         status: str = "ACTIVE", shared: bool = False) -> dict:
-    """Create a goal with a recurring baseline. One-off contributions never silently change this baseline."""
+                         shared: bool = False) -> dict:
+    """Create an UNLOCKED/DRAFT goal. baseline_monthly is optional; omit it when the owner has not chosen a monthly contribution. Activation is a separate planning_lock_goal action and must require explicit owner instruction."""
     return phase2_finance.create_goal(
-        name, target_amount, baseline_monthly, actor.phone, actor.conversation_type,
+        name, target_amount, 0 if baseline_monthly is None else baseline_monthly,
+        actor.phone, actor.conversation_type,
         "family" if shared or actor.conversation_type == "GROUP" else "private",
-        currency, target_date, status,
+        currency, target_date, "DRAFT",
     )
 
 
@@ -644,21 +647,20 @@ def planning_list_goals(actor: Actor) -> dict:
 @mcp.tool()
 def bills_list(actor: Actor, period: str | None = None,
                as_of_date: str | None = None) -> dict:
-    """List expected/paid/partial/deferred/unconfirmed/confirmed-unpaid recurring obligations. as_of_date is YYYY-MM-DD; if omitted, current local date is used."""
-    from datetime import datetime
-    from zoneinfo import ZoneInfo
+    """List expected/paid/partial/deferred/unconfirmed/confirmed-unpaid recurring obligations. If period is omitted Alex materializes the current local month before reading it."""
+    import runtime_clock
 
-    if period:
-        phase2_finance.ensure_obligation_instances(
-            period, actor.phone, actor.conversation_type, "all"
-        )
-    effective_date = as_of_date or datetime.now(ZoneInfo(actor.timezone)).date().isoformat()
+    effective_date = as_of_date or runtime_clock.today(actor.timezone).isoformat()
+    effective_period = period or effective_date[:7]
+    phase2_finance.ensure_obligation_instances(
+        effective_period, actor.phone, actor.conversation_type, "all"
+    )
     phase2_finance.refresh_obligation_states(
         effective_date, actor.phone, actor.conversation_type, "all"
     )
     return {"obligations": phase2_finance.list_obligations(
-        actor.phone, actor.conversation_type, "all", period
-    ), "as_of_date": effective_date}
+        actor.phone, actor.conversation_type, "all", effective_period
+    ), "as_of_date": effective_date, "period": effective_period}
 
 
 @mcp.tool()
