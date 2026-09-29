@@ -112,7 +112,7 @@ artifact is preserved while repairs are in progress.
 
 `.github/workflows/alex-lab.yml` runs on pull requests and can also be started
 manually. It uploads the deterministic evidence, blind human-AI reasoning
-corpus, packet-integrity report, fresh real-AI snapshot score, and deterministic
+corpus, packet-integrity report, real-AI evidence score, and deterministic
 reasoning regression report as the `alex-lab-evidence` artifact for 14 days.
 
 The workflow intentionally does not contain provider secrets. This keeps the default
