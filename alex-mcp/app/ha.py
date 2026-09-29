@@ -101,9 +101,15 @@ def draft_automation(name: str, trigger_yaml: str, action_yaml: str,
 
 
 def find_entities(query: str, domain: str | None = None, limit: int = 20) -> dict:
-    needle = (query or "").strip().lower()
-    if not needle:
-        raise ValueError("entity search query is required")
+    def normalize(value: str) -> str:
+        text = (value or "").strip().lower().replace("_", " ")
+        text = re.sub(r"\bair\s*condition(?:er|ing)?\b|\baircon\b", "ac", text)
+        return " ".join(re.findall(r"[a-z0-9]+", text))
+
+    needle = normalize(query)
+    if not needle and not domain:
+        raise ValueError("entity search query or domain is required")
+    wanted = needle.split()
     rows = _request("GET", "/states") or []
     matches = []
     for row in rows:
@@ -112,7 +118,8 @@ def find_entities(query: str, domain: str | None = None, limit: int = 20) -> dic
         if domain and entity_domain != domain:
             continue
         friendly = str((row.get("attributes") or {}).get("friendly_name", ""))
-        if needle not in entity_id.lower() and needle not in friendly.lower():
+        haystack = normalize(entity_id + " " + friendly)
+        if wanted and not all(term in haystack.split() or term in haystack for term in wanted):
             continue
         matches.append({
             "entity_id": entity_id,
