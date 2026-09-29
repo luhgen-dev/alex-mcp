@@ -523,7 +523,7 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
             "Can you see whether the hall AC is on?",
         ),
         _fs("ha_get_state", "ha_find_entities"), forbidden=_fs("ha_control"),
-        seed="empty", live=False,
+        seed="empty", expected_terms=("on",),
     ),
     PromptContract(
         "p2.report.read", "phase2", "reports",
@@ -885,7 +885,7 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
             "What's on at home right now?",
             "Give me a home status summary.",
         ),
-        _fs("ha_home_summary"), seed="empty", live=False,
+        _fs("ha_home_summary"), seed="empty", expected_terms=("hall",),
     ),
     PromptContract(
         "p2.home.report", "phase2", "home_assistant",
@@ -894,7 +894,7 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
             "Send me the home status card.",
             "Generate a picture of the current home status.",
         ),
-        _fs("ha_home_report"), seed="empty", live=False,
+        _fs("ha_home_report"), seed="empty", expect_attachment=True,
     ),
     PromptContract(
         "p2.home.automation", "phase2", "home_assistant",
@@ -903,7 +903,7 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
             "Draft an automation to turn on the hall light at sunset.",
             "Prepare a Home Assistant automation for the hall light; don't deploy it.",
         ),
-        _fs("ha_draft_automation"), seed="empty", live=False,
+        _fs("ha_draft_automation"), seed="empty", expected_terms=("draft",),
     ),
     PromptContract(
         "p2.home.control", "phase2", "home_assistant",
@@ -912,7 +912,7 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
             "Turn off the living room light.",
             "Switch the living room light off.",
         ),
-        _fs("ha_control"), seed="empty", live=False,
+        _fs("ha_control"), seed="empty", expected_terms=("off",),
     ),
     PromptContract(
         "p2.report.export", "phase2", "reports",
@@ -953,7 +953,7 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
             "I am not asking you to switch the AC off.",
         ),
         _fs("ha_find_entities", "ha_get_state"), forbidden=_fs("ha_control"),
-        seed="empty", live=False,
+        seed="empty",
     ),
     PromptContract(
         "p3.typo.reminder", "phase3", "routing",
