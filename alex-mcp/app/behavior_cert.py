@@ -1089,8 +1089,13 @@ def _parser() -> argparse.ArgumentParser:
         "--mode", choices=("catalog", "offline", "live"), default="offline",
         help="catalog audits the rig, offline checks routing, live uses a real provider in a sandbox",
     )
+    known_phases = sorted(
+        {c.phase for c in PROMPT_CONTRACTS}
+        | {c.phase for c in CONVERSATION_CONTRACTS}
+        | {g.phase for g in MANUAL_GATES}
+    )
     p.add_argument(
-        "--phase", choices=("all", "phase1", "phase2", "phase3"), default="all",
+        "--phase", choices=("all", *known_phases), default="all",
     )
     p.add_argument(
         "--provider", choices=("auto", "gemini", "grok", "openai"), default="auto",
