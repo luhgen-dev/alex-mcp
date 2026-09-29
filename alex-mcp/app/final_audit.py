@@ -372,24 +372,42 @@ def main() -> dict:
             "human-AI reasoning packets are blind to certification answer labels",
         )
 
-    chatgpt_review = APP / "chatgpt_reasoning_review.py"
+    real_ai_snapshot = APP / "real_ai_snapshot.json"
+    real_ai_review = APP / "real_ai_snapshot_review.py"
     require(
-        chatgpt_review.exists(),
-        "independent ChatGPT reasoning QC is shipped with the certification rig",
+        real_ai_snapshot.exists() and real_ai_review.exists(),
+        "fresh external-model reasoning snapshot and scorer are shipped",
     )
-    if chatgpt_review.exists():
-        review_text = chatgpt_review.read_text(encoding="utf-8")
+    if real_ai_snapshot.exists() and real_ai_review.exists():
+        snapshot = json.loads(real_ai_snapshot.read_text(encoding="utf-8"))
+        real_review_text = real_ai_review.read_text(encoding="utf-8")
+        require(
+            bool(snapshot.get("corpus_fingerprint"))
+            and int(snapshot.get("decision_count") or 0) > 0
+            and "_corpus_fingerprint" in real_review_text
+            and "corpus mismatch" in real_review_text,
+            "real-AI snapshot is non-empty and fails closed on corpus drift",
+        )
+
+    regression_oracle = APP / "chatgpt_reasoning_review.py"
+    require(
+        regression_oracle.exists(),
+        "deterministic reasoning regression oracle is shipped separately",
+    )
+    if regression_oracle.exists():
+        review_text = regression_oracle.read_text(encoding="utf-8")
         require(
             "REVIEWED_CORPUS_FINGERPRINT" in review_text
-            and "_public_packet" in review_text
-            and "independent_public_packet_only" in review_text,
-            "ChatGPT reasoning QC is blind and fingerprint-bound",
+            and "deterministic regression oracle" in review_text
+            and "not an independent model test" in review_text,
+            "deterministic oracle is fingerprint-bound and not mislabeled as independent",
         )
     lab_text = (APP / "alex_lab.py").read_text(encoding="utf-8")
     require(
-        "run_chatgpt_reasoning_review" in lab_text
-        and '"chatgpt_reasoning_review"' in lab_text,
-        "External Alex Lab gates on the independent ChatGPT reasoning review",
+        "run_real_ai_snapshot_review" in lab_text
+        and "run_chatgpt_reasoning_review" in lab_text
+        and '"real_ai_reasoning_review"' in lab_text,
+        "External Alex Lab gates real-AI evidence separately from regression oracle",
     )
 
     # Version metadata must never drift between the HA card, server and image.
