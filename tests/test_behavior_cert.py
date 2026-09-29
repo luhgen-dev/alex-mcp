@@ -53,6 +53,15 @@ class BehaviourRigCatalogTests(unittest.TestCase):
         self.assertIn("p2.tasks.create", ids)
         self.assertIn("p2.tasks.read", ids)
 
+    def test_task_lifecycle_definition_matches_owner_policy(self):
+        spec = capabilities.TASK_LIFECYCLE_SPEC
+        self.assertEqual(spec["states"], frozenset({"OPEN", "DONE", "CANCELLED"}))
+        self.assertIn("task.reopen", spec["required_actions"])
+        self.assertIn("task.cancel", spec["required_actions"])
+        self.assertEqual(spec["fields"]["due_at"], "optional")
+        self.assertIn("optional", spec["fields"]["assignee"])
+        self.assertEqual(spec["fields"]["reminder_id"], "optional-separate-link")
+
     def test_goal_owner_agency_is_contractually_required(self):
         contract = next(c for c in contracts.PROMPT_CONTRACTS if c.id == "p2.goals.agency")
         self.assertIn("goal.create", contract.required_any)
