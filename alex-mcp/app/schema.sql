@@ -107,6 +107,7 @@ CREATE TABLE IF NOT EXISTS media_objects (
     local_path TEXT NOT NULL,
     ocr_text TEXT,
     transcript_text TEXT,
+    transcript_meta_json TEXT,
     created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(source_message_id, media_type),
     FOREIGN KEY(source_message_id) REFERENCES inbound_messages(message_id)
