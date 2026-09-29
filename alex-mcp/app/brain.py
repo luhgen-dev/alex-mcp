@@ -814,6 +814,118 @@ async def _tool_specs_for_names(wanted: set[str]) -> list[dict]:
         return [_tool_to_openai(t) for t in result.tools if t.name in wanted]
 
 
+_SEMANTIC_STOPWORDS = {
+    "a", "an", "and", "the", "to", "for", "of", "my", "our", "me", "i", "we",
+    "please", "alex", "can", "could", "would", "you", "this", "that", "it", "some",
+    "something", "with", "from", "on", "in", "at", "is", "are", "be", "do", "did",
+}
+
+_SEMANTIC_EXPANSIONS = {
+    "shopping": {"grocery", "groceries", "buy", "bought", "purchase", "purchased", "list"},
+    "reminder": {"remind", "notify", "notification", "alarm"},
+    "finance": {"expense", "expenses", "spent", "paid", "payment", "transaction", "money", "ledger"},
+    "receipt": {"invoice", "payment", "reference", "document"},
+    "memory": {"save", "saved", "remember", "note", "recall"},
+    "task": {"todo", "to-do", "done", "complete", "finish"},
+    "diary": {"calendar", "appointment", "meeting", "event", "agenda"},
+    "plan": {"trip", "holiday", "vacation", "draft", "brainstorm"},
+    "goal": {"saving", "savings", "target", "contribution"},
+    "cash": {"stash", "pool", "bonus", "salary", "overtime", "ot", "allocate"},
+    "bill": {"electricity", "tnb", "obligation", "due", "unpaid"},
+    "work": {"shift", "roster", "leave", "mc", "overtime", "departure"},
+    "asset": {"warranty", "appliance", "manual", "serial", "device"},
+    "home": {"light", "fan", "switch", "climate", "ac", "thermostat", "entity"},
+    "monitor": {"track", "watch", "follow"},
+    "report": {"summary", "snapshot", "export", "dashboard", "pdf"},
+}
+
+_SEMANTIC_MUTATION_WORDS = {
+    "add", "create", "record", "log", "change", "update", "remove", "delete",
+    "mark", "complete", "finish", "reopen", "cancel", "move", "reschedule",
+    "allocate", "lock", "activate", "defer", "turn", "switch", "set", "save",
+    "remember", "share", "confirm", "approve",
+}
+
+
+def _semantic_terms(value: str) -> set[str]:
+    raw = set(re.findall(r"[a-z0-9]+", (value or "").casefold()))
+    terms = {word for word in raw if word not in _SEMANTIC_STOPWORDS and len(word) > 1}
+    expanded = set(terms)
+    for key, synonyms in _SEMANTIC_EXPANSIONS.items():
+        if key in terms or terms & synonyms:
+            expanded.add(key)
+            expanded |= synonyms
+    return expanded
+
+
+def _semantic_mutation_requested(intent: str) -> bool:
+    return bool(_semantic_terms(intent) & _SEMANTIC_MUTATION_WORDS)
+
+
+async def _discover_tool_specs(intent: str, media_context: list[str] | None = None) -> list[dict]:
+    """v0.5 semantic rescue for the model-facing discovery façade.
+
+    Direct deterministic routing remains first because it encodes owner safety
+    policy.  When novel wording survives that gate, the normalized intent from
+    the reasoning model is compared with the real MCP tool names/descriptions.
+    Read-only candidates may be added freely; mutators are added semantically
+    only when the normalized intent contains an explicit action verb.
+    """
+    direct = _select_tool_names(intent, media_context)
+    direct_specs = await _tool_specs_for_names(direct)
+    by_name = {
+        spec["function"]["name"]: spec
+        for spec in direct_specs
+        if spec.get("function", {}).get("name")
+    }
+    if len(by_name) >= TOOL_EXPOSURE_MAX - 1:
+        ranked = sorted(
+            by_name.values(),
+            key=lambda spec: -_tool_priority(
+                spec["function"]["name"], intent, bool(media_context)
+            ),
+        )
+        return ranked[:TOOL_EXPOSURE_MAX - 1]
+
+    terms = _semantic_terms(intent)
+    if not terms:
+        return list(by_name.values())[:TOOL_EXPOSURE_MAX - 1]
+    allow_mutation = _semantic_mutation_requested(intent)
+
+    async with Client(mcp) as client:
+        result = await client.list_tools()
+
+    scored: list[tuple[int, str, dict]] = []
+    for tool in result.tools:
+        name = str(tool.name)
+        if name in by_name or name in LEGACY_SIMPLE_PLANNING:
+            continue
+        if _is_mutating_tool(name) and not allow_mutation:
+            continue
+        hay = _semantic_terms(name.replace("_", " ") + " " + (tool.description or ""))
+        overlap = terms & hay
+        if not overlap:
+            continue
+        # Name matches are stronger than prose-description matches.
+        name_terms = _semantic_terms(name.replace("_", " "))
+        score = len(overlap) + 2 * len(terms & name_terms)
+        if score > 0:
+            scored.append((score, name, _tool_to_openai(tool)))
+
+    for _, name, spec in sorted(scored, key=lambda row: (-row[0], row[1])):
+        by_name[name] = spec
+        if len(by_name) >= TOOL_EXPOSURE_MAX - 1:
+            break
+
+    ranked = sorted(
+        by_name.values(),
+        key=lambda spec: -_tool_priority(
+            spec["function"]["name"], intent, bool(media_context)
+        ),
+    )
+    return ranked[:TOOL_EXPOSURE_MAX - 1]
+
+
 def _pure_chat(user_text: str, media_context: list[str] | None = None) -> bool:
     if media_context:
         return False
@@ -1906,8 +2018,7 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
             if name == DISCOVERY_TOOL_NAME:
                 trace["tools_called"].append(name)
                 normalized = str(args.get("intent") or "").strip()
-                discovered = _select_tool_names(normalized, media_context)
-                discovered_specs = await _tool_specs_for_names(discovered)
+                discovered_specs = await _discover_tool_specs(normalized, media_context)
                 tools = discovered_specs[:TOOL_EXPOSURE_MAX - 1] + [DISCOVERY_TOOL]
                 trace["exposed_tools"] = sorted(set(trace["exposed_tools"]) | {
                     x["function"]["name"] for x in tools
@@ -1922,6 +2033,7 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                             x["function"]["name"]
                             for x in discovered_specs[:TOOL_EXPOSURE_MAX - 1]
                         ],
+                        "semantic_rescue": True,
                     }, ensure_ascii=False, separators=(",", ":")),
                 })
                 continue
