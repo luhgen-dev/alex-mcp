@@ -52,8 +52,10 @@ CAPABILITY_TO_TOOLS: dict[str, frozenset[str]] = {
     # Tasks are intentionally owner-required but currently unimplemented.
     "task.create": frozenset({"create_task", "add_task", "task_create"}),
     "task.read": frozenset({"list_tasks", "task_list"}),
-    "task.update": frozenset({"update_task", "task_update"}),
-    "task.complete": frozenset({"complete_task", "task_complete"}),
+    "task.update": frozenset({"update_task", "task_update", "task_change"}),
+    "task.complete": frozenset({"complete_task", "task_complete", "task_change"}),
+    "task.reopen": frozenset({"reopen_task", "task_reopen", "task_change"}),
+    "task.cancel": frozenset({"cancel_task", "task_cancel", "task_change"}),
 
     # Goals / planning / cash
     "goal.create": frozenset({"planning_create_goal"}),
@@ -141,10 +143,22 @@ TOOL_COVERAGE_EXEMPTIONS = frozenset({
 })
 
 
-TOOL_TO_CAPABILITY: dict[str, str] = {}
+TOOL_TO_CAPABILITIES: dict[str, frozenset[str]] = {}
+_tool_caps: dict[str, set[str]] = {}
 for _capability, _tools in CAPABILITY_TO_TOOLS.items():
     for _tool in _tools:
-        TOOL_TO_CAPABILITY[_tool] = _capability
+        _tool_caps.setdefault(_tool, set()).add(_capability)
+TOOL_TO_CAPABILITIES = {
+    tool: frozenset(capabilities)
+    for tool, capabilities in _tool_caps.items()
+}
+# Backward-compatible primary classification for simple callers. Behaviour
+# evaluation uses TOOL_TO_CAPABILITIES so one facade tool may implement several
+# stable owner capabilities.
+TOOL_TO_CAPABILITY: dict[str, str] = {
+    tool: sorted(capabilities)[0]
+    for tool, capabilities in TOOL_TO_CAPABILITIES.items()
+}
 
 
 def normalize_capability(token: str) -> str:
@@ -156,8 +170,14 @@ def normalize_capability(token: str) -> str:
     value = str(token or "").strip()
     if value in CAPABILITY_TO_TOOLS:
         return value
-    if value in TOOL_TO_CAPABILITY:
-        return TOOL_TO_CAPABILITY[value]
+    if value in TOOL_TO_CAPABILITIES:
+        capabilities = TOOL_TO_CAPABILITIES[value]
+        if len(capabilities) == 1:
+            return next(iter(capabilities))
+        raise ValueError(
+            f"Tool alias {value!r} maps to multiple capabilities; "
+            "new contracts must use a semantic capability name"
+        )
     # Unknown task aliases are intentionally mapped to the owner-required
     # lifecycle instead of being treated as a mysterious tool name.
     if value in {"create_task", "add_task", "task_create"}:
@@ -168,6 +188,10 @@ def normalize_capability(token: str) -> str:
         return "task.update"
     if value in {"complete_task", "task_complete"}:
         return "task.complete"
+    if value in {"reopen_task", "task_reopen"}:
+        return "task.reopen"
+    if value in {"cancel_task", "task_cancel"}:
+        return "task.cancel"
     raise ValueError(f"Unclassified behaviour capability/tool token: {value}")
 
 
@@ -183,11 +207,10 @@ def tools_for_capabilities(capabilities: Iterable[str]) -> frozenset[str]:
 
 
 def capabilities_for_tools(tools: Iterable[str]) -> frozenset[str]:
-    return frozenset(
-        TOOL_TO_CAPABILITY[tool]
-        for tool in tools
-        if tool in TOOL_TO_CAPABILITY
-    )
+    capabilities: set[str] = set()
+    for tool in tools:
+        capabilities.update(TOOL_TO_CAPABILITIES.get(tool, ()))
+    return frozenset(capabilities)
 
 
 def implementation_exists(capability: str, available_tools: set[str]) -> bool:
