@@ -1513,7 +1513,6 @@ CONVERSATION_CONTRACTS: tuple[ConversationContract, ...] = (
             ConversationStep(
                 "Is the hall AC on?",
                 _fs("ha_find_entities", "ha_get_state"),
-                forbidden=_fs("ha_control"),
             ),
             ConversationStep(
                 "Turn it off.",
