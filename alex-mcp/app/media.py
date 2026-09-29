@@ -496,16 +496,68 @@ def transcribe_audio(media_id: str) -> str:
     requested = settings.stt_provider
     last_error = None
 
-    # Explicit cloud STT selection is itself an owner opt-in. Auto mode is
-    # local-first and may send audio to cloud only when the separate
-    # cloud_stt_rescue_enabled switch is true.
+    # Explicit cloud STT selection is itself an owner opt-in. Selecting local
+    # Whisper, however, must not reduce mutation safety compared with Auto:
+    # mutating commands still require agreement from independent local decodes.
+    if requested == "local_whisper":
+        local_candidates: list[tuple[str, str]] = []
+        for lang, label in (("auto", "local_auto"), ("en", "local_en"), ("ta", "local_ta")):
+            try:
+                candidate = _local_whisper(
+                    row["local_path"], settings.whisper_model, lang
+                )
+                if candidate:
+                    local_candidates.append((label, candidate))
+            except Exception as exc:
+                last_error = exc
+        label, best = _choose_voice_transcript(local_candidates)
+        if best and _local_voice_confident(label, best, local_candidates):
+            _update_transcript(
+                media_id, best,
+                _transcript_meta(
+                    local_candidates, label,
+                    mode="explicit_local_verified",
+                    confidence=(
+                        "high_local"
+                        if _voice_is_mutation_like(best)
+                        else "accepted_local"
+                    ),
+                ),
+            )
+            return best
+        if (
+            best
+            and not _voice_is_mutation_like(best)
+            and not _VOICE_DRIFT_RE.search(best)
+        ):
+            _update_transcript(
+                media_id, best,
+                _transcript_meta(
+                    local_candidates, label,
+                    mode="explicit_local_readonly_fallback",
+                    confidence="low_readonly",
+                ),
+            )
+            return best
+        if local_candidates:
+            _update_transcript(
+                media_id, best or "",
+                _transcript_meta(
+                    local_candidates, label,
+                    mode="explicit_local_uncertain",
+                    confidence="uncertain",
+                ),
+            )
+            raise VoiceTranscriptionUncertain(
+                "I could not transcribe that voice command confidently enough to act."
+            )
+        if last_error:
+            raise RuntimeError(f"Voice transcription failed: {last_error}")
+        raise RuntimeError("Local Whisper produced no transcript")
+
     if requested != "auto":
         try:
-            if requested == "local_whisper":
-                text = _local_whisper(
-                    row["local_path"], settings.whisper_model, "auto"
-                )
-            elif requested == "xai" and settings.xai_api_key:
+            if requested == "xai" and settings.xai_api_key:
                 text = _xai_stt(
                     row["local_path"], row["mime_type"], settings.xai_api_key
                 )
@@ -525,8 +577,8 @@ def transcribe_audio(media_id: str) -> str:
                     media_id, text,
                     _transcript_meta(
                         [(requested, text)], requested,
-                        mode="explicit",
-                        cloud_rescue=requested != "local_whisper",
+                        mode="explicit_cloud",
+                        cloud_rescue=True,
                         confidence="explicit_provider",
                     ),
                 )
