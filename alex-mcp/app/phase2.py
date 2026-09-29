@@ -50,6 +50,14 @@ def _local_date_from_utc(value: str, tz_name: str) -> str:
     return datetime.fromisoformat(value).astimezone(ZoneInfo(tz_name)).date().isoformat()
 
 
+def _local_iso_from_utc(value: str | None, tz_name: str) -> str | None:
+    if not value:
+        return None
+    return datetime.fromisoformat(str(value).replace("Z", "+00:00")).astimezone(
+        ZoneInfo(tz_name)
+    ).isoformat()
+
+
 def _space(actor: ActorContext, shared: bool) -> str:
     space = "FAMILY_SHARED" if shared or actor.conversation_type == "GROUP" else actor.private_space
     if space not in actor.allowed_spaces:
@@ -1296,7 +1304,21 @@ def get_agenda(actor: ActorContext, start_date: str, end_date: str,
                     ORDER BY COALESCE(start_at_utc,created_at_utc)""",
                 list(actor.allowed_spaces) + [start_utc, end_utc],
             ).fetchall()]
+        # Provider-facing agenda rows expose canonical local timestamps so the
+        # model never has to mentally convert stored UTC values.
+        for row in diary:
+            row["start_local"] = _local_iso_from_utc(row.get("start_at_utc"), actor.timezone)
+            row["end_local"] = _local_iso_from_utc(row.get("end_at_utc"), actor.timezone)
+        for row in reminders:
+            row["due_local"] = _local_iso_from_utc(row.get("start_at_utc"), actor.timezone)
+        for row in roster:
+            row["start_local"] = _local_iso_from_utc(row.get("start_at_utc"), actor.timezone)
+            row["end_local"] = _local_iso_from_utc(row.get("end_at_utc"), actor.timezone)
+        for row in plans:
+            row["start_local"] = _local_iso_from_utc(row.get("start_at_utc"), actor.timezone)
+            row["end_local"] = _local_iso_from_utc(row.get("end_at_utc"), actor.timezone)
         return {"start_date": start_date, "end_date": end_date,
+                "timezone": actor.timezone,
                 "diary": diary, "reminders": reminders, "roster": roster,
                 "leave": leave, "plans": plans}
     finally:
