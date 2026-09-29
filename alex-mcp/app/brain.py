@@ -278,7 +278,7 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
         "work_ot_status": (r"ot|overtime", 108),
         "work_leave_balance": (r"leave balance|annual leave|medical leave", 110),
         "work_departure_plan": (r"leave home|depart|alarm|travel time", 115),
-        "planning_create_goal": (r"create.*goal|new goal|save for", 115),
+        "planning_create_goal": (r"create.*goal|new goal|save for|savings?\s+goal|goal.*target", 128),
         "planning_lock_goal": (r"lock.*goal|activate.*goal|confirm.*goal", 122),
         "planning_reopen_goal": (r"reopen.*goal|resume.*goal", 120),
         "planning_set_period_target": (r"this month|this period|only this month|enough this month", 124),
@@ -298,27 +298,27 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
         "planning_income_outlook": (r"income.*outlook|expected.*income|salary.*month|income.*month", 112),
         "planning_goal_projection": (r"goal.*projection|when.*reach|how long.*goal", 112),
         "planning_cashflow": (r"cashflow|cash flow|budget|forecast", 110),
-        "planning_brief": (r"plan my money|planning|budget", 100),
+        "planning_brief": (r"plan my money|money plan|planning|budget|financial plan", 118),
         "planning_list_goals": (r"goals|goal list", 95),
         "bills_list": (r"bill|bills|due|obligation|tnb|electricity|water|unifi", 108),
         "bills_match_payment": (r"payment|paid|receipt|match", 115),
         "bills_record_payment": (r"record.*payment|paid.*bill|bill.*paid", 112),
         "bills_defer": (r"defer|postpone|new due", 120),
         "bills_confirm_unpaid": (r"unpaid|didn't pay|did not pay", 120),
-        "ha_find_entities": (r"light|switch|fan|climate|thermostat|media player|home assistant", 110),
+        "ha_find_entities": (r"light|switch|fan|climate|thermostat|media player|home assistant|\bac\b|air conditioner", 120),
         "ha_get_state": (r"state|is .* on|status", 108),
         "ha_control": (r"turn on|turn off|toggle|set .*%|set temperature|play|pause", 125),
-        "ha_home_summary": (r"home status|house status|what's on|whats on", 112),
+        "ha_home_summary": (r"home status|house status|what's on|whats on|at home|home right now", 125),
         "ha_home_report": (r"home.*report|house.*report|status.*image|status.*card", 120),
         "ha_draft_automation": (r"automation|automate|when .* then", 112),
-        "asset_create": (r"warranty|asset|appliance|serial|bought.*device", 105),
+        "asset_create": (r"(?:save|add|register|bought).*?(?:asset|appliance|device)|serial", 112),
         "asset_link_document": (r"warranty|manual|receipt.*asset|link.*document", 108),
-        "asset_list": (r"assets|appliances|devices", 95),
+        "asset_list": (r"assets|appliances|devices", 128),
         "warranty_expiring": (r"warranty.*expir|expiring.*warranty", 118),
         "system_health": (r"health|diagnostic|status.*alex|working", 110),
         "recent_failures": (r"failed|failure|error|didn't reply|did not reply|why", 115),
         "monitor_delegate": (r"monitor|track|watch|keep an eye|follow", 112),
-        "monitor_list": (r"what.*monitor|list.*monitor|tracking", 95),
+        "monitor_list": (r"what.*monitor|list.*monitor|monitoring|tracking", 118),
         "monitor_cancel": (r"stop.*monitor|cancel.*monitor|stop tracking", 120),
         "report_snapshot": (r"report|summary|snapshot|overview", 105),
         "report_export": (r"pdf|csv|json|export|send.*report|report.*file", 122),
@@ -389,6 +389,8 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
         selected |= CORE_FINANCE
     if "OBLIGATION" in intents:
         selected |= BILL_TOOLS | {"query_finances"}
+    if "CASH" in intents:
+        selected |= PLANNING_TOOLS
     if "SAVED_MEMORY" in intents:
         selected |= MEMORY_TOOLS
 
@@ -401,11 +403,11 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
         selected |= CORE_FINANCE
     if re.search(r"\b(?:bill|bills|due|overdue|instalment|installment|obligation|tnb|water bill|electricity|unifi|insurance|road tax)\b", low):
         selected |= BILL_TOOLS | {"query_finances","find_receipts"}
-    if re.search(r"\b(?:goal|goals|saving|savings|budget|cashflow|cash flow|stash|allowance|salary|income|bonus|extra cash|allocate|allocation|reserve)\b", low):
+    if re.search(r"\b(?:goal|goals|saving|savings|budget|cashflow|cash flow|money plan|baseline|stash|allowance|salary|income|bonus|extra cash|allocate|allocation|reserve|reserves)\b", low):
         selected |= PLANNING_TOOLS | BILL_TOOLS
     if re.search(r"\b(?:roster|shift|working|work schedule|overtime|\bot\b|mc|medical leave|annual leave|leave balance|swap shift)\b", low):
         selected |= WORK_TOOLS | {"set_leave_record","list_leave_records"}
-    if re.search(r"\b(?:diary|agenda|appointment|wedding|party|meeting|event|schedule|holiday|vacation|trip|plan)\b", low):
+    if re.search(r"\b(?:diary|agenda|appointment|wedding|party|meeting|event|schedule|holiday|vacation|trip|plan|draft)\b", low):
         selected |= DIARY_TOOLS
     if re.search(r"\b(?:remind|reminder|reminders|notify|due today|later|snooze|acknowledge)\b", low):
         selected |= REMINDER_TOOLS
@@ -419,7 +421,7 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
         selected |= MEMORY_TOOLS
     if re.search(r"\b(?:warranty|warranties|manual|serial number|appliance|asset)\b", low):
         selected |= ASSET_TOOLS | MEMORY_TOOLS
-    if re.search(r"\b(?:light|switch|fan|thermostat|climate|media player|home assistant|turn on|turn off|state of)\b", low):
+    if re.search(r"\b(?:light|switch|fan|thermostat|climate|media player|home assistant|ac|air conditioner|home status|at home|turn on|turn off|state of)\b", low):
         selected |= HOME_TOOLS
         if re.search(
             r"\b(?:do not|don't|dont|not actually|without actually|how would|"
@@ -427,12 +429,14 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
             low,
         ):
             selected.discard("ha_control")
-    if re.search(r"\b(?:why didn't|why did not|health|diagnostic|failed|failure|error|offline|didn't reply|did not reply)\b", low):
+    if re.search(r"\b(?:why didn't|why did not|health|diagnostic|fail|failed|failure|failing|error|offline|didn't reply|did not reply)\b", low):
         selected |= DIAGNOSTIC_TOOLS
-    if re.search(r"\b(?:monitor|track this|watch this|proactive|follow this)\b", low):
+    if re.search(r"\b(?:monitor|monitoring|track this|tracking|watch this|proactive|follow this)\b", low):
         selected |= MONITOR_TOOLS
     if re.search(r"\b(?:report|snapshot|export|pdf|csv|google sheets|dashboard|tv payload)\b", low):
         selected |= REPORT_TOOLS
+    if re.search(r"\b(?:calculate|calculator|minus|plus|subtract|add up|times|multiplied|divided)\b", low):
+        selected.add("calculate")
 
     # Tamil script: favor coverage over a false-negative router. It is still a
     # much smaller catalog than advertising every MCP tool on every turn.
