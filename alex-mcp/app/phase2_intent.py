@@ -138,8 +138,14 @@ def classify_write_intent(text, *, has_media=False):
                  r"\b(?:diary|calendar)\s+(?:entry|event)\b", low):
         explicit.append("DIARY")
     if re.search(r"\b(?:log|record|add)\b.{0,25}\bexpense\b|"
-                 r"\b(?:i\s+)?(?:spent|paid)\s+(?:RM|MYR|SGD|\d)", low):
+                 r"\b(?:log|record|add)\b.{0,25}\b(?:rm|myr|sgd)\s*\d|"
+                 r"\b(?:i\s+)?(?:spent|paid)\s+(?:RM|MYR|SGD|\d)", low, re.I):
         explicit.append("EXPENSE")
+    if re.search(
+        r"\b(?:record|log)\b.{0,30}\b(?:ot|overtime|bonus|salary|refund|extra cash)\b",
+        low,
+    ):
+        explicit.append("CASH")
     if re.search(r"\b(?:bill|payment|instalment|installment)\b.{0,25}"
                  r"\b(?:due|payable|need\s+to\s+pay)\b", low):
         explicit.append("OBLIGATION")
@@ -170,6 +176,18 @@ def classify_write_intent(text, *, has_media=False):
 
     has_date = _date_signal(raw)
     has_money = _money_signal(raw)
+
+    cash_natural = bool(
+        has_money
+        and re.search(r"\b(?:got|received|credited|earned|paid\s+me)\b", low)
+        and re.search(r"\b(?:ot|overtime|bonus|salary|refund|extra cash)\b", low)
+    )
+    if cash_natural:
+        return {
+            "status": "resolved", "intent": "CASH",
+            "intents": ["CASH"], "basis": "CLEAR_CASH_INFLOW",
+            "requires_clarification": False,
+        }
 
     expense_natural = bool(re.search(
         r"\b(?:bought|purchase(?:d)?|cost\s+me|paid\s+for)\b", low)
