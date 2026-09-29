@@ -181,6 +181,67 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         _fs("search_saved_items", "get_saved_item"), seed="core",
     ),
 
+
+    PromptContract(
+        "p1.finance.correct", "phase1", "finance",
+        "Natural corrections must expose append-only correction rather than a second expense write.",
+        (
+            "Actually, change that parking expense to RM8.50.",
+            "Correct my last parking payment; it was RM8.50.",
+            "The parking amount was wrong. Fix it to RM8.50.",
+        ),
+        _fs("correct_expense"), forbidden=_fs("log_expense"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p1.memory.save", "phase1", "memory",
+        "Explicit remember/save wording must expose saved-memory creation.",
+        (
+            "Remember that my locker code word is cobalt.",
+            "Save this for me: locker code word cobalt.",
+            "Keep a note that the code word is cobalt.",
+        ),
+        _fs("save_item"), seed="empty",
+    ),
+    PromptContract(
+        "p1.memory.remove", "phase1", "memory",
+        "Explicitly removing saved memory must expose removal, not delete unrelated data.",
+        (
+            "Remove that saved cobalt note.",
+            "Delete the code-word note I asked you to remember.",
+        ),
+        _fs("remove_saved_item"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p1.reminder.update", "phase1", "reminders",
+        "Reminder completion/cancellation/reschedule wording must expose reminder update.",
+        (
+            "Mark my dentist reminder complete.",
+            "Cancel the dentist reminder.",
+            "Move my dentist reminder to 3pm.",
+        ),
+        _fs("update_reminder"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p1.reminder.history", "phase1", "reminders",
+        "Reminder lifecycle/history must be inspectable.",
+        (
+            "What happened to my dentist reminder?",
+            "Show the history of that reminder.",
+        ),
+        _fs("reminder_history"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p1.shopping.update", "phase1", "shopping",
+        "Remove/bought wording must expose shopping mutation rather than creating a second item.",
+        (
+            "Remove bananas from the family shopping list.",
+            "Mark the bread as bought.",
+            "We already bought the diapers; mark them done.",
+        ),
+        _fs("update_shopping_item"), forbidden=_fs("add_shopping_item"),
+        seed="core", live=False,
+    ),
+
     # -------------------------------- Phase 2: diary / plans / goals / work / bills / HA
     PromptContract(
         "p2.agenda.read", "phase2", "agenda",
@@ -407,6 +468,349 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         _fs("report_snapshot", "planning_brief"), seed="core",
     ),
 
+
+    PromptContract(
+        "p2.diary.create", "phase2", "diary",
+        "Real-life commitments must expose Diary creation.",
+        (
+            "Add my dentist appointment on 5 October at 4pm to my diary.",
+            "Put a dentist appointment in my diary for 5 October, 4pm.",
+            "I have a dentist appointment 5 October at 4pm.",
+        ),
+        _fs("add_diary_event"), seed="empty",
+    ),
+    PromptContract(
+        "p2.diary.update", "phase2", "diary",
+        "Diary reschedule/cancel wording must expose Diary update.",
+        (
+            "Move my dentist appointment to 5pm.",
+            "Reschedule the dentist appointment for 5pm.",
+            "Cancel the dentist appointment.",
+        ),
+        _fs("update_diary_event"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p2.diary.conflict.resolve", "phase2", "diary",
+        "A later numeric answer to a persisted conflict must resolve the latest conflict safely.",
+        (
+            "1",
+            "2",
+            "3",
+        ),
+        _fs("resolve_latest_diary_conflict", "resolve_numbered_choice"),
+        seed="core", live=False,
+    ),
+    PromptContract(
+        "p2.plan.create", "phase2", "plans",
+        "Planning/brainstorming must create a draft plan, not a diary event.",
+        (
+            "Start a draft plan for a Malacca family day trip next month.",
+            "Let's start planning a family day trip to Malacca; don't lock it.",
+            "Create an unlocked Malacca day-trip draft.",
+        ),
+        _fs("create_plan"), forbidden=_fs("add_diary_event"), seed="empty",
+    ),
+    PromptContract(
+        "p2.plan.confirm", "phase2", "plans",
+        "Explicitly locking/confirming a plan must expose plan confirmation.",
+        (
+            "Lock the Malacca plan now.",
+            "Confirm the Malacca plan.",
+            "Make that Malacca plan real and add it to my diary.",
+        ),
+        _fs("confirm_plan"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p2.plan.share", "phase2", "plans",
+        "Sharing a private plan must use the privacy-safe publish/copy path.",
+        (
+            "Share the Malacca plan with the family.",
+            "Publish my Malacca plan to the family space.",
+        ),
+        _fs("share_plan"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p2.availability.self", "phase2", "privacy",
+        "Owner availability checks must expose the owner-safe availability read.",
+        (
+            "Am I free on 1 October at 6pm?",
+            "Check my availability Thursday evening.",
+        ),
+        _fs("check_my_availability"), seed="core",
+    ),
+    PromptContract(
+        "p2.availability.spouse", "phase2", "privacy",
+        "Spouse availability must use the shared-only spouse path.",
+        (
+            "Is my wife free on 1 October at 6pm?",
+            "Check whether my spouse is available Thursday evening.",
+        ),
+        _fs("check_spouse_availability"), seed="core",
+    ),
+    PromptContract(
+        "p2.goals.lock", "phase2", "goals",
+        "Explicit owner approval must expose goal activation/locking.",
+        (
+            "Lock the Family Holiday Savings goal.",
+            "Activate my Family Holiday Savings goal.",
+        ),
+        _fs("planning_lock_goal"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p2.goals.reopen", "phase2", "goals",
+        "Explicit owner instruction must expose goal reopen.",
+        (
+            "Reopen the Family Holiday Savings goal.",
+            "Resume that holiday goal as a draft.",
+        ),
+        _fs("planning_reopen_goal"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p2.goals.period", "phase2", "goals",
+        "A one-month target exception must not silently rewrite the recurring baseline.",
+        (
+            "RM100 is enough for my holiday goal this month only.",
+            "Set this month's holiday-goal target to RM100, just for this month.",
+        ),
+        _fs("planning_set_period_target"), forbidden=_fs("planning_change_goal_baseline"),
+        seed="core", live=False,
+    ),
+    PromptContract(
+        "p2.goals.contribution", "phase2", "goals",
+        "Actual goal contributions must expose contribution recording.",
+        (
+            "I put RM200 into Family Holiday Savings today.",
+            "Record a RM200 contribution to my holiday goal.",
+        ),
+        _fs("planning_record_goal_contribution"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p2.goals.projection", "phase2", "goals",
+        "Goal projections must use approved-plan projection rather than mental arithmetic.",
+        (
+            "When will I reach my Family Holiday goal?",
+            "Project how long the holiday savings goal will take.",
+        ),
+        _fs("planning_goal_projection"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p2.cash.status", "phase2", "cash_planning",
+        "Extra-cash status must remain queryable without automatic allocation.",
+        (
+            "How much of my extra cash is still unallocated?",
+            "What's left from that OT money?",
+        ),
+        _fs("planning_cash_status"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p2.cash.pool.create", "phase2", "cash_planning",
+        "Stash creation must not allocate money automatically.",
+        (
+            "Create a stash called Holiday Buffer.",
+            "Make me a cash pool named Holiday Buffer.",
+        ),
+        _fs("planning_create_cash_pool"), seed="core",
+    ),
+    PromptContract(
+        "p2.cash.pool.balance", "phase2", "cash_planning",
+        "Stash balance must have a deterministic read path.",
+        (
+            "How much is in my Holiday Buffer stash?",
+            "Show the balance of my Holiday Buffer cash pool.",
+        ),
+        _fs("planning_cash_pool_balance"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p2.cash.pool.allocate", "phase2", "cash_planning",
+        "Only explicit owner instruction may allocate extra cash into a stash.",
+        (
+            "Put RM100 of that bonus into Holiday Buffer.",
+            "Allocate RM100 from the extra cash to my stash.",
+        ),
+        _fs("planning_allocate_cash_to_pool"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p2.reserve.add", "phase2", "cash_planning",
+        "Explicit reserves/allowances must expose reserve creation.",
+        (
+            "Set aside RM300 a month as a school reserve.",
+            "Add a RM300 monthly school reserve.",
+        ),
+        _fs("planning_add_reserve"), seed="core",
+    ),
+    PromptContract(
+        "p2.reserve.update", "phase2", "cash_planning",
+        "Reserve changes must require explicit owner instruction.",
+        (
+            "Change my school reserve to RM250 a month.",
+            "Disable the school reserve.",
+        ),
+        _fs("planning_update_reserve"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p2.planning.baseline", "phase2", "cash_planning",
+        "Baseline planning must use the deterministic baseline engine.",
+        (
+            "What's my safe monthly baseline?",
+            "How much fixed income is available after my locked commitments?",
+        ),
+        _fs("planning_baseline"), seed="core",
+    ),
+    PromptContract(
+        "p2.planning.income", "phase2", "cash_planning",
+        "Income outlook must distinguish confirmed/expected/possible money.",
+        (
+            "What's my income outlook for this month?",
+            "What income am I expecting this month?",
+        ),
+        _fs("planning_income_outlook"), seed="core",
+    ),
+    PromptContract(
+        "p2.planning.cashflow", "phase2", "cash_planning",
+        "Cash-flow questions must use deterministic planning state.",
+        (
+            "Show my cash flow for this month.",
+            "What does my monthly cashflow look like?",
+        ),
+        _fs("planning_cashflow"), seed="core",
+    ),
+    PromptContract(
+        "p2.planning.brief", "phase2", "cash_planning",
+        "General money-planning questions must expose the planning brief.",
+        (
+            "Give me my money plan overview.",
+            "Summarize my financial plan.",
+        ),
+        _fs("planning_brief"), seed="core",
+    ),
+    PromptContract(
+        "p2.bills.match", "phase2", "bills",
+        "A payment/receipt match must use conservative obligation matching.",
+        (
+            "Match this TNB payment to the electricity bill.",
+            "Which bill does this electricity payment belong to?",
+        ),
+        _fs("bills_match_payment"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p2.bills.record", "phase2", "bills",
+        "Explicitly recording a bill payment must expose the bill payment writer.",
+        (
+            "Record the TNB bill as paid.",
+            "I paid the electricity bill; record the payment.",
+        ),
+        _fs("bills_record_payment"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p2.bills.defer", "phase2", "bills",
+        "Bill deferral must be explicit.",
+        (
+            "Defer the TNB bill to 5 October.",
+            "Move the electricity bill due date to 5 October.",
+        ),
+        _fs("bills_defer"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p2.bills.unpaid", "phase2", "bills",
+        "Confirmed-unpaid state must only follow explicit user evidence.",
+        (
+            "I did not pay the TNB bill; mark it unpaid.",
+            "Confirm the electricity bill is unpaid.",
+        ),
+        _fs("bills_confirm_unpaid"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p2.work.record", "phase2", "work",
+        "Observed leave/OT/shift changes must expose deterministic work-event recording.",
+        (
+            "I worked 4 hours OT on Saturday.",
+            "Record that I took MC today.",
+            "My shift was swapped to evening today.",
+        ),
+        _fs("work_record_event"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p2.work.departure", "phase2", "work",
+        "Departure/alarm planning must use the work departure engine.",
+        (
+            "What time should I leave home for work tomorrow?",
+            "Plan my departure for tomorrow's shift.",
+        ),
+        _fs("work_departure_plan"), seed="core",
+    ),
+    PromptContract(
+        "p2.asset.create", "phase2", "assets",
+        "Explicit appliance/asset saving must expose asset creation.",
+        (
+            "Save my water dispenser as a household asset.",
+            "Add the water dispenser to my appliance records.",
+        ),
+        _fs("asset_create"), seed="empty",
+    ),
+    PromptContract(
+        "p2.asset.document", "phase2", "assets",
+        "Manual/warranty document linkage must expose the asset-document path.",
+        (
+            "Link this manual to my water dispenser.",
+            "Attach this warranty document to the water dispenser asset.",
+        ),
+        _fs("asset_link_document"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p2.monitor.delegate", "phase2", "monitoring",
+        "Proactive tracking must begin only after explicit delegation.",
+        (
+            "Monitor my Family Holiday Savings goal.",
+            "Track the holiday goal for me.",
+        ),
+        _fs("monitor_delegate"), seed="core",
+    ),
+    PromptContract(
+        "p2.monitor.cancel", "phase2", "monitoring",
+        "Delegated monitoring must stop only on explicit cancellation.",
+        (
+            "Stop monitoring my holiday goal.",
+            "Cancel the holiday-goal tracking.",
+        ),
+        _fs("monitor_cancel"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p2.home.control", "phase2", "home_assistant",
+        "Explicit low-risk HA actions must expose control after entity resolution.",
+        (
+            "Turn off the living room light.",
+            "Switch the living room light off.",
+        ),
+        _fs("ha_control"), seed="empty", live=False,
+    ),
+    PromptContract(
+        "p2.report.export", "phase2", "reports",
+        "Explicit report export must expose local export.",
+        (
+            "Export my finance report as PDF.",
+            "Send me a PDF of my monthly finance report.",
+        ),
+        _fs("report_export"), seed="core",
+    ),
+    PromptContract(
+        "p2.report.payload", "phase2", "reports",
+        "Dashboard/Sheets handoff must expose the structured report payload.",
+        (
+            "Prepare my finance data for Google Sheets.",
+            "Give me the dashboard payload for my monthly report.",
+        ),
+        _fs("report_payload"), seed="core",
+    ),
+    PromptContract(
+        "p2.calculate", "phase2", "cash_planning",
+        "Exact arithmetic must expose the calculator path.",
+        (
+            "Calculate RM593.62 minus RM200.",
+            "What's 593.62 minus 200 exactly?",
+        ),
+        _fs("calculate"), seed="core",
+    ),
+
     # -------------------------------- Phase 3: robustness / ambiguity / safety / language
     PromptContract(
         "p3.negation.ha", "phase3", "safety",
@@ -585,8 +989,44 @@ MANUAL_GATES: tuple[ManualGate, ...] = (
 
 REQUIRED_DOMAINS = {
     "phase1": {"finance", "receipts", "reminders", "shopping", "memory", "whatsapp"},
-    "phase2": {"agenda", "diary", "plans", "tasks", "goals", "cash_planning", "work", "bills", "assets", "monitoring", "diagnostics", "home_assistant", "reports"},
+    "phase2": {"agenda", "diary", "plans", "tasks", "goals", "cash_planning", "work", "bills", "assets", "monitoring", "diagnostics", "privacy", "home_assistant", "reports"},
     "phase3": {"safety", "routing", "language", "whatsapp"},
+}
+
+
+
+
+# Owner-visible MCP capabilities that must be represented by at least one
+# behavioural contract.  This prevents future phases from adding a tool while
+# silently forgetting to teach the certification rig how a human reaches it.
+REQUIRED_OWNER_TOOL_COVERAGE = {
+    "log_expense", "query_finances", "correct_expense",
+    "find_receipts", "get_receipt",
+    "save_item", "search_saved_items", "get_saved_item", "remove_saved_item",
+    "resolve_numbered_choice",
+    "create_reminder", "list_reminders", "update_reminder", "reminder_history",
+    "add_shopping_item", "list_shopping_items", "update_shopping_item",
+    "add_diary_event", "update_diary_event", "resolve_latest_diary_conflict",
+    "get_agenda", "get_agenda_range", "create_plan", "list_plans",
+    "confirm_plan", "share_plan", "check_my_availability",
+    "check_spouse_availability",
+    "planning_create_goal", "planning_lock_goal", "planning_reopen_goal",
+    "planning_set_period_target", "planning_change_goal_baseline",
+    "planning_record_goal_contribution", "planning_goal_progress",
+    "planning_goal_projection", "planning_record_cash", "planning_cash_status",
+    "planning_allocate_cash_to_goal", "planning_create_cash_pool",
+    "planning_cash_pool_balance", "planning_allocate_cash_to_pool",
+    "planning_add_reserve", "planning_update_reserve", "planning_list_reserves",
+    "planning_baseline", "planning_income_outlook", "planning_cashflow",
+    "planning_brief", "planning_list_goals", "bills_list",
+    "bills_match_payment", "bills_record_payment", "bills_defer",
+    "bills_confirm_unpaid", "work_schedule", "work_day", "work_record_event",
+    "work_ot_status", "work_leave_balance", "work_departure_plan",
+    "asset_create", "asset_link_document", "asset_list", "warranty_expiring",
+    "monitor_delegate", "monitor_list", "monitor_cancel",
+    "ha_find_entities", "ha_get_state", "ha_control",
+    "report_snapshot", "report_export", "report_payload",
+    "system_health", "recent_failures", "calculate",
 }
 
 
