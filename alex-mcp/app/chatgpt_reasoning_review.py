@@ -137,6 +137,29 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
             or _one(tools, "ha_control"),
         )
 
+    # Explicitly denied saved-memory writes that request a browse instead.
+    if (
+        re.search(r"\b(?:don't|do not|dont|not asking(?: you)? to)\b", text)
+        and re.search(r"\b(?:save|remember)\b", text)
+        and re.search(r"\b(?:show|list|find|saved items?|already saved)\b", text)
+    ):
+        return result("tools", _one(tools, "search_saved_items"))
+
+    # Compound roster + departure questions require both reads when exposed.
+    if (
+        re.search(r"\b(?:shift|work)\b", text)
+        and (
+            re.search(r"\b(?:what time|when)\s+(?:should|do)\s+i\s+leave\b", text)
+            or "leave home" in text
+            or "departure" in text
+        )
+    ):
+        return result(
+            "tools",
+            _pick(tools, "work_schedule", "work_departure_plan")
+            or _one(tools, "work_departure_plan", "work_schedule"),
+        )
+
     # Original media provenance/replay. This is regression logic only; the
     # real-AI snapshot makes its own independent choices for these packets.
     if re.search(r"\b(?:voice\s*notes?|audio\s*notes?|recordings?)\b", text):
