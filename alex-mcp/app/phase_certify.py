@@ -90,6 +90,11 @@ def main() -> dict:
     )
     p.add_argument("--hard-latency-ms", type=int, default=20000)
     p.add_argument("--max-live-cost-usd", type=float, default=0.25)
+    p.add_argument(
+        "--heldout-corpus", default=os.environ.get("ALEX_CERT_HELDOUT_CORPUS"),
+        help="optional local-only JSON of owner-written held-out phrasings",
+    )
+    p.add_argument("--live-adversarial-per-contract", type=int, default=1)
     p.add_argument("--report", default=None, help="write the combined JSON gate report here")
     p.add_argument("--no-fail-exit", action="store_true")
     args = p.parse_args()
@@ -159,11 +164,16 @@ def main() -> dict:
         ))
 
         offline_path = reports / f"{args.phase}-offline.json"
+        offline_cmd = [
+            py, "alex-mcp/app/behavior_cert.py", "--mode", "offline",
+            "--phase", args.phase, "--no-fail-exit",
+            "--report", str(offline_path),
+        ]
+        if args.heldout_corpus:
+            offline_cmd += ["--heldout-corpus", args.heldout_corpus]
         offline = _run(
             "tier_b_offline",
-            [py, "alex-mcp/app/behavior_cert.py", "--mode", "offline",
-             "--phase", args.phase, "--no-fail-exit",
-             "--report", str(offline_path)],
+            offline_cmd,
             isolated_env("tier-b-offline"),
             offline_path,
         )
@@ -180,18 +190,23 @@ def main() -> dict:
         live_skipped_reason = None
         if args.live and not deterministic_fail and not offline_fail:
             live_path = reports / f"{args.phase}-live.json"
+            live_cmd = [
+                py, "alex-mcp/app/behavior_cert.py",
+                "--mode", "live", "--phase", args.phase,
+                "--provider", args.provider,
+                "--source-options", args.source_options,
+                "--hard-latency-ms", str(max(1000, args.hard_latency_ms)),
+                "--max-live-cost-usd", str(max(0.0, args.max_live_cost_usd)),
+                "--live-adversarial-per-contract",
+                str(max(0, args.live_adversarial_per_contract)),
+                "--no-fail-exit",
+                "--report", str(live_path),
+            ]
+            if args.heldout_corpus:
+                live_cmd += ["--heldout-corpus", args.heldout_corpus]
             live = _run(
                 "tier_b_live",
-                [
-                    py, "alex-mcp/app/behavior_cert.py",
-                    "--mode", "live", "--phase", args.phase,
-                    "--provider", args.provider,
-                    "--source-options", args.source_options,
-                    "--hard-latency-ms", str(max(1000, args.hard_latency_ms)),
-                    "--max-live-cost-usd", str(max(0.0, args.max_live_cost_usd)),
-                    "--no-fail-exit",
-                    "--report", str(live_path),
-                ],
+                live_cmd,
                 isolated_env("tier-b-live"),
                 live_path,
             )
