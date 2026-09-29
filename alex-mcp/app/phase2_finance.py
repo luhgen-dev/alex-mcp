@@ -6,7 +6,9 @@ unchanged.
 """
 from __future__ import annotations
 
-import calendar\n\nimport runtime_clock
+import calendar
+
+import runtime_clock
 import json
 import sqlite3
 import uuid
