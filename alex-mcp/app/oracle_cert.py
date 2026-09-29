@@ -40,6 +40,36 @@ def _names(specs: list[dict]) -> set[str]:
     } - {""}
 
 
+def _schema_compatibility(tool_name: str, args: dict) -> list[str]:
+    """Verify translated arguments against the real MCP schema."""
+    specs = asyncio.run(brain._tool_specs_for_names({tool_name}))
+    if len(specs) != 1:
+        return [f"underlying MCP tool {tool_name!r} is missing"]
+    schema = specs[0].get("function", {}).get("parameters", {}) or {}
+    properties = set((schema.get("properties") or {}).keys())
+    required = set(schema.get("required") or ())
+    supplied = set(args)
+    errors: list[str] = []
+    extra = sorted(supplied - properties)
+    missing = sorted(required - supplied)
+    if extra:
+        errors.append(f"{tool_name!r} translation has unknown arguments: {extra}")
+    if missing:
+        errors.append(f"{tool_name!r} translation is missing required arguments: {missing}")
+    return errors
+
+
+def _surface_integrity() -> list[str]:
+    """Ensure every facade mapping/pack still points at a real MCP tool."""
+    referenced = set(facade.UNDERLYING_TO_FACADE)
+    for tools in facade.PACK_TOOLS.values():
+        referenced |= set(tools)
+    specs = asyncio.run(brain._tool_specs_for_names(referenced))
+    existing = _names(specs)
+    missing = sorted(referenced - existing)
+    return [f"facade references missing MCP tools: {missing}"] if missing else []
+
+
 def _check_case(case: dict) -> list[str]:
     errors: list[str] = []
     prompt = str(case.get("prompt") or "")
@@ -93,6 +123,19 @@ def _check_case(case: dict) -> list[str]:
             errors.append(
                 f"oracle expected {expected!r} but facade translates to {translated[0]!r}"
             )
+        if translated is not None:
+            errors.extend(_schema_compatibility(translated[0], translated[1]))
+
+    # Name-resolved shopping updates are intentionally two-step; verify the
+    # eventual mutator exists even though its stable item_id comes from step 1.
+    if (
+        tool == "shopping_change"
+        and str(args.get("operation") or "").casefold() == "update"
+        and args.get("item")
+        and expected == "update_shopping_item"
+    ):
+        if not asyncio.run(brain._tool_specs_for_names({"update_shopping_item"})):
+            errors.append("shopping name resolver cannot reach update_shopping_item")
 
     pair = case.get("typed_equivalent")
     if pair:
@@ -108,6 +151,9 @@ def run() -> dict:
     payload = json.loads(CASES_PATH.read_text(encoding="utf-8"))
     cases = list(payload.get("cases") or [])
     failures: list[dict] = []
+    integrity = _surface_integrity()
+    if integrity:
+        failures.append({"id": "_surface_integrity", "errors": integrity})
     domains = {str(case.get("domain") or "") for case in cases}
     missing_domains = sorted(REQUIRED_DOMAINS - domains)
     if missing_domains:
@@ -135,6 +181,7 @@ def run() -> dict:
         "domains": len(domains & REQUIRED_DOMAINS),
         "voice_cases": voice_cases,
         "mixed_language_cases": mixed_cases,
+        "surface_integrity": "PASS" if not integrity else "FAIL",
         "failures": failures,
         "notes": (
             "External model-authored reasoning decisions replayed against the "
