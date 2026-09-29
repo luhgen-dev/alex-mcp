@@ -1731,10 +1731,133 @@ def _live_conversation(contract, source: str, hard_latency_ms: int) -> dict:
     }
 
 
+
+# High-value live cases are based on failures observed during the owner's v0.4.4
+# WhatsApp smoke test. Benchmark mode spends provider calls here first, rather
+# than burning money uniformly across every already-obvious route.
+LIVE_BENCHMARK_PRIORITY = frozenset({
+    "p1.finance.latest", "p1.finance.list", "p1.finance.write",
+    "p1.receipt.find", "p1.memory.picture", "p1.reminder.read",
+    "p1.shopping.update",
+    "p2.agenda.read", "p2.agenda.relative", "p2.diary.detail",
+    "p2.plan.read", "p2.plan.update",
+    "p2.goals.list", "p2.goals.create", "p2.goals.agency",
+    "p2.work.read", "p2.bills.read", "p2.home.read",
+    "p2.privacy.group.memory", "p2.privacy.wife.memory",
+    "p3.typo.reminder", "p3.language.tamil.reminder",
+    "p3.language.tamil.memory",
+})
+
+
+def _benchmark_live_plan(
+    phase: str,
+    heldout_path: str | None,
+    live_adversarial_per_contract: int,
+) -> dict:
+    """Choose paid live cases for diagnostic value per token.
+
+    Zero-cost offline certification is run first. Contracts that are impossible
+    because the required capability does not exist are not sent to a provider.
+    The benchmark then prioritizes: owner-observed smoke regressions, discovery-
+    dependent cases, multi-turn conversations, and one representative phrasing
+    for the remaining live-capable contracts.
+    """
+    offline = offline_certify(phase, heldout_path)
+    hard_missing: set[str] = set()
+    for item in offline.get("failures", []):
+        if item.get("kind") in {
+            "missing-capability", "missing-required-all-capability"
+        }:
+            contract_id = str(item.get("contract") or "")
+            if contract_id and not contract_id.startswith("architecture."):
+                hard_missing.add(contract_id)
+
+    discovery_ids = {
+        str(item.get("contract") or "")
+        for item in offline.get("needs_live", [])
+        if item.get("contract")
+    }
+    heldout = _load_heldout_corpus(heldout_path)
+
+    planned_prompts: list[tuple[Any, str, str, str, int]] = []
+    skipped: list[dict[str, str]] = []
+
+    for contract in contracts_for_phase(phase):
+        if not contract.live:
+            skipped.append({
+                "contract": contract.id,
+                "reason": "contract is intentionally offline-only",
+            })
+            continue
+        if contract.id in hard_missing:
+            skipped.append({
+                "contract": contract.id,
+                "reason": "required capability is structurally absent; provider call would add no evidence",
+            })
+            continue
+
+        # Priority 0 = exact/manual-smoke regressions; 1 = cases where offline
+        # routing explicitly says the model must prove discovery; 2 = remaining.
+        priority = (
+            0 if contract.id in LIVE_BENCHMARK_PRIORITY
+            else 1 if contract.id in discovery_ids
+            else 2
+        )
+        phrases = _contract_phrases(
+            contract,
+            heldout,
+            include_adversarial=True,
+            adversarial_limit=live_adversarial_per_contract,
+        )
+
+        if priority == 0:
+            # Two ordinary formulations + the bounded adversarial sample.
+            catalog = [row for row in phrases if row[1] in {"catalog", "heldout"}][:2]
+            adversarial = [row for row in phrases if row[1] == "adversarial"][
+                :max(0, live_adversarial_per_contract)
+            ]
+            chosen = catalog + adversarial
+        elif priority == 1:
+            # Discovery-dependent cases need one normal + one adversarial proof.
+            normal = [row for row in phrases if row[1] in {"catalog", "heldout"}][:1]
+            adversarial = [row for row in phrases if row[1] == "adversarial"][
+                :min(1, max(0, live_adversarial_per_contract))
+            ]
+            chosen = normal + adversarial
+        else:
+            # One representative live turn proves model/tool/effect integration;
+            # exhaustive paraphrase breadth remains free in offline mode.
+            chosen = [row for row in phrases if row[1] in {"catalog", "heldout"}][:1]
+
+        for source_kind in contract.sources:
+            for prompt, variant_kind in chosen:
+                planned_prompts.append(
+                    (contract, source_kind, prompt, variant_kind, priority)
+                )
+
+    planned_prompts.sort(
+        key=lambda row: (row[4], row[0].phase, row[0].domain, row[0].id, row[1], row[3])
+    )
+    planned_conversations = [
+        (contract, source_kind)
+        for contract in conversations_for_phase(phase)
+        for source_kind in contract.sources
+    ]
+    return {
+        "offline": offline,
+        "prompts": planned_prompts,
+        "conversations": planned_conversations,
+        "skipped": skipped,
+        "discovery_contracts": sorted(discovery_ids),
+        "hard_missing_contracts": sorted(hard_missing),
+    }
+
+
 def live_certify(phase: str, provider: str, source_options: str | None,
                  hard_latency_ms: int, report_path: str | None,
                  max_live_cost_usd: float, heldout_path: str | None = None,
-                 live_adversarial_per_contract: int = 1) -> dict:
+                 live_adversarial_per_contract: int = 1,
+                 live_strategy: str = "benchmark") -> dict:
     source = _load_source_options(source_options)
     creds = _credential_options(provider, source)
     heldout = _load_heldout_corpus(heldout_path)
@@ -1771,44 +1894,72 @@ def live_certify(phase: str, provider: str, source_options: str | None,
     conversations = []
     accumulated_cost = 0.0
     budget_stopped = False
+    skipped_paid_cases: list[dict[str, str]] = []
 
-    for contract in contracts_for_phase(phase):
-        if not contract.live:
-            continue
-        for source_kind in contract.sources:
-            for prompt, variant_kind in _contract_phrases(
-                contract, heldout, include_adversarial=True,
-                adversarial_limit=live_adversarial_per_contract,
-            ):
-                if max_live_cost_usd > 0 and accumulated_cost >= max_live_cost_usd:
-                    budget_stopped = True
-                    break
-                _reset_case_database(sandbox_dir, contract.seed)
-                row = _live_one(contract, prompt, source_kind, hard_latency_ms)
-                row["variant_kind"] = variant_kind
-                row["prompt"] = _report_prompt(prompt, variant_kind)
-                rows.append(row)
-                accumulated_cost += float(row.get("estimated_cost_usd") or 0.0)
-            if budget_stopped:
-                break
-        if budget_stopped:
+    if live_strategy == "benchmark":
+        plan = _benchmark_live_plan(
+            phase, heldout_path, live_adversarial_per_contract
+        )
+        prompt_plan = plan["prompts"]
+        conversation_plan = plan["conversations"]
+        skipped_paid_cases = plan["skipped"]
+        plan_metadata = {
+            "offline_status": plan["offline"].get("status"),
+            "offline_failures": plan["offline"].get("summary", {}).get("failures", 0),
+            "discovery_contracts": plan["discovery_contracts"],
+            "hard_missing_contracts": plan["hard_missing_contracts"],
+        }
+    else:
+        prompt_plan = []
+        for contract in contracts_for_phase(phase):
+            if not contract.live:
+                continue
+            for source_kind in contract.sources:
+                for prompt, variant_kind in _contract_phrases(
+                    contract, heldout, include_adversarial=True,
+                    adversarial_limit=live_adversarial_per_contract,
+                ):
+                    prompt_plan.append(
+                        (contract, source_kind, prompt, variant_kind, 0)
+                    )
+        conversation_plan = [
+            (contract, source_kind)
+            for contract in conversations_for_phase(phase)
+            for source_kind in contract.sources
+        ]
+        plan_metadata = {
+            "offline_status": None,
+            "offline_failures": None,
+            "discovery_contracts": [],
+            "hard_missing_contracts": [],
+        }
+
+    # Benchmark mode deliberately runs the highest-value prompt evidence first.
+    # Conversations follow because each chain costs several turns but proves
+    # pronoun/focus/state continuity that isolated prompts cannot.
+    for contract, source_kind, prompt, variant_kind, _priority in prompt_plan:
+        if max_live_cost_usd > 0 and accumulated_cost >= max_live_cost_usd:
+            budget_stopped = True
             break
+        _reset_case_database(sandbox_dir, contract.seed)
+        row = _live_one(contract, prompt, source_kind, hard_latency_ms)
+        row["variant_kind"] = variant_kind
+        row["prompt"] = _report_prompt(prompt, variant_kind)
+        rows.append(row)
+        accumulated_cost += float(row.get("estimated_cost_usd") or 0.0)
 
     if not budget_stopped:
-        for contract in conversations_for_phase(phase):
-            for source_kind in contract.sources:
-                if max_live_cost_usd > 0 and accumulated_cost >= max_live_cost_usd:
-                    budget_stopped = True
-                    break
-                _reset_case_database(sandbox_dir, contract.seed)
-                conversation = _live_conversation(contract, source_kind, hard_latency_ms)
-                conversations.append(conversation)
-                accumulated_cost += sum(
-                    float(step.get("estimated_cost_usd") or 0.0)
-                    for step in conversation["steps"]
-                )
-            if budget_stopped:
+        for contract, source_kind in conversation_plan:
+            if max_live_cost_usd > 0 and accumulated_cost >= max_live_cost_usd:
+                budget_stopped = True
                 break
+            _reset_case_database(sandbox_dir, contract.seed)
+            conversation = _live_conversation(contract, source_kind, hard_latency_ms)
+            conversations.append(conversation)
+            accumulated_cost += sum(
+                float(step.get("estimated_cost_usd") or 0.0)
+                for step in conversation["steps"]
+            )
 
     elapsed = [r["elapsed_ms"] for r in rows]
     for conv in conversations:
@@ -1859,6 +2010,15 @@ def live_certify(phase: str, provider: str, source_options: str | None,
             "budget_stopped": budget_stopped,
             "estimated_cost_usd": round(accumulated_cost, 8),
             "max_live_cost_usd": max_live_cost_usd,
+            "live_strategy": live_strategy,
+            "planned_prompt_runs": len(prompt_plan),
+            "planned_conversation_runs": len(conversation_plan),
+            "skipped_paid_contracts": len(skipped_paid_cases),
+            "cost_per_executed_prompt_usd": round(
+                accumulated_cost / max(1, len(rows) + sum(len(c.get("steps", [])) for c in conversations)),
+                8,
+            ),
+            **plan_metadata,
             "latency_ms_p50": int(statistics.median(elapsed)) if elapsed else 0,
             "latency_ms_max": max(elapsed) if elapsed else 0,
             "latency_by_domain": latency_by_domain,
@@ -1866,6 +2026,7 @@ def live_certify(phase: str, provider: str, source_options: str | None,
         },
         "prompt_results": rows,
         "conversation_results": conversations,
+        "skipped_paid_cases": skipped_paid_cases,
         "manual_gates_not_claimed": [
             asdict(g) for g in MANUAL_GATES
             if phase == "all" or g.phase == phase
@@ -1912,6 +2073,13 @@ def _parser() -> argparse.ArgumentParser:
         help="maximum generated adversarial variants per contract in paid live mode",
     )
     p.add_argument(
+        "--live-strategy", choices=("benchmark", "full"), default="benchmark",
+        help=(
+            "benchmark spends provider calls on smoke regressions/discovery/high-value cases "
+            "and skips structurally impossible contracts; full runs every configured live phrase"
+        ),
+    )
+    p.add_argument(
         "--no-fail-exit", action="store_true",
         help="emit failures but exit 0; useful only while repairing a known-bad release",
     )
@@ -1933,6 +2101,7 @@ def main() -> dict:
             max(0.0, float(args.max_live_cost_usd)),
             args.heldout_corpus,
             max(0, int(args.live_adversarial_per_contract)),
+            args.live_strategy,
         )
     if report["status"] != "PASS" and not args.no_fail_exit:
         raise SystemExit(1)
