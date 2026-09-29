@@ -328,6 +328,23 @@ def export_human_ai_packets(
         )
 
 
+def run_chatgpt_reasoning_review(report_path: Path) -> dict[str, Any]:
+    """Run the frozen blind ChatGPT QC decisions against the current corpus."""
+    py = sys.executable
+    with tempfile.TemporaryDirectory(prefix="alex-chatgpt-review-") as tmp:
+        root = Path(tmp)
+        env = _isolated_env(root, "chatgpt-review", fixed_clock=True)
+        return _run(
+            "chatgpt_reasoning_review",
+            [
+                py, "alex-mcp/app/chatgpt_reasoning_review.py",
+                "--report", str(report_path),
+            ],
+            env,
+            report_path,
+        )
+
+
 def run_live_provider(
     phase: str,
     contract_ids: list[str],
@@ -386,6 +403,10 @@ def main() -> dict[str, Any]:
         help="optional path for the human-AI packet integrity report",
     )
     parser.add_argument(
+        "--chatgpt-review-report", default=None,
+        help="optional path for the frozen independent ChatGPT reasoning QC report",
+    )
+    parser.add_argument(
         "--gate", action="store_true",
         help="exit non-zero while product behaviour is not clean",
     )
@@ -423,6 +444,42 @@ def main() -> dict[str, Any]:
             + ["human_ai_packet_audit"]
         ))
 
+    chatgpt_review_path = Path(
+        args.chatgpt_review_report
+        or report_path.with_name("alex-chatgpt-reasoning-review.json")
+    )
+    chatgpt_review = run_chatgpt_reasoning_review(chatgpt_review_path)
+    review_report = (
+        chatgpt_review.get("report")
+        if isinstance(chatgpt_review.get("report"), dict)
+        else None
+    )
+    report["chatgpt_reasoning_review"] = {
+        "status": (
+            review_report.get("status")
+            if isinstance(review_report, dict)
+            else chatgpt_review.get("status")
+        ),
+        "returncode": chatgpt_review.get("returncode"),
+        "summary": (
+            review_report.get("summary")
+            if isinstance(review_report, dict) else None
+        ),
+        "review": (
+            review_report.get("review")
+            if isinstance(review_report, dict) else None
+        ),
+        "report": str(chatgpt_review_path),
+    }
+    if review_report is None:
+        report["status"] = "LAB_ERROR"
+        report["summary"]["infrastructure_errors"] = sorted(set(
+            list(report["summary"].get("infrastructure_errors") or [])
+            + ["chatgpt_reasoning_review"]
+        ))
+    elif review_report.get("status") != "PASS" and report.get("status") == "PASS":
+        report["status"] = "PRODUCT_FAIL"
+
     if args.run_live:
         live_path = Path(args.report).with_name("alex-lab-live.json")
         live_report, live_packets = run_live_provider(
@@ -458,6 +515,7 @@ def main() -> dict[str, Any]:
         "packets": str(packets_path),
         "human_ai_packets": str(human_packets_path),
         "human_ai_report": str(human_report_path),
+        "chatgpt_review_report": str(chatgpt_review_path),
     }, indent=2, ensure_ascii=False))
 
     if report["status"] == "LAB_ERROR":
