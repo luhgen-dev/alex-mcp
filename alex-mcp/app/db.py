@@ -222,7 +222,7 @@ def claim_inbound(payload: dict) -> str:
                FROM inbound_messages WHERE message_id=?""",
             (payload["message_id"],),
         ).fetchone()
-        now = datetime.now(timezone.utc)
+        now = runtime_clock.now_utc()
         if existing:
             state = existing["processing_state"]
             if state == "COMPLETED":
@@ -465,7 +465,7 @@ def current_month_ai_cost(provider: str | None = None) -> float:
         sql = """SELECT COALESCE(SUM(estimated_cost_usd),0) AS cost
                  FROM ai_usage
                  WHERE substr(created_at_utc,1,7)=substr(CURRENT_TIMESTAMP,1,7)"""
-        params: list[str] = []
+        params: list[str] = [month]
         if provider:
             sql += " AND provider=?"
             params.append(provider)
