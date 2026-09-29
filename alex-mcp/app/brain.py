@@ -1832,12 +1832,21 @@ def _looks_like_wrong_language_reply(text: str, user_text: str = "") -> bool:
     """
     if _requested_non_english_output(user_text):
         return False
-    low = (text or "").casefold()
+    value = text or ""
+    low = value.casefold()
     markers = (
         "mohon maaf", "apakah anda", "silakan", "bermaksud",
         "sebelumnya", "jika anda", "ingin saya", "perlu saya",
     )
-    return sum(1 for marker in markers if marker in low) >= 2
+    # Tamil is a supported *input* language, but Alex's owner-selected default
+    # output is English. A fully Tamil answer without an explicit language
+    # request is therefore the same drift class as the observed Indonesian
+    # response.
+    tamil_chars = len(re.findall(r"[\u0B80-\u0BFF]", value))
+    return (
+        sum(1 for marker in markers if marker in low) >= 2
+        or tamil_chars >= 4
+    )
 
 
 async def respond(actor: ActorContext, user_text: str, media_context: list[str] | None = None,
