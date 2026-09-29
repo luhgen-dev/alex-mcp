@@ -50,11 +50,16 @@ def _payload(row) -> dict:
         raise FileNotFoundError(path or "missing attachment path")
     with open(path, "rb") as f:
         data = base64.b64encode(f.read()).decode("ascii")
+    mime = row["mime_type"] or ("image/jpeg" if kind == "IMAGE" else "application/octet-stream")
+    outbound_kind = (
+        "image" if kind == "IMAGE"
+        else ("audio" if str(mime).lower().startswith("audio/") else "document")
+    )
     return {
         "to": row["conversation_id"],
-        "kind": "image" if kind == "IMAGE" else "document",
+        "kind": outbound_kind,
         "file_b64": data,
-        "mimetype": row["mime_type"] or ("image/jpeg" if kind == "IMAGE" else "application/octet-stream"),
+        "mimetype": mime,
         "filename": os.path.basename(path),
         "caption": row["text_body"] or "",
     }
