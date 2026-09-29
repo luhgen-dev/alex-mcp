@@ -37,14 +37,21 @@ from dataclasses import asdict, replace
 from pathlib import Path
 from typing import Any
 
+from behavior_capabilities import (
+    CAPABILITY_TO_TOOLS,
+    TOOL_COVERAGE_EXEMPTIONS,
+    TOOL_TO_CAPABILITY,
+    capabilities_for_tools,
+    implementation_exists,
+    tools_for_capabilities,
+)
 from behavior_contracts import (
     CONVERSATION_CONTRACTS,
     MANUAL_GATES,
     PROMPT_CONTRACTS,
     REQUIRED_DOMAINS,
-    REQUIRED_OWNER_TOOL_COVERAGE,
-    TOOL_COVERAGE_EXEMPTIONS,
     PromptContract,
+    StateExpectation,
     contracts_for_phase,
     conversations_for_phase,
 )
@@ -101,36 +108,41 @@ def catalog_audit() -> dict:
         else:
             checks.append(f"{phase} declared domains covered")
 
-    covered_tools = set()
+    covered_capabilities = set()
     for contract in PROMPT_CONTRACTS:
-        covered_tools |= set(contract.required_any)
+        covered_capabilities |= set(contract.required_any)
     for contract in CONVERSATION_CONTRACTS:
         for step in contract.steps:
-            covered_tools |= set(step.required_any)
-    missing_owner_tools = sorted(REQUIRED_OWNER_TOOL_COVERAGE - covered_tools)
-    if missing_owner_tools:
-        failures.append(
-            "owner-visible MCP tools missing behavioural contracts: "
-            + ", ".join(missing_owner_tools)
-        )
-    else:
-        checks.append("every declared owner-visible MCP tool is represented by behaviour contracts")
+            covered_capabilities |= set(step.required_any)
 
-    # Future-proofing: if a new MCP tool is added later, catalog CI fails until
-    # it is either given a human behaviour contract or explicitly documented as
-    # a compatibility/internal exemption.
+    # Future-proofing is capability based. New MCP functions must be classified
+    # in the adapter; new owner capabilities must be represented by a contract.
     try:
         current_surface = _tool_names_from_mcp()
-        uncovered_surface = sorted(
-            current_surface - covered_tools - set(TOOL_COVERAGE_EXEMPTIONS)
+        unclassified_tools = sorted(
+            current_surface - set(TOOL_TO_CAPABILITY) - set(TOOL_COVERAGE_EXEMPTIONS)
         )
-        if uncovered_surface:
+        if unclassified_tools:
             failures.append(
                 "current MCP surface has unclassified tools: "
-                + ", ".join(uncovered_surface)
+                + ", ".join(unclassified_tools)
             )
         else:
-            checks.append("current MCP surface has no unclassified user-facing tools")
+            checks.append("current MCP surface is fully classified by capability")
+
+        implemented_owner_caps = {
+            TOOL_TO_CAPABILITY[t]
+            for t in current_surface
+            if t in TOOL_TO_CAPABILITY and TOOL_TO_CAPABILITY[t] != "routing.discovery"
+        }
+        missing_contract_caps = sorted(implemented_owner_caps - covered_capabilities)
+        if missing_contract_caps:
+            failures.append(
+                "implemented owner capabilities missing behavioural contracts: "
+                + ", ".join(missing_contract_caps)
+            )
+        else:
+            checks.append("every implemented owner capability has behavioural coverage")
     except Exception as exc:
         failures.append(f"unable to inspect MCP surface for coverage drift: {exc}")
 
@@ -202,72 +214,76 @@ def offline_certify(phase: str) -> dict:
     needs_live: list[dict] = []
 
     for contract in contracts_for_phase(phase):
-        surface_missing = sorted(contract.required_any - tool_names)
-        required_surface_exists = bool(contract.required_any & tool_names)
-        if not required_surface_exists:
+        required_caps = set(contract.required_any) - {"routing.discovery"}
+        forbidden_caps = set(contract.forbidden) - {"routing.discovery"}
+        implemented_required = {
+            cap for cap in required_caps if implementation_exists(cap, tool_names)
+        }
+        if not implemented_required:
             failures.append({
                 "contract": contract.id,
                 "kind": "missing-capability",
                 "detail": (
-                    "none of the required tools exist in MCP surface; "
-                    f"expected one of {sorted(contract.required_any)}"
+                    "none of the required semantic capabilities has a current implementation: "
+                    + " / ".join(sorted(required_caps))
                 ),
-                "missing": surface_missing,
+                "missing_capabilities": sorted(required_caps),
             })
 
         for source in contract.sources:
             for phrase in contract.variants:
-                # Inspect the exact provider-facing tool surface, not only the
-                # internal keyword selector. _tool_specs adds the read-only
-                # fallback and the discovery valve that the model actually sees.
                 specs = asyncio.run(brain._tool_specs(phrase))
-                selected = {
+                selected_tools = {
                     str(spec["function"]["name"])
                     for spec in specs
                     if isinstance(spec, dict) and spec.get("function")
                 }
-                direct = bool(selected & contract.required_any)
-                discovery_available = brain.DISCOVERY_TOOL_NAME in selected
-                forbidden = sorted(selected & contract.forbidden)
-                over_cap = len(selected) > brain.TOOL_EXPOSURE_MAX
+                selected_caps = set(capabilities_for_tools(selected_tools))
+                direct = bool(selected_caps & required_caps)
+                discovery_available = "routing.discovery" in selected_caps
+                forbidden = sorted(selected_caps & forbidden_caps)
+                over_cap = len(selected_tools) > brain.TOOL_EXPOSURE_MAX
                 row = {
                     "contract": contract.id,
                     "phase": contract.phase,
                     "domain": contract.domain,
                     "source": source,
                     "prompt": phrase,
-                    "provider_facing_tools": sorted(selected),
+                    "required_capabilities": sorted(required_caps),
+                    "provider_facing_capabilities": sorted(selected_caps),
+                    "provider_facing_tools": sorted(selected_tools),
                 }
                 problems = []
                 if forbidden:
-                    problems.append("forbidden mutation exposed: " + ", ".join(forbidden))
+                    problems.append(
+                        "forbidden capability exposed: " + ", ".join(forbidden)
+                    )
                 if over_cap:
                     problems.append(
-                        f"tool exposure {len(selected)} exceeds cap {brain.TOOL_EXPOSURE_MAX}"
+                        f"tool exposure {len(selected_tools)} exceeds cap {brain.TOOL_EXPOSURE_MAX}"
                     )
 
-                if not direct and not required_surface_exists:
+                if not direct and not implemented_required:
                     problems.append(
                         "required capability is absent from MCP surface: "
-                        + " / ".join(sorted(contract.required_any))
+                        + " / ".join(sorted(required_caps))
                     )
                 elif not direct and discovery_available and not problems:
-                    # This is neither a pass nor a hard routing failure. The
-                    # model may normalize the intent via discover_alex_tools;
-                    # only live provider certification can prove it succeeds.
+                    # Discovery is never itself a PASS. It only means the live
+                    # model gets one chance to recover the real capability.
                     needs_live.append({
                         **row,
                         "kind": "discovery-dependent",
                         "detail": (
                             "required capability is not directly exposed; "
-                            "discover_alex_tools must recover it in live certification"
+                            "live certification must prove discovery reaches the real capability"
                         ),
                     })
                     continue
                 elif not direct:
                     problems.append(
                         "required capability not exposed and no discovery path: "
-                        + " / ".join(sorted(contract.required_any))
+                        + " / ".join(sorted(required_caps))
                     )
 
                 if problems:
@@ -294,38 +310,43 @@ def offline_certify(phase: str) -> dict:
             "detail": "goal creation can omit monthly contribution",
         })
 
-    task_tools = sorted(name for name in tool_names if "task" in name.casefold())
-    if not task_tools:
+    # Tasks are a lifecycle, not a keyword-shaped tool. All owner-required
+    # lifecycle capabilities must exist before task behaviour can certify.
+    task_required = {"task.create", "task.read", "task.update", "task.complete"}
+    missing_task_caps = sorted(
+        cap for cap in task_required if not implementation_exists(cap, tool_names)
+    )
+    if missing_task_caps:
         failures.append({
             "contract": "architecture.tasks.lifecycle",
             "kind": "missing-capability",
             "detail": (
-                "No task lifecycle tool exists. A request for a task can only degrade into a "
-                "plan note/reminder, so create/list/complete task behaviour cannot certify."
+                "Task lifecycle is incomplete. Required semantic capabilities: "
+                + ", ".join(sorted(task_required))
             ),
+            "missing_capabilities": missing_task_caps,
         })
     else:
         passes.append({
             "contract": "architecture.tasks.lifecycle",
-            "detail": f"task tools present: {task_tools}",
+            "detail": "task create/read/update/complete capabilities are implemented",
         })
 
-    # A read path must exist for every major user-owned object class.
-    required_read_paths = {
-        "finance": {"query_finances"},
-        "receipts": {"find_receipts", "get_receipt"},
-        "memory": {"search_saved_items", "get_saved_item"},
-        "reminders": {"list_reminders"},
-        "shopping": {"list_shopping_items"},
-        "diary": {"get_agenda", "get_agenda_range"},
-        "plans": {"list_plans"},
-        "goals": {"planning_list_goals", "planning_goal_progress"},
-        "work": {"work_schedule", "work_day", "list_work_roster"},
-        "bills": {"bills_list"},
-        "home": {"ha_find_entities", "ha_get_state"},
+    required_read_caps = {
+        "finance": {"finance.read"},
+        "receipts": {"receipt.find", "receipt.get"},
+        "memory": {"memory.search", "memory.get"},
+        "reminders": {"reminder.read"},
+        "shopping": {"shopping.read"},
+        "diary": {"agenda.read"},
+        "plans": {"plan.read"},
+        "goals": {"goal.list", "goal.progress"},
+        "work": {"work.schedule", "work.day", "work.roster.list"},
+        "bills": {"bills.list"},
+        "home": {"home.find", "home.state"},
     }
-    for domain, wanted in required_read_paths.items():
-        if not (wanted & tool_names):
+    for domain, wanted in required_read_caps.items():
+        if not any(implementation_exists(cap, tool_names) for cap in wanted):
             failures.append({
                 "contract": f"architecture.read-path.{domain}",
                 "kind": "missing-capability",
