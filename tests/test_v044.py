@@ -891,10 +891,13 @@ class FinalHardeningTests(V044Base):
                 "text_body": "",
                 "local_path": path,
                 "mime_type": "audio/ogg",
+                "source_message_id": "voice-origin",
+                "context_kind": None,
             }
             payload = outbox._payload(row)
             self.assertEqual(payload["kind"], "audio")
             self.assertEqual(payload["mimetype"], "audio/ogg")
+            self.assertEqual(payload["reply_to_message_id"], "voice-origin")
             self.assertEqual(
                 payload["message_id"],
                 outbox._whatsapp_message_id("audio-outbound-1"),
