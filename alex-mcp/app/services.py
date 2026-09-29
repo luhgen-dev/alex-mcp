@@ -442,7 +442,7 @@ def correct_expense(actor: ActorContext, event_id: str, amount: float | None = N
 
 def _store_selection(conn, actor: ActorContext, kind: str, ids: list[str]) -> str:
     selection_id = str(uuid.uuid4())
-    expires = (datetime.now(timezone.utc) + timedelta(hours=48)).isoformat()
+    expires = (runtime_clock.now_utc() + timedelta(hours=48)).isoformat()
     conn.execute(
         """INSERT INTO selection_sets(
             selection_id,user_id,conversation_id,selection_kind,items_json,created_at_utc,expires_at_utc
