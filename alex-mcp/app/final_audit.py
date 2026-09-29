@@ -313,6 +313,13 @@ def main() -> dict:
         "USAGE_URL" in connect and "AI usage — last 24h" in connect,
         "local no-provider-call usage telemetry is visible in Web UI",
     )
+    require(
+        "SLOW_ACK_MS" in connect
+        and "SLOW_ACK_TEXT" in connect
+        and "slowAckTimer" in connect
+        and "if (!isGroup)" in connect,
+        "slow private turns get a bounded working acknowledgement without weakening group reply binding",
+    )
     db_text = (APP / "db.py").read_text(encoding="utf-8")
     require(
         "resolve_quoted_context" in db_text
