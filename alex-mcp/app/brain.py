@@ -406,9 +406,72 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         force.add("query_finances")
         block |= {"log_expense", "correct_expense", "confirm_expense"}
 
-    # Captioned payment documents are financial writes, not report-export asks.
-    if re.search(r"\b(?:add|log|record)\b.*\b(?:payment|receipt)\b.*\b(?:pdf|document|image)\b", low):
+    # Clear finance lifecycle wording gets a deterministic narrow route.
+    if explicit_expense_write and (
+        money
+        or re.search(r"\b(?:log|record|add)\b.*\b(?:expense|payment|receipt)\b", low)
+    ):
         force.add("log_expense")
+    if re.search(
+        r"\b(?:pending|waiting)\b.*\b(?:expense|payment)\b"
+        r"|\b(?:expense|payment)\b.*\b(?:clarify|confirmation|pending)\b",
+        low,
+    ):
+        force.add("list_pending_expenses")
+    if re.search(
+        r"\b(?:yes\s*,?\s*)?(?:approve|confirm)\b.*\b(?:pending expense|that one)\b"
+        r"|\bconfirm that one\b",
+        low,
+    ):
+        force |= {"list_pending_expenses", "confirm_expense"}
+
+    # Captioned receipt/payment media are financial writes. The media itself
+    # supplies the document type, so the caption need not say "image" or "PDF".
+    if (
+        re.search(r"\b(?:add|log|record)\b.*\b(?:payment|receipt)\b.*\b(?:pdf|document|image)\b", low)
+        or (has_media and re.search(r"\b(?:add|log|record)\b.*\b(?:payment|receipt)\b", low))
+    ):
+        force.add("log_expense")
+
+    # Explicit saved-memory creation/removal phrasing that does not necessarily
+    # contain the historical "save this" / "remember" keywords.
+    if re.search(r"\bkeep\s+(?:a\s+)?note\b", low):
+        force.add("save_item")
+    if re.search(r"\b(?:delete|remove)\b.*\b(?:saved|memory|note|remembered)\b", low):
+        force.add("remove_saved_item")
+
+    # Shopping adds include natural household phrasing such as "we need milk".
+    # Tentative wording still exposes the add capability so the model can ask
+    # for confirmation; it does not perform the mutation deterministically.
+    shopping_candidate = bool(re.search(
+        r"\b(?:shopping|grocery)\s+list\b"
+        r"|\bwe\s+need\b"
+        r"|\b(?:maybe|might|thinking of)\b.*\b(?:buy|need|get(?:ting)?)\b"
+        r"|\badd\b.*\b(?:for the family|milk|bananas|shopping|grocery)\b",
+        low,
+    ))
+    if shopping_candidate:
+        force.add("add_shopping_item")
+
+    # Dedicated read/diagnostic domains must survive the six-tool cap.
+    if re.search(r"\b(?:appliances?|assets?)\b", low):
+        force.add("asset_list")
+    if re.search(r"\bwarrant(?:y|ies)\b", low):
+        force.add("warranty_expiring")
+    if re.search(r"\b(?:recent\s+alex\s+errors?|alex\s+healthy|alex\s+health|why did alex fail)\b", low):
+        force |= {"recent_failures", "system_health"}
+
+    # A polite wrapper around a numeric follow-up is still the persisted
+    # conflict/selection answer; no model reconstruction is needed.
+    if re.fullmatch(r"\s*(?:eh\s+)?alex\s+can\s+u\s+[123]\s*[.!?]*\s*", low):
+        force |= {"resolve_latest_diary_conflict", "resolve_numbered_choice"}
+
+    # Natural diary edit wording (including common "apointment" typo).
+    if re.search(
+        r"\b(?:move|reschedule|cancel)\b.*\b(?:appointment|apointment|meeting|event|diary)\b",
+        low,
+    ):
+        force.add("update_diary_event")
 
     task_create = bool(re.search(
         r"\b(?:add|make|create)\b.*\btask\b|\bi need a task\b|\btask\b.*\b(?:for|under)\b",
@@ -480,6 +543,10 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
 
     if re.search(r"\b(?:put|allocate|channel)\b.*\b(?:stash|cash pool|buffer)\b", low):
         force.add("planning_allocate_cash_to_pool")
+    if re.search(r"\b(?:create|make)\b.*\b(?:cash\s+pool|stash)\b", low):
+        force.add("planning_create_cash_pool")
+    if re.search(r"\b(?:balance|how much)\b.*\b(?:cash\s+pool|stash|buffer)\b", low):
+        force.add("planning_cash_pool_balance")
     if money and re.search(
         r"\b(?:got|received|credited|came in|record)\b.*\b(?:ot|overtime|bonus|salary|refund|extra cash)\b"
         r"|\b(?:ot|overtime|bonus|salary|refund|extra cash)\b.*\b(?:came in|received|credited)\b",
@@ -503,6 +570,21 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         force.add("planning_compare_salary")
     if re.search(r"\b(?:safe monthly baseline|fixed income .*locked commitments|locked commitments.*fixed income)\b", low):
         force.add("planning_baseline")
+    if re.search(
+        r"\b(?:below|above)\s+plan\b.*\bgoal\b"
+        r"|\bcompare\b.*\bcontribution\b.*\btarget\b",
+        low,
+    ):
+        force.add("planning_goal_deviation")
+    if re.search(r"\b(?:money plan|financial plan)\b", low):
+        force.add("planning_brief")
+        block.add("create_plan")
+    if re.search(
+        r"\b(?:reserves?|allowances?)\b"
+        r"|\b(?:set aside|explicitly set aside)\b.*\b(?:month|monthly)\b",
+        low,
+    ):
+        force |= {"planning_list_reserves", "planning_baseline")
 
     if re.search(r"\b(?:monitor|track)\b.*\b(?:goal|payment|bill|subject)\b", low):
         force.add("monitor_delegate")
@@ -515,6 +597,20 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         low,
     ):
         force.add("work_record_event")
+    if re.search(
+        r"\b(?:recorded leave|leave entries|planned and taken leave|leave records?)\b"
+        r"|\bwhat leave do i have recorded\b",
+        low,
+    ):
+        force.add("list_leave_records")
+    if re.search(r"\b(?:leave balance|annual leave .*left|how much .*leave .*left)\b", low):
+        force.add("work_leave_balance")
+
+    # Explicit low-risk HA action synonyms. Read-only/negated HA wording is
+    # still protected by the existing negation gate below.
+    if re.search(r"\bswitch\b.*\b(?:light|fan|switch|ac|air conditioner)\b.*\b(?:on|off)\b", low):
+        if not re.search(r"\b(?:do not|don't|dont|not actually|without actually|hypothetical|what would)\b", low):
+            force.add("ha_control")
 
     # Frequent phone-typing reminder misspellings still have a deterministic,
     # safe action path instead of being crowded out by bill tools.
