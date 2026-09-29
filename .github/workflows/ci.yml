@@ -51,6 +51,7 @@ jobs:
               "variant_checks_passed": report["summary"]["variant_checks_passed"],
               "discovery_dependent": report["summary"].get("discovery_dependent_checks", 0),
               "failures_found": report["summary"]["failures"],
+              "failure_signatures": report.get("failure_signatures", []),
           }, indent=2))
           PY
 
