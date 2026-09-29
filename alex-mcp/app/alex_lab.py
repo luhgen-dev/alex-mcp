@@ -328,14 +328,31 @@ def export_human_ai_packets(
         )
 
 
+def run_real_ai_snapshot_review(report_path: Path) -> dict[str, Any]:
+    """Score the frozen fresh-model decisions against the current blind corpus."""
+    py = sys.executable
+    with tempfile.TemporaryDirectory(prefix="alex-real-ai-review-") as tmp:
+        root = Path(tmp)
+        env = _isolated_env(root, "real-ai-review", fixed_clock=True)
+        return _run(
+            "real_ai_snapshot_review",
+            [
+                py, "alex-mcp/app/real_ai_snapshot_review.py",
+                "--report", str(report_path),
+            ],
+            env,
+            report_path,
+        )
+
+
 def run_chatgpt_reasoning_review(report_path: Path) -> dict[str, Any]:
-    """Run the frozen blind ChatGPT QC decisions against the current corpus."""
+    """Run the deterministic language/routing regression oracle."""
     py = sys.executable
     with tempfile.TemporaryDirectory(prefix="alex-chatgpt-review-") as tmp:
         root = Path(tmp)
         env = _isolated_env(root, "chatgpt-review", fixed_clock=True)
         return _run(
-            "chatgpt_reasoning_review",
+            "reasoning_regression_oracle",
             [
                 py, "alex-mcp/app/chatgpt_reasoning_review.py",
                 "--report", str(report_path),
@@ -403,8 +420,12 @@ def main() -> dict[str, Any]:
         help="optional path for the human-AI packet integrity report",
     )
     parser.add_argument(
+        "--real-ai-review-report", default=None,
+        help="optional path for the frozen fresh-model reasoning snapshot report",
+    )
+    parser.add_argument(
         "--chatgpt-review-report", default=None,
-        help="optional path for the frozen independent ChatGPT reasoning QC report",
+        help="optional path for the deterministic reasoning regression report",
     )
     parser.add_argument(
         "--gate", action="store_true",
@@ -443,6 +464,42 @@ def main() -> dict[str, Any]:
             list(report["summary"].get("infrastructure_errors") or [])
             + ["human_ai_packet_audit"]
         ))
+
+    real_ai_review_path = Path(
+        args.real_ai_review_report
+        or report_path.with_name("alex-real-ai-reasoning-review.json")
+    )
+    real_ai_review = run_real_ai_snapshot_review(real_ai_review_path)
+    real_ai_report = (
+        real_ai_review.get("report")
+        if isinstance(real_ai_review.get("report"), dict)
+        else None
+    )
+    report["real_ai_reasoning_review"] = {
+        "status": (
+            real_ai_report.get("status")
+            if isinstance(real_ai_report, dict)
+            else real_ai_review.get("status")
+        ),
+        "returncode": real_ai_review.get("returncode"),
+        "summary": (
+            real_ai_report.get("summary")
+            if isinstance(real_ai_report, dict) else None
+        ),
+        "external_model_review": (
+            real_ai_report.get("external_model_review")
+            if isinstance(real_ai_report, dict) else None
+        ),
+        "report": str(real_ai_review_path),
+    }
+    if real_ai_report is None:
+        report["status"] = "LAB_ERROR"
+        report["summary"]["infrastructure_errors"] = sorted(set(
+            list(report["summary"].get("infrastructure_errors") or [])
+            + ["real_ai_snapshot_review"]
+        ))
+    elif real_ai_report.get("status") != "PASS" and report.get("status") == "PASS":
+        report["status"] = "PRODUCT_FAIL"
 
     chatgpt_review_path = Path(
         args.chatgpt_review_report
@@ -515,7 +572,8 @@ def main() -> dict[str, Any]:
         "packets": str(packets_path),
         "human_ai_packets": str(human_packets_path),
         "human_ai_report": str(human_report_path),
-        "chatgpt_review_report": str(chatgpt_review_path),
+        "real_ai_review_report": str(real_ai_review_path),
+        "reasoning_regression_report": str(chatgpt_review_path),
     }, indent=2, ensure_ascii=False))
 
     if report["status"] == "LAB_ERROR":
