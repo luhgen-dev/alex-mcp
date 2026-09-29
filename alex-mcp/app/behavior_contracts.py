@@ -204,7 +204,11 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
                 fields=(("media_type", "IMAGE"),),
                 count=1, delta=1,
             ),
-            StateExpectation("event_media_links", count=1, delta=1),
+            StateExpectation(
+                "event_media_links",
+                fields=(("event_id", "$SOURCE_EVENT_ID"), ("media_id", "$SOURCE_MEDIA_ID")),
+                count=1, delta=1,
+            ),
         ),
     ),
     PromptContract(
@@ -229,7 +233,11 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
                 fields=(("media_type", "PDF"),),
                 count=1, delta=1,
             ),
-            StateExpectation("event_media_links", count=1, delta=1),
+            StateExpectation(
+                "event_media_links",
+                fields=(("event_id", "$SOURCE_EVENT_ID"), ("media_id", "$SOURCE_MEDIA_ID")),
+                count=1, delta=1,
+            ),
         ),
     ),
     PromptContract(
@@ -245,6 +253,7 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
             StateExpectation(
                 "saved_items",
                 where=(("source_message_id", "$MID"),),
+                fields=(("media_id", "$SOURCE_MEDIA_ID"),),
                 contains=(("title", "Vinyl"),),
                 count=1, delta=1,
             ),
