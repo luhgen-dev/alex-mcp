@@ -191,6 +191,25 @@ class RoutingTests(V044Base):
         names = _names(asyncio.run(brain._tool_specs("don't turn off the AC light")))
         self.assertNotIn("ha_control", names)
 
+    def test_repaired_write_variants_keep_primary_mutator(self):
+        cases = {
+            "Spent RM12.50 on parking just now.": "log_expense",
+            "spent rm12.50 on parking just now": "log_expense",
+            "eh alex can u spent RM12.50 on parking just now.": "log_expense",
+            "rm400 ot just came in; keep it unallocated for now": "planning_record_cash",
+            "start a rm5,000 family holiday goal, but leave the monthly amount undecided": "planning_create_goal",
+            "from now on, make the holiday goal baseline rm300 monthly": "planning_change_goal_baseline",
+        }
+        for phrase, required in cases.items():
+            names = _names(asyncio.run(brain._tool_specs(phrase)))
+            self.assertIn(required, names, phrase)
+            self.assertLessEqual(len(names), brain.TOOL_EXPOSURE_MAX, phrase)
+
+        agency = _names(asyncio.run(brain._tool_specs(
+            "start a rm5,000 family holiday goal, but leave the monthly amount undecided"
+        )))
+        self.assertNotIn("planning_change_goal_baseline", agency)
+
 
 # ------------------------------------------------------------ history hygiene
 class HistoryTests(V044Base):
