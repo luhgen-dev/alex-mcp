@@ -1506,6 +1506,25 @@ CONVERSATION_CONTRACTS: tuple[ConversationContract, ...] = (
         sources=("text", "voice"),
     ),
     ConversationContract(
+        "conv.home.contextual.control", "phase3", "home_assistant",
+        "A pronoun control follow-up may use prior HA focus, but current text supplies the write authority.",
+        "empty",
+        (
+            ConversationStep(
+                "Is the hall AC on?",
+                _fs("ha_find_entities", "ha_get_state"),
+                forbidden=_fs("ha_control"),
+            ),
+            ConversationStep(
+                "Turn it off.",
+                _fs("ha_control"),
+                ha_expectations=(
+                    HAExpectation("climate.hall_ac", "off"),
+                ),
+            ),
+        ),
+    ),
+    ConversationContract(
         "conv.plan.refine", "phase2", "plans",
         "Create/refine/read a draft without converting constraints into unrelated reminders.",
         "empty",
