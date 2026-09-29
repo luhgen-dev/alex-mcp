@@ -544,50 +544,15 @@ def _ha_snapshot() -> dict[str, dict[str, Any]]:
 
 
 def _install_fixed_clock():
-    """Freeze Alex's Python-level clock for deterministic relative dates.
+    """Freeze the shared Alex runtime clock for deterministic relative dates.
 
-    Certification intentionally patches all loaded household modules that bind
-    datetime/date classes directly. SQLite audit timestamps may still use wall
-    clock CURRENT_TIMESTAMP; behavioural assertions never depend on those audit
-    timestamps.
+    Production modules read runtime_clock on every call. Setting one environment
+    value therefore controls brain, services, roster/finance date logic,
+    ingress timestamps and retry calculations without module-by-module monkey
+    patching. SQLite audit DEFAULT CURRENT_TIMESTAMP values remain wall-clock
+    metadata and are never used as behavioural truth in certification.
     """
-    real_datetime = datetime
-    real_date = date
-    fixed_utc = real_datetime.fromisoformat(CERT_NOW_UTC)
-
-    class CertificationDateTime(real_datetime):
-        @classmethod
-        def now(cls, tz=None):
-            if tz is None:
-                return fixed_utc.replace(tzinfo=None)
-            return fixed_utc.astimezone(tz)
-
-        @classmethod
-        def utcnow(cls):
-            return fixed_utc.replace(tzinfo=None)
-
-    class CertificationDate(real_date):
-        @classmethod
-        def today(cls):
-            return fixed_utc.date()
-
-    modules = []
-    for name in (
-        "brain", "db", "ingress", "outbox", "services", "phase2",
-        "phase2_finance", "phase2_work", "phase2_library",
-        "phase2_delegation", "profile_config",
-    ):
-        try:
-            modules.append(__import__(name))
-        except Exception:
-            continue
-    for module in modules:
-        if hasattr(module, "datetime"):
-            module.datetime = CertificationDateTime
-        if hasattr(module, "date"):
-            module.date = CertificationDate
-
-
+    os.environ["ALEX_CERT_NOW"] = CERT_NOW_UTC
 
 def _initialize_sandbox():
     import db
