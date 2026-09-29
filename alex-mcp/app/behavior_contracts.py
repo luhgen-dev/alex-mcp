@@ -239,6 +239,30 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
             "Add bananas and milk for the family.",
         ),
         _fs("add_shopping_item"), seed="empty",
+        state_expectations=(
+            StateExpectation(
+                "shopping_items",
+                fields=(("item_name", "Milk"), ("space_id", "FAMILY_SHARED"), ("status", "OPEN")),
+                count=1, delta=1,
+            ),
+            StateExpectation(
+                "shopping_items",
+                fields=(("item_name", "Banana"), ("space_id", "FAMILY_SHARED"), ("status", "OPEN")),
+                count=1, delta=1,
+            ),
+        ),
+    ),
+    PromptContract(
+        "p1.shopping.ambiguous", "phase1", "shopping",
+        "Tentative shopping language must ask before writing rather than treating possibility as intent.",
+        (
+            "I might buy coffee later.",
+            "Maybe we need coffee.",
+            "Thinking of getting coffee.",
+        ),
+        _fs("add_shopping_item"), seed="empty",
+        expect_clarification=True,
+        unchanged_tables=("shopping_items",),
     ),
     PromptContract(
         "p1.memory.browse", "phase1", "memory",
@@ -1134,14 +1158,33 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         ),
     ),
     PromptContract(
-        "p3.language.tamil", "phase3", "language",
-        "Tamil input must retain useful tool coverage.",
+        "p3.language.tamil.reminder", "phase3", "language",
+        "Tamil reminder input must execute the reminder capability and reply in English.",
         (
             "நாளைக்கு காலை 9 மணிக்கு மின்சார பில் கட்ட நினைவூட்டு",
-            "என் சேமித்த விஷயங்களை காட்டு",
+            "நாளை 9 மணிக்கு மின்சார கட்டணம் செலுத்த நினைவூட்டு",
         ),
-        _fs("create_reminder", "search_saved_items"),
+        _fs("create_reminder"),
+        seed="empty",
+        state_expectations=(
+            StateExpectation(
+                "reminders",
+                where=(("source_message_id", "$MID"),),
+                fields=(("status", "OPEN"),),
+                count=1, delta=1,
+            ),
+        ),
+    ),
+    PromptContract(
+        "p3.language.tamil.memory", "phase3", "language",
+        "Tamil saved-memory input must read saved memory and reply in English.",
+        (
+            "என் சேமித்த விஷயங்களை காட்டு",
+            "நான் சேமிக்க சொன்னதை காட்டு",
+        ),
+        _fs("search_saved_items"),
         seed="core",
+        expected_terms=("cobalt",),
     ),
     PromptContract(
         "p3.read.only", "phase3", "safety",
