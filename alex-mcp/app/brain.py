@@ -6,7 +6,9 @@ import re
 import time
 import uuid
 from datetime import datetime
-from zoneinfo import ZoneInfo\n\nimport runtime_clock
+from zoneinfo import ZoneInfo
+
+import runtime_clock
 
 from mcp import Client
 from mcp.types import TextContent
