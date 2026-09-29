@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -58,15 +59,22 @@ async def _tool_snapshot(prompt: str, source: str) -> list[dict[str, Any]]:
     return out
 
 
+def _opaque_packet_id(seed: str) -> str:
+    return "hai-" + hashlib.sha256(seed.encode("utf-8")).hexdigest()[:18]
+
+
 def _packet_base(packet_id: str, contract_id: str, phase: str, domain: str,
                  source: str, prompt: str, conversation_type: str,
                  actor: str) -> dict[str, Any]:
+    # Contract metadata is retained only in memory for scoring and is stripped
+    # from the exported reasoning packet. The external model therefore cannot
+    # cheat by reading an id such as "shopping.update".
     return {
         "packet_version": PACKET_VERSION,
         "packet_id": packet_id,
-        "contract_id": contract_id,
-        "phase": phase,
-        "domain": domain,
+        "_contract_id": contract_id,
+        "_phase": phase,
+        "_domain": domain,
         "source": source,
         "conversation_type": conversation_type,
         "actor": actor,
@@ -88,7 +96,7 @@ async def build_packets(phase: str = "all") -> list[dict[str, Any]]:
     for contract in contracts_for_phase(phase):
         for source in contract.sources:
             for index, prompt in enumerate(contract.variants):
-                packet_id = f"{contract.id}|{source}|v{index + 1}"
+                packet_id = _opaque_packet_id(f"{contract.id}|{source}|v{index + 1}")
                 packet = _packet_base(
                     packet_id, contract.id, contract.phase, contract.domain,
                     source, prompt, contract.conversation_type, contract.actor,
@@ -101,7 +109,7 @@ async def build_packets(phase: str = "all") -> list[dict[str, Any]]:
         for source in contract.sources:
             history: list[dict[str, str]] = []
             for index, step in enumerate(contract.steps):
-                packet_id = f"{contract.id}|{source}|s{index + 1}"
+                packet_id = _opaque_packet_id(f"{contract.id}|{source}|s{index + 1}")
                 packet = _packet_base(
                     packet_id, contract.id, contract.phase, contract.domain,
                     source, step.prompt, step.conversation_type, step.actor,
@@ -136,7 +144,7 @@ def _contract_maps(phase: str):
 
 
 def _expectation_for_packet(packet: dict[str, Any], prompts, conversations):
-    cid = packet["contract_id"]
+    cid = packet["_contract_id"]
     if cid in prompts:
         return prompts[cid]
     contract: ConversationContract = conversations[cid]
@@ -228,8 +236,8 @@ def score_packets(packets: list[dict[str, Any]], decisions: list[dict[str, Any]]
 
         results.append({
             "packet_id": packet["packet_id"],
-            "contract_id": packet["contract_id"],
-            "domain": packet["domain"],
+            "contract_id": packet["_contract_id"],
+            "domain": packet["_domain"],
             "source": packet["source"],
             "status": "PASS" if not problems else "FAIL",
             "decision": kind,
@@ -267,11 +275,19 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def _public_packet(row: dict[str, Any]) -> dict[str, Any]:
+    """Strip certification answers/labels before handing a packet to an AI."""
+    return {
+        key: value for key, value in row.items()
+        if not key.startswith("_")
+    }
+
+
 def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         "".join(
-            json.dumps(row, ensure_ascii=False, separators=(",", ":")) + "\n"
+            json.dumps(_public_packet(row), ensure_ascii=False, separators=(",", ":")) + "\n"
             for row in rows
         ),
         encoding="utf-8",
@@ -280,12 +296,12 @@ def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
 
 def packet_audit(packets: list[dict[str, Any]]) -> dict[str, Any]:
     ids = [row["packet_id"] for row in packets]
-    domains = {row["domain"] for row in packets}
+    domains = {row["_domain"] for row in packets}
     sources = {row["source"] for row in packets}
     duplicate_ids = sorted({pid for pid in ids if ids.count(pid) > 1})
     missing_tools = [
         row["packet_id"] for row in packets
-        if not row.get("available_tools") and row["domain"] not in {"language"}
+        if not row.get("available_tools") and row["_domain"] not in {"language"}
     ]
     status = "PASS" if not duplicate_ids and not missing_tools and packets else "FAIL"
     return {
