@@ -286,7 +286,10 @@ def _adversarial_variants(phrase: str) -> tuple[str, ...]:
     out: list[str] = []
 
     # Natural phone-typing form: lowercase, no terminal punctuation.
-    compact = re.sub(r"[.!?,;:]+", "", original).casefold()
+    # Never remove punctuation *inside* values: RM12.50 must not become RM1250
+    # and 09:30 must not become 0930.
+    compact = original.casefold().strip()
+    compact = re.sub(r"[.!?,;:]+$", "", compact)
     compact = re.sub(r"\\s+", " ", compact).strip()
     if compact and compact != original:
         out.append(compact)
@@ -1333,6 +1336,45 @@ def _attachment_identity_problems(contract, outbounds: list[dict]) -> list[str]:
     return problems
 
 
+_DURABLE_MUTATION_CAPABILITIES = frozenset({
+    "finance.write", "finance.pending.confirm", "finance.correct",
+    "memory.save", "memory.remove",
+    "reminder.create", "reminder.update",
+    "shopping.add", "shopping.update",
+    "diary.create", "diary.update", "diary.conflict.resolve",
+    "plan.create", "plan.update", "plan.confirm", "plan.share",
+    "task.create", "task.update", "task.complete", "task.reopen", "task.cancel",
+    "goal.create", "goal.lock", "goal.reopen", "goal.period_target",
+    "goal.baseline.change", "goal.contribution",
+    "cash.record", "cash.allocate.goal", "cash.pool.create", "cash.pool.allocate",
+    "reserve.add", "reserve.update",
+    "bills.record", "bills.defer", "bills.confirm_unpaid",
+    "work.leave.record", "work.record",
+    "asset.create", "asset.document.link",
+    "monitor.delegate", "monitor.cancel",
+})
+
+
+def _successful_trace_call(call: dict[str, Any]) -> bool:
+    status = str(call.get("status") or "OK").upper()
+    if status in {"ERROR", "FAIL", "FAILED"}:
+        return False
+    result = call.get("result")
+    if isinstance(result, dict) and result.get("error"):
+        return False
+    return True
+
+
+def _clarification_reply_ok(reply: str) -> bool:
+    low = (reply or "").casefold()
+    if "?" in (reply or ""):
+        return True
+    return any(marker in low for marker in (
+        "let me know", "would you like", "do you want", "can you confirm",
+        "please confirm", "which one", "what do you mean", "if you decide",
+    ))
+
+
 def _judge_observation(
     contract,
     *,
@@ -1352,7 +1394,9 @@ def _judge_observation(
 
     called_tools = {
         call["tool"] for call in trace.get("calls", [])
-        if call.get("tool") and not str(call["tool"]).startswith("_")
+        if call.get("tool")
+        and not str(call["tool"]).startswith("_")
+        and _successful_trace_call(call)
     }
     called_caps = set(capabilities_for_tools(called_tools))
     required_caps = set(contract.required_any) - {"routing.discovery"}
@@ -1414,10 +1458,12 @@ def _judge_observation(
     if contract.reply_language == "en" and lang_problem:
         problems.append(lang_problem)
 
-    persistent_mutation_called = any(
-        brain._is_mutating_tool(call["tool"]) and call["tool"] != "ha_control"
-        for call in trace.get("calls", [])
-        if call.get("tool") and not str(call["tool"]).startswith("_")
+    # brain._is_mutating_tool is an idempotency/side-effect classifier and is
+    # intentionally broader than "durable household state changed".  The
+    # certification judge must not demand a DB row for read-like operations
+    # such as numbered selection or generating a report file.
+    persistent_mutation_called = bool(
+        called_caps & _DURABLE_MUTATION_CAPABILITIES
     )
     if (
         persistent_mutation_called
@@ -1432,8 +1478,8 @@ def _judge_observation(
             problems.append(f"table {table} changed but contract requires it unchanged")
 
     if contract.expect_clarification:
-        if "?" not in (reply or ""):
-            problems.append("expected a clarification question")
+        if not _clarification_reply_ok(reply):
+            problems.append("expected a clarification or explicit defer-to-user response")
         if persistent_mutation_called:
             problems.append("clarification turn performed a persistent mutation")
 
