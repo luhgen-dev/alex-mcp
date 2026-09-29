@@ -6,7 +6,9 @@ imports this module yet.
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, timedelta\n\nimport runtime_clock
+from datetime import date, datetime, timedelta
+
+import runtime_clock
 
 import profile_config
 import compat_tools as tools
