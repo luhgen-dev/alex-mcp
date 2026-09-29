@@ -247,11 +247,117 @@ def _mcp_schemas() -> dict[str, dict]:
     return asyncio.run(specs())
 
 
-def offline_certify(phase: str) -> dict:
+def _load_heldout_corpus(path: str | None) -> dict[str, tuple[str, ...]]:
+    """Load owner/private held-out phrasings without ever writing them to reports wholesale.
+
+    Format: {"contract.id": ["real phrase 1", "real phrase 2"]}.
+    The file is optional, local-only and must never be committed by the rig.
+    """
+    if not path:
+        return {}
+    source = Path(path)
+    if not source.exists():
+        return {}
+    try:
+        payload = json.loads(source.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"invalid held-out corpus {source}: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError("held-out corpus must be a JSON object keyed by contract id")
+    out: dict[str, tuple[str, ...]] = {}
+    for key, values in payload.items():
+        if not isinstance(values, list):
+            continue
+        phrases = tuple(
+            str(value).strip()[:2000]
+            for value in values
+            if isinstance(value, str) and str(value).strip()
+        )
+        if phrases:
+            out[str(key)] = phrases
+    return out
+
+
+def _adversarial_variants(phrase: str) -> tuple[str, ...]:
+    """Deterministic low-cost perturbations used by the zero-token offline gate."""
+    original = str(phrase or "").strip()
+    if not original:
+        return ()
+    out: list[str] = []
+
+    # Natural phone-typing form: lowercase, no terminal punctuation.
+    compact = re.sub(r"[.!?,;:]+", "", original).casefold()
+    compact = re.sub(r"\\s+", " ", compact).strip()
+    if compact and compact != original:
+        out.append(compact)
+
+    # Casual/filler form used frequently in real WhatsApp conversation.
+    if original.isascii() and not original.casefold().startswith(("alex ", "hey alex", "eh alex")):
+        out.append("eh alex can u " + original[0].lower() + original[1:])
+
+    # Small deterministic typo/abbreviation family, never random.
+    replacements = (
+        (r"\\breminder\\b", "remnder"),
+        (r"\\btomorrow\\b", "tmrw"),
+        (r"\\bappointment\\b", "apointment"),
+        (r"\\bmanagement\\b", "mangement"),
+        (r"\\bshopping\\b", "shoping"),
+        (r"\\bplease\\b", "pls"),
+    )
+    typo = original
+    for pattern, replacement in replacements:
+        changed = re.sub(pattern, replacement, typo, count=1, flags=re.I)
+        if changed != typo:
+            typo = changed
+            break
+    if typo != original:
+        out.append(typo)
+
+    # Stable unique ordering.
+    unique: list[str] = []
+    seen = {original}
+    for value in out:
+        if value not in seen:
+            seen.add(value)
+            unique.append(value)
+    return tuple(unique)
+
+
+def _contract_phrases(
+    contract,
+    heldout: dict[str, tuple[str, ...]] | None = None,
+    *,
+    include_adversarial: bool = False,
+    adversarial_limit: int | None = None,
+) -> list[tuple[str, str]]:
+    rows: list[tuple[str, str]] = [(phrase, "catalog") for phrase in contract.variants]
+    for phrase in (heldout or {}).get(contract.id, ()):
+        rows.append((phrase, "heldout"))
+    if include_adversarial:
+        generated: list[tuple[str, str]] = []
+        for phrase in contract.variants:
+            for mutated in _adversarial_variants(phrase):
+                generated.append((mutated, "adversarial"))
+        if adversarial_limit is not None:
+            generated = generated[:max(0, int(adversarial_limit))]
+        rows.extend(generated)
+
+    # Deduplicate without changing first-seen provenance.
+    out: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for phrase, kind in rows:
+        if phrase not in seen:
+            seen.add(phrase)
+            out.append((phrase, kind))
+    return out
+
+
+def offline_certify(phase: str, heldout_path: str | None = None) -> dict:
     import brain
 
     tool_names = _tool_names_from_mcp()
     schemas = _mcp_schemas()
+    heldout = _load_heldout_corpus(heldout_path)
     failures: list[dict] = []
     passes: list[dict] = []
     needs_live: list[dict] = []
@@ -274,7 +380,9 @@ def offline_certify(phase: str) -> dict:
             })
 
         for source in contract.sources:
-            for phrase in contract.variants:
+            for phrase, variant_kind in _contract_phrases(
+                contract, heldout, include_adversarial=True
+            ):
                 specs = asyncio.run(brain._tool_specs(phrase))
                 selected_tools = {
                     str(spec["function"]["name"])
@@ -292,6 +400,7 @@ def offline_certify(phase: str) -> dict:
                     "domain": contract.domain,
                     "source": source,
                     "prompt": phrase,
+                    "variant_kind": variant_kind,
                     "required_capabilities": sorted(required_caps),
                     "provider_facing_capabilities": sorted(selected_caps),
                     "provider_facing_tools": sorted(selected_tools),
@@ -412,6 +521,7 @@ def offline_certify(phase: str) -> dict:
             "failures": len(failures),
             "mcp_tool_count": len(tool_names),
             "tool_exposure_cap": brain.TOOL_EXPOSURE_MAX,
+            "heldout_contracts_loaded": len(heldout),
         },
         "failures": failures,
         "needs_live": needs_live,
@@ -1439,9 +1549,11 @@ def _live_conversation(contract, source: str, hard_latency_ms: int) -> dict:
 
 def live_certify(phase: str, provider: str, source_options: str | None,
                  hard_latency_ms: int, report_path: str | None,
-                 max_live_cost_usd: float) -> dict:
+                 max_live_cost_usd: float, heldout_path: str | None = None,
+                 live_adversarial_per_contract: int = 1) -> dict:
     source = _load_source_options(source_options)
     creds = _credential_options(provider, source)
+    heldout = _load_heldout_corpus(heldout_path)
     sandbox = tempfile.TemporaryDirectory(prefix="alex-behavior-cert-")
     sandbox_dir = Path(sandbox.name)
     options_path = sandbox_dir / "options.json"
@@ -1480,12 +1592,16 @@ def live_certify(phase: str, provider: str, source_options: str | None,
         if not contract.live:
             continue
         for source_kind in contract.sources:
-            for prompt in contract.variants:
+            for prompt, variant_kind in _contract_phrases(
+                contract, heldout, include_adversarial=True,
+                adversarial_limit=live_adversarial_per_contract,
+            ):
                 if max_live_cost_usd > 0 and accumulated_cost >= max_live_cost_usd:
                     budget_stopped = True
                     break
                 _reset_case_database(sandbox_dir, contract.seed)
                 row = _live_one(contract, prompt, source_kind, hard_latency_ms)
+                row["variant_kind"] = variant_kind
                 rows.append(row)
                 accumulated_cost += float(row.get("estimated_cost_usd") or 0.0)
             if budget_stopped:
@@ -1602,6 +1718,15 @@ def _parser() -> argparse.ArgumentParser:
         help="hard runner-level estimated provider spend cap for live certification; 0 disables",
     )
     p.add_argument(
+        "--heldout-corpus",
+        default=os.environ.get("ALEX_CERT_HELDOUT_CORPUS"),
+        help="optional local-only JSON mapping contract ids to owner-written held-out phrases",
+    )
+    p.add_argument(
+        "--live-adversarial-per-contract", type=int, default=1,
+        help="maximum generated adversarial variants per contract in paid live mode",
+    )
+    p.add_argument(
         "--no-fail-exit", action="store_true",
         help="emit failures but exit 0; useful only while repairing a known-bad release",
     )
@@ -1614,13 +1739,15 @@ def main() -> dict:
         report = catalog_audit()
         _emit(report, args.report)
     elif args.mode == "offline":
-        report = offline_certify(args.phase)
+        report = offline_certify(args.phase, args.heldout_corpus)
         _emit(report, args.report)
     else:
         report = live_certify(
             args.phase, args.provider, args.source_options,
             max(1000, args.hard_latency_ms), args.report,
             max(0.0, float(args.max_live_cost_usd)),
+            args.heldout_corpus,
+            max(0, int(args.live_adversarial_per_contract)),
         )
     if report["status"] != "PASS" and not args.no_fail_exit:
         raise SystemExit(1)
