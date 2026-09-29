@@ -740,6 +740,8 @@ def _reset_case_database(sandbox_dir: Path, seed: str | None) -> str:
     CERT_FIXTURES = {}
     case_path = sandbox_dir / f"case-{uuid.uuid4().hex}.db"
     db.DB_PATH = str(case_path)
+    if not Path(db.DB_PATH).resolve().is_relative_to(sandbox_dir.resolve()):
+        raise RuntimeError("CERTIFICATION SAFETY STOP: case database escaped sandbox")
     _initialize_sandbox()
     _install_fixed_clock()
     _install_fake_ha()
@@ -1453,6 +1455,9 @@ def live_certify(phase: str, provider: str, source_options: str | None,
         pass
     os.environ["ALEX_DATA_DIR"] = str(sandbox_dir)
     os.environ["ALEX_OPTIONS_PATH"] = str(options_path)
+    os.environ["ALEX_HA_API_URL"] = "http://127.0.0.1:9/certification-no-ha"
+    os.environ["ALEX_CERT_NOW"] = CERT_NOW_UTC
+    os.environ.pop("SUPERVISOR_TOKEN", None)
 
     # Imports that bind DATA_DIR/OPTIONS_PATH happen only after the sandbox is set.
     import config
@@ -1544,7 +1549,8 @@ def live_certify(phase: str, provider: str, source_options: str | None,
         "provider": provider,
         "status": live_status,
         "sandbox": True,
-        "production_data_touched": False,
+        "sandbox_path_verified": True,
+        "production_data_access": "provider credentials may be read from --source-options; all certification state writes are bound to disposable sandbox DB paths",
         "summary": {
             "prompt_runs": len(rows),
             "conversation_runs": len(conversations),
