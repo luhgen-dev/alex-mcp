@@ -378,7 +378,7 @@ def _offline_failure_signature(item: dict[str, Any]) -> str:
     return f"{item.get('contract','unknown')}:{item.get('kind','unknown')}:{digest}"
 
 
-def offline_certify(phase: str, heldout_path: str | None = None) -> dict:
+def offline_certify(phase: str, heldout_path: str | None = None, contract_ids: set[str] | None = None) -> dict:
     import brain
 
     tool_names = _tool_names_from_mcp()
@@ -388,7 +388,11 @@ def offline_certify(phase: str, heldout_path: str | None = None) -> dict:
     passes: list[dict] = []
     needs_live: list[dict] = []
 
-    for contract in contracts_for_phase(phase):
+    selected_contracts = [
+        contract for contract in contracts_for_phase(phase)
+        if not contract_ids or contract.id in contract_ids
+    ]
+    for contract in selected_contracts:
         required_caps = set(contract.required_any) - {"routing.discovery"}
         required_all_caps = set(contract.required_all) - {"routing.discovery"}
         forbidden_caps = set(contract.forbidden) - {"routing.discovery"}
@@ -1753,6 +1757,7 @@ def _benchmark_live_plan(
     phase: str,
     heldout_path: str | None,
     live_adversarial_per_contract: int,
+    contract_ids: set[str] | None = None,
 ) -> dict:
     """Choose paid live cases for diagnostic value per token.
 
@@ -1762,7 +1767,7 @@ def _benchmark_live_plan(
     dependent cases, multi-turn conversations, and one representative phrasing
     for the remaining live-capable contracts.
     """
-    offline = offline_certify(phase, heldout_path)
+    offline = offline_certify(phase, heldout_path, contract_ids)
     hard_missing: set[str] = set()
     for item in offline.get("failures", []):
         if item.get("kind") in {
@@ -1783,6 +1788,8 @@ def _benchmark_live_plan(
     skipped: list[dict[str, str]] = []
 
     for contract in contracts_for_phase(phase):
+        if contract_ids and contract.id not in contract_ids:
+            continue
         if not contract.live:
             skipped.append({
                 "contract": contract.id,
@@ -1841,6 +1848,7 @@ def _benchmark_live_plan(
     planned_conversations = [
         (contract, source_kind)
         for contract in conversations_for_phase(phase)
+        if not contract_ids or contract.id in contract_ids
         for source_kind in contract.sources
     ]
     return {
@@ -1857,7 +1865,8 @@ def live_certify(phase: str, provider: str, source_options: str | None,
                  hard_latency_ms: int, report_path: str | None,
                  max_live_cost_usd: float, heldout_path: str | None = None,
                  live_adversarial_per_contract: int = 1,
-                 live_strategy: str = "benchmark") -> dict:
+                 live_strategy: str = "benchmark",
+                 contract_ids: set[str] | None = None) -> dict:
     source = _load_source_options(source_options)
     creds = _credential_options(provider, source)
     heldout = _load_heldout_corpus(heldout_path)
@@ -1898,7 +1907,7 @@ def live_certify(phase: str, provider: str, source_options: str | None,
 
     if live_strategy == "benchmark":
         plan = _benchmark_live_plan(
-            phase, heldout_path, live_adversarial_per_contract
+            phase, heldout_path, live_adversarial_per_contract, contract_ids
         )
         prompt_plan = plan["prompts"]
         conversation_plan = plan["conversations"]
@@ -1912,6 +1921,8 @@ def live_certify(phase: str, provider: str, source_options: str | None,
     else:
         prompt_plan = []
         for contract in contracts_for_phase(phase):
+            if contract_ids and contract.id not in contract_ids:
+                continue
             if not contract.live:
                 continue
             for source_kind in contract.sources:
@@ -1925,6 +1936,7 @@ def live_certify(phase: str, provider: str, source_options: str | None,
         conversation_plan = [
             (contract, source_kind)
             for contract in conversations_for_phase(phase)
+            if not contract_ids or contract.id in contract_ids
             for source_kind in contract.sources
         ]
         plan_metadata = {
@@ -2054,6 +2066,10 @@ def _parser() -> argparse.ArgumentParser:
         "--provider", choices=("auto", "gemini", "grok", "openai"), default="auto",
     )
     p.add_argument(
+        "--contract", action="append", default=[],
+        help="target one prompt/conversation contract; repeatable (external repair loop)",
+    )
+    p.add_argument(
         "--source-options", default=os.environ.get("ALEX_CERT_SOURCE_OPTIONS", "/data/options.json"),
         help="optional existing options file used only to copy provider credentials into the sandbox",
     )
@@ -2092,7 +2108,7 @@ def main() -> dict:
         report = catalog_audit()
         _emit(report, args.report)
     elif args.mode == "offline":
-        report = offline_certify(args.phase, args.heldout_corpus)
+        report = offline_certify(args.phase, args.heldout_corpus, set(args.contract) or None)
         _emit(report, args.report)
     else:
         report = live_certify(
@@ -2102,6 +2118,7 @@ def main() -> dict:
             args.heldout_corpus,
             max(0, int(args.live_adversarial_per_contract)),
             args.live_strategy,
+            set(args.contract) or None,
         )
     if report["status"] != "PASS" and not args.no_fail_exit:
         raise SystemExit(1)
