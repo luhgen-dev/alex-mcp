@@ -1381,6 +1381,7 @@ def _run_ingress_turn(
     phone: str,
     conversation_type: str,
     quoted_message_id: str | None = None,
+    media_fixture: str | None = None,
 ) -> dict:
     import ingress
     import media
@@ -1403,6 +1404,39 @@ def _run_ingress_turn(
         })
         with patch.object(media, "transcribe_audio", return_value=prompt):
             return ingress.process(payload)
+
+    if source == "image":
+        # Valid tiny PNG. Financial-image contracts use deterministic local OCR
+        # so paid live certification does not depend on model vision.
+        payload.update({
+            "image_data": (
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwC"
+                "AAAAC0lEQVR42mP8/x8AAusB9Y9Z3ZQAAAAASUVORK5CYII="
+            ),
+            "image_mime_type": "image/png",
+        })
+        ocr = (
+            "Payment Receipt\nManagement Fee\nAmount RM593.62\n"
+            "Reference CERT-MGMT-IMG\nDate 28/09/2026\nPayment successful"
+            if media_fixture == "management_receipt" else ""
+        )
+        with patch.object(media, "extract_text", return_value=ocr):
+            return ingress.process(payload)
+
+    if source == "pdf":
+        payload.update({
+            "pdf_data": base64.b64encode(
+                b"%PDF-1.4\n% CERTIFICATION RECEIPT\n%%EOF"
+            ).decode("ascii"),
+        })
+        extracted = (
+            "Payment Receipt\nAmount RM441.79\nReference CERT-PDF-44179\n"
+            "Date 28/09/2026\nPayment successful"
+            if media_fixture == "payment_pdf" else ""
+        )
+        with patch.object(media, "extract_text", return_value=extracted):
+            return ingress.process(payload)
+
     return ingress.process(payload)
 
 
@@ -1425,6 +1459,7 @@ def _observe_ingress_turn(
     ingress_result = _run_ingress_turn(
         mid=mid, conv=conv, prompt=prompt, source=source, phone=phone,
         conversation_type=conversation_type, quoted_message_id=quoted_message_id,
+        media_fixture=getattr(contract, "media_fixture", None),
     )
     elapsed_ms = int((time.monotonic() - started) * 1000)
     trace = _trace(mid)
@@ -1514,7 +1549,7 @@ def _step_contract(parent, step):
         "nonzero_forbidden_args", "expect_attachment", "expect_attachment_of",
         "state_expectations", "unchanged_tables", "ha_expectations",
         "forbid_private_fixture_leak", "expect_clarification", "expect_duplicate",
-        "reply_language",
+        "media_fixture", "reply_language",
     ):
         if hasattr(step, name):
             setattr(view, name, getattr(step, name))
