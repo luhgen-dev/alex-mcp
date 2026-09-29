@@ -446,6 +446,18 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
     ):
         force.add("log_expense")
 
+    # Receipt retrieval is a distinct evidence domain from explicit saved memory.
+    # Natural wording such as "what receipts have I saved recently?" refers to
+    # automatically retained financial evidence, not save_item/search_saved_items.
+    receipt_read = bool(
+        re.search(r"\breceipts?\b", low)
+        and re.search(r"\b(?:find|show|send|open|get|have|saved|recent|recently|still)\b", low)
+        and not re.search(r"\b(?:save|remember)\s+this\b", low)
+    )
+    if receipt_read:
+        force |= {"find_receipts", "get_receipt"}
+        block |= {"save_item", "search_saved_items", "get_saved_item", "remove_saved_item"}
+
     # Explicit saved-memory creation/removal phrasing that does not necessarily
     # contain the historical "save this" / "remember" keywords.
     if re.search(r"\bkeep\s+(?:a\s+)?note\b", low):
