@@ -56,7 +56,9 @@ def main() -> dict:
         "remove_saved_item", "resolve_numbered_choice",
         # Tasks, shopping, diary/plans/agenda/privacy
         "create_reminder", "update_reminder", "reminder_history",
-        "add_shopping_item", "list_shopping_items",
+        "create_task", "list_tasks", "update_task", "complete_task",
+        "reopen_task", "cancel_task",
+        "add_shopping_item", "list_shopping_items", "update_shopping_item",
         "add_diary_event", "update_diary_event", "resolve_latest_diary_conflict",
         "get_agenda_range", "create_plan", "confirm_plan", "share_plan",
         "check_my_availability", "check_spouse_availability",
@@ -118,6 +120,13 @@ def main() -> dict:
     require(
         brain._local_chat_reply("Hi Alex, are you working?") is not None,
         "tiny health-check chat can stay fully local and zero-token",
+    )
+    require(
+        callable(brain._discover_tool_specs)
+        and callable(brain._contextual_tool_hints)
+        and callable(brain._looks_like_false_capability_denial)
+        and callable(brain._looks_like_wrong_language_reply),
+        "v0.5 semantic discovery, conversation focus, and bounded model self-repair present",
     )
 
     # 4. Plug-and-play HA configuration carries user-owned facts/secrets.
@@ -221,6 +230,40 @@ def main() -> dict:
     docs = (ROOT / "DOCS.md").read_text(encoding="utf-8")
     require("Alex replies in text only." in docs,
             "voice input/text output owner decision documented")
+    media_text = (APP / "media.py").read_text(encoding="utf-8")
+    schema_text = (APP / "schema.sql").read_text(encoding="utf-8")
+    require(
+        "_choose_voice_transcript" in media_text
+        and '"en", "ta"' in media_text
+        and "auto_cloud_rescue" in media_text,
+        "voice pipeline locally verifies suspicious English/Tamil ASR before cloud rescue",
+    )
+    require(
+        "transcript_meta_json TEXT" in schema_text
+        and '"transcript_meta_json"' in db_text,
+        "voice ASR provenance is durably migrated for diagnostics",
+    )
+    human_ai = APP / "human_ai_lab.py"
+    require(human_ai.exists(), "ChatGPT/human reasoning bridge is part of the external certification rig")
+    if human_ai.exists():
+        human_text = human_ai.read_text(encoding="utf-8")
+        require(
+            "_opaque_packet_id" in human_text
+            and "_public_packet" in human_text
+            and '"_contract_id"' in human_text,
+            "human-AI reasoning packets are blind to certification answer labels",
+        )
+
+    # Version metadata must never drift between the HA card, server and image.
+    server_text = (APP / "mcp_server.py").read_text(encoding="utf-8")
+    config_version = re.search(r'^version:\s*"([^"]+)"', config_text, re.M)
+    server_version = re.search(r'version="([^"]+)"', server_text)
+    docker_version = re.search(r'^ARG BUILD_VERSION=([^\s]+)', docker, re.M)
+    require(
+        bool(config_version and server_version and docker_version)
+        and config_version.group(1) == server_version.group(1) == docker_version.group(1),
+        "HA config, MCP server and Docker image versions are aligned",
+    )
 
     # 9. Production safety: no test-state wipe script is shipped.
     reset_script = ROOT / "rootfs" / "etc" / "cont-init.d" / "05-reset-test-state"
