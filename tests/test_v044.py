@@ -218,6 +218,30 @@ class RoutingTests(V044Base):
             self.assertIn("query_finances", names, phrase)
             self.assertLessEqual(len(names), brain.TOOL_EXPOSURE_MAX)
 
+    def test_contextual_finance_correction_exposes_correction_not_second_write(self):
+        names = _names(asyncio.run(brain._tool_specs(
+            "Actually it was RM12.80.",
+            prior_user_text="I paid RM12.50 for parking.",
+        )))
+        self.assertIn("correct_expense", names)
+        self.assertIn("query_finances", names)
+        self.assertNotIn("log_expense", names)
+
+    def test_contextual_resend_carries_receipt_retrieval_tools(self):
+        names = _names(asyncio.run(brain._tool_specs(
+            "Send me that again.",
+            prior_user_text="Send me the management receipt.",
+        )))
+        self.assertIn("find_receipts", names)
+        self.assertIn("get_receipt", names)
+
+    def test_contextual_followup_does_not_replay_prior_mutator(self):
+        names = _names(asyncio.run(brain._tool_specs(
+            "Actually it was RM12.80.",
+            prior_user_text="I paid RM12.50 for parking.",
+        )))
+        self.assertNotIn("log_expense", names)
+
     def test_fallback_is_read_only(self):
         names = _names(asyncio.run(brain._tool_specs("what pictures did I ask you to save")))
         self.assertIn("search_saved_items", names)
