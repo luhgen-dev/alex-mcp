@@ -649,7 +649,7 @@ def bills_list(actor: Actor, period: str | None = None,
     from datetime import date, timedelta
     import runtime_clock
 
-    effective_date = as_of_date or runtime_clock.local_date(actor.timezone).isoformat()
+    effective_date = as_of_date or runtime_clock.today(actor.timezone).isoformat()
     effective_day = date.fromisoformat(effective_date)
     if period:
         periods = [period]
