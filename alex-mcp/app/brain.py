@@ -39,6 +39,8 @@ For bank-transfer/payment receipts, never invent a spending purpose from a perso
 When the user asks for the latest, most recent, "just now", or similar single transaction, use query_finances and answer from latest_record, not the aggregate total across all historical matches.
 For finance date queries, resolve today/tomorrow/yesterday from the runtime local date and pass the exact ISO date as both start_date and end_date. Do not silently drop the requested date.
 When a tool returns *_local fields, use those user-local times in the reply. Never present UTC timestamps as the user's local clock time.
+For reminder questions containing a day or date, pass the user's date phrase to list_reminders(when=...) so filtering is deterministic.
+A goal is always created as an unlocked draft. Only call planning_lock_goal when the owner explicitly asks to activate/lock/confirm that goal. Never invent a monthly goal contribution.
 When the user explicitly asks for family/shared finances, use query_finances with scope="family". When they explicitly ask for private/personal finances, use scope="private". Never broaden an explicitly requested scope.
 When the user asks specifically for expenses logged from voice notes, use query_finances with source="voice"; receipt/document-only queries use source="receipt".
 If trusted WhatsApp reply context supplies an exact financial event id, use that exact event for a correction or clarification. A short reply such as "RM8.50" must bind to that trusted event or a persisted pending item; never guess an event id. If a quoted clarification and a stale numbered list both exist, the explicit quoted context wins.
@@ -479,6 +481,53 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
             "bills_match_payment", "bills_record_payment",
         }
 
+    # Narrow high-impact writers after broad domain discovery. The model should
+    # not be offered "create" when the user is clearly reading/refining an
+    # existing object, nor goal activation without explicit owner approval.
+    plan_read = bool(re.search(
+        r"\b(?:show|list|what|where|find)\b.*\b(?:plan|draft)\b|"
+        r"\b(?:plan|draft)\b.*\b(?:so far|details|have)\b",
+        low,
+    ))
+    plan_refine = bool(re.search(
+        r"\b(?:update|change|keep|make)\b.*\b(?:plan|draft|kid-friendly|date)\b|"
+        r"\bfor\s+the\b.*\bplan\b|\bdate\s+(?:open|undecided)\b|"
+        r"\bback home\b|\bhome by\b",
+        low,
+    ))
+    if plan_read:
+        selected.discard("create_plan")
+        selected |= {"list_plans"}
+    if plan_refine and not re.search(r"\b(?:start|create|new)\b", low):
+        selected.discard("create_plan")
+        selected |= {"list_plans", "update_plan"}
+
+    diary_detail_read = bool(re.search(
+        r"\b(?:what time|when)\b.*\bappointment\b|"
+        r"\bappointment\b.*\b(?:what time|when)\b",
+        low,
+    ))
+    if diary_detail_read:
+        selected -= {
+            "add_diary_event", "update_diary_event",
+            "resolve_diary_conflict", "resolve_latest_diary_conflict",
+            "create_plan", "update_plan", "confirm_plan", "share_plan",
+            "set_leave_record",
+        }
+        selected |= {"get_agenda", "get_agenda_range"}
+
+    if not re.search(r"\b(?:lock|activate|confirm)\b.*\bgoal\b|\bgoal\b.*\b(?:lock|activate)\b", low):
+        selected.discard("planning_lock_goal")
+    if not re.search(r"\breopen\b.*\bgoal\b|\bresume\b.*\bgoal\b", low):
+        selected.discard("planning_reopen_goal")
+    if not re.search(r"\b(?:change|set|raise|lower)\b.*\b(?:monthly|baseline)\b", low):
+        selected.discard("planning_change_goal_baseline")
+
+    # State/read questions must not receive a physical-control tool unless the
+    # user actually used action language.
+    if not re.search(r"\b(?:turn on|turn off|toggle|set\s+temperature|set\s+.*%|play|pause)\b", low):
+        selected.discard("ha_control")
+
     # Do not advertise superseded simple planning tools when the advanced
     # proven engine is available.
     selected -= LEGACY_SIMPLE_PLANNING
@@ -564,8 +613,13 @@ async def _tool_specs(user_text: str, media_context: list[str] | None = None,
             wanted |= _select_tool_names(str(carried_intent), media_context)
         if quoted_context.get("financial_event"):
             wanted |= {"query_finances", "correct_expense", "confirm_expense", "list_pending_expenses"}
-        if str(quoted_context.get("context_kind") or "").startswith("REMINDER"):
+        context_kind = str(quoted_context.get("context_kind") or "").upper()
+        if context_kind.startswith("REMINDER"):
             wanted |= REMINDER_TOOLS
+        elif context_kind == "RECEIPT" and quoted_context.get("context_id"):
+            wanted |= {"get_receipt", "find_receipts"}
+        elif context_kind == "SAVED_ITEM" and quoted_context.get("context_id"):
+            wanted |= {"get_saved_item", "search_saved_items"}
     if _money_only_reply(user_text):
         # A short amount may answer Alex's "how much?" clarification before a
         # pending ledger row exists, so keep both pending-confirm and fresh-log
