@@ -283,6 +283,107 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         ),
         _fs("bills_list"), seed="core",
     ),
+
+    PromptContract(
+        "p2.tasks.create", "phase2", "tasks",
+        "A real task must remain a task with lifecycle state; it must not degrade into a plan note.",
+        (
+            "Add checking our passport expiry dates as a task for the Malacca trip.",
+            "Make 'check passport expiry dates' a task under the Malacca plan.",
+            "I need a task for the Malacca trip: check our passports.",
+        ),
+        _fs("create_task", "add_task", "task_create"), seed="core",
+    ),
+    PromptContract(
+        "p2.tasks.read", "phase2", "tasks",
+        "Outstanding task queries must have a dedicated read path.",
+        (
+            "What tasks do I still have for the Malacca trip?",
+            "Show the unfinished tasks for Malacca.",
+            "What is left to do for our Malacca plan?",
+        ),
+        _fs("list_tasks", "task_list"), seed="core",
+    ),
+    PromptContract(
+        "p2.cash.record", "phase2", "cash_planning",
+        "Variable cash must be recorded as unallocated rather than silently redirected.",
+        (
+            "I got RM400 OT today.",
+            "Record RM400 overtime pay for today.",
+            "RM400 OT just came in; keep it unallocated for now.",
+        ),
+        _fs("planning_record_cash"), seed="core",
+    ),
+    PromptContract(
+        "p2.cash.allocate", "phase2", "cash_planning",
+        "Explicit extra-cash allocation must expose the owner-directed allocation path.",
+        (
+            "Put RM200 of that extra cash into my Family Holiday goal.",
+            "Allocate RM200 from the OT money to Family Holiday Savings.",
+            "Channel RM200 of the extra cash into the holiday goal.",
+        ),
+        _fs("planning_allocate_cash_to_goal"), seed="core",
+    ),
+    PromptContract(
+        "p2.reserve.read", "phase2", "cash_planning",
+        "Reserves/allowances must be queryable without changing them.",
+        (
+            "What reserves or allowances do I have?",
+            "Show my planning reserves.",
+            "List the amounts I have explicitly set aside each month.",
+        ),
+        _fs("planning_list_reserves", "planning_baseline"), seed="core",
+    ),
+    PromptContract(
+        "p2.leave.read", "phase2", "work",
+        "Leave queries must expose the work/leave read path.",
+        (
+            "How much annual leave do I have left?",
+            "Show my leave balance.",
+            "What leave do I have recorded?",
+        ),
+        _fs("work_leave_balance", "list_leave_records"), seed="core",
+    ),
+    PromptContract(
+        "p2.ot.read", "phase2", "work",
+        "OT questions must use the deterministic work engine.",
+        (
+            "Am I eligible for OT this Saturday?",
+            "What OT do I have this weekend?",
+            "Check my overtime status for Saturday.",
+        ),
+        _fs("work_ot_status", "work_schedule"), seed="core",
+    ),
+    PromptContract(
+        "p2.assets.read", "phase2", "assets",
+        "Household asset/manual/warranty records need a real read path.",
+        (
+            "What appliances or assets have I saved?",
+            "Show my household assets.",
+            "Any warranties I should know about?",
+        ),
+        _fs("asset_list", "warranty_expiring"), seed="core",
+    ),
+    PromptContract(
+        "p2.monitor.read", "phase2", "monitoring",
+        "Delegated monitoring must be inspectable and never implied when absent.",
+        (
+            "What are you monitoring for me?",
+            "Show the things I asked you to track.",
+            "List my active monitoring jobs.",
+        ),
+        _fs("monitor_list"), seed="core",
+    ),
+    PromptContract(
+        "p2.diagnostics.read", "phase2", "diagnostics",
+        "Alex must be able to explain observed failures from evidence rather than invent causes.",
+        (
+            "Why did Alex fail recently?",
+            "Show me recent Alex errors.",
+            "Is Alex healthy right now?",
+        ),
+        _fs("recent_failures", "system_health"), seed="core",
+    ),
     PromptContract(
         "p2.home.read", "phase2", "home_assistant",
         "HA state questions must expose concrete entity/state tools and never control.",
@@ -484,7 +585,7 @@ MANUAL_GATES: tuple[ManualGate, ...] = (
 
 REQUIRED_DOMAINS = {
     "phase1": {"finance", "receipts", "reminders", "shopping", "memory", "whatsapp"},
-    "phase2": {"agenda", "diary", "plans", "goals", "work", "bills", "home_assistant", "reports"},
+    "phase2": {"agenda", "diary", "plans", "tasks", "goals", "cash_planning", "work", "bills", "assets", "monitoring", "diagnostics", "home_assistant", "reports"},
     "phase3": {"safety", "routing", "language", "whatsapp"},
 }
 
