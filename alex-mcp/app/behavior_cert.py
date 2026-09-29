@@ -41,7 +41,7 @@ from unittest.mock import patch
 from behavior_capabilities import (
     CAPABILITY_TO_TOOLS,
     TOOL_COVERAGE_EXEMPTIONS,
-    TOOL_TO_CAPABILITY,
+    TOOL_TO_CAPABILITIES,
     capabilities_for_tools,
     implementation_exists,
     tools_for_capabilities,
@@ -124,7 +124,7 @@ def catalog_audit() -> dict:
     try:
         current_surface = _tool_names_from_mcp()
         unclassified_tools = sorted(
-            current_surface - set(TOOL_TO_CAPABILITY) - set(TOOL_COVERAGE_EXEMPTIONS)
+            current_surface - set(TOOL_TO_CAPABILITIES) - set(TOOL_COVERAGE_EXEMPTIONS)
         )
         if unclassified_tools:
             failures.append(
@@ -134,11 +134,12 @@ def catalog_audit() -> dict:
         else:
             checks.append("current MCP surface is fully classified by capability")
 
-        implemented_owner_caps = {
-            TOOL_TO_CAPABILITY[t]
-            for t in current_surface
-            if t in TOOL_TO_CAPABILITY and TOOL_TO_CAPABILITY[t] != "routing.discovery"
-        }
+        implemented_owner_caps = set()
+        for tool in current_surface:
+            implemented_owner_caps.update(
+                cap for cap in TOOL_TO_CAPABILITIES.get(tool, ())
+                if cap != "routing.discovery"
+            )
         missing_contract_caps = sorted(implemented_owner_caps - covered_capabilities)
         if missing_contract_caps:
             failures.append(
@@ -316,7 +317,10 @@ def offline_certify(phase: str) -> dict:
 
     # Tasks are a lifecycle, not a keyword-shaped tool. All owner-required
     # lifecycle capabilities must exist before task behaviour can certify.
-    task_required = {"task.create", "task.read", "task.update", "task.complete"}
+    task_required = {
+        "task.create", "task.read", "task.update",
+        "task.complete", "task.reopen", "task.cancel",
+    }
     missing_task_caps = sorted(
         cap for cap in task_required if not implementation_exists(cap, tool_names)
     )
@@ -325,7 +329,7 @@ def offline_certify(phase: str) -> dict:
             "contract": "architecture.tasks.lifecycle",
             "kind": "missing-capability",
             "detail": (
-                "Task lifecycle is incomplete. Required semantic capabilities: "
+                "Task lifecycle is incomplete. Required create/list/edit/complete/reopen/cancel capabilities: "
                 + ", ".join(sorted(task_required))
             ),
             "missing_capabilities": missing_task_caps,
@@ -333,7 +337,7 @@ def offline_certify(phase: str) -> dict:
     else:
         passes.append({
             "contract": "architecture.tasks.lifecycle",
-            "detail": "task create/read/update/complete capabilities are implemented",
+            "detail": "task create/read/update/complete/reopen/cancel capabilities are implemented",
         })
 
     required_read_caps = {
