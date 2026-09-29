@@ -483,59 +483,112 @@ def planning_create_goal(name: str, target_amount: float, actor: Actor,
 
 
 @mcp.tool()
-def planning_lock_goal(goal_id: str, actor: Actor) -> dict:
-    """Lock/activate a draft goal after explicit owner approval."""
-    return phase2_finance.lock_goal(goal_id, actor.phone, actor.conversation_type)
-
-
-@mcp.tool()
-def planning_reopen_goal(goal_id: str, actor: Actor) -> dict:
-    """Reopen a completed/cancelled/paused goal only after explicit owner instruction."""
-    return phase2_finance.reopen_goal(goal_id, actor.phone, actor.conversation_type)
-
-
-@mcp.tool()
-def planning_set_period_target(goal_id: str, period: str, amount: float, actor: Actor,
-                               reason: str | None = None) -> dict:
-    """Set a one-period goal target such as 'RM100 is enough this month' without changing future recurring baseline."""
-    return phase2_finance.set_goal_period_target(
-        goal_id, period, amount, actor.phone, actor.conversation_type, reason
+def planning_lock_goal(actor: Actor, goal_id: str | None = None,
+                       goal_name: str | None = None) -> dict:
+    """Lock/activate one draft goal after explicit owner approval. Provide either goal_id from a prior result or its natural goal_name; Alex resolves names conservatively."""
+    resolved = phase2_finance.resolve_goal_reference(
+        goal_id, goal_name, actor.phone, actor.conversation_type
+    )
+    return phase2_finance.lock_goal(
+        resolved, actor.phone, actor.conversation_type
     )
 
 
 @mcp.tool()
-def planning_change_goal_baseline(goal_id: str, new_monthly_amount: float, actor: Actor,
+def planning_reopen_goal(actor: Actor, goal_id: str | None = None,
+                         goal_name: str | None = None) -> dict:
+    """Reopen one eligible goal only after explicit owner instruction. goal_name may be used instead of an opaque id."""
+    resolved = phase2_finance.resolve_goal_reference(
+        goal_id, goal_name, actor.phone, actor.conversation_type
+    )
+    return phase2_finance.reopen_goal(
+        resolved, actor.phone, actor.conversation_type
+    )
+
+
+@mcp.tool()
+def planning_set_period_target(amount: float, actor: Actor,
+                               goal_id: str | None = None,
+                               goal_name: str | None = None,
+                               period: str | None = None,
+                               reason: str | None = None) -> dict:
+    """Set a one-period goal target such as 'RM100 is enough this month' without changing future recurring baseline. Natural goal_name is supported; omitted period means the current local month."""
+    import runtime_clock
+    resolved = phase2_finance.resolve_goal_reference(
+        goal_id, goal_name, actor.phone, actor.conversation_type
+    )
+    effective_period = period or runtime_clock.today(actor.timezone).strftime("%Y-%m")
+    return phase2_finance.set_goal_period_target(
+        resolved, effective_period, amount,
+        actor.phone, actor.conversation_type, reason
+    )
+
+
+@mcp.tool()
+def planning_change_goal_baseline(new_monthly_amount: float, actor: Actor,
+                                  goal_id: str | None = None,
+                                  goal_name: str | None = None,
                                   effective_from_period: str | None = None,
                                   reason: str | None = None) -> dict:
-    """Change a recurring goal baseline prospectively. Earlier periods remain unchanged."""
+    """Change a recurring goal baseline prospectively. Natural goal_name is supported; earlier periods remain unchanged."""
+    resolved = phase2_finance.resolve_goal_reference(
+        goal_id, goal_name, actor.phone, actor.conversation_type
+    )
     return phase2_finance.set_goal_baseline(
-        goal_id, new_monthly_amount, actor.phone, actor.conversation_type,
+        resolved, new_monthly_amount, actor.phone, actor.conversation_type,
         effective_from_period, reason,
     )
 
 
 @mcp.tool()
-def planning_record_goal_contribution(goal_id: str, amount: float, contribution_date: str,
-                                      actor: Actor, contribution_kind: str = "ONE_OFF",
+def planning_record_goal_contribution(amount: float, actor: Actor,
+                                      goal_id: str | None = None,
+                                      goal_name: str | None = None,
+                                      contribution_date: str | None = None,
+                                      contribution_kind: str = "ONE_OFF",
                                       source_cash_event_id: str | None = None) -> dict:
-    """Record an actual goal contribution without changing its recurring plan."""
+    """Record an actual goal contribution without changing its recurring plan. goal_name is accepted and omitted contribution_date means today locally."""
+    import runtime_clock
+    resolved = phase2_finance.resolve_goal_reference(
+        goal_id, goal_name, actor.phone, actor.conversation_type
+    )
+    effective_date = (
+        contribution_date
+        or runtime_clock.today(actor.timezone).isoformat()
+    )
     return phase2_finance.record_goal_contribution(
-        goal_id, amount, contribution_date, actor.phone, actor.conversation_type,
+        resolved, amount, effective_date,
+        actor.phone, actor.conversation_type,
         contribution_kind, source_cash_event_id, actor.source_message_id,
     )
 
 
 @mcp.tool()
-def planning_goal_progress(goal_id: str, actor: Actor) -> dict:
-    """Read goal target, actual funding, remaining amount and recurring baseline."""
-    return phase2_finance.goal_progress(goal_id, actor.phone, actor.conversation_type)
+def planning_goal_progress(actor: Actor, goal_id: str | None = None,
+                           goal_name: str | None = None) -> dict:
+    """Read goal target, actual funding, remaining amount and recurring baseline. Natural goal_name is accepted."""
+    resolved = phase2_finance.resolve_goal_reference(
+        goal_id, goal_name, actor.phone, actor.conversation_type
+    )
+    return phase2_finance.goal_progress(
+        resolved, actor.phone, actor.conversation_type
+    )
 
 
 @mcp.tool()
-def planning_goal_deviation(goal_id: str, actual_amount: float, period: str, actor: Actor) -> dict:
-    """Compare an actual contribution with that period's approved plan; never change the plan automatically."""
+def planning_goal_deviation(actor: Actor, goal_id: str | None = None,
+                            goal_name: str | None = None,
+                            actual_amount: float | None = None,
+                            period: str | None = None) -> dict:
+    """Compare actual contribution with the approved period plan. If actual_amount is omitted Alex computes actual contributions from stored records; omitted period means current local month."""
+    import runtime_clock
+    resolved = phase2_finance.resolve_goal_reference(
+        goal_id, goal_name, actor.phone, actor.conversation_type
+    )
+    effective_period = period or runtime_clock.today(actor.timezone).strftime("%Y-%m")
     return phase2_finance.evaluate_goal_deviation(
-        goal_id, actual_amount, period, actor.phone, actor.conversation_type,
+        resolved, actual_amount, effective_period,
+        actor.phone, actor.conversation_type,
     )
 
 
@@ -552,10 +605,17 @@ def planning_record_cash(event_type: str, amount: float, event_date: str, actor:
 
 
 @mcp.tool()
-def planning_compare_salary(cash_event_id: str, actor: Actor) -> dict:
-    """Compare an actual recorded salary payment with the configured fixed salary. A difference is reported; the baseline is never rewritten automatically."""
+def planning_compare_salary(actor: Actor, cash_event_id: str | None = None,
+                            event_date: str | None = None,
+                            amount: float | None = None) -> dict:
+    """Compare an actual recorded salary payment with configured fixed salary. Omit cash_event_id to use the unique matching salary, or the latest salary when asking about the latest payment."""
+    resolved = phase2_finance.resolve_cash_event_reference(
+        cash_event_id, actor.phone, actor.conversation_type,
+        event_type="SALARY", event_date=event_date, amount=amount,
+        source_message_id=actor.source_message_id, latest=True,
+    )
     return phase2_finance.compare_actual_salary(
-        cash_event_id, actor.phone, actor.conversation_type
+        resolved, actor.phone, actor.conversation_type
     )
 
 
@@ -568,18 +628,44 @@ def planning_match_goal_alias(alias_text: str, actor: Actor) -> dict:
 
 
 @mcp.tool()
-def planning_cash_status(cash_event_id: str, actor: Actor) -> dict:
-    """Read how much of one cash event is still unallocated."""
-    return phase2_finance.cash_event_status(cash_event_id, actor.phone, actor.conversation_type)
+def planning_cash_status(actor: Actor, cash_event_id: str | None = None,
+                         event_type: str | None = None,
+                         event_date: str | None = None,
+                         amount: float | None = None) -> dict:
+    """Read how much of one cash event is still unallocated. Natural event type/date/amount may be used instead of an opaque cash_event_id; ambiguous matches are never guessed."""
+    resolved = phase2_finance.resolve_cash_event_reference(
+        cash_event_id, actor.phone, actor.conversation_type,
+        event_type=event_type, event_date=event_date, amount=amount,
+        source_message_id=actor.source_message_id,
+        require_unallocated=True,
+    )
+    return phase2_finance.cash_event_status(
+        resolved, actor.phone, actor.conversation_type
+    )
 
 
 @mcp.tool()
-def planning_allocate_cash_to_goal(cash_event_id: str, goal_id: str, amount: float,
-                                   actor: Actor, contribution_date: str | None = None) -> dict:
-    """Allocate explicit extra cash to a goal only after the user instructs Alex to do so."""
+def planning_allocate_cash_to_goal(amount: float, actor: Actor,
+                                   cash_event_id: str | None = None,
+                                   cash_event_type: str | None = None,
+                                   cash_event_date: str | None = None,
+                                   cash_event_amount: float | None = None,
+                                   goal_id: str | None = None,
+                                   goal_name: str | None = None,
+                                   contribution_date: str | None = None) -> dict:
+    """Allocate explicit extra cash to a goal only after the user instructs Alex. Natural cash-event and goal references are supported; ambiguous cash is never guessed."""
+    resolved_cash = phase2_finance.resolve_cash_event_reference(
+        cash_event_id, actor.phone, actor.conversation_type,
+        event_type=cash_event_type, event_date=cash_event_date,
+        amount=cash_event_amount, source_message_id=actor.source_message_id,
+        require_unallocated=True,
+    )
+    resolved_goal = phase2_finance.resolve_goal_reference(
+        goal_id, goal_name, actor.phone, actor.conversation_type
+    )
     return phase2_finance.allocate_cash_to_goal(
-        cash_event_id, goal_id, amount, actor.phone, actor.conversation_type,
-        contribution_date,
+        resolved_cash, resolved_goal, amount,
+        actor.phone, actor.conversation_type, contribution_date,
     )
 
 
@@ -595,17 +681,38 @@ def planning_create_cash_pool(name: str, actor: Actor, currency: str = "MYR",
 
 
 @mcp.tool()
-def planning_cash_pool_balance(pool_id: str, actor: Actor) -> dict:
-    """Read the exact balance of one authorized stash/cash pool."""
-    return phase2_finance.cash_pool_balance(pool_id, actor.phone, actor.conversation_type)
+def planning_cash_pool_balance(actor: Actor, pool_id: str | None = None,
+                               pool_name: str | None = None) -> dict:
+    """Read the exact balance of one authorized stash/cash pool. Natural pool_name is accepted instead of an opaque id."""
+    resolved = phase2_finance.resolve_cash_pool_reference(
+        pool_id, pool_name, actor.phone, actor.conversation_type
+    )
+    return phase2_finance.cash_pool_balance(
+        resolved, actor.phone, actor.conversation_type
+    )
 
 
 @mcp.tool()
-def planning_allocate_cash_to_pool(cash_event_id: str, pool_id: str, amount: float,
-                                   actor: Actor) -> dict:
-    """Allocate explicit extra cash to a stash/pool after user instruction."""
+def planning_allocate_cash_to_pool(amount: float, actor: Actor,
+                                   cash_event_id: str | None = None,
+                                   cash_event_type: str | None = None,
+                                   cash_event_date: str | None = None,
+                                   cash_event_amount: float | None = None,
+                                   pool_id: str | None = None,
+                                   pool_name: str | None = None) -> dict:
+    """Allocate explicit extra cash to a stash/pool after user instruction. Natural cash-event and pool references are supported; ambiguous matches are never guessed."""
+    resolved_cash = phase2_finance.resolve_cash_event_reference(
+        cash_event_id, actor.phone, actor.conversation_type,
+        event_type=cash_event_type, event_date=cash_event_date,
+        amount=cash_event_amount, source_message_id=actor.source_message_id,
+        require_unallocated=True,
+    )
+    resolved_pool = phase2_finance.resolve_cash_pool_reference(
+        pool_id, pool_name, actor.phone, actor.conversation_type
+    )
     return phase2_finance.allocate_cash_to_pool(
-        cash_event_id, pool_id, amount, actor.phone, actor.conversation_type,
+        resolved_cash, resolved_pool, amount,
+        actor.phone, actor.conversation_type,
     )
 
 
@@ -621,13 +728,17 @@ def planning_add_reserve(name: str, monthly_amount: float, actor: Actor,
 
 
 @mcp.tool()
-def planning_update_reserve(reserve_id: str, actor: Actor,
+def planning_update_reserve(actor: Actor, reserve_id: str | None = None,
+                            reserve_name: str | None = None,
                             monthly_amount: float | None = None,
                             name: str | None = None,
                             active: bool | None = None) -> dict:
-    """Change, enable or disable a reserve only after explicit owner instruction."""
+    """Change, enable or disable a reserve only after explicit owner instruction. Natural reserve_name is accepted instead of an opaque id."""
+    resolved = phase2_finance.resolve_reserve_reference(
+        reserve_id, reserve_name, actor.phone, actor.conversation_type
+    )
     return phase2_finance.update_plan_reserve(
-        reserve_id, actor.phone, actor.conversation_type,
+        resolved, actor.phone, actor.conversation_type,
         monthly_amount, name, active,
     )
 
@@ -659,11 +770,15 @@ def planning_income_outlook(period: str, actor: Actor, currency: str = "MYR",
 
 
 @mcp.tool()
-def planning_goal_projection(goal_id: str, actor: Actor,
+def planning_goal_projection(actor: Actor, goal_id: str | None = None,
+                             goal_name: str | None = None,
                              from_period: str | None = None) -> dict:
-    """Project a goal using its approved baseline only; one-off extra contributions do not rewrite future baseline."""
+    """Project a goal using its approved baseline only; natural goal_name is accepted and one-off extra contributions do not rewrite future baseline."""
+    resolved = phase2_finance.resolve_goal_reference(
+        goal_id, goal_name, actor.phone, actor.conversation_type
+    )
     return phase2_finance.goal_projection(
-        goal_id, actor.phone, actor.conversation_type, from_period
+        resolved, actor.phone, actor.conversation_type, from_period
     )
 
 
@@ -686,7 +801,9 @@ def planning_brief(actor: Actor, currency: str = "MYR") -> dict:
 @mcp.tool()
 def planning_list_goals(actor: Actor) -> dict:
     """List authorized advanced goals and their current plan state."""
-    return {"goals": phase2_finance.list_goals(actor.phone, actor.conversation_type, "all")}
+    return {"goals": phase2_finance.list_goals(
+        actor.phone, actor.conversation_type, "all"
+    )}
 
 
 @mcp.tool()
