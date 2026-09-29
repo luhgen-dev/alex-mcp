@@ -88,7 +88,9 @@ UNDERLYING_TO_FACADE: dict[str, str] = {
     "confirm_expense": "finance_correct",
     "search_saved_items": "library_find",
     "get_saved_item": "library_find",
+    "resolve_numbered_choice": "library_find",
     "get_receipt": "library_find",
+    "remove_saved_item": "library_save",
     "asset_list": "library_find",
     "warranty_expiring": "library_find",
     "save_item": "library_save",
@@ -103,6 +105,7 @@ UNDERLYING_TO_FACADE: dict[str, str] = {
     "ha_get_state": "home_state",
     "ha_home_summary": "home_state",
     "ha_home_report": "home_state",
+    "ha_draft_automation": "home_state",
     "ha_control": "home_control",
     "get_agenda": "agenda_view",
     "get_agenda_range": "agenda_view",
@@ -194,10 +197,11 @@ def all_specs() -> dict[str, dict]:
             "library_find",
             "Find/browse authorized saved memories, original receipts, assets or warranties; can retrieve an exact original.",
             {
-                "operation": _enum(("saved", "saved_item", "receipts", "receipt", "assets", "warranties")),
+                "operation": _enum(("saved", "saved_item", "choice", "receipts", "receipt", "assets", "warranties")),
                 "query": {"type": ["string", "null"]},
                 "kind": {"type": ["string", "null"], "enum": ["picture", "document", "note", None]},
                 "item_id": {"type": ["string", "null"]},
+                "choice": {"type": ["integer", "null"], "minimum": 1, "maximum": 100},
                 "media_id": {"type": ["string", "null"]},
                 "amount": {"type": ["number", "null"]},
                 "start_date": {"type": ["string", "null"]},
@@ -211,14 +215,16 @@ def all_specs() -> dict[str, dict]:
         ),
         "library_save": _fn(
             "library_save",
-            "Explicitly save/remember the user's note or attached item. This is separate from automatic receipt retention.",
+            "Explicitly save/remember an item or remove an exact saved-memory index. Automatic receipt retention is separate.",
             {
-                "title": {"type": "string"},
-                "content": {"type": "string"},
+                "operation": _enum(("save", "remove")),
+                "title": {"type": ["string", "null"]},
+                "content": {"type": ["string", "null"]},
                 "tags": {"type": ["string", "null"]},
                 "shared": {"type": "boolean"},
+                "item_id": {"type": ["string", "null"]},
             },
-            ("title", "content"),
+            ("operation",),
         ),
         "reminders_view": _fn(
             "reminders_view",
@@ -278,11 +284,15 @@ def all_specs() -> dict[str, dict]:
             "home_state",
             "Read real Home Assistant entities/states or a privacy-safe whole-home summary/report. Never controls devices.",
             {
-                "operation": _enum(("find", "get", "summary", "report")),
+                "operation": _enum(("find", "get", "summary", "report", "draft_automation")),
                 "query": {"type": ["string", "null"]},
                 "domain": {"type": ["string", "null"]},
                 "entity_id": {"type": ["string", "null"]},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 50},
+                "name": {"type": ["string", "null"]},
+                "trigger_yaml": {"type": ["string", "null"]},
+                "action_yaml": {"type": ["string", "null"]},
+                "condition_yaml": {"type": ["string", "null"]},
             },
             ("operation",),
         ),
@@ -419,12 +429,17 @@ def simple_translation(name: str, args: dict) -> tuple[str, dict] | None:
         if op == "bills":
             return "bills_list", _compact(args, ("period", "as_of_date"))
     if name == "library_save":
-        return "save_item", _compact(args, ("title", "content", "tags", "shared"))
+        if op == "remove":
+            return "remove_saved_item", _compact(args, ("item_id",))
+        if op in {"", "save"}:
+            return "save_item", _compact(args, ("title", "content", "tags", "shared"))
     if name == "library_find":
         if op == "saved":
             return "search_saved_items", _compact(args, ("query", "limit", "kind"))
         if op == "saved_item":
             return "get_saved_item", _compact(args, ("item_id",))
+        if op == "choice":
+            return "resolve_numbered_choice", _compact(args, ("choice",))
         if op == "receipts":
             return "find_receipts", _compact(args, (
                 "query", "amount", "start_date", "end_date", "limit",
@@ -474,6 +489,10 @@ def simple_translation(name: str, args: dict) -> tuple[str, dict] | None:
             return "ha_home_summary", {}
         if op == "report":
             return "ha_home_report", {}
+        if op == "draft_automation":
+            return "ha_draft_automation", _compact(
+                args, ("name", "trigger_yaml", "action_yaml", "condition_yaml")
+            )
     if name == "home_control":
         return "ha_control", _compact(args, ("entity_id", "action", "value"))
     if name == "agenda_view":
