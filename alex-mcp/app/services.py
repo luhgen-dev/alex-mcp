@@ -122,17 +122,11 @@ def _route(conn, actor: ActorContext, text: str, category: str | None) -> tuple[
         space = "FAMILY_SHARED"
     elif rule and rule["force_space_id"]:
         space = rule["force_space_id"]
-    elif actor.media_ids:
-        # Receipt/document media gets the established shared-finance default.
-        # AUDIO is merely the user's input transport and must not change privacy scope.
-        marks = ",".join("?" for _ in actor.media_ids)
-        media_rows = conn.execute(
-            f"SELECT media_type FROM media_objects WHERE media_id IN ({marks})",
-            list(actor.media_ids),
-        ).fetchall()
-        has_financial_document = any(r["media_type"] in ("IMAGE", "PDF") for r in media_rows)
-        space = "FAMILY_SHARED" if has_financial_document else actor.private_space
     else:
+        # Input transport never widens privacy. A DM receipt/image/PDF is
+        # private unless the owner explicitly shares it or its trusted
+        # household-purpose routing rule is FAMILY_SHARED. Voice was already
+        # private; documents now follow the same principle.
         space = actor.private_space
     if space not in actor.allowed_spaces:
         raise PermissionError("Resolved space is outside the authenticated user's memberships")
