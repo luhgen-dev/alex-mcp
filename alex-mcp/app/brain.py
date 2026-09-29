@@ -38,6 +38,9 @@ Receipts/images sent for financial logging are already preserved by Alex before 
 For bank-transfer/payment receipts, never invent a spending purpose from a person's name or generic bank text. If purpose/category is not clear, log it as unclear so the user can clarify. Similar recurring receipts can have the same amount/payee; date/reference/media identity distinguish them.
 When the user asks for the latest, most recent, "just now", or similar single transaction, use query_finances and answer from latest_record, not the aggregate total across all historical matches.
 For finance date queries, resolve today/tomorrow/yesterday from the runtime local date and pass the exact ISO date as both start_date and end_date. Do not silently drop the requested date.
+When a tool returns *_local fields, use those user-local times in the reply. Never present UTC timestamps as the user's local clock time.
+For reminder questions containing a day or date, pass the user's date phrase to list_reminders(when=...) so filtering is deterministic.
+A goal is always created as an unlocked draft. Only call planning_lock_goal when the owner explicitly asks to activate/lock/confirm that goal. Never invent a monthly goal contribution.
 When the user explicitly asks for family/shared finances, use query_finances with scope="family". When they explicitly ask for private/personal finances, use scope="private". Never broaden an explicitly requested scope.
 When the user asks specifically for expenses logged from voice notes, use query_finances with source="voice"; receipt/document-only queries use source="receipt".
 If trusted WhatsApp reply context supplies an exact financial event id, use that exact event for a correction or clarification. A short reply such as "RM8.50" must bind to that trusted event or a persisted pending item; never guess an event id. If a quoted clarification and a stale numbered list both exist, the explicit quoted context wins.
@@ -262,14 +265,14 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
         "remove_saved_item": (r"remove|delete|forget", 110),
         "add_diary_event": (r"diary|appointment|meeting|event|put.*calendar", 110),
         "update_diary_event": (r"move|reschedule|cancel|change.*diary|change.*event", 118),
-        "get_agenda_range": (r"agenda|what.*have|schedule.*week|schedule.*today", 112),
-        "get_agenda": (r"agenda", 100),
+        "get_agenda_range": (r"agenda|what.*have|schedule.*week|schedule.*today|what time.*appointment|when is.*appointment|appointment.*(?:when|time)", 128),
+        "get_agenda": (r"agenda|what time.*appointment|when is.*appointment|appointment.*(?:when|time)", 124),
         "resolve_latest_diary_conflict": (r"^\s*[123]\s*$", 145),
-        "create_plan": (r"plan|trip|holiday|vacation|brainstorm", 90),
+        "create_plan": (r"start.*plan|create.*plan|new.*plan|plan.*trip|plan.*holiday|brainstorm", 105),
         "confirm_plan": (r"confirm|lock|booked|make.*real", 120),
-        "update_plan": (r"change|update|cancel.*plan", 105),
+        "update_plan": (r"change|update|cancel.*plan|for .*plan|keep .*draft|make .*kid|date .*undecided|back home|home by", 132),
         "share_plan": (r"share|family|wife|husband", 105),
-        "list_plans": (r"plans|what.*plan", 90),
+        "list_plans": (r"plans|what.*plan|show.*plan|show.*draft|malacca.*draft|malacca.*plan|for .*plan|plan.*so far", 132),
         "check_my_availability": (r"am i free|my availability|do i have", 110),
         "check_spouse_availability": (r"wife.*free|husband.*free|spouse.*free|partner.*free", 110),
         "work_schedule": (r"roster|shift|work schedule|working", 110),
@@ -277,8 +280,8 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
         "work_record_event": (r"leave|mc|shift swap|ot worked|ot planned|overtime", 102),
         "work_ot_status": (r"ot|overtime", 108),
         "work_leave_balance": (r"leave balance|annual leave|medical leave", 110),
-        "work_departure_plan": (r"leave home|depart|alarm|travel time", 115),
-        "planning_create_goal": (r"create.*goal|new goal|save for", 115),
+        "work_departure_plan": (r"leave home|depart|alarm|travel time|what time.*leave.*work", 136),
+        "planning_create_goal": (r"create.*goal|new goal|save for|savings? goal|goal.*target|want.*goal", 136),
         "planning_lock_goal": (r"lock.*goal|activate.*goal|confirm.*goal", 122),
         "planning_reopen_goal": (r"reopen.*goal|resume.*goal", 120),
         "planning_set_period_target": (r"this month|this period|only this month|enough this month", 124),
@@ -286,19 +289,19 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
         "planning_record_goal_contribution": (r"contributed|deposit.*goal|put.*goal", 112),
         "planning_goal_progress": (r"goal.*progress|how much.*goal|remaining.*goal", 112),
         "planning_goal_deviation": (r"below plan|above plan|this month", 95),
-        "planning_record_cash": (r"bonus|refund|extra cash|ot.*paid|salary.*received", 110),
+        "planning_record_cash": (r"bonus|refund|extra cash|ot.*paid|salary.*received|(?:got|received).*(?:ot|overtime|bonus|refund|salary)|(?:ot|overtime).*(?:got|received)", 136),
         "planning_cash_status": (r"unallocated|extra cash|cash.*left", 105),
         "planning_allocate_cash_to_goal": (r"allocate|put.*goal|channel.*goal", 118),
-        "planning_cash_pool_balance": (r"stash.*balance|pool.*balance|how much.*stash", 118),
+        "planning_cash_pool_balance": (r"stash.*balance|pool.*balance|how much.*stash", 128),
         "planning_allocate_cash_to_pool": (r"put.*stash|allocate.*pool|channel.*stash", 120),
-        "planning_add_reserve": (r"reserve|allowance|keep aside|set aside", 112),
+        "planning_add_reserve": (r"reserve|allowance|keep aside|set aside", 122),
         "planning_update_reserve": (r"change.*reserve|change.*allowance|disable.*reserve|enable.*reserve", 120),
-        "planning_list_reserves": (r"reserves|allowances|what.*reserve", 105),
-        "planning_baseline": (r"baseline|afford|available.*fixed|guaranteed.*income", 115),
+        "planning_list_reserves": (r"reserves|allowances|what.*reserve|what.*allowance", 132),
+        "planning_baseline": (r"baseline|afford|available.*fixed|guaranteed.*income|safe monthly", 136),
         "planning_income_outlook": (r"income.*outlook|expected.*income|salary.*month|income.*month", 112),
         "planning_goal_projection": (r"goal.*projection|when.*reach|how long.*goal", 112),
         "planning_cashflow": (r"cashflow|cash flow|budget|forecast", 110),
-        "planning_brief": (r"plan my money|planning|budget", 100),
+        "planning_brief": (r"plan my money|money plan|planning|budget|financial plan", 128),
         "planning_list_goals": (r"goals|goal list", 95),
         "bills_list": (r"bill|bills|due|obligation|tnb|electricity|water|unifi", 108),
         "bills_match_payment": (r"payment|paid|receipt|match", 115),
@@ -313,17 +316,17 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
         "ha_draft_automation": (r"automation|automate|when .* then", 112),
         "asset_create": (r"warranty|asset|appliance|serial|bought.*device", 105),
         "asset_link_document": (r"warranty|manual|receipt.*asset|link.*document", 108),
-        "asset_list": (r"assets|appliances|devices", 95),
+        "asset_list": (r"assets|appliances|devices|what.*saved.*asset|what.*saved.*appliance", 126),
         "warranty_expiring": (r"warranty.*expir|expiring.*warranty", 118),
         "system_health": (r"health|diagnostic|status.*alex|working", 110),
-        "recent_failures": (r"failed|failure|error|didn't reply|did not reply|why", 115),
+        "recent_failures": (r"fail|failed|failure|error|didn't reply|did not reply|why", 126),
         "monitor_delegate": (r"monitor|track|watch|keep an eye|follow", 112),
-        "monitor_list": (r"what.*monitor|list.*monitor|tracking", 95),
+        "monitor_list": (r"what.*monitor|list.*monitor|monitoring|tracking", 126),
         "monitor_cancel": (r"stop.*monitor|cancel.*monitor|stop tracking", 120),
         "report_snapshot": (r"report|summary|snapshot|overview", 105),
         "report_export": (r"pdf|csv|json|export|send.*report|report.*file", 122),
         "report_payload": (r"google sheets|sheet|tv|dashboard|handoff", 115),
-        "calculate": (r"calculate|how much|total|difference|remaining", 70),
+        "calculate": (r"calculate|exactly|minus|plus|multiply|divide|difference", 132),
     }
     pattern, weight = direct.get(name, ("", 0))
     if pattern and re.search(pattern, low):
@@ -391,6 +394,8 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
         selected |= BILL_TOOLS | {"query_finances"}
     if "SAVED_MEMORY" in intents:
         selected |= MEMORY_TOOLS
+    if "CASH" in intents:
+        selected |= PLANNING_TOOLS
 
     if has_media:
         selected |= CORE_FINANCE | MEMORY_TOOLS
@@ -401,12 +406,15 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
         selected |= CORE_FINANCE
     if re.search(r"\b(?:bill|bills|due|overdue|instalment|installment|obligation|tnb|water bill|electricity|unifi|insurance|road tax)\b", low):
         selected |= BILL_TOOLS | {"query_finances","find_receipts"}
-    if re.search(r"\b(?:goal|goals|saving|savings|budget|cashflow|cash flow|stash|allowance|salary|income|bonus|extra cash|allocate|allocation|reserve)\b", low):
+    if re.search(r"\b(?:goal|goals|saving|savings|budget|cashflow|cash flow|stash|allowances?|salary|income|bonus|extra cash|allocate|allocation|reserves?|baseline)\b", low):
         selected |= PLANNING_TOOLS | BILL_TOOLS
-    if re.search(r"\b(?:roster|shift|working|work schedule|overtime|\bot\b|mc|medical leave|annual leave|leave balance|swap shift)\b", low):
+    if re.search(r"\b(?:roster|shift|working|work schedule|overtime|\bot\b|mc|medical leave|annual leave|leave balance|leave entries|swap shift|leave home|depart|travel time)\b", low):
         selected |= WORK_TOOLS | {"set_leave_record","list_leave_records"}
-    if re.search(r"\b(?:diary|agenda|appointment|wedding|party|meeting|event|schedule|holiday|vacation|trip|plan)\b", low):
-        selected |= DIARY_TOOLS
+    goalish = bool(re.search(r"\b(?:goal|savings? goal|saving towards)\b", low))
+    if re.search(r"\b(?:diary|agenda|appointment|wedding|party|meeting|event|schedule|holiday|vacation|trip|plan|draft)\b", low):
+        # "family holiday savings goal" is a goal, not a trip plan.
+        if not goalish or re.search(r"\b(?:trip|plan|draft|agenda|appointment|meeting|event|schedule)\b", low):
+            selected |= DIARY_TOOLS
     if re.search(r"\b(?:remind|reminder|reminders|notify|due today|later|snooze|acknowledge)\b", low):
         selected |= REMINDER_TOOLS
     if re.search(
@@ -417,9 +425,9 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
         selected |= SHOPPING_TOOLS
     if re.search(r"\b(?:remember|saved|save this|find .*photo|find .*image|show .*document|keys photo|invitation)\b", low):
         selected |= MEMORY_TOOLS
-    if re.search(r"\b(?:warranty|warranties|manual|serial number|appliance|asset)\b", low):
+    if re.search(r"\b(?:warranty|warranties|manual|serial number|appliances?|assets?)\b", low):
         selected |= ASSET_TOOLS | MEMORY_TOOLS
-    if re.search(r"\b(?:light|switch|fan|thermostat|climate|media player|home assistant|turn on|turn off|state of)\b", low):
+    if re.search(r"\b(?:light|switch|fan|thermostat|climate|ac|air conditioner|aircon|media player|home assistant|home status|house status|turn on|turn off|state of)\b", low):
         selected |= HOME_TOOLS
         if re.search(
             r"\b(?:do not|don't|dont|not actually|without actually|how would|"
@@ -427,21 +435,41 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
             low,
         ):
             selected.discard("ha_control")
-    if re.search(r"\b(?:why didn't|why did not|health|diagnostic|failed|failure|error|offline|didn't reply|did not reply)\b", low):
+    if re.search(r"\b(?:why didn't|why did not|health|diagnostic|fail|failed|failure|error|offline|didn't reply|did not reply)\b", low):
         selected |= DIAGNOSTIC_TOOLS
-    if re.search(r"\b(?:monitor|track this|watch this|proactive|follow this)\b", low):
+    if re.search(r"\b(?:monitor|monitoring|track this|tracking|watch this|proactive|follow this)\b", low):
         selected |= MONITOR_TOOLS
     if re.search(r"\b(?:report|snapshot|export|pdf|csv|google sheets|dashboard|tv payload)\b", low):
         selected |= REPORT_TOOLS
 
-    # Tamil script: favor coverage over a false-negative router. It is still a
-    # much smaller catalog than advertising every MCP tool on every turn.
-    if re.search(r"[\u0B80-\u0BFF]", text):
-        selected |= (
-            CORE_FINANCE | REMINDER_TOOLS | MEMORY_TOOLS | SHOPPING_TOOLS
-            | {"get_agenda","work_schedule","planning_brief","bills_list"}
-        )
+    if re.search(r"\b(?:what time|when)\b.*\bappointment\b|\bappointment\b.*\b(?:what time|when)\b", low):
+        selected |= {"get_agenda", "get_agenda_range"}
+    if re.search(r"\b(?:am i free|my availability)\b", low):
+        selected |= {"check_my_availability", "get_agenda", "get_agenda_range"}
+    if re.search(r"\b(?:wife|husband|spouse|partner)\b.*\bfree\b", low):
+        selected |= {"check_spouse_availability"}
+    if re.search(r"\b(?:show|list|what).*\b(?:plan|draft)\b|\bplan\b.*\bso far\b", low):
+        selected |= {"list_plans"}
+    if re.search(r"\b(?:update|change|keep|make)\b.*\b(?:plan|draft|kid-friendly|date)\b|\bfor\s+the\b.*\bplan\b", low):
+        selected |= {"list_plans", "update_plan"}
+    if re.search(r"\b(?:create|start|want)\b.*\b(?:goal|savings goal)\b|\bsavings goal\b", low):
+        selected |= {"planning_create_goal", "planning_list_goals"}
+    if re.search(r"\bcreate\b.*\bstash\b|\bnew\b.*\bstash\b", low):
+        selected |= {"planning_create_cash_pool"}
+    if re.search(r"\bwhat\b.*\b(?:reserves|allowances)\b", low):
+        selected |= {"planning_list_reserves"}
+    if re.search(r"\b(?:what|show|give)\b.*\b(?:money plan|baseline)\b", low):
+        selected |= {"planning_brief", "planning_baseline"}
+    if re.search(r"\bcalculate\b|\b\d+(?:\.\d+)?\s*(?:minus|plus|times|divided by)\s*\d", low):
+        selected.add("calculate")
 
+    # Tamil-only wording deliberately falls through to CORE_READ_FALLBACK +
+    # discovery. A broad fixed Tamil tool union was unsafe and, after the
+    # six-tool cap, accidentally exposed an alphabetic subset unrelated to the
+    # user's intent. Discovery lets the model normalize Tamil/mixed input to a
+    # short English intent and then loads the correct narrow tool set.
+    if re.search(r"[\u0B80-\u0BFF]", text) and not selected:
+        selected.add(DISCOVERY_TOOL_NAME)
     # An explicit "save/remember this" attachment is memory-only unless the
     # user also explicitly asked for a financial write. This closes the old
     # Smoke-4 failure where saving a receipt could accidentally log an expense.
@@ -451,6 +479,58 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
             "list_pending_expenses", "query_finances",
             "bills_match_payment", "bills_record_payment",
         }
+
+    # Narrow high-impact writers after broad domain discovery. The model should
+    # not be offered "create" when the user is clearly reading/refining an
+    # existing object, nor goal activation without explicit owner approval.
+    plan_read = bool(re.search(
+        r"\b(?:show|list|what|where|find)\b.*\b(?:plan|draft)\b|"
+        r"\b(?:plan|draft)\b.*\b(?:so far|details|have)\b",
+        low,
+    ))
+    plan_refine = bool(re.search(
+        r"\b(?:update|change|keep|make)\b.*\b(?:plan|draft|kid-friendly|date)\b|"
+        r"\bfor\s+the\b.*\bplan\b|\bdate\s+(?:open|undecided)\b|"
+        r"\bback home\b|\bhome by\b",
+        low,
+    ))
+    if plan_read:
+        selected.discard("create_plan")
+        selected |= {"list_plans"}
+    if plan_refine and not re.search(r"\b(?:start|create|new)\b", low):
+        selected -= {
+            "create_plan", "add_diary_event", "update_diary_event",
+            "resolve_diary_conflict", "resolve_latest_diary_conflict",
+            "check_my_availability", "check_spouse_availability",
+            "confirm_plan", "share_plan", "set_leave_record", "list_leave_records",
+        }
+        selected |= {"list_plans", "update_plan"}
+
+    diary_detail_read = bool(re.search(
+        r"\b(?:what time|when)\b.*\bappointment\b|"
+        r"\bappointment\b.*\b(?:what time|when)\b",
+        low,
+    ))
+    if diary_detail_read:
+        selected -= {
+            "add_diary_event", "update_diary_event",
+            "resolve_diary_conflict", "resolve_latest_diary_conflict",
+            "create_plan", "update_plan", "confirm_plan", "share_plan",
+            "set_leave_record",
+        }
+        selected |= {"get_agenda", "get_agenda_range"}
+
+    if not re.search(r"\b(?:lock|activate|confirm)\b.*\bgoal\b|\bgoal\b.*\b(?:lock|activate)\b", low):
+        selected.discard("planning_lock_goal")
+    if not re.search(r"\breopen\b.*\bgoal\b|\bresume\b.*\bgoal\b", low):
+        selected.discard("planning_reopen_goal")
+    if not re.search(r"\b(?:change|set|raise|lower)\b.*\b(?:monthly|baseline)\b", low):
+        selected.discard("planning_change_goal_baseline")
+
+    # State/read questions must not receive a physical-control tool unless the
+    # user actually used action language.
+    if not re.search(r"\b(?:turn on|turn off|toggle|set\s+temperature|set\s+.*%|play|pause)\b", low):
+        selected.discard("ha_control")
 
     # Do not advertise superseded simple planning tools when the advanced
     # proven engine is available.
@@ -469,7 +549,10 @@ async def _tool_specs_for_names(wanted: set[str]) -> list[dict]:
 def _pure_chat(user_text: str, media_context: list[str] | None = None) -> bool:
     if media_context:
         return False
-    normalized = re.sub(r"[^a-zA-Z\s]", " ", (user_text or "").casefold())
+    raw = user_text or ""
+    if re.search(r"[\u0B80-\u0BFF]", raw):
+        return False
+    normalized = re.sub(r"[^a-zA-Z\s]", " ", raw.casefold())
     normalized = " ".join(normalized.split())
     if not normalized:
         return True
@@ -534,8 +617,13 @@ async def _tool_specs(user_text: str, media_context: list[str] | None = None,
             wanted |= _select_tool_names(str(carried_intent), media_context)
         if quoted_context.get("financial_event"):
             wanted |= {"query_finances", "correct_expense", "confirm_expense", "list_pending_expenses"}
-        if str(quoted_context.get("context_kind") or "").startswith("REMINDER"):
+        context_kind = str(quoted_context.get("context_kind") or "").upper()
+        if context_kind.startswith("REMINDER"):
             wanted |= REMINDER_TOOLS
+        elif context_kind == "RECEIPT" and quoted_context.get("context_id"):
+            wanted |= {"get_receipt", "find_receipts"}
+        elif context_kind == "SAVED_ITEM" and quoted_context.get("context_id"):
+            wanted |= {"get_saved_item", "search_saved_items"}
     if _money_only_reply(user_text):
         # A short amount may answer Alex's "how much?" clarification before a
         # pending ledger row exists, so keep both pending-confirm and fresh-log
@@ -974,13 +1062,25 @@ def _quoted_context_message(quoted_context: dict | None) -> str | None:
             "use this exact event_id rather than searching for a different transaction."
         )
     if quoted_context.get("context_kind") or quoted_context.get("context_id"):
+        durable_kind = str(quoted_context.get("context_kind") or "").upper()
+        durable_id = quoted_context.get("context_id")
         parts.append(
             "Durable context: "
             + json.dumps({
-                "kind": quoted_context.get("context_kind"),
-                "id": quoted_context.get("context_id"),
+                "kind": durable_kind,
+                "id": durable_id,
             }, ensure_ascii=False, separators=(",", ":"))
         )
+        if durable_kind == "RECEIPT" and durable_id:
+            parts.append(
+                "If the user asks to send/show/repeat this again, call get_receipt "
+                "with this exact durable id. Do not merely restate the receipt text."
+            )
+        elif durable_kind == "SAVED_ITEM" and durable_id:
+            parts.append(
+                "If the user asks to send/show/repeat this again, call get_saved_item "
+                "with this exact durable id. Do not substitute another saved item."
+            )
     return " ".join(parts)
 
 

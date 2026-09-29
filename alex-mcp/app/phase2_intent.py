@@ -10,7 +10,7 @@ import re
 
 
 INTENTS = {
-    "REMINDER", "DIARY", "EXPENSE", "OBLIGATION", "SAVED_MEMORY", "PLAN"
+    "REMINDER", "DIARY", "EXPENSE", "OBLIGATION", "SAVED_MEMORY", "PLAN", "CASH"
 }
 
 
@@ -138,11 +138,20 @@ def classify_write_intent(text, *, has_media=False):
                  r"\b(?:diary|calendar)\s+(?:entry|event)\b", low):
         explicit.append("DIARY")
     if re.search(r"\b(?:log|record|add)\b.{0,25}\bexpense\b|"
-                 r"\b(?:i\s+)?(?:spent|paid)\s+(?:RM|MYR|SGD|\d)", low):
+                 r"\b(?:log|record|add)\s+(?:rm|myr|sgd)\s*\d|"
+                 r"\b(?:i\s+)?(?:spent|paid)\s+(?:rm|myr|sgd|\d)", low):
         explicit.append("EXPENSE")
     if re.search(r"\b(?:bill|payment|instalment|installment)\b.{0,25}"
                  r"\b(?:due|payable|need\s+to\s+pay)\b", low):
         explicit.append("OBLIGATION")
+    if re.search(
+        r"\b(?:got|received|earned|was paid)\b.{0,35}"
+        r"\b(?:ot|overtime|bonus|refund|salary|extra cash)\b|"
+        r"\b(?:ot|overtime|bonus|refund|salary)\b.{0,35}"
+        r"\b(?:got|received|paid|came in)\b",
+        low,
+    ) and _money_signal(raw):
+        explicit.append("CASH")
     if has_media and re.search(r"\b(?:remember|save|keep)\s+(?:this|it)\b", low):
         explicit.append("SAVED_MEMORY")
     if re.search(r"\b(?:start|create|save)\b.{0,30}\b(?:trip|holiday|vacation)\s+plan\b|"
@@ -195,6 +204,18 @@ def classify_write_intent(text, *, has_media=False):
         return {
             "status": "resolved", "intent": "EXPENSE",
             "intents": ["EXPENSE"], "basis": "FINANCIAL_CORRECTION",
+            "requires_clarification": False,
+        }
+
+    cash_natural = bool(
+        has_money
+        and re.search(r"\b(?:ot|overtime|bonus|refund|salary|extra cash)\b", low)
+        and re.search(r"\b(?:got|received|earned|paid|came in)\b", low)
+    )
+    if cash_natural:
+        return {
+            "status": "resolved", "intent": "CASH",
+            "intents": ["CASH"], "basis": "CLEAR_MONEY_IN",
             "requires_clarification": False,
         }
 

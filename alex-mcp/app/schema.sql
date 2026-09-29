@@ -345,6 +345,45 @@ CREATE TABLE IF NOT EXISTS plans (
 );
 CREATE INDEX IF NOT EXISTS idx_plans_space_time ON plans(space_id,start_at_utc,status);
 
+CREATE TABLE IF NOT EXISTS tasks (
+    task_id TEXT PRIMARY KEY,
+    action_key TEXT NOT NULL UNIQUE,
+    owner_id TEXT NOT NULL,
+    space_id TEXT NOT NULL,
+    plan_id TEXT,
+    title TEXT NOT NULL,
+    notes TEXT,
+    due_at_utc TEXT,
+    timezone_name TEXT NOT NULL,
+    assignee_scope TEXT NOT NULL DEFAULT 'SELF'
+        CHECK(assignee_scope IN ('SELF','SPOUSE','BOTH','UNASSIGNED')),
+    status TEXT NOT NULL DEFAULT 'OPEN'
+        CHECK(status IN ('OPEN','DONE','CANCELLED')),
+    completed_at_utc TEXT,
+    created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(owner_id) REFERENCES users(user_id),
+    FOREIGN KEY(space_id) REFERENCES spaces(space_id),
+    FOREIGN KEY(plan_id) REFERENCES plans(plan_id)
+);
+CREATE INDEX IF NOT EXISTS idx_tasks_space_status
+ON tasks(space_id,status,due_at_utc,created_at_utc);
+CREATE INDEX IF NOT EXISTS idx_tasks_plan ON tasks(plan_id,status);
+
+CREATE TABLE IF NOT EXISTS task_events (
+    event_id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL,
+    event_type TEXT NOT NULL
+        CHECK(event_type IN ('CREATED','UPDATED','COMPLETED','REOPENED','CANCELLED')),
+    previous_status TEXT,
+    new_status TEXT,
+    note TEXT,
+    created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(task_id) REFERENCES tasks(task_id)
+);
+CREATE INDEX IF NOT EXISTS idx_task_events
+ON task_events(task_id,created_at_utc);
+
 CREATE TABLE IF NOT EXISTS plan_diary_links (
     plan_id TEXT PRIMARY KEY,
     diary_id TEXT NOT NULL UNIQUE,

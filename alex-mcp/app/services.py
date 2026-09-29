@@ -557,8 +557,11 @@ def get_receipt(actor: ActorContext, media_id: str) -> dict:
                 "description": row["description"],
                 "amount": (row["amount_minor"]/100 if row["amount_minor"] is not None else None),
                 "currency": row["currency"], "event_date_utc": row["event_date_utc"],
-                "_attachments": [{"path": row["local_path"], "mime_type": row["mime_type"],
-                                  "kind": "IMAGE" if row["media_type"] == "IMAGE" else "DOCUMENT"}],
+                "_attachments": [{
+                    "path": row["local_path"], "mime_type": row["mime_type"],
+                    "kind": "IMAGE" if row["media_type"] == "IMAGE" else "DOCUMENT",
+                    "context_kind": "RECEIPT", "context_id": media_id,
+                }],
             }
 
         orphan = conn.execute(
@@ -577,8 +580,11 @@ def get_receipt(actor: ActorContext, media_id: str) -> dict:
             "status": "found_unlinked", "media_id": media_id, "event_id": None,
             "description": "Saved receipt/media awaiting ledger linkage",
             "amount": None, "currency": None, "event_date_utc": orphan["created_at_utc"],
-            "_attachments": [{"path": orphan["local_path"], "mime_type": orphan["mime_type"],
-                              "kind": "IMAGE" if orphan["media_type"] == "IMAGE" else "DOCUMENT"}],
+            "_attachments": [{
+                "path": orphan["local_path"], "mime_type": orphan["mime_type"],
+                "kind": "IMAGE" if orphan["media_type"] == "IMAGE" else "DOCUMENT",
+                "context_kind": "RECEIPT", "context_id": media_id,
+            }],
         }
     finally:
         conn.close()
@@ -753,6 +759,7 @@ def get_saved_item(actor: ActorContext, item_id: str) -> dict:
             result["_attachments"] = [{
                 "path": row["local_path"], "mime_type": row["mime_type"],
                 "kind": "IMAGE" if row["media_type"] == "IMAGE" else "DOCUMENT",
+                "context_kind": "SAVED_ITEM", "context_id": item_id,
             }]
         return result
     finally:
@@ -913,18 +920,39 @@ def create_reminder(actor: ActorContext, task: str, due_local: str,
     finally:
         conn.close()
 
-def list_reminders(actor: ActorContext, include_completed: bool = False, limit: int = 20) -> dict:
+def list_reminders(actor: ActorContext, include_completed: bool = False, limit: int = 20,
+                   when: str | None = None) -> dict:
     marks, spaces = _spaces_sql(actor)
     states = "" if include_completed else " AND status IN ('OPEN','DUE','DEFERRED')"
+    date_clause = ""
+    params = list(spaces)
+    resolved_window = None
+    if when and str(when).strip():
+        import phase2
+        resolved_window = phase2.resolve_date_range(str(when), actor.timezone)
+        date_clause = " AND due_at_utc BETWEEN ? AND ?"
+        params.extend([
+            _local_bound(resolved_window["start_date"], actor.timezone),
+            _local_bound(resolved_window["end_date"], actor.timezone, end=True),
+        ])
+    params.append(max(1, min(50, int(limit))))
     conn = connect()
     try:
         rows = conn.execute(
             f"""SELECT reminder_id,owner_id,task_text,due_at_utc,timezone_name,recurrence_rule,status
-                FROM reminders WHERE space_id IN ({marks}) {states}
+                FROM reminders WHERE space_id IN ({marks}) {states} {date_clause}
                 ORDER BY due_at_utc ASC LIMIT ?""",
-            spaces + [max(1, min(50, int(limit)))],
+            params,
         ).fetchall()
-        return {"reminders": [dict(r) for r in rows]}
+        reminders = [dict(r) for r in rows]
+        tz = ZoneInfo(actor.timezone)
+        for row in reminders:
+            row["due_local"] = datetime.fromisoformat(row["due_at_utc"]).astimezone(tz).isoformat()
+        result = {"reminders": reminders, "timezone": actor.timezone}
+        if resolved_window:
+            result["resolved_window"] = resolved_window
+            result["resolved_from"] = str(when)
+        return result
     finally:
         conn.close()
 
