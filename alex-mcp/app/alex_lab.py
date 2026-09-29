@@ -221,6 +221,14 @@ def run_lab(phase: str, imported_live: dict[str, Any] | None, contract_ids: list
             _isolated_env(root, "final-audit"),
         ))
 
+        oracle_path = reports / "chatgpt-oracle.json"
+        checks.append(_run(
+            "external_chatgpt_oracle",
+            [py, "alex-mcp/app/oracle_cert.py", "--report", str(oracle_path)],
+            _isolated_env(root, "chatgpt-oracle", fixed_clock=True),
+            oracle_path,
+        ))
+
         catalog_path = reports / "catalog.json"
         checks.append(_run(
             "tier_b_catalog",
@@ -281,6 +289,10 @@ def run_lab(phase: str, imported_live: dict[str, Any] | None, contract_ids: list
                 "infrastructure_errors": infrastructure_errors,
                 "offline_failures": offline_failures,
                 "offline_live_required": offline_live_required,
+                "oracle_cases": next((
+                    int((row.get("report") or {}).get("cases") or 0)
+                    for row in checks if row.get("label") == "external_chatgpt_oracle"
+                ), 0),
                 "failure_packets": len(packets),
                 "imported_live_summary": imported_live_summary,
             },
