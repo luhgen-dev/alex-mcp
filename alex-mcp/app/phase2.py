@@ -302,6 +302,327 @@ def list_plans(actor: ActorContext, include_cancelled: bool = False, limit: int 
         conn.close()
 
 
+def _task_plan_match(conn, actor: ActorContext, plan_id: str | None = None,
+                     plan_query: str | None = None):
+    marks = ",".join("?" for _ in actor.allowed_spaces)
+    if plan_id:
+        row = conn.execute(
+            f"""SELECT plan_id,title,space_id FROM plans
+                WHERE plan_id=? AND status!='CANCELLED'
+                  AND space_id IN ({marks})""",
+            [plan_id] + list(actor.allowed_spaces),
+        ).fetchone()
+        if not row:
+            raise PermissionError("plan not found in your accessible spaces")
+        return row
+    query = str(plan_query or "").strip()
+    if not query:
+        return None
+    rows = conn.execute(
+        f"""SELECT plan_id,title,space_id FROM plans
+            WHERE status!='CANCELLED' AND space_id IN ({marks})
+              AND lower(title) LIKE ?
+            ORDER BY updated_at_utc DESC LIMIT 6""",
+        list(actor.allowed_spaces) + [f"%{query.casefold()}%"],
+    ).fetchall()
+    if not rows:
+        raise ValueError("No accessible plan matched that task relationship")
+    if len(rows) > 1:
+        raise ValueError(
+            "More than one plan matched. List plans and use the exact plan_id."
+        )
+    return rows[0]
+
+
+def create_task(actor: ActorContext, title: str, plan_id: str | None = None,
+                plan_query: str | None = None, due_local: str | None = None,
+                notes: str | None = None, assignee: str = "self",
+                shared: bool = False) -> dict:
+    """Create a durable task. A reminder is never created implicitly."""
+    if not actor.action_key:
+        raise RuntimeError("missing deterministic action key")
+    title = str(title or "").strip()
+    if not title:
+        raise ValueError("task title is required")
+    assignee_key = str(assignee or "self").strip().casefold()
+    assignee_map = {
+        "me": "SELF", "self": "SELF", "user": "SELF",
+        "spouse": "SPOUSE", "wife": "SPOUSE", "husband": "SPOUSE", "partner": "SPOUSE",
+        "both": "BOTH", "us": "BOTH",
+        "unassigned": "UNASSIGNED", "none": "UNASSIGNED",
+    }
+    if assignee_key not in assignee_map:
+        raise ValueError("assignee must be self, spouse, both, or unassigned")
+    assignee_scope = assignee_map[assignee_key]
+
+    conn = connect()
+    try:
+        existing = conn.execute(
+            "SELECT * FROM tasks WHERE action_key=?", (actor.action_key,)
+        ).fetchone()
+        if existing:
+            return {"status": "already_applied", **dict(existing)}
+
+        plan = _task_plan_match(conn, actor, plan_id, plan_query)
+        if plan:
+            space = plan["space_id"]
+            resolved_plan_id = plan["plan_id"]
+            resolved_plan_title = plan["title"]
+        else:
+            space = _space(actor, shared)
+            resolved_plan_id = None
+            resolved_plan_title = None
+
+        if assignee_scope in {"SPOUSE", "BOTH"} and space != "FAMILY_SHARED":
+            raise ValueError(
+                "A spouse/both task must be family-shared; private tasks cannot be assigned across spouses"
+            )
+
+        due_utc = _to_utc(due_local, actor.timezone) if due_local else None
+        task_id = str(uuid.uuid4())
+        conn.execute(
+            """INSERT INTO tasks(
+                task_id,action_key,owner_id,space_id,plan_id,title,notes,due_at_utc,
+                timezone_name,assignee_scope,status
+               ) VALUES(?,?,?,?,?,?,?,?,?,?,'OPEN')""",
+            (
+                task_id, actor.action_key, actor.user_id, space, resolved_plan_id,
+                title[:240], notes, due_utc, actor.timezone, assignee_scope,
+            ),
+        )
+        conn.execute(
+            """INSERT INTO task_events(
+                event_id,task_id,event_type,previous_status,new_status,note
+               ) VALUES(?,?,'CREATED',NULL,'OPEN',?)""",
+            (str(uuid.uuid4()), task_id, "Task created"),
+        )
+        conn.commit()
+        return {
+            "status": "created", "task_id": task_id, "title": title[:240],
+            "task_status": "OPEN", "visibility": "family" if space == "FAMILY_SHARED" else "private",
+            "assignee": assignee_scope.casefold(), "plan_id": resolved_plan_id,
+            "plan_title": resolved_plan_title, "due_local": due_local,
+            "reminder_created": False,
+        }
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def list_tasks(actor: ActorContext, plan_id: str | None = None,
+               plan_query: str | None = None, include_done: bool = False,
+               include_cancelled: bool = False, limit: int = 50) -> dict:
+    marks = ",".join("?" for _ in actor.allowed_spaces)
+    where = [f"t.space_id IN ({marks})"]
+    params: list = list(actor.allowed_spaces)
+    if not include_done:
+        where.append("t.status!='DONE'")
+    if not include_cancelled:
+        where.append("t.status!='CANCELLED'")
+    if plan_id:
+        where.append("t.plan_id=?")
+        params.append(plan_id)
+    elif plan_query:
+        where.append("lower(COALESCE(p.title,'')) LIKE ?")
+        params.append(f"%{str(plan_query).casefold()}%")
+    conn = connect()
+    try:
+        rows = conn.execute(
+            f"""SELECT t.task_id,t.title,t.notes,t.due_at_utc,t.timezone_name,
+                       t.assignee_scope,t.status,t.space_id,t.plan_id,p.title AS plan_title,
+                       t.created_at_utc,t.updated_at_utc
+                FROM tasks t
+                LEFT JOIN plans p ON p.plan_id=t.plan_id
+                WHERE {" AND ".join(where)}
+                ORDER BY
+                  CASE WHEN t.status='OPEN' THEN 0 ELSE 1 END,
+                  COALESCE(t.due_at_utc,t.created_at_utc),t.created_at_utc
+                LIMIT ?""",
+            params + [max(1, min(100, int(limit)))],
+        ).fetchall()
+        tz = ZoneInfo(actor.timezone)
+        items = []
+        for row in rows:
+            item = dict(row)
+            if item.get("due_at_utc"):
+                item["due_local"] = datetime.fromisoformat(
+                    item["due_at_utc"]
+                ).astimezone(tz).isoformat()
+            item["visibility"] = (
+                "family" if item["space_id"] == "FAMILY_SHARED" else "private"
+            )
+            item["assignee"] = item.pop("assignee_scope").casefold()
+            items.append(item)
+        return {"tasks": items, "timezone": actor.timezone}
+    finally:
+        conn.close()
+
+
+def _authorized_task(conn, actor: ActorContext, task_id: str | None = None,
+                     query: str | None = None):
+    marks = ",".join("?" for _ in actor.allowed_spaces)
+    if task_id:
+        row = conn.execute(
+            f"SELECT * FROM tasks WHERE task_id=? AND space_id IN ({marks})",
+            [task_id] + list(actor.allowed_spaces),
+        ).fetchone()
+        if not row:
+            raise PermissionError("task not found in your accessible spaces")
+        return row
+
+    text = str(query or "").strip().casefold()
+    if not text:
+        raise ValueError("task_id or task query is required")
+    rows = conn.execute(
+        f"""SELECT * FROM tasks
+            WHERE space_id IN ({marks}) AND status!='CANCELLED'
+              AND lower(title) LIKE ?
+            ORDER BY updated_at_utc DESC LIMIT 6""",
+        list(actor.allowed_spaces) + [f"%{text}%"],
+    ).fetchall()
+    if not rows:
+        # Natural user wording often shortens "passport-check task" to
+        # "passport task". Fall back to all significant query words.
+        words = [w for w in re.findall(r"[a-z0-9]+", text)
+                 if len(w) >= 3 and w not in {"task", "the", "our", "my"}]
+        if words:
+            clauses = " AND ".join("lower(title) LIKE ?" for _ in words)
+            rows = conn.execute(
+                f"""SELECT * FROM tasks
+                    WHERE space_id IN ({marks}) AND status!='CANCELLED'
+                      AND {clauses}
+                    ORDER BY updated_at_utc DESC LIMIT 6""",
+                list(actor.allowed_spaces) + [f"%{w}%" for w in words],
+            ).fetchall()
+    if not rows:
+        raise ValueError("No accessible task matched that description")
+    if len(rows) > 1:
+        raise ValueError("More than one task matched. List tasks and use the exact task_id.")
+    return rows[0]
+
+
+def update_task(actor: ActorContext, task_id: str | None = None,
+                query: str | None = None, title: str | None = None,
+                notes: str | None = None, due_local: str | None = None,
+                assignee: str | None = None) -> dict:
+    conn = connect()
+    try:
+        row = _authorized_task(conn, actor, task_id, query)
+        new_title = str(title).strip()[:240] if title is not None else row["title"]
+        new_notes = notes if notes is not None else row["notes"]
+        new_due = _to_utc(due_local, actor.timezone) if due_local is not None else row["due_at_utc"]
+        new_assignee = row["assignee_scope"]
+        if assignee is not None:
+            key = str(assignee).strip().casefold()
+            mapping = {
+                "me": "SELF", "self": "SELF", "user": "SELF",
+                "spouse": "SPOUSE", "wife": "SPOUSE", "husband": "SPOUSE", "partner": "SPOUSE",
+                "both": "BOTH", "us": "BOTH",
+                "unassigned": "UNASSIGNED", "none": "UNASSIGNED",
+            }
+            if key not in mapping:
+                raise ValueError("assignee must be self, spouse, both, or unassigned")
+            new_assignee = mapping[key]
+            if new_assignee in {"SPOUSE", "BOTH"} and row["space_id"] != "FAMILY_SHARED":
+                raise ValueError("Private tasks cannot be assigned across spouses")
+        conn.execute(
+            """UPDATE tasks SET title=?,notes=?,due_at_utc=?,assignee_scope=?,
+               updated_at_utc=? WHERE task_id=?""",
+            (new_title, new_notes, new_due, new_assignee, utc_now(), row["task_id"]),
+        )
+        conn.execute(
+            """INSERT INTO task_events(
+                event_id,task_id,event_type,previous_status,new_status,note
+               ) VALUES(?,?,'UPDATED',?,?,?)""",
+            (
+                str(uuid.uuid4()), row["task_id"], row["status"], row["status"],
+                "Task fields updated",
+            ),
+        )
+        conn.commit()
+        return {
+            "status": "updated", "task_id": row["task_id"], "title": new_title,
+            "task_status": row["status"], "reminder_changed": False,
+        }
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def _set_task_status(actor: ActorContext, desired: str, event_type: str,
+                     task_id: str | None = None, query: str | None = None) -> dict:
+    conn = connect()
+    try:
+        row = _authorized_task(conn, actor, task_id, query)
+        previous = row["status"]
+        if desired == "OPEN" and previous not in {"DONE", "OPEN"}:
+            raise ValueError("Only a completed/open task can be reopened")
+        if desired == "DONE" and previous == "CANCELLED":
+            raise ValueError("Cancelled task cannot be completed; reopen is required first")
+        if desired == "CANCELLED" and previous == "CANCELLED":
+            return {"status": "already_cancelled", "task_id": row["task_id"]}
+        completed = utc_now() if desired == "DONE" else None
+        conn.execute(
+            """UPDATE tasks SET status=?,completed_at_utc=?,updated_at_utc=?
+               WHERE task_id=?""",
+            (desired, completed, utc_now(), row["task_id"]),
+        )
+        conn.execute(
+            """INSERT INTO task_events(
+                event_id,task_id,event_type,previous_status,new_status,note
+               ) VALUES(?,?,?,?,?,?)""",
+            (
+                str(uuid.uuid4()), row["task_id"], event_type,
+                previous, desired, f"Task {event_type.casefold()}",
+            ),
+        )
+        conn.commit()
+        return {
+            "status": "updated", "task_id": row["task_id"],
+            "title": row["title"], "task_status": desired,
+        }
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def complete_task(actor: ActorContext, task_id: str | None = None,
+                  query: str | None = None) -> dict:
+    return _set_task_status(actor, "DONE", "COMPLETED", task_id, query)
+
+
+def reopen_task(actor: ActorContext, task_id: str | None = None,
+                query: str | None = None) -> dict:
+    # Reopening a completed task is explicit and does not create a reminder.
+    return _set_task_status(actor, "OPEN", "REOPENED", task_id, query)
+
+
+def cancel_task(actor: ActorContext, task_id: str | None = None,
+                query: str | None = None) -> dict:
+    return _set_task_status(actor, "CANCELLED", "CANCELLED", task_id, query)
+
+
+def task_history(actor: ActorContext, task_id: str) -> dict:
+    conn = connect()
+    try:
+        row = _authorized_task(conn, actor, task_id, None)
+        events = conn.execute(
+            """SELECT event_type,previous_status,new_status,note,created_at_utc
+               FROM task_events WHERE task_id=?
+               ORDER BY created_at_utc,event_id""",
+            (row["task_id"],),
+        ).fetchall()
+        return {"task_id": row["task_id"], "events": [dict(x) for x in events]}
+    finally:
+        conn.close()
+
+
 def update_plan(actor: ActorContext, plan_id: str, status: str | None = None,
                 title: str | None = None, start_local: str | None = None,
                 end_local: str | None = None, notes: str | None = None) -> dict:
