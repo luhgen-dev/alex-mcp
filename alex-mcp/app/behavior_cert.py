@@ -359,6 +359,19 @@ def _contract_phrases(
     return out
 
 
+def _offline_failure_signature(item: dict[str, Any]) -> str:
+    basis = "|".join([
+        str(item.get("contract") or ""),
+        str(item.get("kind") or ""),
+        str(item.get("source") or ""),
+        str(item.get("variant_kind") or ""),
+        str(item.get("prompt") or ""),
+        str(item.get("detail") or ""),
+    ])
+    digest = hashlib.sha256(basis.encode("utf-8")).hexdigest()[:16]
+    return f"{item.get('contract','unknown')}:{item.get('kind','unknown')}:{digest}"
+
+
 def offline_certify(phase: str, heldout_path: str | None = None) -> dict:
     import brain
 
@@ -516,6 +529,7 @@ def offline_certify(phase: str, heldout_path: str | None = None) -> dict:
             })
 
     selected_contracts = list(contracts_for_phase(phase))
+    failure_signatures = sorted(_offline_failure_signature(item) for item in failures)
     status = "FAIL" if failures else ("LIVE_REQUIRED" if needs_live else "PASS")
     return {
         "mode": "offline",
@@ -530,6 +544,7 @@ def offline_certify(phase: str, heldout_path: str | None = None) -> dict:
             "tool_exposure_cap": brain.TOOL_EXPOSURE_MAX,
             "heldout_contracts_loaded": len(heldout),
         },
+        "failure_signatures": failure_signatures,
         "failures": failures,
         "needs_live": needs_live,
         "passes": passes,
