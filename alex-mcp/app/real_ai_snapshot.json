@@ -1,142 +1,1056 @@
 {
-  "snapshot_version": 1,
-  "corpus_fingerprint": "901f0e34b256e8c8be9b09f8183f225257d04a09f3e874f7085ccb29c493db05",
+  "snapshot_version": 2,
+  "corpus_fingerprint": "b18c7ad37ebf9473e8b172451b5a4c8697df4b618e996b576e5ddea16c2b253e",
   "reviewer": "GPT-5.6 Sol",
   "review_date": "2026-09-29",
-  "method": "fresh model reasoning over public packet prompt/history/tool descriptions only",
+  "method": "fresh independent model reasoning over public packet prompt/history/tool descriptions only; decisions frozen before private-contract scoring",
   "decision_count": 343,
   "toolsets": {
-    "d00": {"decision":"tools","tools":["query_finances"]},
-    "d01": {"decision":"tools","tools":["log_expense"]},
-    "d02": {"decision":"tools","tools":["find_receipts"]},
-    "d03": {"decision":"tools","tools":["find_receipts","get_receipt"]},
-    "d04": {"decision":"tools","tools":["save_item"]},
-    "d05": {"decision":"tools","tools":["list_reminders"]},
-    "d06": {"decision":"tools","tools":["create_reminder"]},
-    "d07": {"decision":"tools","tools":["list_shopping_items"]},
-    "d08": {"decision":"tools","tools":["add_shopping_item"]},
-    "d09": {"decision":"clarify","tools":[]},
-    "d10": {"decision":"tools","tools":["search_saved_items"]},
-    "d11": {"decision":"tools","tools":["search_saved_items","get_saved_item"]},
-    "d12": {"decision":"tools","tools":["find_media"]},
-    "d13": {"decision":"tools","tools":["find_media","get_media_original"]},
-    "d14": {"decision":"tools","tools":["list_pending_expenses"]},
-    "d15": {"decision":"tools","tools":["list_pending_expenses","confirm_expense"]},
-    "d16": {"decision":"tools","tools":["query_finances","correct_expense"]},
-    "d17": {"decision":"tools","tools":["search_saved_items","remove_saved_item"]},
-    "d18": {"decision":"tools","tools":["list_reminders","update_reminder"]},
-    "d19": {"decision":"tools","tools":["reminder_history"]},
-    "d20": {"decision":"tools","tools":["list_shopping_items","update_shopping_item"]},
-    "d21": {"decision":"tools","tools":["get_agenda_range"]},
-    "d22": {"decision":"tools","tools":["list_plans"]},
-    "d23": {"decision":"tools","tools":["update_plan"]},
-    "d24": {"decision":"tools","tools":["planning_list_goals"]},
-    "d25": {"decision":"tools","tools":["planning_goal_progress"]},
-    "d26": {"decision":"tools","tools":["planning_create_goal"]},
-    "d27": {"decision":"tools","tools":["work_schedule"]},
-    "d28": {"decision":"tools","tools":["bills_list"]},
-    "d29": {"decision":"tools","tools":["create_task"]},
-    "d30": {"decision":"tools","tools":["list_tasks"]},
-    "d31": {"decision":"tools","tools":["list_tasks","update_task"]},
-    "d32": {"decision":"tools","tools":["list_tasks","complete_task"]},
-    "d33": {"decision":"tools","tools":["list_tasks","reopen_task"]},
-    "d34": {"decision":"tools","tools":["list_tasks","cancel_task"]},
-    "d35": {"decision":"tools","tools":["planning_record_cash"]},
-    "d36": {"decision":"tools","tools":["planning_cash_status","planning_allocate_cash_to_goal"]},
-    "d37": {"decision":"tools","tools":["planning_allocate_cash_to_goal"]},
-    "d38": {"decision":"tools","tools":["planning_list_reserves"]},
-    "d39": {"decision":"tools","tools":["set_leave_record"]},
-    "d40": {"decision":"tools","tools":["work_record_event"]},
-    "d41": {"decision":"tools","tools":["list_leave_records"]},
-    "d42": {"decision":"tools","tools":["work_leave_balance"]},
-    "d43": {"decision":"tools","tools":["work_ot_status"]},
-    "d44": {"decision":"tools","tools":["asset_list"]},
-    "d45": {"decision":"tools","tools":["warranty_expiring"]},
-    "d46": {"decision":"tools","tools":["monitor_list"]},
-    "d47": {"decision":"tools","tools":["recent_failures"]},
-    "d48": {"decision":"tools","tools":["system_health"]},
-    "d49": {"decision":"tools","tools":["remove_saved_item"]},
-    "d50": {"decision":"tools","tools":["ha_find_entities","ha_get_state"]},
-    "d51": {"decision":"tools","tools":["report_snapshot"]},
-    "d52": {"decision":"tools","tools":["add_diary_event"]},
-    "d53": {"decision":"tools","tools":["get_agenda","update_diary_event"]},
-    "d54": {"decision":"tools","tools":["resolve_latest_diary_conflict"]},
-    "d55": {"decision":"tools","tools":["create_plan"]},
-    "d56": {"decision":"tools","tools":["confirm_plan"]},
-    "d57": {"decision":"tools","tools":["share_plan"]},
-    "d58": {"decision":"tools","tools":["check_my_availability"]},
-    "d59": {"decision":"tools","tools":["check_spouse_availability"]},
-    "d60": {"decision":"tools","tools":["planning_lock_goal"]},
-    "d61": {"decision":"tools","tools":["planning_reopen_goal"]},
-    "d62": {"decision":"tools","tools":["planning_change_goal_baseline"]},
-    "d63": {"decision":"tools","tools":["planning_set_period_target"]},
-    "d64": {"decision":"tools","tools":["planning_record_goal_contribution"]},
-    "d65": {"decision":"tools","tools":["planning_goal_deviation"]},
-    "d66": {"decision":"tools","tools":["planning_compare_salary"]},
-    "d67": {"decision":"tools","tools":["planning_match_goal_alias"]},
-    "d68": {"decision":"tools","tools":["planning_goal_projection"]},
-    "d69": {"decision":"tools","tools":["planning_cash_status"]},
-    "d70": {"decision":"tools","tools":["planning_create_cash_pool"]},
-    "d71": {"decision":"tools","tools":["planning_cash_pool_balance"]},
-    "d72": {"decision":"tools","tools":["planning_allocate_cash_to_pool"]},
-    "d73": {"decision":"tools","tools":["planning_cash_status","planning_allocate_cash_to_pool"]},
-    "d74": {"decision":"tools","tools":["planning_add_reserve"]},
-    "d75": {"decision":"tools","tools":["planning_update_reserve"]},
-    "d76": {"decision":"tools","tools":["planning_baseline"]},
-    "d77": {"decision":"tools","tools":["planning_income_outlook"]},
-    "d78": {"decision":"tools","tools":["planning_cashflow"]},
-    "d79": {"decision":"tools","tools":["planning_brief"]},
-    "d80": {"decision":"tools","tools":["bills_match_payment"]},
-    "d81": {"decision":"tools","tools":["bills_match_payment","bills_record_payment"]},
-    "d82": {"decision":"tools","tools":["bills_defer"]},
-    "d83": {"decision":"tools","tools":["bills_confirm_unpaid"]},
-    "d84": {"decision":"tools","tools":["work_departure_plan"]},
-    "d85": {"decision":"tools","tools":["work_schedule","work_departure_plan"]},
-    "d86": {"decision":"tools","tools":["asset_create"]},
-    "d87": {"decision":"tools","tools":["asset_link_document"]},
-    "d88": {"decision":"tools","tools":["monitor_delegate"]},
-    "d89": {"decision":"tools","tools":["monitor_cancel"]},
-    "d90": {"decision":"tools","tools":["ha_home_summary"]},
-    "d91": {"decision":"tools","tools":["ha_home_report"]},
-    "d92": {"decision":"tools","tools":["ha_draft_automation"]},
-    "d93": {"decision":"tools","tools":["ha_find_entities","ha_control"]},
-    "d94": {"decision":"tools","tools":["report_export"]},
-    "d95": {"decision":"tools","tools":["report_payload"]},
-    "d96": {"decision":"tools","tools":["calculate"]},
-    "d97": {"decision":"answer","tools":[]},
-    "d98": {"decision":"tools","tools":["log_expense","create_reminder"]},
-    "d99": {"decision":"tools","tools":["get_receipt"]},
-    "d100": {"decision":"tools","tools":["resolve_numbered_choice"]},
-    "d101": {"decision":"tools","tools":["get_agenda_range","create_reminder"]}
+    "r000": {
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "reply_language": "en"
+    },
+    "r001": {
+      "decision": "tools",
+      "tools": [
+        "log_expense"
+      ],
+      "reply_language": "en"
+    },
+    "r002": {
+      "decision": "tools",
+      "tools": [
+        "find_receipts",
+        "get_receipt"
+      ],
+      "reply_language": "en"
+    },
+    "r003": {
+      "decision": "tools",
+      "tools": [
+        "save_item"
+      ],
+      "reply_language": "en"
+    },
+    "r004": {
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "reply_language": "en"
+    },
+    "r005": {
+      "decision": "tools",
+      "tools": [
+        "create_reminder"
+      ],
+      "reply_language": "en"
+    },
+    "r006": {
+      "decision": "tools",
+      "tools": [
+        "list_shopping_items"
+      ],
+      "reply_language": "en"
+    },
+    "r007": {
+      "decision": "tools",
+      "tools": [
+        "add_shopping_item"
+      ],
+      "reply_language": "en"
+    },
+    "r008": {
+      "decision": "clarify",
+      "tools": [],
+      "reply_language": "en"
+    },
+    "r009": {
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "reply_language": "en"
+    },
+    "r010": {
+      "decision": "tools",
+      "tools": [
+        "search_saved_items",
+        "get_saved_item"
+      ],
+      "reply_language": "en"
+    },
+    "r011": {
+      "decision": "tools",
+      "tools": [
+        "find_media"
+      ],
+      "reply_language": "en"
+    },
+    "r012": {
+      "decision": "tools",
+      "tools": [
+        "find_media",
+        "get_media_original"
+      ],
+      "reply_language": "en"
+    },
+    "r013": {
+      "decision": "tools",
+      "tools": [
+        "list_pending_expenses"
+      ],
+      "reply_language": "en"
+    },
+    "r014": {
+      "decision": "tools",
+      "tools": [
+        "list_pending_expenses",
+        "confirm_expense"
+      ],
+      "reply_language": "en"
+    },
+    "r015": {
+      "decision": "tools",
+      "tools": [
+        "query_finances",
+        "correct_expense"
+      ],
+      "reply_language": "en"
+    },
+    "r016": {
+      "decision": "tools",
+      "tools": [
+        "search_saved_items",
+        "remove_saved_item"
+      ],
+      "reply_language": "en"
+    },
+    "r017": {
+      "decision": "tools",
+      "tools": [
+        "list_reminders",
+        "update_reminder"
+      ],
+      "reply_language": "en"
+    },
+    "r018": {
+      "decision": "tools",
+      "tools": [
+        "reminder_history"
+      ],
+      "reply_language": "en"
+    },
+    "r019": {
+      "decision": "tools",
+      "tools": [
+        "list_shopping_items",
+        "update_shopping_item"
+      ],
+      "reply_language": "en"
+    },
+    "r020": {
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "reply_language": "en"
+    },
+    "r021": {
+      "decision": "tools",
+      "tools": [
+        "list_plans"
+      ],
+      "reply_language": "en"
+    },
+    "r022": {
+      "decision": "tools",
+      "tools": [
+        "list_plans",
+        "update_plan"
+      ],
+      "reply_language": "en"
+    },
+    "r023": {
+      "decision": "tools",
+      "tools": [
+        "planning_list_goals"
+      ],
+      "reply_language": "en"
+    },
+    "r024": {
+      "decision": "tools",
+      "tools": [
+        "planning_goal_progress"
+      ],
+      "reply_language": "en"
+    },
+    "r025": {
+      "decision": "tools",
+      "tools": [
+        "planning_create_goal"
+      ],
+      "reply_language": "en"
+    },
+    "r026": {
+      "decision": "tools",
+      "tools": [
+        "work_schedule"
+      ],
+      "reply_language": "en"
+    },
+    "r027": {
+      "decision": "tools",
+      "tools": [
+        "bills_list"
+      ],
+      "reply_language": "en"
+    },
+    "r028": {
+      "decision": "tools",
+      "tools": [
+        "create_task"
+      ],
+      "reply_language": "en"
+    },
+    "r029": {
+      "decision": "tools",
+      "tools": [
+        "list_tasks"
+      ],
+      "reply_language": "en"
+    },
+    "r030": {
+      "decision": "tools",
+      "tools": [
+        "list_tasks",
+        "update_task"
+      ],
+      "reply_language": "en"
+    },
+    "r031": {
+      "decision": "tools",
+      "tools": [
+        "list_tasks",
+        "complete_task"
+      ],
+      "reply_language": "en"
+    },
+    "r032": {
+      "decision": "tools",
+      "tools": [
+        "list_tasks",
+        "reopen_task"
+      ],
+      "reply_language": "en"
+    },
+    "r033": {
+      "decision": "tools",
+      "tools": [
+        "list_tasks",
+        "cancel_task"
+      ],
+      "reply_language": "en"
+    },
+    "r034": {
+      "decision": "tools",
+      "tools": [
+        "planning_record_cash"
+      ],
+      "reply_language": "en"
+    },
+    "r035": {
+      "decision": "tools",
+      "tools": [
+        "planning_allocate_cash_to_goal"
+      ],
+      "reply_language": "en"
+    },
+    "r036": {
+      "decision": "tools",
+      "tools": [
+        "planning_list_reserves"
+      ],
+      "reply_language": "en"
+    },
+    "r037": {
+      "decision": "tools",
+      "tools": [
+        "set_leave_record"
+      ],
+      "reply_language": "en"
+    },
+    "r038": {
+      "decision": "tools",
+      "tools": [
+        "list_leave_records"
+      ],
+      "reply_language": "en"
+    },
+    "r039": {
+      "decision": "tools",
+      "tools": [
+        "work_leave_balance"
+      ],
+      "reply_language": "en"
+    },
+    "r040": {
+      "decision": "tools",
+      "tools": [
+        "work_ot_status"
+      ],
+      "reply_language": "en"
+    },
+    "r041": {
+      "decision": "tools",
+      "tools": [
+        "asset_list"
+      ],
+      "reply_language": "en"
+    },
+    "r042": {
+      "decision": "tools",
+      "tools": [
+        "warranty_expiring"
+      ],
+      "reply_language": "en"
+    },
+    "r043": {
+      "decision": "tools",
+      "tools": [
+        "monitor_list"
+      ],
+      "reply_language": "en"
+    },
+    "r044": {
+      "decision": "tools",
+      "tools": [
+        "recent_failures"
+      ],
+      "reply_language": "en"
+    },
+    "r045": {
+      "decision": "tools",
+      "tools": [
+        "system_health"
+      ],
+      "reply_language": "en"
+    },
+    "r046": {
+      "decision": "tools",
+      "tools": [
+        "remove_saved_item"
+      ],
+      "reply_language": "en"
+    },
+    "r047": {
+      "decision": "tools",
+      "tools": [
+        "ha_find_entities",
+        "ha_get_state"
+      ],
+      "reply_language": "en"
+    },
+    "r048": {
+      "decision": "tools",
+      "tools": [
+        "report_snapshot"
+      ],
+      "reply_language": "en"
+    },
+    "r049": {
+      "decision": "tools",
+      "tools": [
+        "add_diary_event"
+      ],
+      "reply_language": "en"
+    },
+    "r050": {
+      "decision": "tools",
+      "tools": [
+        "get_agenda",
+        "update_diary_event"
+      ],
+      "reply_language": "en"
+    },
+    "r051": {
+      "decision": "tools",
+      "tools": [
+        "resolve_numbered_choice"
+      ],
+      "reply_language": "en"
+    },
+    "r052": {
+      "decision": "tools",
+      "tools": [
+        "create_plan"
+      ],
+      "reply_language": "en"
+    },
+    "r053": {
+      "decision": "tools",
+      "tools": [
+        "confirm_plan"
+      ],
+      "reply_language": "en"
+    },
+    "r054": {
+      "decision": "tools",
+      "tools": [
+        "share_plan"
+      ],
+      "reply_language": "en"
+    },
+    "r055": {
+      "decision": "tools",
+      "tools": [
+        "check_my_availability"
+      ],
+      "reply_language": "en"
+    },
+    "r056": {
+      "decision": "tools",
+      "tools": [
+        "check_spouse_availability"
+      ],
+      "reply_language": "en"
+    },
+    "r057": {
+      "decision": "tools",
+      "tools": [
+        "planning_lock_goal"
+      ],
+      "reply_language": "en"
+    },
+    "r058": {
+      "decision": "tools",
+      "tools": [
+        "planning_reopen_goal"
+      ],
+      "reply_language": "en"
+    },
+    "r059": {
+      "decision": "tools",
+      "tools": [
+        "planning_change_goal_baseline"
+      ],
+      "reply_language": "en"
+    },
+    "r060": {
+      "decision": "tools",
+      "tools": [
+        "planning_set_period_target"
+      ],
+      "reply_language": "en"
+    },
+    "r061": {
+      "decision": "tools",
+      "tools": [
+        "planning_record_goal_contribution"
+      ],
+      "reply_language": "en"
+    },
+    "r062": {
+      "decision": "tools",
+      "tools": [
+        "planning_goal_deviation"
+      ],
+      "reply_language": "en"
+    },
+    "r063": {
+      "decision": "tools",
+      "tools": [
+        "planning_compare_salary"
+      ],
+      "reply_language": "en"
+    },
+    "r064": {
+      "decision": "tools",
+      "tools": [
+        "planning_match_goal_alias"
+      ],
+      "reply_language": "en"
+    },
+    "r065": {
+      "decision": "tools",
+      "tools": [
+        "planning_goal_projection"
+      ],
+      "reply_language": "en"
+    },
+    "r066": {
+      "decision": "tools",
+      "tools": [
+        "planning_cash_status"
+      ],
+      "reply_language": "en"
+    },
+    "r067": {
+      "decision": "tools",
+      "tools": [
+        "planning_create_cash_pool"
+      ],
+      "reply_language": "en"
+    },
+    "r068": {
+      "decision": "tools",
+      "tools": [
+        "planning_cash_pool_balance"
+      ],
+      "reply_language": "en"
+    },
+    "r069": {
+      "decision": "tools",
+      "tools": [
+        "planning_allocate_cash_to_pool"
+      ],
+      "reply_language": "en"
+    },
+    "r070": {
+      "decision": "tools",
+      "tools": [
+        "planning_add_reserve"
+      ],
+      "reply_language": "en"
+    },
+    "r071": {
+      "decision": "tools",
+      "tools": [
+        "planning_update_reserve"
+      ],
+      "reply_language": "en"
+    },
+    "r072": {
+      "decision": "tools",
+      "tools": [
+        "planning_baseline"
+      ],
+      "reply_language": "en"
+    },
+    "r073": {
+      "decision": "tools",
+      "tools": [
+        "planning_income_outlook"
+      ],
+      "reply_language": "en"
+    },
+    "r074": {
+      "decision": "tools",
+      "tools": [
+        "planning_cashflow"
+      ],
+      "reply_language": "en"
+    },
+    "r075": {
+      "decision": "tools",
+      "tools": [
+        "planning_brief"
+      ],
+      "reply_language": "en"
+    },
+    "r076": {
+      "decision": "tools",
+      "tools": [
+        "bills_match_payment"
+      ],
+      "reply_language": "en"
+    },
+    "r077": {
+      "decision": "tools",
+      "tools": [
+        "bills_match_payment",
+        "bills_record_payment"
+      ],
+      "reply_language": "en"
+    },
+    "r078": {
+      "decision": "tools",
+      "tools": [
+        "bills_defer"
+      ],
+      "reply_language": "en"
+    },
+    "r079": {
+      "decision": "tools",
+      "tools": [
+        "bills_confirm_unpaid"
+      ],
+      "reply_language": "en"
+    },
+    "r080": {
+      "decision": "tools",
+      "tools": [
+        "work_record_event"
+      ],
+      "reply_language": "en"
+    },
+    "r081": {
+      "decision": "tools",
+      "tools": [
+        "work_departure_plan"
+      ],
+      "reply_language": "en"
+    },
+    "r082": {
+      "decision": "tools",
+      "tools": [
+        "asset_create"
+      ],
+      "reply_language": "en"
+    },
+    "r083": {
+      "decision": "tools",
+      "tools": [
+        "asset_link_document"
+      ],
+      "reply_language": "en"
+    },
+    "r084": {
+      "decision": "tools",
+      "tools": [
+        "monitor_delegate"
+      ],
+      "reply_language": "en"
+    },
+    "r085": {
+      "decision": "tools",
+      "tools": [
+        "monitor_cancel"
+      ],
+      "reply_language": "en"
+    },
+    "r086": {
+      "decision": "tools",
+      "tools": [
+        "ha_home_summary"
+      ],
+      "reply_language": "en"
+    },
+    "r087": {
+      "decision": "tools",
+      "tools": [
+        "ha_home_report"
+      ],
+      "reply_language": "en"
+    },
+    "r088": {
+      "decision": "tools",
+      "tools": [
+        "ha_draft_automation"
+      ],
+      "reply_language": "en"
+    },
+    "r089": {
+      "decision": "tools",
+      "tools": [
+        "ha_find_entities",
+        "ha_control"
+      ],
+      "reply_language": "en"
+    },
+    "r090": {
+      "decision": "tools",
+      "tools": [
+        "report_export"
+      ],
+      "reply_language": "en"
+    },
+    "r091": {
+      "decision": "tools",
+      "tools": [
+        "report_payload"
+      ],
+      "reply_language": "en"
+    },
+    "r092": {
+      "decision": "tools",
+      "tools": [
+        "calculate"
+      ],
+      "reply_language": "en"
+    },
+    "r093": {
+      "decision": "answer",
+      "tools": [],
+      "reply_language": "en"
+    },
+    "r094": {
+      "decision": "tools",
+      "tools": [
+        "log_expense",
+        "create_reminder"
+      ],
+      "reply_language": "en"
+    },
+    "r095": {
+      "decision": "tools",
+      "tools": [
+        "find_receipts"
+      ],
+      "reply_language": "en"
+    },
+    "r096": {
+      "decision": "tools",
+      "tools": [
+        "get_receipt"
+      ],
+      "reply_language": "en"
+    },
+    "r097": {
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range",
+        "create_reminder"
+      ],
+      "reply_language": "en"
+    }
   },
   "sequence": [
-    "d00","d00","d00","d00","d00","d00","d00","d00","d00","d00","d00","d00","d00","d00","d00","d00","d00",
-    "d01","d01","d01","d01","d02","d03","d02","d02","d01","d01","d01","d01","d04","d04",
-    "d05","d05","d05","d05","d05","d05","d05","d05","d05","d05","d05","d05","d05","d05","d05","d05",
-    "d06","d06","d06","d06","d07","d07","d07","d07","d08","d08","d08","d08","d09","d09","d09",
-    "d10","d10","d10","d10","d10","d10","d10","d10","d11","d10","d11","d10",
-    "d12","d12","d12","d12","d13","d13","d13",
-    "d14","d14","d14","d15","d15","d16","d16","d16","d04","d04","d04","d17","d17",
-    "d18","d18","d18","d19","d19","d20","d20","d20",
-    "d21","d21","d21","d21","d21","d21","d21","d21","d21","d21","d21","d21","d21","d21",
-    "d22","d22","d22","d22","d23","d23","d23","d23","d23","d23",
-    "d24","d24","d24","d24","d25","d26","d26","d26","d26","d26",
-    "d27","d27","d27","d27","d28","d28","d28","d28",
-    "d29","d29","d29","d30","d30","d30","d31","d31","d32","d32","d33","d33","d34","d34",
-    "d35","d35","d35","d36","d37","d36","d38","d38","d38",
-    "d39","d39","d40","d41","d41","d42","d42","d41","d43","d43","d43",
-    "d44","d44","d45","d46","d46","d46","d47","d47","d48",
-    "d10","d10","d10","d10","d07","d07","d49","d49","d08","d08",
-    "d50","d50","d50","d50","d00","d51","d00",
-    "d52","d52","d52","d53","d53","d53","d54","d54","d54",
-    "d55","d55","d55","d56","d56","d56","d57","d57","d58","d58","d59","d59",
-    "d60","d60","d61","d61","d62","d62","d63","d63","d64","d64","d65","d65","d66","d66","d67","d67","d68","d68",
-    "d69","d69","d70","d70","d71","d71","d72","d73","d74","d74","d75","d75","d76","d76","d77","d77","d78","d78","d79","d79",
-    "d80","d80","d81","d81","d82","d82","d83","d83",
-    "d40","d40","d40","d84","d85","d86","d86","d87","d87","d88","d88","d89","d89",
-    "d90","d90","d91","d91","d92","d92","d93","d93","d94","d94","d95","d95","d96","d96",
-    "d97","d97","d97","d97",
-    "d06","d06","d06","d06","d06","d10","d10","d98","d98","d10","d21","d21","d02","d03","d99","d10","d100","d21","d101","d05","d21","d101","d05",
-    "d55","d23","d22","d55","d23","d22","d26","d25","d01","d16","d01","d01","d04","d10","d10","d10","d06","d05"
+    "r000",
+    "r000",
+    "r000",
+    "r000",
+    "r000",
+    "r000",
+    "r000",
+    "r000",
+    "r000",
+    "r000",
+    "r000",
+    "r000",
+    "r000",
+    "r000",
+    "r000",
+    "r000",
+    "r000",
+    "r001",
+    "r001",
+    "r001",
+    "r001",
+    "r002",
+    "r002",
+    "r002",
+    "r002",
+    "r001",
+    "r001",
+    "r001",
+    "r001",
+    "r003",
+    "r003",
+    "r004",
+    "r004",
+    "r004",
+    "r004",
+    "r004",
+    "r004",
+    "r004",
+    "r004",
+    "r004",
+    "r004",
+    "r004",
+    "r004",
+    "r004",
+    "r004",
+    "r004",
+    "r004",
+    "r005",
+    "r005",
+    "r005",
+    "r005",
+    "r006",
+    "r006",
+    "r006",
+    "r006",
+    "r007",
+    "r007",
+    "r007",
+    "r007",
+    "r008",
+    "r008",
+    "r008",
+    "r009",
+    "r009",
+    "r009",
+    "r009",
+    "r009",
+    "r009",
+    "r009",
+    "r009",
+    "r010",
+    "r010",
+    "r010",
+    "r010",
+    "r011",
+    "r011",
+    "r011",
+    "r011",
+    "r012",
+    "r012",
+    "r012",
+    "r013",
+    "r013",
+    "r013",
+    "r014",
+    "r014",
+    "r015",
+    "r015",
+    "r015",
+    "r003",
+    "r003",
+    "r003",
+    "r016",
+    "r016",
+    "r017",
+    "r017",
+    "r017",
+    "r018",
+    "r018",
+    "r019",
+    "r019",
+    "r019",
+    "r020",
+    "r020",
+    "r020",
+    "r020",
+    "r020",
+    "r020",
+    "r020",
+    "r020",
+    "r020",
+    "r020",
+    "r020",
+    "r020",
+    "r020",
+    "r020",
+    "r021",
+    "r021",
+    "r021",
+    "r021",
+    "r022",
+    "r022",
+    "r022",
+    "r022",
+    "r022",
+    "r022",
+    "r023",
+    "r023",
+    "r023",
+    "r023",
+    "r024",
+    "r025",
+    "r025",
+    "r025",
+    "r025",
+    "r025",
+    "r026",
+    "r026",
+    "r026",
+    "r026",
+    "r027",
+    "r027",
+    "r027",
+    "r027",
+    "r028",
+    "r028",
+    "r028",
+    "r029",
+    "r029",
+    "r029",
+    "r030",
+    "r030",
+    "r031",
+    "r031",
+    "r032",
+    "r032",
+    "r033",
+    "r033",
+    "r034",
+    "r034",
+    "r034",
+    "r035",
+    "r035",
+    "r035",
+    "r036",
+    "r036",
+    "r036",
+    "r037",
+    "r037",
+    "r037",
+    "r038",
+    "r038",
+    "r039",
+    "r039",
+    "r038",
+    "r040",
+    "r040",
+    "r040",
+    "r041",
+    "r041",
+    "r042",
+    "r043",
+    "r043",
+    "r043",
+    "r044",
+    "r044",
+    "r045",
+    "r009",
+    "r009",
+    "r009",
+    "r009",
+    "r006",
+    "r006",
+    "r016",
+    "r046",
+    "r007",
+    "r007",
+    "r047",
+    "r047",
+    "r047",
+    "r047",
+    "r000",
+    "r048",
+    "r000",
+    "r049",
+    "r049",
+    "r049",
+    "r050",
+    "r050",
+    "r050",
+    "r051",
+    "r051",
+    "r051",
+    "r052",
+    "r052",
+    "r052",
+    "r053",
+    "r053",
+    "r053",
+    "r054",
+    "r054",
+    "r055",
+    "r055",
+    "r056",
+    "r056",
+    "r057",
+    "r057",
+    "r058",
+    "r058",
+    "r059",
+    "r059",
+    "r060",
+    "r060",
+    "r061",
+    "r061",
+    "r062",
+    "r062",
+    "r063",
+    "r063",
+    "r064",
+    "r064",
+    "r065",
+    "r065",
+    "r066",
+    "r066",
+    "r067",
+    "r067",
+    "r068",
+    "r068",
+    "r069",
+    "r069",
+    "r070",
+    "r070",
+    "r071",
+    "r071",
+    "r072",
+    "r072",
+    "r073",
+    "r073",
+    "r074",
+    "r074",
+    "r075",
+    "r075",
+    "r076",
+    "r076",
+    "r077",
+    "r077",
+    "r078",
+    "r078",
+    "r079",
+    "r079",
+    "r080",
+    "r080",
+    "r080",
+    "r081",
+    "r081",
+    "r082",
+    "r082",
+    "r083",
+    "r083",
+    "r084",
+    "r084",
+    "r085",
+    "r085",
+    "r086",
+    "r086",
+    "r087",
+    "r087",
+    "r088",
+    "r088",
+    "r089",
+    "r089",
+    "r090",
+    "r090",
+    "r091",
+    "r091",
+    "r092",
+    "r092",
+    "r093",
+    "r093",
+    "r093",
+    "r093",
+    "r005",
+    "r005",
+    "r005",
+    "r005",
+    "r005",
+    "r009",
+    "r009",
+    "r094",
+    "r094",
+    "r009",
+    "r020",
+    "r020",
+    "r095",
+    "r002",
+    "r096",
+    "r009",
+    "r051",
+    "r020",
+    "r097",
+    "r004",
+    "r020",
+    "r097",
+    "r004",
+    "r052",
+    "r022",
+    "r021",
+    "r052",
+    "r022",
+    "r021",
+    "r025",
+    "r024",
+    "r001",
+    "r015",
+    "r001",
+    "r001",
+    "r003",
+    "r009",
+    "r009",
+    "r009",
+    "r005",
+    "r004"
   ]
 }
