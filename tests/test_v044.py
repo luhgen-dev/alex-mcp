@@ -234,6 +234,7 @@ class RoutingTests(V044Base):
         cases = [
             ("eh alex can u add RM12.50 parking to my expenses.", {"log_expense"}),
             ("eh alex can u show the pending expenses.", {"list_pending_expenses"}),
+            ("eh alex can u yes, approve that pending expense.", {"confirm_expense", "list_pending_expenses"}),
             ("eh alex can u confirm that one as food.", {"confirm_expense", "list_pending_expenses"}),
             ("eh alex can u keep a note that the code word is cobalt.", {"save_item"}),
             ("eh alex can u maybe we need coffee.", {"add_shopping_item"}),
