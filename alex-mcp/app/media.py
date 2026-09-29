@@ -21,6 +21,13 @@ MEDIA_DIR = os.path.join(DATA_DIR, "media")
 MODEL_DIR = os.path.join(DATA_DIR, "models")
 WHISPER_MODELS = {"tiny", "base", "small"}
 WHISPER_MODEL_URL = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-{model}.bin"
+# Published upstream whisper.cpp model checksums (SHA-1). Verification prevents a
+# truncated/corrupted or unexpectedly replaced cache file from being executed.
+WHISPER_MODEL_SHA1 = {
+    "tiny": "bd577a113a864445d4c299885e0cb97d4ba92b5f",
+    "base": "465707469ff3a37a2b9b8d8f89f2f99de7299dac",
+    "small": "55356645c2b361a969dfd0ef2c5a50d530afd8d5",
+}
 
 
 class VoiceTranscriptionUncertain(RuntimeError):
@@ -184,14 +191,36 @@ def extract_text(media_id: str) -> str:
     return ""
 
 
+def _file_sha1(path: str) -> str:
+    digest = hashlib.sha1()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _valid_whisper_model(path: str, model: str) -> bool:
+    if not os.path.isfile(path) or os.path.getsize(path) <= 1024 * 1024:
+        return False
+    expected = WHISPER_MODEL_SHA1.get(model)
+    return bool(expected and _file_sha1(path) == expected)
+
+
 def _ensure_whisper_model(model_name: str) -> str:
     model = (model_name or "base").strip().lower()
     if model not in WHISPER_MODELS:
         raise ValueError(f"Unsupported local Whisper model: {model}")
     os.makedirs(MODEL_DIR, exist_ok=True)
     path = os.path.join(MODEL_DIR, f"ggml-{model}.bin")
-    if os.path.isfile(path) and os.path.getsize(path) > 1024 * 1024:
+    if _valid_whisper_model(path, model):
         return path
+
+    # Never keep using an old/corrupt cache simply because it is large enough.
+    if os.path.isfile(path):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
 
     part = path + ".part"
     try:
@@ -206,8 +235,10 @@ def _ensure_whisper_model(model_name: str) -> str:
                 for chunk in response.iter_content(chunk_size=1024 * 1024):
                     if chunk:
                         out.write(chunk)
-        if os.path.getsize(part) < 1024 * 1024:
-            raise RuntimeError("Downloaded Whisper model is unexpectedly small")
+        if not _valid_whisper_model(part, model):
+            raise RuntimeError(
+                f"Downloaded Whisper {model} model failed published checksum verification"
+            )
         os.replace(part, path)
         return path
     except Exception:
