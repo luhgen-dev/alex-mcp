@@ -376,7 +376,7 @@ def main() -> dict:
     real_ai_review = APP / "real_ai_snapshot_review.py"
     require(
         real_ai_snapshot.exists() and real_ai_review.exists(),
-        "fresh external-model reasoning snapshot and scorer are shipped",
+        "real-AI reasoning evidence and scorer are shipped separately from the regression oracle",
     )
     if real_ai_snapshot.exists() and real_ai_review.exists():
         snapshot = json.loads(real_ai_snapshot.read_text(encoding="utf-8"))
@@ -388,6 +388,18 @@ def main() -> dict:
             and "corpus mismatch" in real_review_text,
             "real-AI snapshot is non-empty and fails closed on corpus drift",
         )
+        if int(snapshot.get("snapshot_version") or 0) >= 3:
+            parent = snapshot.get("parent_review") or {}
+            delta = snapshot.get("delta_review") or {}
+            by_id = snapshot.get("decisions_by_packet_id") or {}
+            require(
+                isinstance(by_id, dict)
+                and len(by_id) == int(snapshot.get("decision_count") or 0)
+                and int(parent.get("carried_forward_unchanged") or 0) > 0
+                and len(delta.get("reviewed_packet_ids") or []) > 0
+                and "delta_engineering_review" in real_review_text,
+                "v3 real-AI evidence declares carried-forward versus delta-review provenance",
+            )
 
     regression_oracle = APP / "chatgpt_reasoning_review.py"
     require(
