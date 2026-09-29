@@ -275,8 +275,10 @@ optional held-out phrasings. It distinguishes:
 - `LIVE_REQUIRED` — discovery must be proven by the provider tier;
 - `FAIL` — a hard missing/routing/structural requirement.
 
-It emits stable failure signatures so CI can ratchet known v0.4.4 debt without
-pretending that debt is acceptable.
+It emits stable failure signatures. `behavior_known_failures.json` records the
+current v0.4.4 repair debt. CI fails when a **new** signature appears; a
+disappearing signature is treated as an improvement. The baseline is explicitly
+not a PASS list and must not be expanded merely to silence a regression.
 
 ### Live — opt-in, spend-capped, sandboxed
 
