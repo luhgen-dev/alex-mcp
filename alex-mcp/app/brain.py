@@ -2091,7 +2091,7 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                         "note": "Alex sends these original files with your reply automatically.",
                     }
                 trace["tools_called"].append(name)
-                _remember_result_focus(actor, name, clean)
+                _remember_result_focus(actor, name, payload)
             except Exception as exc:
                 payload = {"error": str(exc)[:1000]}
                 trace["tools_called"].append(name + ":error")
