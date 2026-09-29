@@ -304,6 +304,30 @@ def run_lab(phase: str, imported_live: dict[str, Any] | None, contract_ids: list
 
 
 
+def export_human_ai_packets(
+    phase: str,
+    packets_path: Path,
+    report_path: Path,
+) -> dict[str, Any]:
+    """Export the full zero-secret reasoning corpus for a ChatGPT/human pass."""
+    py = sys.executable
+    with tempfile.TemporaryDirectory(prefix="alex-human-ai-export-") as tmp:
+        root = Path(tmp)
+        env = _isolated_env(root, "human-ai", fixed_clock=True)
+        return _run(
+            "human_ai_packet_audit",
+            [
+                py, "alex-mcp/app/human_ai_lab.py",
+                "--mode", "selftest",
+                "--phase", phase,
+                "--packets", str(packets_path),
+                "--report", str(report_path),
+            ],
+            env,
+            report_path,
+        )
+
+
 def run_live_provider(
     phase: str,
     contract_ids: list[str],
@@ -354,6 +378,14 @@ def main() -> dict[str, Any]:
     parser.add_argument("--report", default="alex-lab-report.json")
     parser.add_argument("--packets", default="alex-lab-failures.jsonl")
     parser.add_argument(
+        "--human-ai-packets", default=None,
+        help="optional path for the provider-shaped ChatGPT/human reasoning corpus",
+    )
+    parser.add_argument(
+        "--human-ai-report", default=None,
+        help="optional path for the human-AI packet integrity report",
+    )
+    parser.add_argument(
         "--gate", action="store_true",
         help="exit non-zero while product behaviour is not clean",
     )
@@ -361,6 +393,35 @@ def main() -> dict[str, Any]:
 
     imported_live = _load_json(args.live_report)
     report, packets = run_lab(args.phase, imported_live, args.contract)
+
+    report_path = Path(args.report)
+    human_packets_path = Path(
+        args.human_ai_packets
+        or report_path.with_name("alex-human-ai-packets.jsonl")
+    )
+    human_report_path = Path(
+        args.human_ai_report
+        or report_path.with_name("alex-human-ai-report.json")
+    )
+    human = export_human_ai_packets(
+        args.phase, human_packets_path, human_report_path
+    )
+    report["human_ai_bridge"] = {
+        "status": human.get("status"),
+        "returncode": human.get("returncode"),
+        "summary": (
+            human.get("report", {}).get("summary")
+            if isinstance(human.get("report"), dict) else None
+        ),
+        "packets": str(human_packets_path),
+        "report": str(human_report_path),
+    }
+    if human.get("returncode") != 0:
+        report["status"] = "LAB_ERROR"
+        report["summary"]["infrastructure_errors"] = sorted(set(
+            list(report["summary"].get("infrastructure_errors") or [])
+            + ["human_ai_packet_audit"]
+        ))
 
     if args.run_live:
         live_path = Path(args.report).with_name("alex-lab-live.json")
@@ -378,7 +439,6 @@ def main() -> dict[str, Any]:
         if live_report.get("status") != "PASS" and report.get("status") == "PASS":
             report["status"] = "PRODUCT_FAIL"
 
-    report_path = Path(args.report)
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(
         json.dumps(report, indent=2, ensure_ascii=False) + "\n",
@@ -396,6 +456,8 @@ def main() -> dict[str, Any]:
         **report["summary"],
         "report": str(report_path),
         "packets": str(packets_path),
+        "human_ai_packets": str(human_packets_path),
+        "human_ai_report": str(human_report_path),
     }, indent=2, ensure_ascii=False))
 
     if report["status"] == "LAB_ERROR":
