@@ -43,6 +43,13 @@ Every run writes:
 - `alex-human-ai-packets.jsonl` — blind provider-shaped reasoning turns using
   synthetic identities/state and Alex's **actual exposed MCP schemas**.
 - `alex-human-ai-report.json` — packet-integrity evidence.
+- `alex-chatgpt-reasoning-review.json` — the frozen independent ChatGPT
+  pre-release reasoning/QC decision report for the exact blind corpus fingerprint.
+
+The default External Lab now runs the blind ChatGPT reasoning review as a
+**first-class release gate**, not merely as an optional artifact. If the public
+packet corpus changes, its fingerprint changes and the frozen review fails
+closed until the independent reasoning pass is repeated.
 
 The reasoning packet IDs are opaque and exported packets deliberately omit
 contract/domain/expected-answer metadata. A ChatGPT or human reasoning pass
@@ -94,8 +101,9 @@ artifact is preserved while repairs are in progress.
 ## GitHub Actions
 
 `.github/workflows/alex-lab.yml` runs on pull requests and can also be started
-manually. It uploads the deterministic evidence **and the blind human-AI
-reasoning corpus** as the `alex-lab-evidence` artifact for 14 days.
+manually. It uploads the deterministic evidence, blind human-AI reasoning
+corpus, packet-integrity report, and independent ChatGPT reasoning/QC report as
+the `alex-lab-evidence` artifact for 14 days.
 
 The workflow intentionally does not contain provider secrets. This keeps the default
 external repair loop zero-cost and deterministic.
