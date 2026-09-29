@@ -159,10 +159,28 @@ class TurnTests(V044Base):
             "Mohon maaf, apakah Anda bermaksud sesuatu? Silakan beri tahu saya.",
             "add toothpaste to my shopping list",
         ))
+        self.assertTrue(brain._looks_like_wrong_language_reply(
+            "நிச்சயமாக, அதை உங்கள் பட்டியலில் சேர்த்துவிட்டேன்.",
+            "add toothpaste to my shopping list",
+        ))
         self.assertFalse(brain._looks_like_wrong_language_reply(
             "Mohon maaf, silakan beri tahu saya.",
             "reply in Malay please",
         ))
+        self.assertFalse(brain._looks_like_wrong_language_reply(
+            "இதோ உங்கள் பட்டியல்.",
+            "reply in Tamil please",
+        ))
+
+    def test_voice_scoring_does_not_reject_valid_malay_commands(self):
+        self.assertGreaterEqual(
+            media._voice_intent_score("Tambah susu ke senarai barang"),
+            2,
+        )
+        self.assertGreaterEqual(
+            media._voice_intent_score("Ingatkan saya esok bayar bil"),
+            2,
+        )
 
     def test_voice_note_never_paired_with_earlier_text(self):
         """Smoke: unrelated vinyl picture appeared during a reminder voice note."""
