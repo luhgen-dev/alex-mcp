@@ -213,6 +213,7 @@ BILL_TOOLS = {"bills_list","bills_match_payment","bills_record_payment","bills_d
 HOME_TOOLS = {"ha_find_entities","ha_get_state","ha_home_summary","ha_home_report","ha_draft_automation","ha_control"}
 HOME_READ_TOOLS = {"ha_find_entities","ha_get_state","ha_home_summary","ha_home_report","ha_draft_automation"}
 PLAN_TOOLS = {"create_plan","list_plans","update_plan","confirm_plan","share_plan"}
+TASK_TOOLS = {"create_task","list_tasks","update_task","complete_task","reopen_task","cancel_task"}
 DIARY_EVENT_TOOLS = {"add_diary_event","update_diary_event","get_agenda","get_agenda_range","check_my_availability","check_spouse_availability","resolve_diary_conflict","resolve_latest_diary_conflict"}
 FINANCE_READ_TOOLS = {"query_finances","find_receipts","get_receipt","calculate"}
 ASSET_TOOLS = {"asset_create","asset_link_document","asset_list","warranty_expiring"}
@@ -274,6 +275,12 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
         "update_plan": (r"update|change.*plan|cancel.*plan|for the .*plan|for the .*draft|keep the date|make it .*friendly", 126),
         "share_plan": (r"share|family|wife|husband", 105),
         "list_plans": (r"plans|what.*plan|show.*(?:plan|draft)|draft.*so far|what do we have.*trip", 124),
+        "create_task": (r"(?:add|make|create|need).*?\btask\b|\btask\b.*(?:for|under)", 138),
+        "list_tasks": (r"what.*tasks|show.*tasks|unfinished tasks|left to do|active tasks", 136),
+        "update_task": (r"(?:change|update|edit).*\btask\b|task.*(?:title|note)", 140),
+        "complete_task": (r"(?:mark|complete|finish).*\btask\b.*(?:done|complete)?|task.*\bdone\b", 142),
+        "reopen_task": (r"reopen.*\btask\b|task.*back to open", 144),
+        "cancel_task": (r"(?:cancel|remove).*\btask\b", 143),
         "check_my_availability": (r"am i free|my availability|do i have", 110),
         "check_spouse_availability": (r"wife.*free|husband.*free|spouse.*free|partner.*free", 110),
         "work_schedule": (r"roster|shift|work schedule|working", 110),
@@ -402,6 +409,48 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
     # Captioned payment documents are financial writes, not report-export asks.
     if re.search(r"\b(?:add|log|record)\b.*\b(?:payment|receipt)\b.*\b(?:pdf|document|image)\b", low):
         force.add("log_expense")
+
+    task_create = bool(re.search(
+        r"\b(?:add|make|create)\b.*\btask\b|\bi need a task\b|\btask\b.*\b(?:for|under)\b",
+        low,
+    ))
+    task_read = bool(re.search(
+        r"\b(?:what tasks|show .*tasks|unfinished tasks|what is left to do|what's left to do|active tasks)\b",
+        low,
+    ))
+    task_update = bool(re.search(
+        r"\b(?:change|update|edit)\b.*\btask\b|\btask\b.*\b(?:title|note)\b",
+        low,
+    ))
+    task_complete = bool(re.search(
+        r"\b(?:mark|complete|finish)\b.*\btask\b.*\b(?:done|complete|finished)?\b|\btask\b.*\bdone\b",
+        low,
+    ))
+    task_reopen = bool(re.search(
+        r"\breopen\b.*\btask\b|\btask\b.*\bback to open\b",
+        low,
+    ))
+    task_cancel = bool(re.search(
+        r"\bcancel\b.*\btask\b|\bremove\b.*\btask\b.*\bactive tasks?\b",
+        low,
+    ))
+    if task_reopen:
+        force.add("reopen_task")
+    elif task_cancel:
+        force.add("cancel_task")
+    elif task_complete:
+        force.add("complete_task")
+    elif task_update:
+        force.add("update_task")
+    elif task_read:
+        force.add("list_tasks")
+    elif task_create:
+        force.add("create_task")
+    if any((task_create, task_read, task_update, task_complete, task_reopen, task_cancel)):
+        # The task lifecycle is first-class. Plan/reminder tools may still be
+        # discovered on a truly compound turn, but ordinary task wording must
+        # not silently degrade into a plan edit or a reminder.
+        block |= {"create_plan", "create_reminder"}
 
     plan_read = bool(
         re.search(r"\b(?:show|what|remind me what)\b.*\b(?:plan|draft|planned|decided)\b", low)
@@ -551,6 +600,8 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
         selected |= PLANNING_TOOLS
     if re.search(r"\b(?:roster|shift|working|work schedule|work today|work tomorrow|leave home.*work|departure|overtime|\bot\b|mc|medical leave|annual leave|leave balance|leave entries|leave records|swap shift)\b", low):
         selected |= WORK_TOOLS | {"set_leave_record","list_leave_records"}
+    if re.search(r"\b(?:task|tasks|todo|to-do)\b|\bleft to do\b", low):
+        selected |= TASK_TOOLS
     if re.search(r"\b(?:holiday|vacation|trip|plan|draft)\b", low):
         selected |= PLAN_TOOLS
     if re.search(r"\b(?:diary|agenda|appointment|wedding|party|meeting|event|calendar)\b", low):
@@ -1212,7 +1263,7 @@ READ_ONLY_TOOLS = {
     "search_saved_items","get_saved_item","resolve_numbered_choice","list_reminders","reminder_history",
     "list_shopping_items","ha_find_entities","ha_get_state","ha_home_summary",
     "ha_home_report","ha_draft_automation","list_work_roster","list_leave_records",
-    "list_plans","get_agenda","get_agenda_range","check_my_availability",
+    "list_plans","list_tasks","get_agenda","get_agenda_range","check_my_availability",
     "check_spouse_availability","get_cashflow_baseline","system_health",
     "recent_failures","planning_goal_progress","planning_goal_deviation",
     "planning_cash_status","planning_cash_pool_balance","planning_cashflow",
