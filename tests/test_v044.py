@@ -929,6 +929,73 @@ class FinalHardeningTests(V044Base):
         ))
         self.assertIn("ha_control", _names(specs))
 
+    def test_switch_off_device_word_order_exposes_ha_control(self):
+        names = _names(asyncio.run(brain._tool_specs("Switch off the AC.")))
+        self.assertIn("ha_control", names)
+        self.assertIn("ha_find_entities", names)
+
+    def test_contextual_turn_it_off_uses_current_turn_as_write_authority(self):
+        names = _names(asyncio.run(brain._tool_specs(
+            "Turn it off.",
+            prior_user_text="Is the hall AC on?",
+        )))
+        self.assertIn("ha_control", names)
+        self.assertTrue({"ha_find_entities", "ha_get_state"} & names)
+
+    def test_ha_automation_draft_never_exposes_live_control(self):
+        names = _names(asyncio.run(brain._tool_specs(
+            "Draft an automation to turn off the hall AC at midnight."
+        )))
+        self.assertIn("ha_draft_automation", names)
+        self.assertNotIn("ha_control", names)
+
+    def test_negated_memory_write_is_blocked_but_explanation_can_continue(self):
+        names = _names(asyncio.run(brain._tool_specs(
+            "Don't save this, just explain it.",
+            media_context=["[Document text]\nWarranty details"],
+        )))
+        self.assertNotIn("save_item", names)
+        self.assertNotIn("remove_saved_item", names)
+
+    def test_negated_reminder_delete_routes_to_read_only(self):
+        names = _names(asyncio.run(brain._tool_specs(
+            "Don't delete the reminder, just show it."
+        )))
+        self.assertIn("list_reminders", names)
+        self.assertNotIn("update_reminder", names)
+        self.assertNotIn("create_reminder", names)
+
+    def test_unrelated_dont_does_not_disable_positive_mutation(self):
+        self.assertTrue(
+            brain._trusted_mutation_requested(
+                "Don't worry, add milk to the shopping list."
+            )
+        )
+        specs = asyncio.run(brain._discover_tool_specs(
+            "add milk to shopping list",
+            original_user_text="Don't worry, add milk to the shopping list.",
+        ))
+        self.assertIn("add_shopping_item", _names(specs))
+
+    def test_compound_shift_and_departure_keeps_both_required_reads(self):
+        names = _names(asyncio.run(brain._tool_specs(
+            "What shift am I on tomorrow and what time should I leave?"
+        )))
+        self.assertIn("work_schedule", names)
+        self.assertIn("work_departure_plan", names)
+        self.assertNotIn("work_record_event", names)
+        self.assertNotIn("set_leave_record", names)
+
+    def test_short_priority_tokens_do_not_match_inside_unrelated_words(self):
+        self.assertEqual(
+            brain._tool_priority("work_ot_status", "photo of total costs", False),
+            10,
+        )
+        self.assertEqual(
+            brain._tool_priority("find_receipts", "I prefer a refund", False),
+            10,
+        )
+
     def test_explicit_saved_receipt_memory_keeps_memory_retrieval(self):
         names = _names(asyncio.run(brain._tool_specs(
             "Show the receipt photo I asked you to save."
