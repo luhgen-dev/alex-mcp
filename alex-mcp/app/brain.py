@@ -252,7 +252,7 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
         "log_expense": (r"(?:log|record|add).*?(?:rm|myr|sgd|expense)|\b(?:i\s+)?(?:spent|paid|bought)\s+(?:rm|myr|sgd|\d)|receipt.*(?:log|record)", 136),
         "correct_expense": (r"correct|change|fix|wrong amount", 115),
         "list_pending_expenses": (r"pending|clarif|which expense|that expense", 105),
-        "find_receipts": (r"find|show|receipt|reference|ref", 110),
+        "find_receipts": (r"\b(?:find|show|receipt|reference|ref)\b", 110),
         "get_receipt": (r"receipt|original|show", 90),
         "resolve_numbered_choice": (r"^\s*\d+\s*$|\b(?:show|open|send|get|view)\s+(?:number\s+)?\d+\b", 140),
         "create_reminder": (r"remind|reminder|notify", 110),
@@ -286,8 +286,8 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
         "check_spouse_availability": (r"wife.*free|husband.*free|spouse.*free|partner.*free", 110),
         "work_schedule": (r"roster|shift|work schedule|working", 110),
         "work_day": (r"work.*today|work.*tomorrow|shift.*today|shift.*tomorrow", 112),
-        "work_record_event": (r"leave|mc|shift swap|ot worked|ot planned|overtime", 102),
-        "work_ot_status": (r"ot|overtime", 108),
+        "work_record_event": (r"\b(?:leave|mc|overtime)\b|shift swap|\bot\b worked|\bot\b planned", 102),
+        "work_ot_status": (r"\b(?:ot|overtime)\b", 108),
         "work_leave_balance": (r"leave balance|annual leave|medical leave|leave.*left", 125),
         "list_leave_records": (r"leave entries|leave records|recorded leave|show.*leave", 124),
         "list_work_roster": (r"roster entries|roster records|show.*roster", 118),
@@ -300,7 +300,7 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
         "planning_record_goal_contribution": (r"contributed|deposit.*goal|put.*goal", 112),
         "planning_goal_progress": (r"goal.*progress|how much.*goal|remaining.*goal|monthly contribution|show.*savings", 124),
         "planning_goal_deviation": (r"below plan|above plan|this month", 95),
-        "planning_record_cash": (r"bonus|refund|extra cash|ot.*paid|got.*\bot\b|received.*\bot\b|\bot\b.*(?:came in|credited|received)|salary.*received", 128),
+        "planning_record_cash": (r"bonus|refund|extra cash|\bot\b.*paid|got.*\bot\b|received.*\bot\b|\bot\b.*(?:came in|credited|received)|salary.*received", 128),
         "planning_cash_status": (r"unallocated|extra cash|cash.*left", 105),
         "planning_allocate_cash_to_goal": (r"allocate|put.*goal|channel.*goal", 118),
         "planning_create_cash_pool": (r"create.*(?:stash|pool)|new.*(?:stash|pool)|stash called", 130),
@@ -379,6 +379,64 @@ def _cap_tool_names(selected: set[str], user_text: str,
         key=lambda name: (-_tool_priority(name, user_text, has_media), name),
     )
     return set((required_ranked + remaining)[:TOOL_EXPOSURE_MAX])
+
+
+_HA_DEVICE = r"(?:light|fan|switch|ac|air conditioner|thermostat|climate)"
+
+
+def _ha_action_requested(text: str) -> bool:
+    """Recognize an explicit device action regardless of verb/device word order."""
+    low = (text or "").casefold()
+    return bool(
+        re.search(
+            rf"\b(?:turn|switch)\s+(?:the\s+)?{_HA_DEVICE}\s+(?:on|off)\b"
+            rf"|\b(?:turn|switch)\s+(?:on|off)\s+(?:the\s+)?{_HA_DEVICE}\b"
+            rf"|\btoggle\b.*\b{_HA_DEVICE}\b"
+            rf"|\bset\b.*\b{_HA_DEVICE}\b.*(?:%|degrees?|temperature)"
+            rf"|\b(?:play|pause)\b.*\b(?:media player|speaker|tv)\b",
+            low,
+        )
+    )
+
+
+def _ha_draft_request(text: str) -> bool:
+    low = (text or "").casefold()
+    return bool(re.search(
+        r"\b(?:draft|prepare|write|create|make)\b.*\b(?:home assistant\s+)?automation\b"
+        r"|\bautomation\b.*\b(?:draft|prepare|write)\b",
+        low,
+    ))
+
+
+def _ha_negated_or_hypothetical(text: str) -> bool:
+    low = (text or "").casefold()
+    return bool(re.search(
+        r"\b(?:do not|don't|dont|not asking(?: you)? to|not actually|"
+        r"without actually|hypothetical(?:ly)?|what would|how would|how you'd|"
+        r"just explain)\b",
+        low,
+    ))
+
+
+def _departure_query(text: str) -> bool:
+    low = (text or "").casefold()
+    return bool(re.search(
+        r"\b(?:what time|when)\s+(?:should|do)\s+i\s+leave\b"
+        r"|\bplan\s+my\s+departure\b"
+        r"|\bdeparture\s+(?:plan|time)\b"
+        r"|\bwhat time\b.*\bleave\s+home\b",
+        low,
+    ))
+
+
+_NEGATED_ACTION_PHRASE_RE = re.compile(
+    r"\b(?:do\s+not|don't|dont|not\s+asking(?:\s+you)?\s+to)\s+"
+    r"(?:actually\s+)?(?:add|create|record|log|save|remember|remove|delete|mark|"
+    r"complete|finish|reopen|cancel|update|change|edit|correct|fix|move|"
+    r"reschedule|allocate|channel|lock|activate|defer|turn|switch|set|link|"
+    r"share|publish|confirm|approve)\b",
+    re.IGNORECASE,
+)
 
 
 def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str], set[str]]:
@@ -660,17 +718,58 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
     ):
         force |= {"list_leave_records", "work_leave_balance"}
 
-    # Explicit low-risk HA action synonyms. Negated/hypothetical wording
-    # gets only entity/state reads and can never expose the mutator.
-    ha_switch = bool(re.search(
-        r"\b(?:switch|turn)\b.*\b(?:light|fan|switch|ac|air conditioner)\b.*\b(?:on|off)\b",
+    # A departure question is a read/planning request, not annual leave or a
+    # work-event write. Reserve both sides of a compound shift+departure ask.
+    if _departure_query(low):
+        force.add("work_departure_plan")
+        block |= {"work_record_event", "set_leave_record"}
+        if re.search(r"\b(?:shift|work)\b", low):
+            force.add("work_schedule")
+
+    # General non-HA negation: don't expose the exact mutation the user denied.
+    # Read tools remain available so Alex can still explain/show safely.
+    if re.search(
+        r"\b(?:do not|don't|dont|not asking(?: you)? to)\s+(?:actually\s+)?(?:save|remember)\b",
         low,
-    ))
-    ha_negated = bool(re.search(
-        r"\b(?:do not|don't|dont|not asking|not actually|without actually|hypothetical|what would)\b",
+    ):
+        block |= {"save_item", "remove_saved_item"}
+    if re.search(
+        r"\b(?:do not|don't|dont|not asking(?: you)? to)\s+(?:actually\s+)?"
+        r"(?:delete|remove|cancel|complete|reschedule|change|update)\b.*\breminder\b",
         low,
-    ))
-    if ha_switch and ha_negated:
+    ):
+        block |= {"create_reminder", "update_reminder"}
+        if re.search(r"\b(?:show|list|tell|what)\b", low):
+            force.add("list_reminders")
+    if re.search(
+        r"\b(?:do not|don't|dont|not asking(?: you)? to)\s+(?:actually\s+)?"
+        r"(?:delete|remove)\b.*\b(?:saved|memory|note|remembered)\b",
+        low,
+    ):
+        block |= {"save_item", "remove_saved_item"}
+        force.add("search_saved_items")
+    if re.search(
+        r"\b(?:do not|don't|dont|not asking(?: you)? to)\s+(?:actually\s+)?"
+        r"(?:add|put)\b.*\b(?:shopping|grocery|list|milk|bread|bananas?|diapers?)\b",
+        low,
+    ):
+        block.add("add_shopping_item")
+    if re.search(
+        r"\b(?:do not|don't|dont|not asking(?: you)? to)\s+(?:actually\s+)?"
+        r"(?:delete|remove|mark)\b.*\b(?:shopping|grocery|list|milk|bread|bananas?|diapers?)\b",
+        low,
+    ):
+        block.add("update_shopping_item")
+
+    # Drafting an automation is not permission to operate the real device.
+    # Explicit device actions support both "turn the AC off" and "switch off the AC".
+    ha_draft = _ha_draft_request(low)
+    ha_switch = _ha_action_requested(low)
+    ha_negated = _ha_negated_or_hypothetical(low)
+    if ha_draft:
+        force.add("ha_draft_automation")
+        block.add("ha_control")
+    elif ha_switch and ha_negated:
         force |= {"ha_find_entities", "ha_get_state"}
         block.add("ha_control")
     elif ha_switch:
@@ -796,18 +895,13 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
         selected |= MEMORY_TOOLS
     if re.search(r"\b(?:warranty|warranties|manual|serial number|appliance|asset)\b", low):
         selected |= ASSET_TOOLS | MEMORY_TOOLS
-    if re.search(r"\b(?:light|switch|fan|thermostat|climate|media player|home assistant|ac|air conditioner|home status|at home|turn on|turn off|state of)\b", low):
+    if re.search(r"\b(?:light|switch|fan|thermostat|climate|media player|home assistant|ac|air conditioner|home status|at home|turn on|turn off|switch on|switch off|state of)\b", low):
         selected |= HOME_READ_TOOLS
-        action_requested = bool(re.search(
-            r"\b(?:turn on|turn off|toggle|set .*%|set temperature|play|pause)\b",
-            low,
-        ))
-        negated = bool(re.search(
-            r"\b(?:do not|don't|dont|not actually|without actually|how would|"
-            r"what would|hypothetical|hypothetically|just explain)\b",
-            low,
-        ))
-        if action_requested and not negated:
+        if (
+            _ha_action_requested(low)
+            and not _ha_negated_or_hypothetical(low)
+            and not _ha_draft_request(low)
+        ):
             selected.add("ha_control")
     if re.search(r"\b(?:why didn't|why did not|health|diagnostic|fail|failed|failure|failing|error|offline|didn't reply|did not reply)\b", low):
         selected |= DIAGNOSTIC_TOOLS
@@ -915,26 +1009,28 @@ _TRUSTED_MUTATION_RE = re.compile(
     r"spent|paid|bought|received|credited|came\s+in)\b",
     re.IGNORECASE,
 )
-_TRUSTED_MUTATION_NEGATION_RE = re.compile(
-    r"\b(?:do\s+not|don't|dont|not\s+asking|not\s+actually|without\s+actually|"
-    r"hypothetical(?:ly)?|what\s+would|how\s+would|just\s+explain|"
-    r"don't\s+actually|dont\s+actually)\b",
-    re.IGNORECASE,
-)
-
-
 def _trusted_mutation_requested(text: str) -> bool:
     """Conservative mutation gate based only on trusted user-authored context.
 
-    The discovery model may normalize wording, but it may never grant itself
-    permission to expose a mutator. Ambiguous/negated phrasing therefore
-    receives read-only semantic rescue unless deterministic routing already
-    exposed the needed mutation.
+    A model-written normalization can suggest *which* capability is relevant,
+    but it cannot create write permission. Scoped negative imperatives are
+    removed before looking for a remaining positive action, so:
+      "don't delete the reminder, add milk" may expose shopping mutation but
+      not reminder deletion, while "don't worry, add milk" still works.
+    Hypothetical/explanatory requests never grant discovery write permission.
     """
     value = (text or "").strip()
-    if not value or _TRUSTED_MUTATION_NEGATION_RE.search(value):
+    if not value:
         return False
-    return bool(_TRUSTED_MUTATION_RE.search(value))
+    if re.search(
+        r"\b(?:hypothetical(?:ly)?|what\s+would|how\s+would|how\s+you'd|"
+        r"without\s+actually|just\s+explain)\b",
+        value,
+        re.IGNORECASE,
+    ):
+        return False
+    probe = _NEGATED_ACTION_PHRASE_RE.sub(" ", value)
+    return bool(_TRUSTED_MUTATION_RE.search(probe))
 
 
 async def _discover_tool_specs(
@@ -949,8 +1045,9 @@ async def _discover_tool_specs(
     Direct deterministic routing remains first because it encodes owner safety
     policy.  When novel wording survives that gate, the normalized intent from
     the reasoning model is compared with the real MCP tool names/descriptions.
-    Read-only candidates may be added freely; mutators are added semantically
-    only when the normalized intent contains an explicit action verb.
+    Read-only candidates may be added freely. Mutators may be considered only
+    when trusted user-authored context still contains a positive action after
+    scoped negations/hypotheticals are removed.
     """
     trusted_basis = " ".join(
         part.strip()
@@ -1135,6 +1232,20 @@ def _contextual_tool_hints(user_text: str, prior_user_text: str | None) -> tuple
         add |= {"find_receipts", "get_receipt"}
     if prior_tools & {"search_saved_items", "get_saved_item"}:
         add |= {"search_saved_items", "get_saved_item"}
+
+    # Pronoun HA continuation is allowed only when the preceding user turn
+    # established an HA domain and the CURRENT turn explicitly asks for an
+    # action. The prior turn supplies object focus, never write authorization.
+    if (
+        prior_tools & HOME_TOOLS
+        and re.search(
+            r"\b(?:turn|switch)\s+(?:it|that)\s+(?:on|off)\b"
+            r"|\b(?:turn|switch)\s+(?:on|off)\s+(?:it|that)\b",
+            current,
+        )
+        and not _ha_negated_or_hypothetical(current)
+    ):
+        add |= {"ha_find_entities", "ha_get_state", "ha_control"}
 
     # Keep object lifecycle context, but do not repeat the previous mutation.
     lifecycle_reads = {
