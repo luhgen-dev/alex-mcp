@@ -1433,6 +1433,18 @@ class AlexCoreTests(unittest.TestCase):
         finally:
             conn.close()
 
+    def test_identical_model_mutation_retries_share_one_action_key(self):
+        self.claim("same-call", "+60111111111", "log lunch")
+        actor = self.actor("same-call", "+60111111111")
+        args = {
+            "description": "Lunch", "amount": 9.5,
+            "category": "food", "currency": "MYR",
+        }
+        self.assertEqual(
+            brain._action_key(actor, "log_expense", args, 1),
+            brain._action_key(actor, "log_expense", args, 2),
+        )
+
     def test_uncertain_mutation_is_not_replayed(self):
         self.claim("uncertain1", "+60111111111", "turn off light")
         actor = self.actor("uncertain1", "+60111111111")
