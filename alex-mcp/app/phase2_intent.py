@@ -138,8 +138,8 @@ def classify_write_intent(text, *, has_media=False):
                  r"\b(?:diary|calendar)\s+(?:entry|event)\b", low):
         explicit.append("DIARY")
     if re.search(r"\b(?:log|record|add)\b.{0,25}\bexpense\b|"
-                 r"\b(?:log|record|add)\s+(?:RM|MYR|SGD)\s*\d|"
-                 r"\b(?:i\s+)?(?:spent|paid)\s+(?:RM|MYR|SGD|\d)", low):
+                 r"\b(?:log|record|add)\s+(?:rm|myr|sgd)\s*\d|"
+                 r"\b(?:i\s+)?(?:spent|paid)\s+(?:rm|myr|sgd|\d)", low):
         explicit.append("EXPENSE")
     if re.search(r"\b(?:bill|payment|instalment|installment)\b.{0,25}"
                  r"\b(?:due|payable|need\s+to\s+pay)\b", low):
