@@ -127,7 +127,7 @@ def remove_saved_item(item_id: str, actor: Actor) -> dict:
 
 @mcp.tool()
 def resolve_numbered_choice(choice: int, actor: Actor) -> dict:
-    """Resolve the newest unexpired numbered receipt/saved-memory list to the exact original item."""
+    """Resolve the newest unexpired numbered receipt, saved-memory, or original-media list to the exact original item."""
     return services.resolve_numbered_choice(actor, choice)
 
 
