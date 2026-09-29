@@ -120,6 +120,50 @@ class TurnTests(V044Base):
             self.assertIn(must, voice, phrase)
             self.assertEqual(voice, typed, phrase)
 
+    def test_voice_candidate_selector_prefers_actionable_household_command(self):
+        candidates = [
+            ("local_auto", "mohon maaf apakah anda bermaksud sesuatu sebelumnya"),
+            ("local_en", "add test toothpaste to my shopping list"),
+        ]
+        label, transcript = media._choose_voice_transcript(candidates)
+        self.assertEqual(label, "local_en")
+        self.assertIn("shopping list", transcript)
+
+    def test_voice_candidate_selector_keeps_tamil_script(self):
+        label, transcript = media._choose_voice_transcript([
+            ("local_auto", "random unrelated words"),
+            ("local_ta", "நாளைக்கு காலை ஒன்பது மணிக்கு பில் கட்ட நினைவூட்டு"),
+        ])
+        self.assertEqual(label, "local_ta")
+        self.assertGreaterEqual(media._voice_intent_score(transcript), 2)
+
+    def test_live_smoke_voice_shopping_phrases_route_to_real_mutators(self):
+        for phrase, expected in (
+            ("Add test toothpaste to my shopping list", "add_shopping_item"),
+            ("Mark test batteries as bought", "update_shopping_item"),
+        ):
+            turn = ingress.build_turn(
+                {"audio_data": "x"},
+                [media.VOICE_TRANSCRIPT_PREFIX + phrase],
+            )
+            names = _names(asyncio.run(
+                brain._tool_specs(turn["trusted_text"], turn["document_lines"])
+            ))
+            self.assertIn(expected, names, phrase)
+
+    def test_false_capability_and_language_drift_guards(self):
+        self.assertTrue(brain._looks_like_false_capability_denial(
+            "I don't have the ability to update shopping items as bought."
+        ))
+        self.assertTrue(brain._looks_like_wrong_language_reply(
+            "Mohon maaf, apakah Anda bermaksud sesuatu? Silakan beri tahu saya.",
+            "add toothpaste to my shopping list",
+        ))
+        self.assertFalse(brain._looks_like_wrong_language_reply(
+            "Mohon maaf, silakan beri tahu saya.",
+            "reply in Malay please",
+        ))
+
     def test_voice_note_never_paired_with_earlier_text(self):
         """Smoke: unrelated vinyl picture appeared during a reminder voice note."""
         self.claim("t-vinyl", text="send me the actual saved vinyl picture")
