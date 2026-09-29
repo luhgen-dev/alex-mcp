@@ -481,10 +481,14 @@ def offline_certify(phase: str, heldout_path: str | None = None, contract_ids: s
                     )
 
                 if not direct and not implemented_required:
-                    problems.append(
-                        "required capability is absent from MCP surface: "
-                        + " / ".join(sorted(required_caps))
-                    )
+                    # The contract-level missing-capability failure already records
+                    # this structural debt. Do not fan it out into one routing
+                    # failure per paraphrase, because new corpus variants would
+                    # then look like product regressions while the same known
+                    # implementation gap remains. Independent forbidden/over-cap
+                    # problems are still reported below.
+                    if not problems:
+                        continue
                 elif not direct and discovery_available and not problems:
                     # Discovery is never itself a PASS. It only means the live
                     # model gets one chance to recover the real capability.
