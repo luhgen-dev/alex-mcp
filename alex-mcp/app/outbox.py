@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import os
 import time
@@ -41,10 +42,20 @@ def _provider_message_id(detail: str) -> str | None:
     return str(value)[:200] if value else None
 
 
+def _whatsapp_message_id(outbound_id: str) -> str:
+    """Stable Baileys message id so transport retries reuse the same WA key."""
+    digest = hashlib.sha256(str(outbound_id).encode("utf-8")).hexdigest().upper()
+    return "ALEX" + digest[:28]
+
+
 def _payload(row) -> dict:
     kind = row["kind"]
+    message_id = _whatsapp_message_id(row["outbound_id"])
     if kind == "TEXT":
-        return {"to": row["conversation_id"], "kind": "text", "text": row["text_body"] or ""}
+        return {
+            "to": row["conversation_id"], "kind": "text",
+            "text": row["text_body"] or "", "message_id": message_id,
+        }
     path = row["local_path"]
     if not path or not os.path.isfile(path):
         raise FileNotFoundError(path or "missing attachment path")
@@ -62,6 +73,7 @@ def _payload(row) -> dict:
         "mimetype": mime,
         "filename": os.path.basename(path),
         "caption": row["text_body"] or "",
+        "message_id": message_id,
     }
 
 
