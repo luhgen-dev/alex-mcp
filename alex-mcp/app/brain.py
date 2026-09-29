@@ -389,7 +389,7 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
     explicit_expense_write = bool(
         (money and re.search(r"\b(?:i\s+)?(?:spent|paid|bought)\b", low))
         or re.search(r"\b(?:log|record|add)\b.*\b(?:expense|rm|myr|sgd)\b", low)
-        or re.search(r"\b(?:correct|fix|wrong amount|actually)\b", low)
+        or re.search(r"\b(?:correct|fix|wrong amount|actually)\b|\bchange\b.*\b(?:expense|transaction|amount|parking)\b", low)
     )
     finance_read = bool(re.search(
         r"\b(?:expenses?|transactions?|spending|last few things .*paid|how many .*expenses?)\b",
