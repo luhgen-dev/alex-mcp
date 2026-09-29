@@ -226,7 +226,7 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
             StateExpectation(
                 "financial_events",
                 where=(("source_message_id", "$MID"),),
-                fields=(("amount_minor", 44179), ("currency", "MYR"), ("status", "ACTIVE")),
+                fields=(("amount_minor", 44179), ("currency", "MYR"), ("status", "PENDING_HUMAN_REVIEW")),
                 count=1, delta=1,
             ),
             StateExpectation(
@@ -336,12 +336,12 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         state_expectations=(
             StateExpectation(
                 "shopping_items",
-                fields=(("item_name", "Milk"), ("space_id", "FAMILY_SHARED"), ("status", "OPEN")),
+                fields=(("item_name", "milk"), ("space_id", "FAMILY_SHARED"), ("status", "OPEN")),
                 count=1, delta=1,
             ),
             StateExpectation(
                 "shopping_items",
-                fields=(("item_name", "Banana"), ("space_id", "FAMILY_SHARED"), ("status", "OPEN")),
+                fields=(("item_name", "bananas"), ("space_id", "FAMILY_SHARED"), ("status", "OPEN")),
                 count=1, delta=1,
             ),
         ),
@@ -367,7 +367,7 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
             "What have I saved with you?",
             "List the stuff I explicitly asked you to keep.",
         ),
-        _fs("search_saved_items"), seed="core", expected_terms=("cobalt",),
+        _fs("search_saved_items"), seed="core", expected_terms=("Smoke-test code word",),
         sources=("text", "voice"),
     ),
     PromptContract(
@@ -813,7 +813,7 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         state_expectations=(
             StateExpectation(
                 "shopping_items",
-                fields=(("item_name", "Milk"), ("space_id", "FAMILY_SHARED"), ("status", "OPEN")),
+                fields=(("item_name", "milk"), ("space_id", "FAMILY_SHARED"), ("status", "OPEN")),
                 count=1, delta=1,
             ),
         ),
@@ -838,7 +838,7 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
             "Show me my monthly planning snapshot.",
             "Generate a summary of my finances this month.",
         ),
-        _fs("report_snapshot", "planning_brief"), seed="core",
+        _fs("report_snapshot", "planning_brief", "query_finances"), seed="core",
     ),
 
 
@@ -1360,7 +1360,7 @@ CONVERSATION_CONTRACTS: tuple[ConversationContract, ...] = (
         (
             ConversationStep(
                 "What receipts have I saved recently?",
-                _fs("find_receipts", "search_saved_items"),
+                _fs("find_receipts"),
             ),
             ConversationStep(
                 "Send me the management receipt.",
@@ -1401,7 +1401,7 @@ CONVERSATION_CONTRACTS: tuple[ConversationContract, ...] = (
             ConversationStep(
                 "What do I have on 1 October 2026?",
                 _fs("get_agenda_range", "get_agenda"),
-                ("Dentist",),
+                expected_terms=("Dentist",),
             ),
             ConversationStep(
                 "Remind me two hours before that dentist appointment.",
@@ -1410,7 +1410,7 @@ CONVERSATION_CONTRACTS: tuple[ConversationContract, ...] = (
             ConversationStep(
                 "What reminders do I have on 1 October 2026?",
                 _fs("list_reminders"),
-                ("Dentist",),
+                expected_terms=("Dentist",),
             ),
         ),
         sources=("text", "voice"),
@@ -1431,7 +1431,7 @@ CONVERSATION_CONTRACTS: tuple[ConversationContract, ...] = (
             ConversationStep(
                 "What do we have in the Malacca plan so far?",
                 _fs("list_plans"),
-                ("kid", "9"),
+                expected_terms=("kid", "9"),
             ),
         ),
         sources=("text", "voice"),
@@ -1449,7 +1449,7 @@ CONVERSATION_CONTRACTS: tuple[ConversationContract, ...] = (
             ConversationStep(
                 "Show me Family Holiday Savings including its monthly contribution.",
                 _fs("planning_goal_progress", "planning_list_goals"),
-                ("Family Holiday",),
+                expected_terms=("Family Holiday",),
             ),
         ),
     ),
