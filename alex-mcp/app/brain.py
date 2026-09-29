@@ -767,7 +767,7 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
         ))
         if action_requested and not negated:
             selected.add("ha_control")
-    if re.search(r"\b(?:why didn't|why did not|health|diagnostic|fail|failed|failure|failing|error|offline|didn't reply|did not reply)\b", low):
+    if re.search(r"\b(?:why didn't|why did not|health|diagnostic|fail|failed|failures?|failing|errors?|offline|didn't reply|did not reply)\b", low):
         selected |= DIAGNOSTIC_TOOLS
     if re.search(r"\b(?:monitor|monitoring|track|tracking|watch this|proactive|follow this)\b", low):
         selected |= MONITOR_TOOLS
@@ -1295,7 +1295,7 @@ def _runtime_context(actor: ActorContext, user_text: str = "") -> str:
     # Short follow-ups may use the last stable object ID from this exact
     # authenticated actor+chat.  The underlying tool still re-checks its ACL.
     if re.search(
-        r"(?i)\\b(?:it|that|this|one|same|previous|earlier|there|done|cancel it|change it)\\b",
+        r"(?i)\b(?:it|that|this|one|same|previous|earlier|there|done|cancel it|change it)\b",
         user_text or "",
     ):
         focus = get_focus(actor, "last_object")
@@ -1344,8 +1344,8 @@ def _remember_result_focus(actor: ActorContext, tool_name: str, result: dict) ->
 
 def _explicit_non_english_output_request(user_text: str) -> bool:
     return bool(re.search(
-        r"(?i)\\b(?:translate|translation|reply|answer|say|write)\\b.{0,30}"
-        r"\\b(?:tamil|malay|bahasa|indonesian|mandarin|chinese)\\b",
+        r"(?i)\b(?:translate|translation|reply|answer|say|write)\b.{0,30}"
+        r"\b(?:tamil|malay|bahasa|indonesian|mandarin|chinese)\b",
         user_text or "",
     ))
 
@@ -1369,8 +1369,8 @@ def _looks_like_clarification_reply(text: str) -> bool:
     return (
         "?" in low
         or bool(re.search(
-            r"\\b(?:which|what time|when should|what date|how much|which currency|"
-            r"myr or sgd|do you mean|could you tell|please tell me|need the)\\b",
+            r"\b(?:which|what time|when should|what date|how much|which currency|"
+            r"myr or sgd|do you mean|could you tell|please tell me|need the)\b",
             low,
         ))
     )
