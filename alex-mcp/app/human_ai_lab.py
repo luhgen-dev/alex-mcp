@@ -156,6 +156,14 @@ def _decision_index(decisions: list[dict[str, Any]]) -> dict[str, dict[str, Any]
     return out
 
 
+def _decision_metadata(decisions: list[dict[str, Any]]) -> dict[str, Any]:
+    for row in decisions:
+        meta = row.get("_meta")
+        if isinstance(meta, dict):
+            return meta
+    return {}
+
+
 def _contract_maps(phase: str):
     prompts = {c.id: c for c in contracts_for_phase(phase)}
     conversations = {c.id: c for c in conversations_for_phase(phase)}
@@ -174,6 +182,12 @@ def _expectation_for_packet(packet: dict[str, Any], prompts, conversations):
 def score_packets(packets: list[dict[str, Any]], decisions: list[dict[str, Any]],
                   phase: str = "all") -> dict[str, Any]:
     decision_by_id = _decision_index(decisions)
+    decision_meta = _decision_metadata(decisions)
+    current_fingerprint = _corpus_fingerprint(packets)
+    reviewed_fingerprint = str(
+        decision_meta.get("corpus_fingerprint") or ""
+    ).strip()
+    corpus_match = reviewed_fingerprint == current_fingerprint
     prompts, conversations = _contract_maps(phase)
     results: list[dict[str, Any]] = []
 
@@ -272,18 +286,30 @@ def score_packets(packets: list[dict[str, Any]], decisions: list[dict[str, Any]]
         })
 
     failed = [row for row in results if row["status"] == "FAIL"]
+    meta_failures = []
+    if not reviewed_fingerprint:
+        meta_failures.append(
+            "external AI decision snapshot has no corpus_fingerprint metadata"
+        )
+    elif not corpus_match:
+        meta_failures.append(
+            "external AI decision snapshot was reviewed against a different packet corpus"
+        )
     return {
         "mode": "human_ai",
-        "status": "PASS" if not failed else "FAIL",
+        "status": "PASS" if not failed and not meta_failures else "FAIL",
         "summary": {
             "packets": len(packets),
-            "corpus_fingerprint": _corpus_fingerprint(packets),
+            "corpus_fingerprint": current_fingerprint,
+            "reviewed_corpus_fingerprint": reviewed_fingerprint or None,
+            "corpus_match": corpus_match,
             "decisions_received": len(decision_by_id),
             "passed": len(results) - len(failed),
             "failed": len(failed),
             "domains": sorted({row["domain"] for row in results}),
             "sources": sorted({row["source"] for row in results}),
         },
+        "meta_failures": meta_failures,
         "failures": failed,
         "results": results,
     }
