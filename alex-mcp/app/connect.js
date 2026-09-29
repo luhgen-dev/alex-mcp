@@ -21,6 +21,9 @@ const RUNTIME_STATUS_FILE = path.join(DATA_DIR, 'runtime_status.json');
 const INGRESS_URL = 'http://127.0.0.1:5001/ingress';
 const PROVIDER_PROBE_URL = 'http://127.0.0.1:5001/provider-probe';
 const USAGE_URL = 'http://127.0.0.1:5001/usage-summary';
+const CERT_STATUS_URL = 'http://127.0.0.1:5001/certification-status';
+const CERT_RUN_URL = 'http://127.0.0.1:5001/certification-live';
+const CERT_REPORT_URL = 'http://127.0.0.1:5001/certification-report';
 const EGRESS_PORT = 5002;
 const UI_PORT = 8099;
 const logger = pino({ level: process.env.ALEX_LOG_LEVEL || 'silent' });
@@ -493,6 +496,7 @@ const UI_HTML = [
 '<div class="card"><h2>Configuration</h2><div id="cfg">Checking…</div><p class="muted">API keys and phone numbers are entered in the Home Assistant Configuration tab. To bind the shared family group, send <code>alex set family group</code> once from that group. No source-code editing is required.</p></div>',
 '<div class="card"><h2>AI connection</h2><div id="ai">Not tested yet</div><p><button onclick="testAi()">Test AI now</button></p></div>',
 '<div class="card"><h2>AI usage — last 24h</h2><div id="usage">Checking…</div><p class="muted">Local telemetry only. Refreshing this card does not call the AI provider.</p></div>',
+'<div class="card"><h2>Live certification</h2><div id="cert">Checking…</div><p><button id="certBtn" onclick="runCert()">Run live benchmark — max $3</button></p><p class="muted">Uses Alex\'s configured API keys, but all household state is synthetic and Home Assistant is mocked. No WhatsApp messages are sent.</p><p id="certReport" style="display:none"><a href="./certification-report" target="_blank" style="color:#8ab4f8">Open full benchmark report</a></p></div>',
 '<div class="card"><h2>Core diagnostics</h2><div id="diag">Checking…</div></div>',
 '<script>',
 'async function load(){try{const r=await fetch("./status");const s=await r.json();',
@@ -504,10 +508,12 @@ const UI_HTML = [
 'const d=s.selftest;if(d){document.getElementById("diag").innerHTML="<span class="+(d.failed===0?"ok":"bad")+">"+d.passed+" passed, "+d.failed+" failed</span>"}else{document.getElementById("diag").textContent="Not run yet"}',
 '}catch(e){document.getElementById("wa").textContent="Status unavailable: "+e}}',
 'async function loadUsage(){try{const r=await fetch("./usage");const u=await r.json();const cost=Number(u.estimated_ai_cost_usd||0).toFixed(6);const rows=(u.by_provider||[]).map(x=>"<br><span class=muted>"+esc(x.provider)+"/"+esc(x.model)+": "+esc(x.model_calls)+" calls · $"+esc(Number(x.cost_usd||0).toFixed(6))+"</span>").join("");document.getElementById("usage").innerHTML="<b>Interactions:</b> "+esc(u.interactions||0)+" &nbsp; <b>Model calls:</b> "+esc(u.model_calls||0)+"<br><b>Input:</b> "+esc(u.input_tokens||0)+" &nbsp; <b>Cached:</b> "+esc(u.cached_input_tokens||0)+" ("+esc(u.cache_ratio_pct||0)+"%)<br><b>Output:</b> "+esc(u.output_tokens||0)+" &nbsp; <b>Reasoning:</b> "+esc(u.reasoning_tokens||0)+"<br><b>Average latency:</b> "+esc(u.average_ai_latency_ms||0)+" ms<br><b>Total API cost:</b> $"+esc(cost)+rows}catch(e){document.getElementById("usage").textContent="Usage unavailable: "+e}}',
+'async function loadCert(){const el=document.getElementById("cert");const btn=document.getElementById("certBtn");const report=document.getElementById("certReport");try{const r=await fetch("./certification");const s=await r.json();const state=s.state||"idle";btn.disabled=state==="running";if(state==="running"){el.innerHTML="<span class=warn>Running…</span><br><span class=muted>Budget cap: $"+esc(Number(s.budget_usd||3).toFixed(2))+"</span>";report.style.display="none";return}if(state==="completed"){const q=s.summary||{};const cost=Number(q.estimated_cost_usd||0).toFixed(6);el.innerHTML="<b>Result:</b> <span class="+(s.result_status==="PASS"?"ok":"bad")+">"+esc(s.result_status||"unknown")+"</span><br><b>Prompt runs:</b> "+esc(q.prompt_runs||0)+" · <b>Conversations:</b> "+esc(q.conversation_runs||0)+"<br><b>Failures:</b> "+esc(q.failures||0)+" · <b>Cost:</b> $"+esc(cost)+"<br><span class=muted>Offline failures known before spend: "+esc(q.offline_failures??"—")+" · paid contracts skipped: "+esc(q.skipped_paid_contracts||0)+"</span>";report.style.display=s.report_available?"block":"none";return}if(state==="error"){el.innerHTML="<span class=bad>Benchmark ended with an internal error.</span><br><span class=muted>"+esc(s.message||"Check add-on logs.")+"</span>";report.style.display=s.report_available?"block":"none";return}el.innerHTML="Ready. This will run the cost-aware real-provider benchmark in a disposable sandbox.";report.style.display=s.report_available?"block":"none"}catch(e){el.textContent="Certification status unavailable: "+e}}',
+'async function runCert(){if(!confirm("Run the real-provider Alex benchmark now? Maximum configured test spend is about $3. The test uses synthetic household state and will not send WhatsApp messages or control real Home Assistant devices."))return;const btn=document.getElementById("certBtn");btn.disabled=true;document.getElementById("cert").innerHTML="<span class=warn>Starting…</span>";try{const r=await fetch("./certify-live",{method:"POST"});const s=await r.json();if(!r.ok)throw new Error(s.error||"Unable to start benchmark")}catch(e){document.getElementById("cert").innerHTML="<span class=bad>"+esc(e.message||e)+"</span>"}setTimeout(loadCert,700)}',
 'function esc(x){const e=document.createElement("div");e.textContent=String(x);return e.innerHTML}',
 'async function testAi(){const el=document.getElementById("ai");el.textContent="Testing…";try{await fetch("./test-ai",{method:"POST"});}catch(e){}setTimeout(load,500)}',
 'async function resetPairing(){if(!confirm("Reset WhatsApp pairing and generate a new QR?"))return;await fetch("./reset",{method:"POST"});setTimeout(load,800)}',
-'load();loadUsage();setInterval(load,2000);setInterval(loadUsage,10000);',
+'load();loadUsage();loadCert();setInterval(load,2000);setInterval(loadUsage,10000);setInterval(loadCert,3000);',
 '</script></main></body></html>'
 ].join('');
 
@@ -543,6 +549,45 @@ function startPairingUi() {
       } catch (err) {
         res.writeHead(503, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'local_usage_unavailable' }));
+      }
+      return;
+    }
+    if (req.method === 'GET' && url.endsWith('/certification')) {
+      try {
+        const result = await fetch(CERT_STATUS_URL);
+        const body = await result.text();
+        res.writeHead(result.ok ? 200 : 503, { 'Content-Type': 'application/json' });
+        res.end(body);
+      } catch (err) {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ state: 'error', message: 'Local certification status unavailable' }));
+      }
+      return;
+    }
+    if (req.method === 'GET' && url.endsWith('/certification-report')) {
+      try {
+        const result = await fetch(CERT_REPORT_URL);
+        const body = await result.text();
+        res.writeHead(result.ok ? 200 : 404, {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Content-Disposition': 'inline; filename="alex-live-benchmark.json"',
+        });
+        res.end(body);
+      } catch (err) {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'certification_report_unavailable' }));
+      }
+      return;
+    }
+    if (req.method === 'POST' && url.endsWith('/certify-live')) {
+      try {
+        const result = await fetch(CERT_RUN_URL, { method: 'POST' });
+        const body = await result.text();
+        res.writeHead(result.ok ? 202 : 503, { 'Content-Type': 'application/json' });
+        res.end(body);
+      } catch (err) {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'local_certification_unavailable' }));
       }
       return;
     }
