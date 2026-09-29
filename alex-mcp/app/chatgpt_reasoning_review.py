@@ -1,21 +1,15 @@
 #!/usr/bin/env python3
-"""Frozen external-reasoning review authored from a ChatGPT QC pass.
+"""Deterministic reasoning regression oracle.
 
-This is intentionally independent from Alex's private behaviour contracts and
-from brain.py's routing rules. It sees only the PUBLIC human-AI packet:
-- user prompt
-- source / actor / conversation type
-- prior user turns
-- the MCP tools Alex exposed
+This module is deliberately NOT presented as an independent-model test. It is
+a hand-authored, public-packet-only regression oracle derived from earlier QC
+findings. Its value is fast repeatability: known language/routing cases should
+not regress.
 
-It then records the tool/clarify/refuse decision that an external reasoning
-model should make. human_ai_lab.score_packets compares those blind decisions
-against the private contract catalogue.
+The genuinely fresh external-model judgment snapshot is stored separately in
+real_ai_snapshot.json and scored by real_ai_snapshot_review.py.
 
-The purpose is not to replace future live-provider tests. It is a reproducible
-artifact of the pre-release ChatGPT engineering/QC review, and it deliberately
-fails closed when the corpus changes in a way this independent reviewer no
-longer understands.
+This oracle still fails closed when its packet corpus fingerprint changes.
 """
 from __future__ import annotations
 
@@ -29,9 +23,9 @@ from typing import Any
 import human_ai_lab
 
 
-# Frozen to the blind packet corpus that received this ChatGPT QC review.
-# Any prompt/tool-surface change invalidates the review until it is repeated.
-REVIEWED_CORPUS_FINGERPRINT = "d0d43678a828f77087c1a0a49dc963c6ff7f4344db599f6ee49101abb108f6f5"
+# Frozen deterministic regression corpus. Any prompt/tool-surface change
+# invalidates this oracle until its regression expectations are reviewed.
+REVIEWED_CORPUS_FINGERPRINT = "901f0e34b256e8c8be9b09f8183f225257d04a09f3e874f7085ccb29c493db05"
 
 
 def _low(value: str) -> str:
@@ -131,7 +125,27 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
     if text == "send me that again." and "receipt" in prior:
         return result("tools", _one(tools, "get_receipt", "find_receipts"))
 
-    # Cross-domain semantic precedence discovered during the independent QC
+    # Original media provenance/replay. This is regression logic only; the
+    # real-AI snapshot makes its own independent choices for these packets.
+    if re.search(r"\b(?:voice\s*notes?|audio\s*notes?|recordings?)\b", text):
+        if re.search(r"\b(?:send|open|get|original|preserved)\b", text):
+            return result(
+                "tools",
+                _pick(tools, "find_media", "get_media_original")
+                or _one(tools, "get_media_original", "find_media"),
+            )
+        return result("tools", _one(tools, "find_media"))
+    if (
+        re.search(r"\b(?:send|open|get)\b", text)
+        and re.search(r"\b(?:voice\s*note|audio\s*note|recording)\b", text)
+    ):
+        return result(
+            "tools",
+            _pick(tools, "find_media", "get_media_original")
+            or _one(tools, "get_media_original", "find_media"),
+        )
+
+    # Cross-domain semantic precedence discovered during the regression QC
     # pass. These rules resolve natural language where a keyword-only classifier
     # is especially likely to choose the wrong domain.
 
