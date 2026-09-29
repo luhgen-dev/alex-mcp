@@ -467,6 +467,341 @@ def share_plan(actor: ActorContext, plan_id: str,
         conn.close()
 
 
+def _normalize_task_assignee(value: str | None) -> str:
+    raw = (value or "unassigned").strip().casefold()
+    aliases = {
+        "": "unassigned", "none": "unassigned", "unassigned": "unassigned",
+        "me": "me", "self": "me", "myself": "me", "user": "me", "owner": "me",
+        "spouse": "spouse", "partner": "spouse", "wife": "spouse", "husband": "spouse",
+        "both": "both", "both of us": "both", "everyone": "both",
+    }
+    if raw not in aliases:
+        raise ValueError("task assignee must be me, spouse, both, or unassigned")
+    return aliases[raw]
+
+
+def _task_due_parts(due_local: str | None, tz_name: str) -> tuple[str | None, str | None]:
+    """Preserve date-only task due dates without inventing midnight."""
+    if due_local is None:
+        return None, None
+    raw = str(due_local).strip()
+    if not raw:
+        return None, None
+    if _has_explicit_time(raw):
+        dt = _to_dt(raw, tz_name)
+        return dt.astimezone(timezone.utc).isoformat(), dt.astimezone(ZoneInfo(tz_name)).date().isoformat()
+    try:
+        due_date = date.fromisoformat(raw[:10]).isoformat()
+    except ValueError as exc:
+        raise ValueError("task due date/time must be ISO date or date-time") from exc
+    return None, due_date
+
+
+def _authorized_task(conn, actor: ActorContext, task_id: str):
+    marks = ",".join("?" for _ in actor.allowed_spaces)
+    row = conn.execute(
+        f"SELECT * FROM tasks WHERE task_id=? AND space_id IN ({marks})",
+        [task_id] + list(actor.allowed_spaces),
+    ).fetchone()
+    if not row:
+        raise PermissionError("task not found in your accessible spaces")
+    return row
+
+
+def _validate_task_plan(conn, actor: ActorContext, plan_id: str | None, task_space: str) -> str | None:
+    if not plan_id:
+        return None
+    marks = ",".join("?" for _ in actor.allowed_spaces)
+    row = conn.execute(
+        f"SELECT plan_id,space_id,status FROM plans WHERE plan_id=? AND space_id IN ({marks})",
+        [plan_id] + list(actor.allowed_spaces),
+    ).fetchone()
+    if not row or row["status"] == "CANCELLED":
+        raise PermissionError("plan not found in your accessible active plans")
+    if task_space == "FAMILY_SHARED" and row["space_id"] != "FAMILY_SHARED":
+        raise PermissionError("a family task cannot expose a private plan link")
+    return row["plan_id"]
+
+
+def _set_task_reminder_link(conn, actor: ActorContext, task_id: str,
+                            task_space: str, reminder_id: str | None) -> None:
+    if reminder_id is None:
+        return
+    conn.execute("DELETE FROM task_reminder_links WHERE task_id=?", (task_id,))
+    rid = str(reminder_id).strip()
+    if not rid:
+        return
+    marks = ",".join("?" for _ in actor.allowed_spaces)
+    row = conn.execute(
+        f"SELECT reminder_id,space_id FROM reminders WHERE reminder_id=? AND space_id IN ({marks})",
+        [rid] + list(actor.allowed_spaces),
+    ).fetchone()
+    if not row:
+        raise PermissionError("reminder not found in your accessible spaces")
+    if task_space == "FAMILY_SHARED" and row["space_id"] != "FAMILY_SHARED":
+        raise PermissionError("a family task cannot expose a private reminder link")
+    conn.execute(
+        "INSERT INTO task_reminder_links(task_id,reminder_id) VALUES(?,?)",
+        (task_id, rid),
+    )
+
+
+def _record_task_event(conn, actor: ActorContext, task_id: str, event_type: str,
+                       from_status: str | None, to_status: str,
+                       title: str, notes: str | None,
+                       action_key: str | None = None) -> None:
+    key = action_key or f"{actor.action_key}:task-event:{event_type.lower()}"
+    conn.execute(
+        """INSERT INTO task_events(
+            event_id,action_key,task_id,actor_id,event_type,from_status,to_status,
+            title_snapshot,notes_snapshot
+           ) VALUES(?,?,?,?,?,?,?,?,?)""",
+        (
+            str(uuid.uuid4()), key, task_id, actor.user_id, event_type,
+            from_status, to_status, title[:240], notes,
+        ),
+    )
+
+
+def create_task(actor: ActorContext, title: str, notes: str | None = None,
+                assignee: str = "unassigned", shared: bool = False,
+                due_local: str | None = None, plan_id: str | None = None,
+                reminder_id: str | None = None) -> dict:
+    """Create a first-class task without silently creating a plan or reminder."""
+    if not actor.action_key:
+        raise RuntimeError("missing deterministic action key")
+    clean_title = (title or "").strip()
+    if not clean_title:
+        raise ValueError("task title is required")
+    assignment = _normalize_task_assignee(assignee)
+    space = _space(actor, shared)
+    if assignment in {"spouse", "both"} and space != "FAMILY_SHARED":
+        raise ValueError("a spouse/both task must be explicitly shared with the family")
+    due_at_utc, due_date_local = _task_due_parts(due_local, actor.timezone)
+
+    conn = connect()
+    try:
+        existing = conn.execute(
+            "SELECT * FROM tasks WHERE action_key=?", (actor.action_key,)
+        ).fetchone()
+        if existing:
+            return {"status": "already_applied", **dict(existing)}
+
+        linked_plan = _validate_task_plan(conn, actor, plan_id, space)
+        task_id = str(uuid.uuid4())
+        conn.execute(
+            """INSERT INTO tasks(
+                task_id,action_key,source_message_id,owner_id,space_id,title,notes,
+                status,assignee,due_at_utc,due_date_local,timezone_name,plan_id
+               ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                task_id, actor.action_key, actor.source_message_id, actor.user_id,
+                space, clean_title[:240], notes, "OPEN", assignment,
+                due_at_utc, due_date_local, actor.timezone, linked_plan,
+            ),
+        )
+        _set_task_reminder_link(conn, actor, task_id, space, reminder_id)
+        _record_task_event(
+            conn, actor, task_id, "CREATED", None, "OPEN",
+            clean_title, notes, f"{actor.action_key}:created",
+        )
+        conn.commit()
+        return {
+            "status": "created",
+            "task_id": task_id,
+            "task_status": "OPEN",
+            "title": clean_title[:240],
+            "space": space,
+            "assignee": assignment,
+            "due_at_utc": due_at_utc,
+            "due_date_local": due_date_local,
+            "plan_id": linked_plan,
+            "reminder_id": str(reminder_id).strip() if reminder_id else None,
+        }
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def list_tasks(actor: ActorContext, status: str = "open",
+               plan_id: str | None = None, limit: int = 50) -> dict:
+    """Read tasks visible in the active privacy boundary."""
+    state = (status or "open").strip().upper()
+    aliases = {
+        "OPEN": "OPEN", "OUTSTANDING": "OPEN", "UNFINISHED": "OPEN",
+        "DONE": "DONE", "COMPLETED": "DONE", "COMPLETE": "DONE",
+        "CANCELLED": "CANCELLED", "CANCELED": "CANCELLED",
+        "ALL": "ALL", "ANY": "ALL",
+    }
+    if state not in aliases:
+        raise ValueError("task status must be open, done, cancelled, or all")
+    state = aliases[state]
+    marks = ",".join("?" for _ in actor.allowed_spaces)
+    where = [f"t.space_id IN ({marks})"]
+    params: list = list(actor.allowed_spaces)
+    if state != "ALL":
+        where.append("t.status=?")
+        params.append(state)
+    if plan_id:
+        where.append("t.plan_id=?")
+        params.append(plan_id)
+    params.append(max(1, min(100, int(limit))))
+
+    conn = connect()
+    try:
+        rows = conn.execute(
+            f"""SELECT t.task_id,t.title,t.notes,t.status,t.assignee,t.space_id,
+                       t.due_at_utc,t.due_date_local,t.timezone_name,t.plan_id,
+                       t.created_at_utc,t.updated_at_utc,
+                       (SELECT tr.reminder_id FROM task_reminder_links tr
+                        WHERE tr.task_id=t.task_id LIMIT 1) AS reminder_id,
+                       (SELECT COUNT(*) FROM task_events te
+                        WHERE te.task_id=t.task_id) AS history_events
+                FROM tasks t
+                WHERE {' AND '.join(where)}
+                ORDER BY CASE t.status WHEN 'OPEN' THEN 0 WHEN 'DONE' THEN 1 ELSE 2 END,
+                         COALESCE(t.due_at_utc,t.due_date_local,t.updated_at_utc),
+                         t.updated_at_utc DESC
+                LIMIT ?""",
+            params,
+        ).fetchall()
+        return {"tasks": [dict(r) for r in rows], "status_filter": state}
+    finally:
+        conn.close()
+
+
+def update_task(actor: ActorContext, task_id: str,
+                title: str | None = None, notes: str | None = None,
+                due_local: str | None = None, assignee: str | None = None,
+                plan_id: str | None = None,
+                reminder_id: str | None = None) -> dict:
+    """Edit task fields while preserving lifecycle state and history."""
+    if not actor.action_key:
+        raise RuntimeError("missing deterministic action key")
+    conn = connect()
+    try:
+        prior_event = conn.execute(
+            "SELECT task_id FROM task_events WHERE action_key=?", (actor.action_key,)
+        ).fetchone()
+        if prior_event:
+            row = _authorized_task(conn, actor, prior_event["task_id"])
+            return {"status": "already_applied", "task_id": row["task_id"],
+                    "task_status": row["status"]}
+
+        row = _authorized_task(conn, actor, task_id)
+        if row["status"] == "CANCELLED":
+            raise ValueError("cancelled task must be reopened by creating a new task")
+
+        new_title = row["title"] if title is None else str(title).strip()
+        if not new_title:
+            raise ValueError("task title cannot be empty")
+        new_notes = row["notes"] if notes is None else notes
+        new_assignee = row["assignee"] if assignee is None else _normalize_task_assignee(assignee)
+        if new_assignee in {"spouse", "both"} and row["space_id"] != "FAMILY_SHARED":
+            raise ValueError("a spouse/both task must be explicitly shared with the family")
+
+        if due_local is None:
+            due_at_utc, due_date_local = row["due_at_utc"], row["due_date_local"]
+        else:
+            due_at_utc, due_date_local = _task_due_parts(due_local, actor.timezone)
+
+        if plan_id is None:
+            linked_plan = row["plan_id"]
+        else:
+            linked_plan = _validate_task_plan(
+                conn, actor, str(plan_id).strip() or None, row["space_id"]
+            )
+
+        conn.execute(
+            """UPDATE tasks
+               SET title=?,notes=?,assignee=?,due_at_utc=?,due_date_local=?,
+                   plan_id=?,updated_at_utc=?
+               WHERE task_id=?""",
+            (
+                new_title[:240], new_notes, new_assignee, due_at_utc,
+                due_date_local, linked_plan, utc_now(), task_id,
+            ),
+        )
+        _set_task_reminder_link(
+            conn, actor, task_id, row["space_id"], reminder_id
+        )
+        _record_task_event(
+            conn, actor, task_id, "UPDATED", row["status"], row["status"],
+            new_title, new_notes, actor.action_key,
+        )
+        conn.commit()
+        return {
+            "status": "updated", "task_id": task_id,
+            "task_status": row["status"], "title": new_title[:240],
+            "assignee": new_assignee, "due_at_utc": due_at_utc,
+            "due_date_local": due_date_local, "plan_id": linked_plan,
+        }
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def _transition_task(actor: ActorContext, task_id: str, target: str,
+                     event_type: str, allowed_from: set[str]) -> dict:
+    if not actor.action_key:
+        raise RuntimeError("missing deterministic action key")
+    conn = connect()
+    try:
+        prior_event = conn.execute(
+            "SELECT task_id,to_status FROM task_events WHERE action_key=?",
+            (actor.action_key,),
+        ).fetchone()
+        if prior_event:
+            row = _authorized_task(conn, actor, prior_event["task_id"])
+            return {"status": "already_applied", "task_id": row["task_id"],
+                    "task_status": row["status"]}
+
+        row = _authorized_task(conn, actor, task_id)
+        current = row["status"]
+        if current == target:
+            return {"status": "already_in_state", "task_id": task_id,
+                    "task_status": current}
+        if current not in allowed_from:
+            raise ValueError(
+                f"task cannot move from {current} to {target} with this action"
+            )
+        conn.execute(
+            "UPDATE tasks SET status=?,updated_at_utc=? WHERE task_id=?",
+            (target, utc_now(), task_id),
+        )
+        _record_task_event(
+            conn, actor, task_id, event_type, current, target,
+            row["title"], row["notes"], actor.action_key,
+        )
+        conn.commit()
+        return {
+            "status": "updated", "task_id": task_id,
+            "previous_status": current, "task_status": target,
+        }
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def complete_task(actor: ActorContext, task_id: str) -> dict:
+    return _transition_task(actor, task_id, "DONE", "COMPLETED", {"OPEN"})
+
+
+def reopen_task(actor: ActorContext, task_id: str) -> dict:
+    return _transition_task(actor, task_id, "OPEN", "REOPENED", {"DONE"})
+
+
+def cancel_task(actor: ActorContext, task_id: str) -> dict:
+    # Cancellation changes only this task. Linked plan/reminder rows are retained.
+    return _transition_task(actor, task_id, "CANCELLED", "CANCELLED", {"OPEN", "DONE"})
+
+
 def _roster_conflict(conn, actor: ActorContext, start_utc: str, end_utc: str | None):
     # A family-group planning turn may not inspect an individual's private
     # work roster, even to reveal only the existence of a clash.
