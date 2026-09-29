@@ -1378,6 +1378,24 @@ CONVERSATION_CONTRACTS: tuple[ConversationContract, ...] = (
         ),
     ),
     ConversationContract(
+        "conv.memory.numbered", "phase1", "memory",
+        "A numbered saved-picture browse must bind the displayed choice to the exact original file.",
+        "core",
+        (
+            ConversationStep(
+                "What pictures have I saved?",
+                _fs("search_saved_items"),
+                expected_terms=("Vinyl",),
+            ),
+            ConversationStep(
+                "Show number 1.",
+                _fs("resolve_numbered_choice"),
+                expect_attachment=True,
+                expect_attachment_of="vinyl",
+            ),
+        ),
+    ),
+    ConversationContract(
         "conv.diary.reminder", "phase2", "agenda",
         "Existing diary event -> relative reminder -> agenda read must preserve cross-domain context.",
         "core",
