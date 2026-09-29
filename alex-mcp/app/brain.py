@@ -470,6 +470,18 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         else:
             block |= {"save_item", "search_saved_items", "get_saved_item", "remove_saved_item"}
 
+    # Explicit saved-picture/document retrieval is a two-stage operation:
+    # search the owner's saved-memory index, then fetch the exact attachment.
+    # Both reads must survive the six-tool exposure cap in the same turn.
+    if re.search(
+        r"\b(?:find|show|open|send|get|where(?:'s| is))\b.*"
+        r"\b(?:saved\s+)?(?:photo|picture|image|document|file)\b"
+        r"|\b(?:photo|picture|image|document|file)\b.*"
+        r"\b(?:i\s+(?:asked|told)\s+you\s+to\s+(?:save|keep)|saved)\b",
+        low,
+    ):
+        force |= {"search_saved_items", "get_saved_item"}
+
     # Explicit saved-memory creation/removal phrasing that does not necessarily
     # contain the historical "save this" / "remember" keywords.
     if re.search(r"\bkeep\s+(?:a\s+)?note\b", low):
