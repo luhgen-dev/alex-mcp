@@ -1,327 +1,364 @@
-# Alex Behaviour Certification Rig — Claude Handover
+# Alex Behaviour Certification Rig — Independent Review Handover
 
-## Why this was built
+## Purpose
 
-Alex already had a strong **Phase 3 deterministic stress harness** in
-`alex-mcp/app/stress_test.py`. That harness is valuable and remains untouched.
-It attacks backend invariants directly: idempotency, WAL concurrency, privacy,
-repeated receipts, reminder durability, numbered retrieval, roster/OT rules,
-planning ownership, diary conflicts, monitoring, reports and database integrity.
+Alex already had a strong deterministic Phase-3 stress harness in
+`alex-mcp/app/stress_test.py`. That remains **Tier A** and is intentionally not
+replaced.
 
-The gap exposed by the v0.4.4 live smoke test is above that layer.
+The v0.4.4 WhatsApp smoke test exposed a different failure class: the backend
+could support a capability correctly while Alex behaved differently depending
+on ordinary phrasing, conversation context, modality, privacy scope, or object
+focus. The new rig therefore adds **Tier B behavioural certification**.
 
-A backend capability can be correct while Alex still fails depending on how the
-user phrases the request. Examples observed live include:
+The release path is now:
 
-- one wording can read a goal while another claims no goal-reading tool exists;
-- a goal can be routed as a plan;
-- a requested task can become a plan note;
-- "what time is my dentist appointment?" can loop even though full agenda works;
-- a natural receipt follow-up can send the wrong saved image;
-- a correctly transcribed English voice note can receive a Malay reply;
-- direct work/HA reads can fall into the four-model-call safety stop;
-- ordinary relative-date wording can be interpreted inconsistently.
+1. **Tier A — deterministic invariants**
+2. **Tier B — user-facing language/conversation behaviour**
+3. **Explicit manual gates — only external WhatsApp/physical-device facts**
+4. **Short final production acceptance**
 
-Those are **behaviour-boundary failures**, not failures that the existing
-`stress_test.py` was designed to detect.
+A capability is not certified because one wording worked. Equivalent ordinary
+wordings, required state effects, identity, privacy, and conversational
+continuity must agree.
 
-This change therefore adds **Phase 3 Tier B: Behaviour Certification** rather
-than replacing Phase 3 Tier A.
+## Files
 
-## Architecture after this change
+- `alex-mcp/app/behavior_contracts.py` — owner-visible behavioural contracts
+- `alex-mcp/app/behavior_capabilities.py` — stable capability -> current MCP adapter
+- `alex-mcp/app/behavior_cert.py` — catalog/offline/live certification runner
+- `alex-mcp/app/runtime_clock.py` — one injectable Alex runtime clock
+- `alex-mcp/app/phase_certify.py` — one-command phase gate
+- `tests/test_behavior_cert.py` — rig self-tests and mutation tests
+- `alex-mcp/app/stress_test.py` — existing Tier-A stress harness
+- `.github/workflows/ci.yml` — rig/catalog/offline exercise and normal CI
 
-### Tier A — deterministic stress/invariants (existing)
+The current catalog contains **106 prompt contracts**, **10 multi-turn
+conversation contracts**, and **8 explicit external manual gates** across the
+historical Phase 1, Phase 2, and Phase 3 capability set.
 
-`alex-mcp/app/stress_test.py`
+## Changes made after Claude's first independent review
 
-Purpose:
-- prove deterministic service correctness;
-- prove privacy and state invariants;
-- attack concurrency/idempotency/durability;
-- stay provider-free and network-free.
+Claude's first verdict was **REQUIRES MATERIAL CHANGES**. The following changes
+directly address those findings rather than weakening contracts to make v0.4.4
+green.
 
-### Tier B — language + conversation certification (new)
+### 1. The judge now proves effects, not merely tool calls
 
-`alex-mcp/app/behavior_contracts.py`
-`alex-mcp/app/behavior_cert.py`
+Contracts can assert:
 
-Purpose:
-- express owner-visible capabilities as contracts;
-- hit the same capability through multiple natural phrasings;
-- certify both text and post-transcription voice paths where appropriate;
-- test multi-turn continuity, not only isolated commands;
-- verify which tools were actually exposed/called;
-- detect forbidden mutations;
-- detect max-step/tool-loop failures;
-- verify expected attachment queuing;
-- flag unsolicited Malay replies to English voice transcripts;
-- collect per-turn latency;
-- keep all writes inside a disposable certification database.
+- exact durable rows and field values;
+- exact row deltas;
+- substring/date identity where appropriate;
+- tables that must remain unchanged;
+- exact original attachment identity and exactly-once queueing;
+- exact fake-HA entity/end state and unrelated-entity invariance;
+- private fixture IDs/content/media/path must not appear in tool results,
+  replies, or outbound attachments;
+- clarification and privacy-refusal outcomes;
+- compound requests that require **all** named capabilities;
+- no invented non-zero goal baseline;
+- English-only output.
 
-### Final external gate — targeted real WhatsApp/HA acceptance
+This closes the demonstrated false-pass cases from the first review: wrong
+amount/currency, wrong receipt/image, no picture, private media leak, invented
+RM500/month goal baseline, wrong HA entity, and discovery-only reminder paths.
 
-Some things cannot honestly be certified from an internal process. They are
-explicitly represented as `MANUAL_GATES`, rather than being silently claimed
-as tested:
+### 2. Live certification now enters through production ingress
 
-- real WhatsApp voice transport;
-- actual phone-side media rendering / exactly-once delivery;
-- genuine family-group @mention metadata;
-- genuine swipe-reply metadata;
-- typing indicator and phone-visible latency / pull-to-refresh behaviour;
-- real scheduled reminder delivery;
-- physical Home Assistant effect;
-- QR/session persistence across restart.
+Live cases call `ingress.process(payload)`, not `brain.respond()` directly.
+Therefore the internal path includes:
 
-That keeps the rig honest: it certifies what it can observe and names what still
-needs a human/device check.
+- inbound idempotency claim;
+- typed/voice turn normalization;
+- image/PDF media processing;
+- quoted/swipe-reply context resolution;
+- attachment pairing rules;
+- normal brain/tool orchestration;
+- exact `outbound_messages` rows that the WhatsApp egress worker would send.
 
-## What is in the contract catalog
+The outbox worker itself is **not started**, so certification never sends a real
+WhatsApp message.
 
-The catalog spans all three historical Alex phases.
+Voice cases use a synthetic audio payload and a patched local transcription so
+post-transcription production behaviour is exercised without external STT cost.
+Real WhatsApp audio transport remains a manual gate.
 
-### Phase 1
+Image/PDF contracts now exercise ingress/media persistence with deterministic
+local OCR/text fixtures, including exact event-media linkage. Actual phone-side
+rendering remains manual.
 
-- finance latest/list/write;
-- semantic receipt lookup;
-- reminders read/write;
-- shopping read/write;
-- explicit saved-memory browse and saved-picture retrieval;
-- multi-turn receipt follow-up;
-- WhatsApp-only transport/delivery/group/manual gates.
+### 3. Core fixture is valid
 
-### Phase 2
+The synthetic dentist event moved to **17:00 on 1 October 2026**, outside the
+synthetic morning shift. The seed fails closed if that event is rejected and CI
+contains a seed-validity self-test.
 
-- agenda;
-- diary detail;
-- plan read/update;
-- **task create/read semantics**;
-- goals list/create/owner-agency;
-- cash recording/allocation;
-- reserves;
-- roster/leave/OT;
-- recurring bills;
-- assets/warranty;
-- delegated monitoring;
-- diagnostics;
-- Home Assistant read safety;
-- reports;
-- cross-domain diary -> reminder conversation;
-- multi-turn plan refinement;
-- goal owner-agency conversation;
-- simulated **post-wake** family-group and spouse-DM privacy checks. These
-  deliberately bypass the WhatsApp wake gate so the ACL/brain behaviour can be
-  certified internally, while genuine @mention/swipe-reply metadata remains a
-  manual WhatsApp gate.
+### 4. Discovery can never be the successful capability
 
-The task contracts are intentional even though the current MCP surface has no
-dedicated task lifecycle. A certification rig must represent the owner's
-required behaviour, not merely mirror whatever code currently exists.
+`discover_alex_tools` is represented only as `routing.discovery`.
+A discovery-dependent offline case becomes `LIVE_REQUIRED`; live certification
+must subsequently execute the real semantic capability and satisfy its state
+assertions.
 
-### Phase 3
+### 5. Contracts are decoupled from today's MCP tool names
 
-- HA negation/hypothetical safety;
-- typo-heavy wording/discovery;
-- Tamil routing;
-- read-only fallback safety;
-- explicit manual transport/session/latency gates;
-- existing Tier-A deterministic stress remains the lower layer.
+`behavior_capabilities.py` defines stable semantic capabilities such as
+`finance.write`, `memory.get`, `goal.create`, `home.control`, etc.
+The adapter maps them to the current MCP implementation.
 
-## Three execution modes
+This is intentional preparation for the planned v0.5.0 facade: the behavioural
+catalog should survive a tool-surface redesign while one adapter changes.
 
-### 1. Catalog audit — zero cost, CI-safe
+New MCP tools still trigger catalog drift unless they are classified, and every
+implemented owner capability must have behavioural coverage.
+
+### 6. One shared certification clock
+
+`runtime_clock.py` is the single Python-level runtime clock for user-visible
+date/time decisions. Production uses the real clock. Certification sets
+`ALEX_CERT_NOW`.
+
+The shared clock is now used by ingress timing, idempotency age, selection
+expiry, Phase-2 relative dates, finance/work defaults, model-local date context,
+and outbox retry calculations. SQLite `CURRENT_TIMESTAMP` fields that remain
+are audit metadata and are not used as behavioural truth.
+
+A midnight chain tests 23:55 -> 00:05 Malaysia rollover.
+
+### 7. English output is an owner policy
+
+Input may be English, Tamil, Tanglish, Malay terms, typo-heavy text, or a natural
+mix. **Alex must reply in English.** Another language is allowed only when the
+user explicitly requests translation/quoted-language output.
+
+Tamil reminder and Tamil memory contracts are separate, so one cannot pass via
+the other's capability.
+
+### 8. Adversarial and held-out phrasing
+
+The zero-token offline tier adds deterministic transformations such as:
+
+- lowercase/no punctuation;
+- casual WhatsApp filler;
+- common typo/abbreviation forms.
+
+Paid live mode samples a bounded subset.
+
+An optional local-only held-out corpus is supported through
+`--heldout-corpus` / `ALEX_CERT_HELDOUT_CORPUS`. It can contain the owner's
+real historical phrasing. It is never committed by the rig, and report output
+contains only a hash marker such as `[heldout:...]`, not the original phrase.
+
+### 9. Multi-turn depth
+
+Current chains include:
+
+- receipt discovery -> exact receipt -> quoted "send that again";
+- saved-picture browse -> numbered selection -> exact original image;
+- diary -> relative reminder -> agenda;
+- draft plan -> refinement -> readback;
+- goal creation -> owner-agency readback;
+- expense -> natural correction -> supersession/history;
+- replay of the identical inbound message ID -> exactly-once state;
+- saved memory -> service/schema reinitialization -> retrieval;
+- owner DM private read -> same request in family group -> no private leak;
+- relative reminder across local midnight rollover.
+
+### 10. Task lifecycle is explicit
+
+Tasks are not allowed to degrade into plan notes. The required lifecycle is:
+
+- create;
+- list/read;
+- edit;
+- complete;
+- reopen;
+- cancel.
+
+Task fields include required title/status/visibility plus optional assignee,
+due date/time, plan link, notes, and a separately-linked reminder. A due date is
+optional. A reminder is created only when explicitly requested.
+
+The current v0.4.4 MCP surface does not implement this lifecycle, so task
+certification intentionally fails until the product is repaired.
+
+### 11. Goal owner agency remains a structural requirement
+
+A user may create a goal without deciding a monthly contribution. The current
+`planning_create_goal` schema still requires `baseline_monthly`. The rig
+correctly treats that as a product defect rather than inventing a value.
+
+### 12. The tester is mutation-tested
+
+Rig self-tests deliberately feed the judge broken outcomes and require failure,
+including:
+
+- discovery without the real reminder action;
+- "here it is" with no image;
+- wrong file identity;
+- wrong finance state;
+- invented goal baseline;
+- wrong HA entity;
+- private object/file leakage;
+- non-English output;
+- incomplete compound execution;
+- privacy refusal semantics.
+
+The core fixture and shared clock are also directly self-tested.
+
+### 13. Sandbox hardening
+
+Live certification:
+
+- binds `ALEX_DATA_DIR` and `ALEX_OPTIONS_PATH` before application imports;
+- uses a disposable DB per prompt/conversation;
+- verifies every case DB path is inside the temporary sandbox;
+- replaces `ha._request` with a fresh in-memory fake;
+- also points HA URL at a dead local port and removes `SUPERVISOR_TOKEN`;
+- never starts the WhatsApp outbox worker;
+- reads provider credentials only from the explicitly selected source options/env;
+- writes the temporary options file with restrictive permissions where supported;
+- recursively redacts common credential/token patterns from reports.
+
+`phase_certify.py` also now gives every deterministic subprocess an explicit
+temporary data/options path. It no longer removes those variables and risks
+falling back to production `/data`.
+
+### 14. Latency evidence
+
+Internal live reports now record:
+
+- total ingress/brain time;
+- provider latency;
+- tool latency;
+- model-call count;
+- tool rounds;
+- p50/p95/max by domain.
+
+Production diagnostics separately compute:
+
+- inbound -> outbound queue latency;
+- outbound queue -> bridge delivery latency;
+- inbound -> bridge delivery latency;
+- maximum delivery attempts.
+
+This can distinguish Alex/model/tool delay from durable outbox/bridge retry
+delay. It still cannot prove when the WhatsApp phone UI rendered a message; that
+remains manual.
+
+The outbox's exponential retry currently tops out at **256 seconds** because the
+exponent is capped at 8.
+
+## Execution modes
+
+### Catalog — zero provider cost
 
 ```bash
 python alex-mcp/app/behavior_cert.py --mode catalog
 ```
 
-This proves the rig itself is coherent:
-- unique contract IDs;
-- multiple natural variants per prompt contract;
-- all declared phase/domain coverage;
-- required manual gates represented.
+Validates contract/catalog consistency, capability classification, owner
+coverage and explicit manual gates.
 
-This is the mode added to ordinary CI because it tests the **rig**, not whether
-the currently known-broken v0.4.4 release has already passed certification.
-
-### 2. Offline certification — zero provider cost
+### Offline — zero provider cost
 
 ```bash
 python alex-mcp/app/behavior_cert.py --mode offline --phase all \
   --report /tmp/alex-behavior-offline.json
 ```
 
-This attacks every natural-language variant through Alex's deterministic router.
+Exercises the actual provider-facing tool surface with catalog, adversarial, and
+optional held-out phrasings. It distinguishes:
 
-For every phrase it checks:
-- at least one required capability is exposed;
-- forbidden mutation tools are not exposed;
-- the six-tool schema cap is respected;
-- required capability exists on the MCP surface.
+- `PASS` — direct required capability route is available;
+- `LIVE_REQUIRED` — discovery must be proven by the provider tier;
+- `FAIL` — a hard missing/routing/structural requirement.
 
-It also performs structural checks that routing alone cannot see. In particular:
+It emits stable failure signatures so CI can ratchet known v0.4.4 debt without
+pretending that debt is acceptable.
 
-1. **Goal owner-agency check**  
-   If `planning_create_goal` requires `baseline_monthly`, the rig fails.
-   That schema currently forces the model either to invent a monthly amount or
-   fail when the user intentionally leaves it undecided.
-
-2. **Task lifecycle check**  
-   If there is no task create/list/update surface, the rig fails rather than
-   accepting "saved as a note" as equivalent behaviour.
-
-This means the new rig is expected to expose real v0.4.4 gaps. That is a feature,
-not a broken test.
-
-During active repair, `--no-fail-exit` can be used to collect the whole report
-without stopping at the first failing contract.
-
-### 3. Live provider certification — disposable sandbox
+### Live — opt-in, spend-capped, sandboxed
 
 ```bash
-ALEX_CERT_SOURCE_OPTIONS=/data/options.json \
-python alex-mcp/app/behavior_cert.py --mode live --phase all --provider auto \
-  --max-live-cost-usd 0.25 \
-  --report /tmp/alex-behavior-live.json
+python alex-mcp/app/behavior_cert.py --mode live --phase phase2 --provider auto \
+  --max-live-cost-usd 0.25 --report /tmp/alex-behavior-live.json
 ```
 
-This is opt-in because it consumes provider tokens.
+This uses a real configured provider against synthetic state only. The
+one-command phase gate deliberately refuses to spend provider tokens while a
+cheaper deterministic/offline hard failure already exists.
 
-Safety properties:
-- a new `TemporaryDirectory` becomes `ALEX_DATA_DIR`;
-- a temporary options file becomes `ALEX_OPTIONS_PATH` and is permission-hardened where supported;
-- each prompt variant and each multi-turn scenario receives its own fresh SQLite database inside that temporary directory, so one wording cannot contaminate another;
-- synthetic fixture integrity is checked before each core-seeded case;
-- only provider credentials are copied from the source options file;
-- credentials are never printed into the report;
-- the rig verifies the bound DB path is inside the temporary directory;
-- Home Assistant is replaced with a freshly reset in-memory fake for every live case;
-- HA read/control/summary/report/automation reasoning is therefore testable
-  internally without touching a physical device; the real physical effect remains
-  a manual gate;
-- production `/data` records are not read/written by the certification turns.
+**A full paid live run has not been claimed or performed for the currently
+known-broken v0.4.4 product.** That is intentional: v0.4.4 still has offline
+hard failures (including task lifecycle and goal owner-agency) that should be
+repaired first.
 
-Seed fixtures include:
-- management fee + original receipt;
-- explicit "cobalt" memory;
-- saved vinyl picture;
-- family shopping items;
-- dentist diary event and linked-style reminder;
-- Malacca draft plan;
-- Family Holiday Savings goal;
-- deterministic work/bill profile configuration.
+## Manual gates that remain intentionally external
 
-Each live turn is driven through the real `brain.respond` orchestration. The
-rig then reads Alex's own `tool_audit` / `_turn_trace` evidence and checks:
+Internal certification does not claim to prove:
 
-- required tool actually called, not merely advertised;
-- forbidden tool not called;
-- no `max_steps` outcome;
-- expected answer terms where the fixture gives an objective answer;
-- actual attachment queue when a file is required;
-- English voice transcript does not drift into a clearly Malay response;
-- hard latency threshold (default 20 seconds);
-- the estimated cost of each turn;
-- durable household state changed/not-changed by table (row counts + hashes only, never row contents);
-- a mutating tool that claims success but produces no durable household-state change is flagged;
-- relative dates are evaluated against a fixed 29 September 2026 certification clock.
+- genuine WhatsApp voice upload/download transport;
+- phone-side media rendering / exactly-once display;
+- genuine family-group @mention wake metadata;
+- genuine group swipe-reply wake metadata;
+- typing indicator and phone-visible latency/pull-refresh behaviour;
+- actual scheduled reminder delivery to WhatsApp;
+- physical Home Assistant effects;
+- QR/session persistence across a real add-on restart.
 
-The live runner defaults to a **US$0.25 cumulative estimated spend cap**. If the
-cap is reached before all cases run, the result is `INCOMPLETE_BUDGET`, never a
-false PASS. The cap can be changed explicitly with `--max-live-cost-usd`; zero
-disables the runner-level cap.
+These remain explicit `MANUAL_GATES`.
 
-Multi-turn contracts keep one conversation ID so pronouns/deictic references
-must survive naturally.
+## Future phase workflow
 
-## One-command phase gate
+For each new Alex phase/capability:
 
-For day-to-day development, `phase_certify.py` is the handoff command. It runs
-the existing unit suite, structural self-test, Tier-A stress harness, final
-architecture audit, Tier-B catalog audit and the requested phase's offline
-behaviour certification in one isolated workflow.
+1. implement the deterministic service and Tier-A invariants;
+2. add stable semantic capability mapping;
+3. add owner-visible behavioural contracts/state assertions;
+4. run unit/self-test/Tier-A/catalog/offline;
+5. repair all new hard failures;
+6. run spend-capped live behaviour;
+7. only then return to the owner for the remaining manual gates;
+8. finish with one short whole-system production acceptance run.
 
-Zero-provider-cost preflight:
+A new owner-facing capability cannot silently appear without classification and
+behavioural coverage.
 
-```bash
-python alex-mcp/app/phase_certify.py --phase phase2
-```
+## Independent second-review request
 
-A clean preflight reports `READY_FOR_LIVE`. Then run the same gate with live
-provider behaviour enabled:
+Please review this PR again as a **test architecture**, not as a claim that
+v0.4.4 itself is green.
 
-```bash
-python alex-mcp/app/phase_certify.py --phase phase2 --live \
-  --provider auto --max-live-cost-usd 0.25
-```
+In particular, verify:
 
-Live provider work is automatically skipped if a cheaper deterministic/offline
-gate is already failing, so known structural defects do not consume tokens.
-`PASS_INTERNAL` means every internal layer passed; it **does not** claim the
-external WhatsApp/device manual gates passed.
+1. the first-review B1 false-pass probes now fail;
+2. the core seed can initialize;
+3. discovery can no longer count as success;
+4. exact state/object/file/HA/privacy assertions are adequate;
+5. live behaviour really traverses `ingress.process` and inspects
+   `outbound_messages`;
+6. capability mapping is maintainable for the future facade;
+7. the shared clock is sufficiently complete for user-visible semantics;
+8. English-only output policy is enforced coherently;
+9. held-out text cannot leak into committed/report output;
+10. replay, correction, numbered selection, restart, privacy-scope and midnight
+    chains are meaningful;
+11. sandbox/HA/outbox isolation is fail-closed;
+12. tester mutation tests are capable of catching a weakened judge;
+13. latency evidence is useful without overstating phone-render visibility;
+14. the CI known-failure ratchet prevents new regressions without treating
+    existing v0.4.4 debt as a PASS;
+15. anything remains that would let a broken Alex receive a false behavioural
+    PASS.
 
-The available phase names are derived from the contract catalog rather than
-hard-coded, so a future phase becomes selectable when its contracts/manual
-gates are added.
+Do not merge or modify the PR during review. Do not weaken a valid behavioural
+requirement merely because the current product fails it.
 
-## Phase workflow going forward
+Please finish with exactly one of:
 
-For every future Alex phase or significant capability:
+- **APPROVE TEST RIG AS COMPLETE**
+- **APPROVE AFTER MINOR CHANGES**
+- **REQUIRES MATERIAL CHANGES**
 
-1. Add/modify the deterministic service and Tier-A invariant tests.
-2. Add the owner-visible behaviour contract(s) to
-   `behavior_contracts.py` **before declaring the phase complete**.
-3. Run:
-   - existing unit tests;
-   - existing `stress_test.py`;
-   - `behavior_cert.py --mode catalog`;
-   - `behavior_cert.py --mode offline --phase <phase>`.
-   Offline reports distinguish direct routes from cases that genuinely require
-   the model's `discover_alex_tools` valve; those are marked `LIVE_REQUIRED`
-   rather than being falsely passed.
-4. When offline has no hard failures, run live provider certification for that phase.
-5. Only after both internal layers pass should the work return to the owner for
-   the reduced manual WhatsApp/HA gate list.
-6. After targeted manual gates pass, perform one short whole-system acceptance
-   run. That final run validates the certification claim in the production path;
-   it is no longer the place where basic routing defects should first be found.
-
-A phase is not "certified" because one wording worked. If an ordinary equivalent
-phrasing fails, the contract fails.
-
-## Review request for Claude
-
-Please review this as a **test architecture**, not as an assertion that v0.4.4
-already passes it.
-
-Specifically check:
-
-1. Does the Tier A / Tier B / manual-gate separation make sense?
-2. Are any owner-visible Alex capabilities missing from the contract catalog?
-3. Are any contract expectations too narrow or likely to create false passes?
-4. Are any expectations too strict and likely to create false failures?
-5. Is the live sandbox genuinely isolated from production `/data`?
-6. Can any live certification path accidentally control real Home Assistant?
-7. Are provider credentials kept out of reports/source?
-8. Are the goal owner-agency and missing-task structural checks correct?
-9. Does the report contain enough evidence to diagnose a failed phrase without
-   guessing the root cause?
-10. What additional adversarial paraphrase families or multi-turn chains should
-    be added before we call the rig complete?
-
-Please do **not** weaken a failing contract merely to make the current build
-green. If a contract accurately expresses the intended Alex behaviour, the
-product should be repaired to satisfy it.
-
-## Completion criterion for the rig itself
-
-The rig should be considered complete only after:
-
-- its CI/catalog self-audit passes;
-- GPT review finds no obvious architecture/safety gap;
-- Claude independently reviews the PR and either approves it or identifies
-  changes;
-- any agreed review changes are incorporated;
-- both reviewers agree the catalog and execution model are sufficient.
-
-That is separate from Alex itself passing every behavioural contract.
+The rig is complete only after this second review and GPT independently agree.
