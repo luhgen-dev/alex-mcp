@@ -41,7 +41,8 @@ For finance date queries, resolve today/tomorrow/yesterday from the runtime loca
 When the user explicitly asks for family/shared finances, use query_finances with scope="family". When they explicitly ask for private/personal finances, use scope="private". Never broaden an explicitly requested scope.
 When the user asks specifically for expenses logged from voice notes, use query_finances with source="voice"; receipt/document-only queries use source="receipt".
 If trusted WhatsApp reply context supplies an exact financial event id, use that exact event for a correction or clarification. A short reply such as "RM8.50" must bind to that trusted event or a persisted pending item; never guess an event id. If a quoted clarification and a stale numbered list both exist, the explicit quoted context wins.
-When the user says "show 10", "open 10", or gives a numbered choice after Alex displayed a numbered receipt/saved-item list, use resolve_numbered_choice for that exact latest list.
+When the user says "show 10", "open 10", or gives a numbered choice after Alex displayed a numbered receipt/saved-item/original-media list, use resolve_numbered_choice for that exact latest list.
+Original voice notes, images and documents are preserved for provenance. When the user asks to list or retrieve an earlier original voice note/media input, use find_media/get_media_original rather than pretending the media cannot be sent.
 
 For reminders, convert the user's intended local date/time into an ISO local datetime. Do not silently choose a materially different date. For normal conversational follow-ups, use context naturally.
 For Diary/Plans, never invent a clock time. If the user supplied a date but no actual time, use the date and set time_known=false. Date-only items may produce a non-blocking same-day heads-up; only proven time overlaps are hard conflicts.
@@ -183,6 +184,7 @@ CORE_FINANCE = {
     "log_expense","confirm_expense","query_finances","list_pending_expenses",
     "correct_expense","find_receipts","get_receipt","calculate",
 }
+MEDIA_TOOLS = {"find_media","get_media_original","resolve_numbered_choice"}
 MEMORY_TOOLS = {"save_item","search_saved_items","get_saved_item","remove_saved_item","resolve_numbered_choice"}
 REMINDER_TOOLS = {"create_reminder","list_reminders","update_reminder","reminder_history"}
 SHOPPING_TOOLS = {"add_shopping_item","list_shopping_items","update_shopping_item"}
@@ -768,6 +770,16 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
             selected.add("add_shopping_item")
         if re.search(r"\b(?:remove|delete|bought|purchased|mark .*done|mark .*bought)\b", low):
             selected.add("update_shopping_item")
+    if re.search(
+        r"\b(?:voice\s*notes?|audio\s*notes?|recordings?|original\s+audio)\b",
+        low,
+    ):
+        selected |= MEDIA_TOOLS
+    if re.search(
+        r"\b(?:show|send|open|play|get)\b.*\b(?:voice\s*note|audio\s*note|recording)\b.*\b\d+\b",
+        low,
+    ):
+        selected |= {"resolve_numbered_choice", "get_media_original"}
     if re.search(r"\b(?:remember|saved|save this|find .*photo|find .*image|show .*document|keys photo|invitation)\b", low):
         selected |= MEMORY_TOOLS
     if re.search(r"\b(?:warranty|warranties|manual|serial number|appliance|asset)\b", low):
@@ -1646,6 +1658,7 @@ def _action_key(actor: ActorContext, tool_name: str, args: dict, occurrence: int
 
 READ_ONLY_TOOLS = {
     "query_finances","list_pending_expenses","find_receipts","get_receipt",
+    "find_media","get_media_original",
     "search_saved_items","get_saved_item","resolve_numbered_choice","list_reminders","reminder_history",
     "list_shopping_items","ha_find_entities","ha_get_state","ha_home_summary",
     "ha_home_report","ha_draft_automation","list_work_roster","list_leave_records",
@@ -1852,8 +1865,8 @@ def _trace_turn(actor: ActorContext, trace: dict) -> None:
 
 
 _ATTACHMENT_RETRIEVAL_TOOLS = {
-    "find_receipts", "get_receipt", "search_saved_items",
-    "get_saved_item", "resolve_numbered_choice",
+    "find_receipts", "get_receipt", "find_media", "get_media_original",
+    "search_saved_items", "get_saved_item", "resolve_numbered_choice",
 }
 
 
