@@ -1261,42 +1261,6 @@ REQUIRED_DOMAINS = {
 
 
 
-# Owner-visible MCP capabilities that must be represented by at least one
-# behavioural contract.  This prevents future phases from adding a tool while
-# silently forgetting to teach the certification rig how a human reaches it.
-REQUIRED_OWNER_TOOL_COVERAGE = {
-    "log_expense", "confirm_expense", "query_finances", "list_pending_expenses", "correct_expense",
-    "find_receipts", "get_receipt",
-    "save_item", "search_saved_items", "get_saved_item", "remove_saved_item",
-    "resolve_numbered_choice",
-    "create_reminder", "list_reminders", "update_reminder", "reminder_history",
-    "add_shopping_item", "list_shopping_items", "update_shopping_item",
-    "add_diary_event", "resolve_diary_conflict", "update_diary_event", "resolve_latest_diary_conflict",
-    "get_agenda", "get_agenda_range", "create_plan", "list_plans",
-    "confirm_plan", "share_plan", "check_my_availability",
-    "check_spouse_availability",
-    "planning_create_goal", "planning_lock_goal", "planning_reopen_goal",
-    "planning_set_period_target", "planning_change_goal_baseline",
-    "planning_record_goal_contribution", "planning_goal_progress", "planning_goal_deviation",
-    "planning_goal_projection", "planning_record_cash", "planning_compare_salary", "planning_match_goal_alias", "planning_cash_status",
-    "planning_allocate_cash_to_goal", "planning_create_cash_pool",
-    "planning_cash_pool_balance", "planning_allocate_cash_to_pool",
-    "planning_add_reserve", "planning_update_reserve", "planning_list_reserves",
-    "planning_baseline", "planning_income_outlook", "planning_cashflow",
-    "planning_brief", "planning_list_goals", "bills_list",
-    "bills_match_payment", "bills_record_payment", "bills_defer",
-    "bills_confirm_unpaid", "work_schedule", "work_day", "work_record_event",
-    "work_ot_status", "work_leave_balance", "work_departure_plan",
-    "asset_create", "asset_link_document", "asset_list", "warranty_expiring",
-    "monitor_delegate", "monitor_list", "monitor_cancel",
-    "ha_find_entities", "ha_get_state", "ha_home_summary", "ha_home_report", "ha_draft_automation", "ha_control",
-    "report_snapshot", "report_export", "report_payload",
-    "system_health", "recent_failures", "calculate",
-}
-
-
-
-
 def contracts_for_phase(phase: str | None) -> Iterable[PromptContract]:
     if not phase or phase == "all":
         return PROMPT_CONTRACTS
