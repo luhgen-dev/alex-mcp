@@ -6,7 +6,9 @@ import os
 import sys
 import traceback
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone\n\nimport runtime_clock
+from datetime import datetime, timedelta, timezone
+
+import runtime_clock
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import brain
