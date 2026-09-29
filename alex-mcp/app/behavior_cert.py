@@ -197,6 +197,7 @@ def offline_certify(phase: str) -> dict:
     schemas = _mcp_schemas()
     failures: list[dict] = []
     passes: list[dict] = []
+    needs_live: list[dict] = []
 
     for contract in contracts_for_phase(phase):
         surface_missing = sorted(contract.required_any - tool_names)
@@ -214,8 +215,17 @@ def offline_certify(phase: str) -> dict:
 
         for source in contract.sources:
             for phrase in contract.variants:
-                selected = brain._select_tool_names(phrase)
-                missing_route = not bool(selected & contract.required_any)
+                # Inspect the exact provider-facing tool surface, not only the
+                # internal keyword selector. _tool_specs adds the read-only
+                # fallback and the discovery valve that the model actually sees.
+                specs = asyncio.run(brain._tool_specs(phrase))
+                selected = {
+                    str(spec["function"]["name"])
+                    for spec in specs
+                    if isinstance(spec, dict) and spec.get("function")
+                }
+                direct = bool(selected & contract.required_any)
+                discovery_available = brain.DISCOVERY_TOOL_NAME in selected
                 forbidden = sorted(selected & contract.forbidden)
                 over_cap = len(selected) > brain.TOOL_EXPOSURE_MAX
                 row = {
@@ -224,20 +234,40 @@ def offline_certify(phase: str) -> dict:
                     "domain": contract.domain,
                     "source": source,
                     "prompt": phrase,
-                    "selected": sorted(selected),
+                    "provider_facing_tools": sorted(selected),
                 }
                 problems = []
-                if missing_route:
-                    problems.append(
-                        "required capability not exposed: "
-                        + " / ".join(sorted(contract.required_any))
-                    )
                 if forbidden:
                     problems.append("forbidden mutation exposed: " + ", ".join(forbidden))
                 if over_cap:
                     problems.append(
                         f"tool exposure {len(selected)} exceeds cap {brain.TOOL_EXPOSURE_MAX}"
                     )
+
+                if not direct and not required_surface_exists:
+                    problems.append(
+                        "required capability is absent from MCP surface: "
+                        + " / ".join(sorted(contract.required_any))
+                    )
+                elif not direct and discovery_available and not problems:
+                    # This is neither a pass nor a hard routing failure. The
+                    # model may normalize the intent via discover_alex_tools;
+                    # only live provider certification can prove it succeeds.
+                    needs_live.append({
+                        **row,
+                        "kind": "discovery-dependent",
+                        "detail": (
+                            "required capability is not directly exposed; "
+                            "discover_alex_tools must recover it in live certification"
+                        ),
+                    })
+                    continue
+                elif not direct:
+                    problems.append(
+                        "required capability not exposed and no discovery path: "
+                        + " / ".join(sorted(contract.required_any))
+                    )
+
                 if problems:
                     failures.append({**row, "kind": "routing", "detail": "; ".join(problems)})
                 else:
@@ -301,18 +331,21 @@ def offline_certify(phase: str) -> dict:
             })
 
     selected_contracts = list(contracts_for_phase(phase))
+    status = "FAIL" if failures else ("LIVE_REQUIRED" if needs_live else "PASS")
     return {
         "mode": "offline",
         "phase": phase,
-        "status": "PASS" if not failures else "FAIL",
+        "status": status,
         "summary": {
             "contracts": len(selected_contracts),
             "variant_checks_passed": len(passes),
+            "discovery_dependent_checks": len(needs_live),
             "failures": len(failures),
             "mcp_tool_count": len(tool_names),
             "tool_exposure_cap": brain.TOOL_EXPOSURE_MAX,
         },
         "failures": failures,
+        "needs_live": needs_live,
         "passes": passes,
         "manual_gates_not_claimed": [
             asdict(g) for g in MANUAL_GATES
