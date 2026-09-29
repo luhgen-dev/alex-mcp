@@ -265,6 +265,33 @@ def score_packets(packets: list[dict[str, Any]], decisions: list[dict[str, Any]]
                 "forbidden capability selected: " + ", ".join(bad)
             )
 
+        # A reasoning model does not pass merely because the correct tool was
+        # somewhere in a shotgun blast. Extra READ tools are tolerated because
+        # a model may need to resolve an id/focus first, but every MUTATING tool
+        # it chooses must be justified by the private contract for this turn.
+        # This closes the false-positive where selecting every exposed tool
+        # could otherwise pass a read-only question and mutate household state.
+        expected_caps = required_any | required_all
+        unjustified_mutators: list[str] = []
+        for tool_name in sorted(selected_tools):
+            if not brain._is_mutating_tool(tool_name):
+                continue
+            tool_caps = set(capabilities_for_tools({tool_name})) - {
+                "routing.discovery"
+            }
+            if not (tool_caps & expected_caps):
+                unjustified_mutators.append(tool_name)
+        if unjustified_mutators:
+            problems.append(
+                "unrequested mutating tools selected: "
+                + ", ".join(unjustified_mutators)
+            )
+
+        if "discover_alex_tools" in selected_tools and required_any:
+            problems.append(
+                "discovery selected despite the required capability already being exposed"
+            )
+
         reply_language = str(
             (decision or {}).get("reply_language") or "en"
         ).lower()
