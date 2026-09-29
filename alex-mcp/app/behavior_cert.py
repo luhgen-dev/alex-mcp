@@ -31,6 +31,7 @@ import sys
 import tempfile
 import time
 import uuid
+from datetime import datetime, timezone
 from dataclasses import asdict, replace
 from pathlib import Path
 from typing import Any
@@ -498,6 +499,23 @@ def _install_fake_ha():
     ha._request = fake_request
 
 
+def _install_fixed_clock():
+    """Freeze only the model-facing runtime clock for reproducible relative dates."""
+    import brain
+
+    real_datetime = datetime
+    fixed_utc = real_datetime(2026, 9, 29, 2, 0, 0, tzinfo=timezone.utc)
+
+    class CertificationDateTime(real_datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return fixed_utc.replace(tzinfo=None)
+            return fixed_utc.astimezone(tz)
+
+    brain.datetime = CertificationDateTime
+
+
 def _initialize_sandbox():
     import db
     import phase2_finance
@@ -680,6 +698,15 @@ def _looks_malay(reply: str) -> bool:
     return sum(1 for marker in markers if marker in low) >= 2
 
 
+def _is_nonzero(value: Any) -> bool:
+    if value is None or value is False:
+        return False
+    try:
+        return float(value) != 0.0
+    except (TypeError, ValueError):
+        return bool(str(value).strip())
+
+
 def _live_one(contract: PromptContract, prompt: str, source: str,
               hard_latency_ms: int) -> dict:
     import brain
@@ -712,6 +739,16 @@ def _live_one(contract: PromptContract, prompt: str, source: str,
     for term in contract.expected_terms:
         if term.casefold() not in low_reply:
             problems.append(f"reply missing expected term: {term}")
+    for term in contract.forbidden_terms:
+        if term.casefold() in low_reply:
+            problems.append(f"reply contains forbidden/contradictory phrase: {term}")
+    for call in trace["calls"]:
+        for arg_name in contract.nonzero_forbidden_args:
+            if arg_name in call["arguments"] and _is_nonzero(call["arguments"][arg_name]):
+                problems.append(
+                    f"tool {call['tool']} invented non-zero {arg_name}="
+                    f"{call['arguments'][arg_name]!r}"
+                )
     if source == "voice" and prompt.isascii() and _looks_malay(reply):
         problems.append("English voice transcript received an unsolicited Malay reply")
     if elapsed_ms > hard_latency_ms:
@@ -750,9 +787,20 @@ def _live_conversation(contract, source: str, hard_latency_ms: int) -> dict:
             problems.append(
                 "required tool was not called: " + " / ".join(sorted(step.required_any))
             )
+        low_reply = (reply or "").casefold()
         for term in step.expected_terms:
-            if term.casefold() not in (reply or "").casefold():
+            if term.casefold() not in low_reply:
                 problems.append(f"reply missing expected term: {term}")
+        for term in step.forbidden_terms:
+            if term.casefold() in low_reply:
+                problems.append(f"reply contains forbidden/contradictory phrase: {term}")
+        for call in trace["calls"]:
+            for arg_name in step.nonzero_forbidden_args:
+                if arg_name in call["arguments"] and _is_nonzero(call["arguments"][arg_name]):
+                    problems.append(
+                        f"tool {call['tool']} invented non-zero {arg_name}="
+                        f"{call['arguments'][arg_name]!r}"
+                    )
         if step.expect_attachment and not attachments:
             problems.append("expected original attachment was not queued")
         if trace["turn"]["result"].get("outcome") == "max_steps":
@@ -806,6 +854,7 @@ def live_certify(phase: str, provider: str, source_options: str | None,
 
     _initialize_sandbox()
     _install_fake_ha()
+    _install_fixed_clock()
     _seed_core()
 
     rows = []
