@@ -5,7 +5,7 @@ import json
 import os
 import time
 import urllib.request
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone\n\nimport runtime_clock
 
 from db import connect
 
@@ -13,7 +13,7 @@ EGRESS_URL = "http://127.0.0.1:5002/send"
 
 
 def _now():
-    return datetime.now(timezone.utc).isoformat()
+    return runtime_clock.utc_iso()
 
 
 def _send(payload: dict) -> tuple[bool, str]:
@@ -136,7 +136,7 @@ def sweep():
                 # Transport/network outages must not silently consume a reminder.
                 # Keep the durable row pending and back off locally without AI/token use.
                 delay = min(300, 2 ** min(attempts, 8))
-                next_try = (datetime.now(timezone.utc) + timedelta(seconds=delay)).isoformat()
+                next_try = (runtime_clock.now_utc() + timedelta(seconds=delay)).isoformat()
                 conn.execute(
                     """UPDATE outbound_messages SET delivery_status='PENDING',attempt_count=?,
                        last_error=?,next_attempt_at_utc=? WHERE outbound_id=?""",
