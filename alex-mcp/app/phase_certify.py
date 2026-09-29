@@ -91,6 +91,13 @@ def main() -> dict:
     p.add_argument("--hard-latency-ms", type=int, default=20000)
     p.add_argument("--max-live-cost-usd", type=float, default=0.25)
     p.add_argument(
+        "--live-strategy", choices=("benchmark", "full"), default="benchmark",
+        help=(
+            "benchmark allows diagnostic live testing despite known offline product failures "
+            "and skips structurally impossible paid cases; full requires offline PASS"
+        ),
+    )
+    p.add_argument(
         "--heldout-corpus", default=os.environ.get("ALEX_CERT_HELDOUT_CORPUS"),
         help="optional local-only JSON of owner-written held-out phrasings",
     )
@@ -188,7 +195,12 @@ def main() -> dict:
 
         live = None
         live_skipped_reason = None
-        if args.live and not deterministic_fail and not offline_fail:
+        live_allowed = (
+            args.live
+            and not deterministic_fail
+            and (args.live_strategy == "benchmark" or not offline_fail)
+        )
+        if live_allowed:
             live_path = reports / f"{args.phase}-live.json"
             live_cmd = [
                 py, "alex-mcp/app/behavior_cert.py",
@@ -199,6 +211,7 @@ def main() -> dict:
                 "--max-live-cost-usd", str(max(0.0, args.max_live_cost_usd)),
                 "--live-adversarial-per-contract",
                 str(max(0, args.live_adversarial_per_contract)),
+                "--live-strategy", args.live_strategy,
                 "--no-fail-exit",
                 "--report", str(live_path),
             ]
@@ -213,8 +226,10 @@ def main() -> dict:
             checks.append(live)
         elif args.live:
             live_skipped_reason = (
-                "Live provider certification was skipped to avoid spending tokens "
-                "while deterministic/catalog/offline hard failures remain."
+                "Live provider certification was skipped because a deterministic/catalog "
+                "hard gate failed, or full live strategy was requested while offline hard "
+                "failures remain. Benchmark strategy may run against known product failures "
+                "for diagnostic comparison without pretending they pass."
             )
 
         if deterministic_fail or offline_fail:
@@ -242,6 +257,7 @@ def main() -> dict:
             "phase": args.phase,
             "status": status,
             "live_requested": args.live,
+            "live_strategy": args.live_strategy,
             "live_skipped_reason": live_skipped_reason,
             "checks": [
                 {
@@ -267,8 +283,8 @@ def main() -> dict:
                     "before asking the owner to perform external smoke tests."
                 ),
                 "FAIL": (
-                    "At least one internal gate failed. Repair Alex before returning "
-                    "to the owner for manual smoke testing."
+                    "At least one internal gate failed. A benchmark live run may still provide "
+                    "diagnostic evidence, but it cannot convert known product failures into PASS."
                 ),
             }.get(status, "Internal certification did not complete successfully."),
         }
