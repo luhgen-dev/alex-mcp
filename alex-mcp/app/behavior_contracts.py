@@ -23,6 +23,8 @@ class PromptContract:
     forbidden: frozenset[str] = frozenset()
     sources: tuple[str, ...] = ("text",)
     expected_terms: tuple[str, ...] = ()
+    forbidden_terms: tuple[str, ...] = ()
+    nonzero_forbidden_args: tuple[str, ...] = ()
     expect_attachment: bool = False
     seed: str | None = None
     live: bool = True
@@ -33,6 +35,8 @@ class ConversationStep:
     prompt: str
     required_any: frozenset[str]
     expected_terms: tuple[str, ...] = ()
+    forbidden_terms: tuple[str, ...] = ()
+    nonzero_forbidden_args: tuple[str, ...] = ()
     expect_attachment: bool = False
 
 
@@ -122,6 +126,19 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
             "What reminders are coming up?",
         ),
         _fs("list_reminders"), seed="core", expected_terms=("Dentist",),
+        sources=("text", "voice"),
+    ),
+    PromptContract(
+        "p1.reminder.relative", "phase1", "reminders",
+        "Relative weekday reminder reads must resolve against the fixed certification date.",
+        (
+            "What reminders do I have next Thursday?",
+            "Any reminders for next Thursday?",
+            "Show me next Thursday's reminders.",
+        ),
+        _fs("list_reminders", "get_agenda_range"), seed="core",
+        expected_terms=("Dentist",),
+        forbidden_terms=("no reminders set for next thursday", "no reminders for next thursday"),
         sources=("text", "voice"),
     ),
     PromptContract(
@@ -275,6 +292,19 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         expected_terms=("Dentist", "4:00"),
     ),
     PromptContract(
+        "p2.agenda.relative", "phase2", "agenda",
+        "Relative weekday agenda reads must resolve next Thursday to the seeded dentist event.",
+        (
+            "What appointments do I have next Thursday?",
+            "What's on my agenda next Thursday?",
+            "Do I have anything next Thursday?",
+        ),
+        _fs("get_agenda_range", "get_agenda"), seed="core",
+        expected_terms=("Dentist",),
+        forbidden_terms=("no appointments", "schedule is completely clear"),
+        sources=("text", "voice"),
+    ),
+    PromptContract(
         "p2.diary.detail", "phase2", "diary",
         "Direct event-detail questions must not fall into a tool loop.",
         (
@@ -339,7 +369,7 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
             "Start a RM5,000 family holiday goal, but leave the monthly amount undecided.",
         ),
         _fs("planning_create_goal"), forbidden=_fs("planning_change_goal_baseline"),
-        seed="empty",
+        nonzero_forbidden_args=("baseline_monthly",), seed="empty",
     ),
     PromptContract(
         "p2.work.read", "phase2", "work",
@@ -972,12 +1002,12 @@ CONVERSATION_CONTRACTS: tuple[ConversationContract, ...] = (
             ),
             ConversationStep(
                 "Send me the management receipt.",
-                _fs("find_receipts", "get_receipt", "get_saved_item"),
+                _fs("get_receipt"),
                 expect_attachment=True,
             ),
             ConversationStep(
                 "Send me that again.",
-                _fs("get_receipt", "get_saved_item", "resolve_numbered_choice"),
+                _fs("get_receipt"),
                 expect_attachment=True,
             ),
         ),
@@ -1033,6 +1063,7 @@ CONVERSATION_CONTRACTS: tuple[ConversationContract, ...] = (
             ConversationStep(
                 "Create an unlocked Family Holiday Savings goal with a RM5,000 target. Don't set a monthly contribution.",
                 _fs("planning_create_goal"),
+                nonzero_forbidden_args=("baseline_monthly",),
             ),
             ConversationStep(
                 "Show me Family Holiday Savings including its monthly contribution.",
