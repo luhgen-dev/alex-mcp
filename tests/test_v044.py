@@ -53,7 +53,7 @@ class V044Base(unittest.TestCase):
         try:
             for table in (
                 "tool_audit", "tool_execution_claims", "ai_usage", "outbound_messages",
-                "conversation_turns", "selection_sets", "task_reminder_links",
+                "conversation_turns", "selection_sets", "media_selection_sets", "task_reminder_links",
                 "task_events", "tasks", "event_media_links",
                 "financial_event_corrections", "financial_events", "saved_items",
                 "media_objects", "inbound_messages",
@@ -187,6 +187,35 @@ class TurnTests(V044Base):
             media._voice_intent_score("Ingatkan saya esok bayar bil"),
             2,
         )
+
+    def test_mutating_voice_requires_two_local_decoders_to_agree(self):
+        agreed = [
+            ("local_auto", "add test toothpaste to my shopping list"),
+            ("local_en", "add test toothpaste to my shopping list"),
+            ("local_ta", "தொடர்பில்லாத வார்த்தைகள்"),
+        ]
+        label, transcript = media._choose_voice_transcript(agreed)
+        self.assertTrue(media._voice_is_mutation_like(transcript))
+        self.assertTrue(media._local_voice_confident(label, transcript, agreed))
+
+        disagreed = [
+            ("local_auto", "add test toothpaste to my shopping list"),
+            ("local_en", "what time is it today"),
+            ("local_ta", "நாளைக்கு வானிலை எப்படி"),
+        ]
+        label, transcript = media._choose_voice_transcript(disagreed)
+        self.assertTrue(media._voice_is_mutation_like(transcript))
+        self.assertFalse(media._local_voice_confident(label, transcript, disagreed))
+
+    def test_forced_tamil_pass_is_not_trusted_just_because_it_has_tamil_script(self):
+        candidates = [
+            ("local_auto", "add milk to my shopping list"),
+            ("local_en", "add milk to my shopping list"),
+            ("local_ta", "நாளைக்கு ஏதோ தொடர்பில்லாத வார்த்தைகள்"),
+        ]
+        label, transcript = media._choose_voice_transcript(candidates)
+        self.assertIn(label, {"local_auto", "local_en"})
+        self.assertIn("shopping list", transcript)
 
     def test_voice_note_never_paired_with_earlier_text(self):
         """Smoke: unrelated vinyl picture appeared during a reminder voice note."""
@@ -718,6 +747,129 @@ class TurnLoopTests(V044Base):
         args, result = json.loads(row[0]), json.loads(row[1])
         self.assertIn(brain.DISCOVERY_TOOL_NAME, result["tools_called"])
         self.assertIn("list_reminders", args["exposed_tools"])
+
+
+
+class FinalHardeningTests(V044Base):
+    def test_semantic_discovery_cannot_resurrect_negated_home_control(self):
+        specs = asyncio.run(brain._discover_tool_specs(
+            "turn off the hall light",
+            original_user_text="Don't turn off the hall light; just tell me its state.",
+        ))
+        names = _names(specs)
+        self.assertNotIn("ha_control", names)
+        self.assertTrue({"ha_find_entities", "ha_get_state"} & names)
+
+    def test_semantic_discovery_allows_explicit_trusted_mutation(self):
+        specs = asyncio.run(brain._discover_tool_specs(
+            "turn off the hall light",
+            original_user_text="Please turn off the hall light.",
+        ))
+        self.assertIn("ha_control", _names(specs))
+
+    def test_explicit_saved_receipt_memory_keeps_memory_retrieval(self):
+        names = _names(asyncio.run(brain._tool_specs(
+            "Show the receipt photo I asked you to save."
+        )))
+        self.assertIn("find_receipts", names)
+        self.assertIn("get_saved_item", names)
+
+    def test_routing_keyword_matches_whole_phrase_not_substring(self):
+        self.assertTrue(services._routing_keyword_matches("fine", "I paid a traffic fine"))
+        self.assertFalse(services._routing_keyword_matches("fine", "I had a refined dinner"))
+        self.assertTrue(services._routing_keyword_matches("tng", "Top up TNG"))
+        self.assertFalse(services._routing_keyword_matches("tng", "testing something"))
+
+    def test_explicit_private_finance_overrides_family_catalogue_route(self):
+        self.claim("private-pharmacy", text="Log this pharmacy purchase privately")
+        actor = self.actor(
+            "private-pharmacy",
+            trusted_text="Log this pharmacy purchase privately",
+        )
+        conn = db.connect()
+        try:
+            space, category, _ = services._route(
+                conn, actor, "pharmacy medicine", "pharmacy"
+            )
+        finally:
+            conn.close()
+        self.assertEqual(space, actor.private_space)
+        self.assertEqual(category, "pharmacy")
+
+    def test_processing_lease_does_not_reclaim_slow_voice_turn_too_early(self):
+        from datetime import timedelta
+        self.claim("lease-test", text="voice")
+        conn = db.connect()
+        try:
+            recent = (ingress.runtime_clock.now_utc() - timedelta(minutes=5)).isoformat()
+            conn.execute(
+                "UPDATE inbound_messages SET processing_started_at_utc=? WHERE message_id=?",
+                (recent, "lease-test"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        duplicate = db.claim_inbound({
+            "message_id": "lease-test", "provider": "WHATSAPP",
+            "conversation_id": DM, "conversation_type": "DIRECT_DM",
+            "sender_phone": HUSBAND, "text": "voice",
+        })
+        self.assertEqual(duplicate, "DUPLICATE")
+
+        conn = db.connect()
+        try:
+            stale = (ingress.runtime_clock.now_utc() - timedelta(minutes=16)).isoformat()
+            conn.execute(
+                "UPDATE inbound_messages SET processing_started_at_utc=? WHERE message_id=?",
+                (stale, "lease-test"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        reclaimed = db.claim_inbound({
+            "message_id": "lease-test", "provider": "WHATSAPP",
+            "conversation_id": DM, "conversation_type": "DIRECT_DM",
+            "sender_phone": HUSBAND, "text": "voice",
+        })
+        self.assertEqual(reclaimed, "CLAIMED")
+
+    def test_original_voice_media_is_owner_scoped_and_retrievable(self):
+        self.claim("voice-origin", text="")
+        voice_id = media.save_media(
+            "voice-origin", "AUDIO", "audio/ogg",
+            base64.b64encode(b"voice-bytes").decode(),
+        )
+        media._update_transcript(
+            voice_id, "add milk to my shopping list",
+            {"mode": "test", "chosen": "fixture"},
+        )
+
+        husband = self.actor("media-query-h")
+        found = services.find_media(husband, "voice")
+        self.assertEqual(found["matches"][0]["media_id"], voice_id)
+        original = services.get_media_original(husband, voice_id)
+        self.assertEqual(original["media_type"], "AUDIO")
+        self.assertEqual(original["_attachments"][0]["mime_type"], "audio/ogg")
+
+        wife = self.actor("media-query-w", phone=WIFE)
+        wife_found = services.find_media(wife, "voice")
+        self.assertFalse(any(row["media_id"] == voice_id for row in wife_found["matches"]))
+        with self.assertRaises(PermissionError):
+            services.get_media_original(wife, voice_id)
+
+    def test_family_group_original_media_is_shared(self):
+        group = "120363000000@g.us"
+        self.claim(
+            "group-image", phone=WIFE, text="family image",
+            conv=group, ctype="GROUP",
+        )
+        image_id = media.save_media(
+            "group-image", "IMAGE", "image/jpeg",
+            base64.b64encode(b"fake-image").decode(),
+        )
+        husband = self.actor("media-query-family")
+        found = services.find_media(husband, "image")
+        self.assertTrue(any(row["media_id"] == image_id for row in found["matches"]))
 
 
 if __name__ == "__main__":
