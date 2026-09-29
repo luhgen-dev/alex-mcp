@@ -176,8 +176,19 @@ def _ensure_whisper_model(model_name: str) -> str:
         raise
 
 
-def _local_whisper(path: str, model_name: str) -> str:
+def _local_whisper(path: str, model_name: str, language: str = "auto") -> str:
+    """Run one local Whisper pass.
+
+    Short household commands are unusually vulnerable to auto-language drift
+    (for example an English command being decoded as Malay/Indonesian).  The
+    caller may therefore request a second English/Tamil pass only when the
+    first transcript is not trustworthy.  Normal voice notes still pay for one
+    local pass only.
+    """
     model_path = _ensure_whisper_model(model_name)
+    lang = (language or "auto").strip().lower()
+    if lang not in {"auto", "en", "ta"}:
+        raise ValueError("Unsupported Whisper language hint")
     with tempfile.TemporaryDirectory(prefix="alex-whisper-") as tmp:
         wav_path = os.path.join(tmp, "voice.wav")
         prefix = os.path.join(tmp, "transcript")
@@ -187,7 +198,7 @@ def _local_whisper(path: str, model_name: str) -> str:
             capture_output=True, text=True, timeout=90, check=True,
         )
         subprocess.run(
-            ["whisper-cli", "-m", model_path, "-f", wav_path, "-l", "auto",
+            ["whisper-cli", "-m", model_path, "-f", wav_path, "-l", lang,
              "-nt", "-otxt", "-of", prefix, "-np"],
             capture_output=True, text=True, timeout=180, check=True,
         )
@@ -196,6 +207,58 @@ def _local_whisper(path: str, model_name: str) -> str:
             raise RuntimeError("Local Whisper did not produce a transcript")
         with open(output_path, "r", encoding="utf-8", errors="replace") as transcript:
             return transcript.read().strip()
+
+
+_VOICE_ACTION_PATTERNS = (
+    r"\b(?:add|put|remove|delete|mark|bought|buy|shopping|grocery)\b",
+    r"\b(?:remind|reminder|notify|tomorrow|today|tonight)\b",
+    r"\b(?:spent|paid|expense|receipt|rm|myr|sgd|payment)\b",
+    r"\b(?:save|remember|saved|find|show|open)\b",
+    r"\b(?:diary|appointment|meeting|agenda|plan|task)\b",
+    r"\b(?:goal|cash|salary|bonus|overtime|\bot\b|reserve|bill)\b",
+    r"\b(?:turn|switch|light|fan|air conditioner|\bac\b|home)\b",
+    r"\b(?:what|when|where|how|list|check|tell)\b",
+)
+
+
+def _voice_intent_score(text: str) -> int:
+    """Score whether a transcript resembles a useful household utterance.
+
+    This is not a language classifier and never decides the action.  It is only
+    used to choose between ASR candidates for the same audio.
+    """
+    value = (text or "").strip()
+    if not value:
+        return -100
+    low = value.casefold()
+    score = 0
+    score += min(4, sum(1 for pattern in _VOICE_ACTION_PATTERNS if re.search(pattern, low)))
+    if re.search(r"[\u0B80-\u0BFF]", value):
+        score += 3
+    if re.search(r"\b(?:நினைவூட்டு|சேமி|காட்டு|வாங்க|பட்டியல்)\b", value):
+        score += 2
+    # Strong signals of the exact wrong-language drift observed in live smoke
+    # tests. Malay itself remains supported input; these phrases are penalized
+    # only when competing ASR candidates exist for the same audio.
+    if re.search(r"\b(?:mohon maaf|silakan|apakah anda|bermaksud|sebelumnya)\b", low):
+        score -= 4
+    words = re.findall(r"[\w'-]+", value, re.UNICODE)
+    if 2 <= len(words) <= 40:
+        score += 1
+    return score
+
+
+def _choose_voice_transcript(candidates: list[tuple[str, str]]) -> tuple[str, str]:
+    """Choose the most actionable non-empty transcript deterministically."""
+    usable = [(label, (text or "").strip()) for label, text in candidates if (text or "").strip()]
+    if not usable:
+        return "", ""
+    ranked = sorted(
+        usable,
+        key=lambda row: (_voice_intent_score(row[1]), min(len(row[1]), 240)),
+        reverse=True,
+    )
+    return ranked[0]
 
 
 def _xai_stt(path: str, mime: str, key: str) -> str:
@@ -243,27 +306,95 @@ def transcribe_audio(media_id: str) -> str:
         return ""
     settings = get_settings()
     requested = settings.stt_provider
-    # Local multilingual Whisper is first by default: it keeps voice-note
-    # transcription off the conversational AI bill and supports Tamil.
-    order = [requested] if requested != "auto" else ["local_whisper", "gemini", "openai", "xai"]
     last_error = None
-    for provider in order:
+
+    # Explicit STT modes remain deterministic and do exactly what the owner
+    # selected. Auto is more defensive: use one local multilingual pass first,
+    # then locally verify a suspicious short command before spending any cloud
+    # transcription call.
+    if requested != "auto":
+        providers = [requested]
+        for provider in providers:
+            try:
+                if provider == "local_whisper":
+                    text = _local_whisper(row["local_path"], settings.whisper_model, "auto")
+                elif provider == "xai" and settings.xai_api_key:
+                    text = _xai_stt(row["local_path"], row["mime_type"], settings.xai_api_key)
+                elif provider == "openai" and settings.openai_api_key:
+                    text = _openai_stt(row["local_path"], settings.openai_api_key)
+                elif provider == "gemini" and settings.gemini_api_key:
+                    text = _gemini_stt(
+                        row["local_path"], row["mime_type"],
+                        settings.gemini_api_key, settings.gemini_model,
+                    )
+                else:
+                    continue
+                if text:
+                    _update_text(media_id, "transcript_text", text)
+                    return text
+            except Exception as exc:
+                last_error = exc
+        if last_error:
+            raise RuntimeError(f"Voice transcription failed: {last_error}")
+        raise RuntimeError("No speech-to-text provider is configured")
+
+    candidates: list[tuple[str, str]] = []
+    try:
+        auto_text = _local_whisper(row["local_path"], settings.whisper_model, "auto")
+        if auto_text:
+            candidates.append(("local_auto", auto_text))
+            # A clearly actionable transcript is accepted immediately: this is
+            # the zero-token fast path for the overwhelming majority of notes.
+            if _voice_intent_score(auto_text) >= 2:
+                _update_text(media_id, "transcript_text", auto_text)
+                return auto_text
+    except Exception as exc:
+        last_error = exc
+
+    # Verification passes are local and only happen when auto-language decoding
+    # did not look like a coherent household turn. English and Tamil cover the
+    # owner's actual voice use, including many Tanglish utterances.
+    for lang in ("en", "ta"):
         try:
-            if provider == "local_whisper":
-                text = _local_whisper(row["local_path"], settings.whisper_model)
-            elif provider == "xai" and settings.xai_api_key:
-                text = _xai_stt(row["local_path"], row["mime_type"], settings.xai_api_key)
+            candidate = _local_whisper(row["local_path"], settings.whisper_model, lang)
+            if candidate:
+                candidates.append((f"local_{lang}", candidate))
+        except Exception as exc:
+            last_error = exc
+
+    label, best = _choose_voice_transcript(candidates)
+    if best and _voice_intent_score(best) >= 2:
+        _update_text(media_id, "transcript_text", best)
+        return best
+
+    # Only now use a configured cloud STT as a rescue. This is not a required
+    # paid path: if no cloud key exists, the best local transcript is returned.
+    for provider in ("gemini", "openai", "xai"):
+        try:
+            if provider == "gemini" and settings.gemini_api_key:
+                text = _gemini_stt(
+                    row["local_path"], row["mime_type"],
+                    settings.gemini_api_key, settings.gemini_model,
+                )
             elif provider == "openai" and settings.openai_api_key:
                 text = _openai_stt(row["local_path"], settings.openai_api_key)
-            elif provider == "gemini" and settings.gemini_api_key:
-                text = _gemini_stt(row["local_path"], row["mime_type"], settings.gemini_api_key, settings.gemini_model)
+            elif provider == "xai" and settings.xai_api_key:
+                text = _xai_stt(row["local_path"], row["mime_type"], settings.xai_api_key)
             else:
                 continue
             if text:
-                _update_text(media_id, "transcript_text", text)
-                return text
+                candidates.append((provider, text))
+                _, chosen = _choose_voice_transcript(candidates)
+                if chosen:
+                    _update_text(media_id, "transcript_text", chosen)
+                    return chosen
         except Exception as exc:
             last_error = exc
+
+    _, best = _choose_voice_transcript(candidates)
+    if best:
+        _update_text(media_id, "transcript_text", best)
+        return best
     if last_error:
         raise RuntimeError(f"Voice transcription failed: {last_error}")
     raise RuntimeError("No speech-to-text provider is configured")
