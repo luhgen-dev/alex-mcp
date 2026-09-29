@@ -211,6 +211,10 @@ PLANNING_TOOLS = {
 }
 BILL_TOOLS = {"bills_list","bills_match_payment","bills_record_payment","bills_defer","bills_confirm_unpaid"}
 HOME_TOOLS = {"ha_find_entities","ha_get_state","ha_home_summary","ha_home_report","ha_draft_automation","ha_control"}
+HOME_READ_TOOLS = {"ha_find_entities","ha_get_state","ha_home_summary","ha_home_report","ha_draft_automation"}
+PLAN_TOOLS = {"create_plan","list_plans","update_plan","confirm_plan","share_plan"}
+DIARY_EVENT_TOOLS = {"add_diary_event","update_diary_event","get_agenda","get_agenda_range","check_my_availability","check_spouse_availability","resolve_diary_conflict","resolve_latest_diary_conflict"}
+FINANCE_READ_TOOLS = {"query_finances","find_receipts","get_receipt","calculate"}
 ASSET_TOOLS = {"asset_create","asset_link_document","asset_list","warranty_expiring"}
 DIAGNOSTIC_TOOLS = {"system_health","recent_failures"}
 MONITOR_TOOLS = {"monitor_delegate","monitor_list","monitor_cancel"}
@@ -243,7 +247,7 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
     # Strong direct-action/read signals.
     direct = {
         "query_finances": (r"how much|spent|spend|breakdown|total|expense|transaction|payment", 100),
-        "log_expense": (r"log|spent|paid|bought|receipt|transaction", 96),
+        "log_expense": (r"(?:log|record|add).*?(?:rm|myr|sgd|expense)|\bi\s+(?:spent|paid|bought)\b|receipt.*(?:log|record)", 136),
         "correct_expense": (r"correct|change|fix|wrong amount", 115),
         "list_pending_expenses": (r"pending|clarif|which expense|that expense", 105),
         "find_receipts": (r"find|show|receipt|reference|ref", 110),
@@ -384,8 +388,10 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
     intents = set(write_intent.get("intents") or [])
     if write_intent.get("intent"):
         intents.add(write_intent["intent"])
-    if "DIARY" in intents or "PLAN" in intents:
-        selected |= DIARY_TOOLS
+    if "DIARY" in intents:
+        selected |= DIARY_EVENT_TOOLS
+    if "PLAN" in intents:
+        selected |= PLAN_TOOLS
     if "REMINDER" in intents:
         selected |= REMINDER_TOOLS
     if "EXPENSE" in intents:
@@ -403,15 +409,22 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
             selected |= ASSET_TOOLS
 
     if re.search(r"\b(?:spent|spend|expense|paid|payment|transaction|receipt|duitnow|bank|how much|total|breakdown|refund)\b", low):
-        selected |= CORE_FINANCE
+        write_money = bool(
+            re.search(r"\b(?:log|record|add)\b.*\b(?:rm|myr|sgd|expense)\b", low)
+            or re.search(r"\bi\s+(?:spent|paid|bought)\b", low)
+            or re.search(r"\b(?:correct|fix|actually|wrong amount)\b", low)
+        )
+        selected |= CORE_FINANCE if write_money else FINANCE_READ_TOOLS
     if re.search(r"\b(?:bill|bills|due|overdue|instalment|installment|obligation|tnb|water bill|electricity|unifi|insurance|road tax)\b", low):
         selected |= BILL_TOOLS | {"query_finances","find_receipts"}
     if re.search(r"\b(?:goal|goals|saving|savings|budget|cashflow|cash flow|money plan|baseline|stash|allowance|salary|income|bonus|extra cash|allocate|allocation|reserve|reserves)\b", low):
         selected |= PLANNING_TOOLS | BILL_TOOLS
     if re.search(r"\b(?:roster|shift|working|work schedule|work today|work tomorrow|leave home.*work|departure|overtime|\bot\b|mc|medical leave|annual leave|leave balance|leave entries|leave records|swap shift)\b", low):
         selected |= WORK_TOOLS | {"set_leave_record","list_leave_records"}
-    if re.search(r"\b(?:diary|agenda|appointment|wedding|party|meeting|event|schedule|holiday|vacation|trip|plan|draft)\b", low):
-        selected |= DIARY_TOOLS
+    if re.search(r"\b(?:holiday|vacation|trip|plan|draft)\b", low):
+        selected |= PLAN_TOOLS
+    if re.search(r"\b(?:diary|agenda|appointment|wedding|party|meeting|event|calendar)\b", low):
+        selected |= DIARY_EVENT_TOOLS
     if re.search(r"\b(?:am i free|my availability|do i have time)\b", low):
         selected |= {"check_my_availability", "get_agenda_range", "get_agenda"}
     if re.search(r"\b(?:wife|husband|spouse|partner)\b.*\b(?:free|available|availability)\b", low):
@@ -423,19 +436,28 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
         r"mark .* (?:bought|purchased)|remove .* (?:shopping|list)|detergent)\b",
         low,
     ):
-        selected |= SHOPPING_TOOLS
+        selected |= {"list_shopping_items"}
+        if re.search(r"\b(?:add|put)\b.*\b(?:shopping|grocery|list)\b|\bneed to buy\b", low):
+            selected.add("add_shopping_item")
+        if re.search(r"\b(?:remove|delete|bought|purchased|mark .*done|mark .*bought)\b", low):
+            selected.add("update_shopping_item")
     if re.search(r"\b(?:remember|saved|save this|find .*photo|find .*image|show .*document|keys photo|invitation)\b", low):
         selected |= MEMORY_TOOLS
     if re.search(r"\b(?:warranty|warranties|manual|serial number|appliance|asset)\b", low):
         selected |= ASSET_TOOLS | MEMORY_TOOLS
     if re.search(r"\b(?:light|switch|fan|thermostat|climate|media player|home assistant|ac|air conditioner|home status|at home|turn on|turn off|state of)\b", low):
-        selected |= HOME_TOOLS
-        if re.search(
+        selected |= HOME_READ_TOOLS
+        action_requested = bool(re.search(
+            r"\b(?:turn on|turn off|toggle|set .*%|set temperature|play|pause)\b",
+            low,
+        ))
+        negated = bool(re.search(
             r"\b(?:do not|don't|dont|not actually|without actually|how would|"
             r"what would|hypothetical|hypothetically|just explain)\b",
             low,
-        ):
-            selected.discard("ha_control")
+        ))
+        if action_requested and not negated:
+            selected.add("ha_control")
     if re.search(r"\b(?:why didn't|why did not|health|diagnostic|fail|failed|failure|failing|error|offline|didn't reply|did not reply)\b", low):
         selected |= DIAGNOSTIC_TOOLS
     if re.search(r"\b(?:monitor|monitoring|track this|tracking|watch this|proactive|follow this)\b", low):
