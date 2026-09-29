@@ -77,6 +77,42 @@ def _update_text(media_id: str, field: str, text: str) -> None:
         conn.close()
 
 
+def _update_transcript(media_id: str, text: str, meta: dict | None = None) -> None:
+    conn = connect()
+    try:
+        conn.execute(
+            """UPDATE media_objects
+               SET transcript_text=?,transcript_meta_json=?
+               WHERE media_id=?""",
+            (
+                (text or "")[:50000],
+                json.dumps(meta or {}, ensure_ascii=False, sort_keys=True)[:12000],
+                media_id,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _transcript_meta(candidates: list[tuple[str, str]], chosen: str,
+                     *, mode: str, cloud_rescue: bool = False) -> dict:
+    return {
+        "mode": mode,
+        "chosen": chosen,
+        "cloud_rescue": bool(cloud_rescue),
+        "candidates": [
+            {
+                "label": label,
+                "score": _voice_intent_score(text),
+                "chars": len(text or ""),
+            }
+            for label, text in candidates
+            if (text or "").strip()
+        ],
+    }
+
+
 def get_media(media_id: str) -> dict | None:
     conn = connect()
     try:
@@ -313,40 +349,57 @@ def transcribe_audio(media_id: str) -> str:
     # then locally verify a suspicious short command before spending any cloud
     # transcription call.
     if requested != "auto":
-        providers = [requested]
-        for provider in providers:
-            try:
-                if provider == "local_whisper":
-                    text = _local_whisper(row["local_path"], settings.whisper_model, "auto")
-                elif provider == "xai" and settings.xai_api_key:
-                    text = _xai_stt(row["local_path"], row["mime_type"], settings.xai_api_key)
-                elif provider == "openai" and settings.openai_api_key:
-                    text = _openai_stt(row["local_path"], settings.openai_api_key)
-                elif provider == "gemini" and settings.gemini_api_key:
-                    text = _gemini_stt(
-                        row["local_path"], row["mime_type"],
-                        settings.gemini_api_key, settings.gemini_model,
-                    )
-                else:
-                    continue
-                if text:
-                    _update_text(media_id, "transcript_text", text)
-                    return text
-            except Exception as exc:
-                last_error = exc
+        try:
+            if requested == "local_whisper":
+                text = _local_whisper(
+                    row["local_path"], settings.whisper_model, "auto"
+                )
+            elif requested == "xai" and settings.xai_api_key:
+                text = _xai_stt(
+                    row["local_path"], row["mime_type"], settings.xai_api_key
+                )
+            elif requested == "openai" and settings.openai_api_key:
+                text = _openai_stt(
+                    row["local_path"], settings.openai_api_key
+                )
+            elif requested == "gemini" and settings.gemini_api_key:
+                text = _gemini_stt(
+                    row["local_path"], row["mime_type"],
+                    settings.gemini_api_key, settings.gemini_model,
+                )
+            else:
+                text = ""
+            if text:
+                _update_transcript(
+                    media_id, text,
+                    _transcript_meta(
+                        [(requested, text)], requested,
+                        mode="explicit", cloud_rescue=requested != "local_whisper",
+                    ),
+                )
+                return text
+        except Exception as exc:
+            last_error = exc
         if last_error:
             raise RuntimeError(f"Voice transcription failed: {last_error}")
         raise RuntimeError("No speech-to-text provider is configured")
 
     candidates: list[tuple[str, str]] = []
     try:
-        auto_text = _local_whisper(row["local_path"], settings.whisper_model, "auto")
+        auto_text = _local_whisper(
+            row["local_path"], settings.whisper_model, "auto"
+        )
         if auto_text:
             candidates.append(("local_auto", auto_text))
             # A clearly actionable transcript is accepted immediately: this is
             # the zero-token fast path for the overwhelming majority of notes.
             if _voice_intent_score(auto_text) >= 2:
-                _update_text(media_id, "transcript_text", auto_text)
+                _update_transcript(
+                    media_id, auto_text,
+                    _transcript_meta(
+                        candidates, "local_auto", mode="auto_fast"
+                    ),
+                )
                 return auto_text
     except Exception as exc:
         last_error = exc
@@ -356,7 +409,9 @@ def transcribe_audio(media_id: str) -> str:
     # owner's actual voice use, including many Tanglish utterances.
     for lang in ("en", "ta"):
         try:
-            candidate = _local_whisper(row["local_path"], settings.whisper_model, lang)
+            candidate = _local_whisper(
+                row["local_path"], settings.whisper_model, lang
+            )
             if candidate:
                 candidates.append((f"local_{lang}", candidate))
         except Exception as exc:
@@ -364,7 +419,12 @@ def transcribe_audio(media_id: str) -> str:
 
     label, best = _choose_voice_transcript(candidates)
     if best and _voice_intent_score(best) >= 2:
-        _update_text(media_id, "transcript_text", best)
+        _update_transcript(
+            media_id, best,
+            _transcript_meta(
+                candidates, label, mode="auto_local_verify"
+            ),
+        )
         return best
 
     # Only now use a configured cloud STT as a rescue. This is not a required
@@ -377,23 +437,38 @@ def transcribe_audio(media_id: str) -> str:
                     settings.gemini_api_key, settings.gemini_model,
                 )
             elif provider == "openai" and settings.openai_api_key:
-                text = _openai_stt(row["local_path"], settings.openai_api_key)
+                text = _openai_stt(
+                    row["local_path"], settings.openai_api_key
+                )
             elif provider == "xai" and settings.xai_api_key:
-                text = _xai_stt(row["local_path"], row["mime_type"], settings.xai_api_key)
+                text = _xai_stt(
+                    row["local_path"], row["mime_type"], settings.xai_api_key
+                )
             else:
                 continue
             if text:
                 candidates.append((provider, text))
-                _, chosen = _choose_voice_transcript(candidates)
+                chosen_label, chosen = _choose_voice_transcript(candidates)
                 if chosen:
-                    _update_text(media_id, "transcript_text", chosen)
+                    _update_transcript(
+                        media_id, chosen,
+                        _transcript_meta(
+                            candidates, chosen_label,
+                            mode="auto_cloud_rescue", cloud_rescue=True,
+                        ),
+                    )
                     return chosen
         except Exception as exc:
             last_error = exc
 
-    _, best = _choose_voice_transcript(candidates)
+    chosen_label, best = _choose_voice_transcript(candidates)
     if best:
-        _update_text(media_id, "transcript_text", best)
+        _update_transcript(
+            media_id, best,
+            _transcript_meta(
+                candidates, chosen_label, mode="auto_local_fallback"
+            ),
+        )
         return best
     if last_error:
         raise RuntimeError(f"Voice transcription failed: {last_error}")
