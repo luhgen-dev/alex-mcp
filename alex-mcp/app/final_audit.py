@@ -15,6 +15,8 @@ from pathlib import Path
 from mcp import Client
 
 import brain
+import facade
+import media
 from mcp_server import mcp
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -120,6 +122,82 @@ def main() -> dict:
         "tiny health-check chat can stay fully local and zero-token",
     )
 
+    # 3b. v0.5 provider facade is stable, bounded and distinct from the
+    # detailed deterministic MCP implementation surface.
+    require(
+        set(facade.all_specs()) == {
+            "finance_query", "finance_log", "finance_correct",
+            "library_find", "library_save",
+            "reminders_view", "reminder_change",
+            "shopping_view", "shopping_change",
+            "home_state", "home_control",
+            "agenda_view", "calculate", "load_pack",
+        },
+        "v0.5 exact fourteen-tool provider facade present",
+    )
+    provider_examples = {
+        "I paid RM12.50 for parking": "finance_log",
+        "show my recent expenses": "finance_query",
+        "add toothpaste to my shopping list": "shopping_change",
+        "mark batteries as bought": "shopping_change",
+        "remind me tomorrow 9am pay electricity": "reminder_change",
+        "turn off the living room fan": "home_control",
+        "create a task to renew passports": "load_pack",
+    }
+    provider_ok = True
+    detailed_leak = set()
+    for phrase, expected in provider_examples.items():
+        specs = asyncio.run(brain._provider_tool_specs(phrase))
+        names = {x["function"]["name"] for x in specs}
+        provider_ok = (
+            provider_ok
+            and expected in names
+            and len(names) <= brain.TOOL_EXPOSURE_MAX
+        )
+        detailed_leak |= names - set(facade.all_specs())
+    require(provider_ok, "representative requests reach intended facade capability")
+    require(not detailed_leak, "ordinary provider surface hides detailed MCP tools")
+    require(
+        "create_task" in facade.pack_tools("tasks")
+        and "planning_record_cash" in facade.pack_tools("planning")
+        and "recent_failures" in facade.pack_tools("diagnostics"),
+        "bounded specialist packs retain full deterministic implementation",
+    )
+
+    # 3c. Conversational focus and real voice regressions are architecture
+    # contracts, not optional test conveniences.
+    schema_text = (APP / "schema.sql").read_text(encoding="utf-8")
+    db_source = (APP / "db.py").read_text(encoding="utf-8")
+    ingress_source = (APP / "ingress.py").read_text(encoding="utf-8")
+    require(
+        "CREATE TABLE IF NOT EXISTS conversation_focus" in schema_text
+        and "def set_focus(" in db_source
+        and "def get_focus(" in db_source,
+        "actor+chat conversational focus is durable and TTL-scoped",
+    )
+    require(
+        "_SAVE_NEXT_RE" in ingress_source
+        and "explicit_save_next_focus" in ingress_source
+        and "ttl_seconds=180" in ingress_source,
+        "save-next is explicit single-use focus with three-minute TTL",
+    )
+    require(
+        callable(media._best_local_whisper)
+        and callable(media._local_transcript_suspicious)
+        and "Voice-note transcript" in (APP / "media.py").read_text(encoding="utf-8"),
+        "voice path has local hypothesis quality guard and trusted transcript seam",
+    )
+    require(
+        callable(brain._looks_non_english_reply)
+        and callable(brain._expects_clear_mutation),
+        "voice/action follow-through and English-only response guards present",
+    )
+    require(
+        (APP / "oracle_cert.py").exists()
+        and (APP / "chatgpt_oracle_cases.json").exists(),
+        "external ChatGPT oracle certification is part of the repository",
+    )
+
     # 4. Plug-and-play HA configuration carries user-owned facts/secrets.
     config_text = (ROOT / "config.yaml").read_text(encoding="utf-8")
     for key in (
@@ -213,6 +291,16 @@ def main() -> dict:
         ("never invent an entity_id", "Home Assistant entity safety contract"),
     ):
         require(phrase.casefold() in prompt.casefold(), label)
+
+    # 7b. Release identity must agree across HA metadata, container and MCP.
+    docker_text = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    server_text = (APP / "mcp_server.py").read_text(encoding="utf-8")
+    require(
+        'version: "0.5.0"' in config_text
+        and "ARG BUILD_VERSION=0.5.0" in docker_text
+        and 'version="0.5.0"' in server_text,
+        "HA app, container and MCP server all identify v0.5.0",
+    )
 
     # 8. Local media dependencies and text-only answer architecture.
     docker = (ROOT / "Dockerfile").read_text(encoding="utf-8")
