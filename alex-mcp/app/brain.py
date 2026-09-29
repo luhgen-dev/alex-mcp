@@ -393,16 +393,26 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
     block: set[str] = set()
 
     money = bool(re.search(r"\b(?:rm|myr|sgd)\s*\d|\b\d+(?:[.,]\d+)?\s*(?:rm|myr|sgd)\b", low))
+    finance_correction = bool(re.search(
+        r"\b(?:correct|fix|wrong amount|amount was wrong)\b"
+        r"|\b(?:actually\s*,?\s*)?change\b.*\b(?:expense|transaction|payment|amount|parking)\b",
+        low,
+    ))
     explicit_expense_write = bool(
-        (money and re.search(r"\b(?:log|record|add|spent|paid|bought)\b", low))
-        or re.search(r"\b(?:log|record|add)\b.*\b(?:expense|payment|receipt)\b", low)
-        or re.search(r"\b(?:correct|fix|wrong amount|actually)\b|\bchange\b.*\b(?:expense|transaction|amount|parking)\b", low)
+        not finance_correction
+        and (
+            (money and re.search(r"\b(?:log|record|add|spent|paid|bought)\b", low))
+            or re.search(r"\b(?:log|record|add)\b.*\b(?:expense|payment|receipt)\b", low)
+        )
     )
     finance_read = bool(re.search(
         r"\b(?:expenses?|transactions?|spending|last few things .*paid|how many .*expenses?)\b",
         low,
     ))
-    if finance_read and not explicit_expense_write:
+    if finance_correction:
+        force |= {"query_finances", "correct_expense"}
+        block.add("log_expense")
+    elif finance_read and not explicit_expense_write:
         force.add("query_finances")
         block |= {"log_expense", "correct_expense", "confirm_expense"}
 
@@ -443,6 +453,11 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
     # Shopping adds include natural household phrasing such as "we need milk".
     # Tentative wording still exposes the add capability so the model can ask
     # for confirmation; it does not perform the mutation deterministically.
+    shopping_update = bool(re.search(
+        r"\b(?:remove|delete)\b.*\b(?:shopping|grocery|list|bananas?|milk|diapers?|bread)\b"
+        r"|\b(?:mark|already)\b.*\b(?:bought|done)\b",
+        low,
+    ))
     shopping_candidate = bool(re.search(
         r"\b(?:shopping|grocery)\s+list\b"
         r"|\bwe\s+need\b"
@@ -450,7 +465,10 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         r"|\badd\b.*\b(?:for the family|milk|bananas|shopping|grocery)\b",
         low,
     ))
-    if shopping_candidate:
+    if shopping_update:
+        force.add("update_shopping_item")
+        block.add("add_shopping_item")
+    elif shopping_candidate:
         force.add("add_shopping_item")
 
     # Dedicated read/diagnostic domains must survive the six-tool cap.
@@ -603,11 +621,21 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
     ):
         force |= {"list_leave_records", "work_leave_balance"}
 
-    # Explicit low-risk HA action synonyms. Read-only/negated HA wording is
-    # still protected by the existing negation gate below.
-    if re.search(r"\bswitch\b.*\b(?:light|fan|switch|ac|air conditioner)\b.*\b(?:on|off)\b", low):
-        if not re.search(r"\b(?:do not|don't|dont|not actually|without actually|hypothetical|what would)\b", low):
-            force.add("ha_control")
+    # Explicit low-risk HA action synonyms. Negated/hypothetical wording
+    # gets only entity/state reads and can never expose the mutator.
+    ha_switch = bool(re.search(
+        r"\b(?:switch|turn)\b.*\b(?:light|fan|switch|ac|air conditioner)\b.*\b(?:on|off)\b",
+        low,
+    ))
+    ha_negated = bool(re.search(
+        r"\b(?:do not|don't|dont|not asking|not actually|without actually|hypothetical|what would)\b",
+        low,
+    ))
+    if ha_switch and ha_negated:
+        force |= {"ha_find_entities", "ha_get_state"}
+        block.add("ha_control")
+    elif ha_switch:
+        force.add("ha_control")
 
     # Frequent phone-typing reminder misspellings still have a deterministic,
     # safe action path instead of being crowded out by bill tools.
