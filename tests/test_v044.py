@@ -209,6 +209,44 @@ class RoutingTests(V044Base):
                 self.assertNotIn("create_reminder", names, phrase)
             self.assertNotIn("create_plan", names, phrase)
 
+    def test_discovery_dependent_contracts_have_direct_primary_routes(self):
+        cases = [
+            ("eh alex can u add RM12.50 parking to my expenses.", {"log_expense"}),
+            ("eh alex can u show the pending expenses.", {"list_pending_expenses"}),
+            ("eh alex can u confirm that one as food.", {"confirm_expense", "list_pending_expenses"}),
+            ("eh alex can u keep a note that the code word is cobalt.", {"save_item"}),
+            ("eh alex can u maybe we need coffee.", {"add_shopping_item"}),
+            ("eh alex can u add bananas and milk for the family.", {"add_shopping_item"}),
+            ("eh alex can u show my household assets.", {"asset_list"}),
+            ("Any warranties I should know about?", {"warranty_expiring"}),
+            ("eh alex can u make me a cash pool named Holiday Buffer.", {"planning_create_cash_pool"}),
+            ("eh alex can u show the balance of my Holiday Buffer cash pool.", {"planning_cash_pool_balance"}),
+            ("eh alex can u show me recent Alex errors.", {"recent_failures", "system_health"}),
+            ("eh alex can u 1", {"resolve_latest_diary_conflict", "resolve_numbered_choice"}),
+            ("Move my dentist apointment to 5pm.", {"update_diary_event"}),
+            ("eh alex can u compare this month's holiday contribution with the target.", {"planning_goal_deviation"}),
+            ("eh alex can u switch the living room light off.", {"ha_control"}),
+            ("eh alex can u what leave do I have recorded?", {"list_leave_records"}),
+            ("eh alex can u list my planned and taken leave.", {"list_leave_records"}),
+            ("eh alex can u summarize my financial plan.", {"planning_brief"}),
+            ("eh alex can u delete the private cobalt memory.", {"remove_saved_item"}),
+            ("eh alex can u list the amounts I have explicitly set aside each month.", {"planning_list_reserves", "planning_baseline"}),
+        ]
+        for phrase, required in cases:
+            names = _names(asyncio.run(brain._tool_specs(phrase)))
+            self.assertTrue(required <= names, (phrase, required, names))
+            self.assertLessEqual(len(names), brain.TOOL_EXPOSURE_MAX, phrase)
+
+        for phrase in (
+            "eh alex can u log this management fee receipt.",
+            "eh alex can u log this payment receipt.",
+        ):
+            names = _names(asyncio.run(brain._tool_specs(
+                phrase, ["Local document content from attached receipt"]
+            )))
+            self.assertIn("log_expense", names, phrase)
+            self.assertLessEqual(len(names), brain.TOOL_EXPOSURE_MAX, phrase)
+
     def test_repaired_write_variants_keep_primary_mutator(self):
         cases = {
             "Spent RM12.50 on parking just now.": "log_expense",
