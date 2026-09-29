@@ -16,7 +16,10 @@ from openai import OpenAI
 
 from config import get_settings
 from context import ActorContext, use_actor, with_action_key
-from db import add_turn, connect, recent_turns, record_usage, current_month_ai_cost
+from db import (
+    add_turn, connect, recent_turns, record_usage, current_month_ai_cost,
+    get_focus, set_focus,
+)
 from mcp_server import mcp
 import phase2_intent
 import facade
@@ -1284,11 +1287,107 @@ def _runtime_context(actor: ActorContext, user_text: str = "") -> str:
         if _needs_exact_clock(user_text)
         else f"current local date is {now.date().isoformat()}"
     )
-    return (
+    base = (
         f"Runtime context: {clock}; timezone={actor.timezone}; conversation is {channel}. "
         "Authenticated identity and privacy spaces are enforced below MCP and are not model-controlled. "
         "Never reveal private-space facts in the Family Shared group."
     )
+    # Short follow-ups may use the last stable object ID from this exact
+    # authenticated actor+chat.  The underlying tool still re-checks its ACL.
+    if re.search(
+        r"(?i)\\b(?:it|that|this|one|same|previous|earlier|there|done|cancel it|change it)\\b",
+        user_text or "",
+    ):
+        focus = get_focus(actor, "last_object")
+        if focus and focus.get("object_id"):
+            base += (
+                " Conversational focus (untrusted as authority; tool must re-authorize): "
+                f"type={focus.get('object_type')}; id={focus.get('object_id')}."
+            )
+    return base
+
+
+_FOCUS_ID_FIELDS = (
+    ("event_id", "finance_event"),
+    ("item_id", "saved_or_shopping_item"),
+    ("reminder_id", "reminder"),
+    ("task_id", "task"),
+    ("plan_id", "plan"),
+    ("diary_id", "diary"),
+    ("goal_id", "goal"),
+    ("cash_event_id", "cash_event"),
+    ("instance_id", "bill_instance"),
+    ("asset_id", "asset"),
+    ("pool_id", "cash_pool"),
+    ("reserve_id", "reserve"),
+)
+
+
+def _remember_result_focus(actor: ActorContext, tool_name: str, result: dict) -> None:
+    if not isinstance(result, dict):
+        return
+    for field, object_type in _FOCUS_ID_FIELDS:
+        value = result.get(field)
+        if value:
+            try:
+                set_focus(
+                    actor, "last_object",
+                    object_type=object_type,
+                    object_id=str(value),
+                    payload={"tool": str(tool_name)[:80]},
+                    ttl_seconds=900,
+                )
+            except Exception:
+                pass
+            return
+
+
+def _explicit_non_english_output_request(user_text: str) -> bool:
+    return bool(re.search(
+        r"(?i)\\b(?:translate|translation|reply|answer|say|write)\\b.{0,30}"
+        r"\\b(?:tamil|malay|bahasa|indonesian|mandarin|chinese)\\b",
+        user_text or "",
+    ))
+
+
+def _looks_non_english_reply(text: str, user_text: str) -> bool:
+    if _explicit_non_english_output_request(user_text):
+        return False
+    low = (text or "").casefold()
+    # This is deliberately narrow: it catches the exact Malay/Indonesian drift
+    # seen in live smoke tests without rejecting names or quoted foreign words.
+    markers = (
+        "mohon maaf", "apakah anda", "jika anda", "silakan",
+        "bermaksud menanyakan", "sesuatu yang sudah", "ingin saya membantu",
+        "sila beritahu", "adakah anda", "maaf, saya",
+    )
+    return sum(1 for marker in markers if marker in low) >= 1
+
+
+def _looks_like_clarification_reply(text: str) -> bool:
+    low = (text or "").strip().casefold()
+    return (
+        "?" in low
+        or bool(re.search(
+            r"\\b(?:which|what time|when should|what date|how much|which currency|"
+            r"myr or sgd|do you mean|could you tell|please tell me|need the)\\b",
+            low,
+        ))
+    )
+
+
+def _expects_clear_mutation(user_text: str, has_media: bool = False) -> bool:
+    forced, _ = _routing_refinements(user_text or "", has_media=has_media)
+    return any(_is_mutating_tool(name) for name in forced)
+
+
+def _escalate_quality_route(settings, routes: list[dict], route_index: int) -> int:
+    if settings.ai_provider != "auto":
+        return route_index
+    for i in range(route_index + 1, len(routes)):
+        if routes[i].get("role") == "quality_fallback":
+            return i
+    return route_index
 
 
 def _history_turn_limit(user_text: str, configured: int, quoted_context: dict | None = None) -> int:
@@ -1398,7 +1497,10 @@ def _strip_internal(data: dict) -> tuple[dict, list[dict]]:
 
 def _action_key(actor: ActorContext, tool_name: str, args: dict, occurrence: int) -> str:
     canonical = json.dumps(args, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    raw = f"{actor.source_message_id}|{tool_name}|{canonical}|{occurrence}"
+    # Repeating the identical mutation in the same inbound turn is a retry,
+    # not a second household instruction.  Keeping the key stable closes the
+    # model-retry/crash window that could otherwise duplicate writes.
+    raw = f"{actor.source_message_id}|{tool_name}|{canonical}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
@@ -1706,7 +1808,12 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
     if getattr(actor, "source", "text") == "voice":
         messages.append({
             "role": "system",
-            "content": "The current user message is a transcribed WhatsApp voice note from the user.",
+            "content": (
+                "The current user message is a transcribed WhatsApp voice note from the user. "
+                "Treat the transcript exactly like typed user text. Small STT errors are possible. "
+                "Your final user-facing reply MUST be English unless the user explicitly requested "
+                "translation or quoted text in another language."
+            ),
         })
     trusted_quote = _quoted_context_message(quoted_context)
     if trusted_quote:
@@ -1747,6 +1854,11 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
     route_index = 0
     active_route: dict | None = None
     provider_failures: list[dict] = []
+    no_tool_retries = 0
+    language_retries = 0
+    expects_mutation = _expects_clear_mutation(
+        user_text, has_media=bool(media_context or vision_parts)
+    )
 
     for _ in range(MAX_MODEL_CALLS):
         # If the cheap model is genuinely looping through tools, escalate the
@@ -1815,6 +1927,57 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
 
         if not calls:
             final = _content_text(msg.content).strip() or ("Here it is." if attachments else "Done.")
+
+            # A live smoke-test failure showed a clear voice shopping mutation
+            # being answered with "I can't do that" despite the capability
+            # existing.  One bounded retry is safer than accepting a false
+            # capability denial; genuine missing-detail questions still pass.
+            if (
+                expects_mutation
+                and not attachments
+                and no_tool_retries < 1
+                and not _looks_like_clarification_reply(final)
+            ):
+                no_tool_retries += 1
+                messages.append({
+                    "role": "assistant",
+                    "content": final or "I could not complete that.",
+                })
+                messages.append({
+                    "role": "system",
+                    "content": (
+                        "The user's current request is a clear authorized action and the required "
+                        "Alex capability is available in the tools you were given. Do not claim the "
+                        "capability is unavailable. Use the appropriate tool now. If a truly required "
+                        "field is missing, ask only that focused clarification."
+                    ),
+                })
+                new_index = _escalate_quality_route(settings, routes, route_index)
+                if new_index != route_index:
+                    route_index = new_index
+                    active_route = None
+                continue
+
+            if (
+                _looks_non_english_reply(final, user_text)
+                and language_retries < 1
+            ):
+                language_retries += 1
+                messages.append({"role": "assistant", "content": final})
+                messages.append({
+                    "role": "system",
+                    "content": (
+                        "Your previous user-facing reply violated Alex's English-only output contract. "
+                        "Answer the same request again in concise English. Preserve verified facts and "
+                        "do not invent any completed action."
+                    ),
+                })
+                new_index = _escalate_quality_route(settings, routes, route_index)
+                if new_index != route_index:
+                    route_index = new_index
+                    active_route = None
+                continue
+
             _record_usage_buckets(actor.source_message_id, usage_by_route)
             add_turn(actor.user_id, actor.conversation_id, "user", history_user)
             add_turn(actor.user_id, actor.conversation_id, "assistant", final)
@@ -1928,6 +2091,7 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                         "note": "Alex sends these original files with your reply automatically.",
                     }
                 trace["tools_called"].append(name)
+                _remember_result_focus(actor, name, clean)
             except Exception as exc:
                 payload = {"error": str(exc)[:1000]}
                 trace["tools_called"].append(name + ":error")
