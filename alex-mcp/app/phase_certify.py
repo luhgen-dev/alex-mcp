@@ -95,43 +95,58 @@ def main() -> dict:
     args = p.parse_args()
 
     py = sys.executable
-    env = os.environ.copy()
-    # Never let deterministic tests inherit production /data by accident.
-    env.pop("ALEX_DATA_DIR", None)
-    env.pop("ALEX_OPTIONS_PATH", None)
+    source_env = os.environ.copy()
 
     with tempfile.TemporaryDirectory(prefix="alex-phase-cert-") as tmp:
         tmpdir = Path(tmp)
         reports = tmpdir / "reports"
         reports.mkdir()
 
-        selftest_data = tmpdir / "selftest"
-        selftest_options = tmpdir / "selftest-options.json"
-        selftest_options.write_text("{}", encoding="utf-8")
-        selftest_env = dict(env)
-        selftest_env["ALEX_DATA_DIR"] = str(selftest_data)
-        selftest_env["ALEX_OPTIONS_PATH"] = str(selftest_options)
+        env_root = tmpdir / "environments"
+        env_root.mkdir()
+
+        def isolated_env(label: str) -> dict[str, str]:
+            data_dir = env_root / label / "data"
+            data_dir.mkdir(parents=True, exist_ok=True)
+            options_path = env_root / label / "options.json"
+            options_path.write_text(json.dumps({
+                "ai_provider": "grok",
+                "xai_api_key": "",
+                "husband_phone": "+60111111111",
+                "wife_phone": "+60222222222",
+                "timezone": "Asia/Kuala_Lumpur",
+                "ocr_enabled": False,
+                "context_turns": 8,
+            }), encoding="utf-8")
+            child = dict(source_env)
+            # Explicit paths are safer than popping: config defaults to /data
+            # when the variables are absent.
+            child["ALEX_DATA_DIR"] = str(data_dir)
+            child["ALEX_OPTIONS_PATH"] = str(options_path)
+            child["ALEX_HA_API_URL"] = "http://127.0.0.1:9/certification-no-ha"
+            child.pop("SUPERVISOR_TOKEN", None)
+            return child
 
         checks: list[dict[str, Any]] = []
         checks.append(_run(
             "unit_tests",
             [py, "-m", "unittest", "discover", "-s", "tests", "-v"],
-            env,
+            isolated_env("unit-tests"),
         ))
         checks.append(_run(
             "structural_selftest",
             [py, "alex-mcp/app/selftest.py"],
-            selftest_env,
+            isolated_env("structural-selftest"),
         ))
         checks.append(_run(
             "phase3_tier_a_stress",
             [py, "alex-mcp/app/stress_test.py"],
-            env,
+            isolated_env("tier-a-stress"),
         ))
         checks.append(_run(
             "final_architecture_audit",
             [py, "alex-mcp/app/final_audit.py"],
-            env,
+            isolated_env("final-audit"),
         ))
 
         catalog_path = reports / "catalog.json"
@@ -139,7 +154,7 @@ def main() -> dict:
             "tier_b_catalog",
             [py, "alex-mcp/app/behavior_cert.py", "--mode", "catalog",
              "--report", str(catalog_path)],
-            env,
+            isolated_env("tier-b-catalog"),
             catalog_path,
         ))
 
@@ -149,7 +164,7 @@ def main() -> dict:
             [py, "alex-mcp/app/behavior_cert.py", "--mode", "offline",
              "--phase", args.phase, "--no-fail-exit",
              "--report", str(offline_path)],
-            env,
+            isolated_env("tier-b-offline"),
             offline_path,
         )
         checks.append(offline)
@@ -177,7 +192,7 @@ def main() -> dict:
                     "--no-fail-exit",
                     "--report", str(live_path),
                 ],
-                env,
+                isolated_env("tier-b-live"),
                 live_path,
             )
             checks.append(live)
