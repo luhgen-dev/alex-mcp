@@ -262,6 +262,31 @@ class BehaviourRigJudgeMutationTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertTrue(first)
 
+    def test_adversarial_mutator_preserves_decimal_money(self):
+        variants = behavior_cert._adversarial_variants("I paid RM12.50 for parking.")
+        self.assertTrue(variants)
+        self.assertTrue(all("12.50" in value for value in variants), variants)
+
+    def test_errored_required_tool_does_not_count_as_execution(self):
+        contract = self.contract("p2.leave.read")
+        trace = {
+            "turn": {"result": {"outcome": "answered"}},
+            "calls": [{
+                "tool": "work_leave_balance",
+                "arguments": {"leave_id": "annual"},
+                "result": {"error": "bad id"},
+                "status": "ERROR",
+                "latency_ms": 1,
+            }],
+        }
+        problems = behavior_cert._judge_observation(
+            contract, source="text", reply="I could not retrieve it.",
+            outbounds=[], trace=trace, elapsed_ms=1, state_changes={},
+            state_expectation_problems=[], ha_before={}, ha_after={},
+            ingress_result={"ok": True},
+        )
+        self.assertTrue(any("required capability" in p for p in problems), problems)
+
     def test_benchmark_live_plan_skips_structurally_impossible_paid_calls(self):
         fake_offline = {
             "status": "FAIL",
