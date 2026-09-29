@@ -472,9 +472,7 @@ CREATE TABLE IF NOT EXISTS conversation_focus (
     source_message_id TEXT,
     created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     expires_at_utc TEXT NOT NULL,
-    PRIMARY KEY(user_id, conversation_id, focus_key),
-    FOREIGN KEY(user_id) REFERENCES users(user_id),
-    FOREIGN KEY(source_message_id) REFERENCES inbound_messages(message_id)
+    PRIMARY KEY(user_id, conversation_id, focus_key)
 );
 CREATE INDEX IF NOT EXISTS idx_focus_expiry
 ON conversation_focus(expires_at_utc);
