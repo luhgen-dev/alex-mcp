@@ -6,6 +6,7 @@ media/archive layer; this module never duplicates document contents.
 from __future__ import annotations
 
 import uuid
+import re
 from datetime import date, timedelta
 
 import compat_tools as tools
