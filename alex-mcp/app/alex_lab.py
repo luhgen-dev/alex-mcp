@@ -329,7 +329,7 @@ def export_human_ai_packets(
 
 
 def run_real_ai_snapshot_review(report_path: Path) -> dict[str, Any]:
-    """Score the frozen fresh-model decisions against the current blind corpus."""
+    """Score the frozen real-AI evidence against the current public reasoning corpus."""
     py = sys.executable
     with tempfile.TemporaryDirectory(prefix="alex-real-ai-review-") as tmp:
         root = Path(tmp)
@@ -421,7 +421,7 @@ def main() -> dict[str, Any]:
     )
     parser.add_argument(
         "--real-ai-review-report", default=None,
-        help="optional path for the frozen fresh-model reasoning snapshot report",
+        help="optional path for the frozen real-AI reasoning evidence report",
     )
     parser.add_argument(
         "--chatgpt-review-report", default=None,
