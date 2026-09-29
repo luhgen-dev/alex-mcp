@@ -1186,12 +1186,52 @@ def resolve_date_range(phrase: str, timezone_name: str,
         start = today
         end = today + timedelta(days=6)
     else:
-        # Exact ISO date/range is also deterministic.
-        match = re.search(r"(\d{4}-\d{2}-\d{2})(?:\s*(?:to|through|until|-)\s*(\d{4}-\d{2}-\d{2}))?", low)
-        if not match:
-            raise ValueError("Use today, tomorrow, this week, next week, next 7 days, or an ISO date/range")
-        start = date.fromisoformat(match.group(1))
-        end = date.fromisoformat(match.group(2)) if match.group(2) else start
+        # "Next Thursday" means the next occurrence after today, matching
+        # ordinary household usage rather than "Thursday of next week".
+        weekday_names = {
+            "monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3,
+            "friday": 4, "saturday": 5, "sunday": 6,
+        }
+        weekday_match = re.search(
+            r"\b(?:next|coming)\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b",
+            low,
+        )
+        if weekday_match:
+            target = weekday_names[weekday_match.group(1)]
+            delta = (target - today.weekday()) % 7
+            if delta == 0:
+                delta = 7
+            start = end = today + timedelta(days=delta)
+        else:
+            # Exact ISO date/range remains the canonical path.
+            match = re.search(r"(\d{4}-\d{2}-\d{2})(?:\s*(?:to|through|until|-)\s*(\d{4}-\d{2}-\d{2}))?", low)
+            if match:
+                start = date.fromisoformat(match.group(1))
+                end = date.fromisoformat(match.group(2)) if match.group(2) else start
+            else:
+                # Accept ordinary spoken/written calendar dates such as
+                # "1 October 2026" and "October 1st, 2026".
+                cleaned = re.sub(r"(\d)(?:st|nd|rd|th)\b", r"\1", low)
+                cleaned = re.sub(r"[,]+", " ", cleaned)
+                cleaned = " ".join(cleaned.split())
+                parsed = None
+                for fmt in ("%d %B %Y", "%B %d %Y", "%d %b %Y", "%b %d %Y",
+                            "%d %B", "%B %d", "%d %b", "%b %d"):
+                    try:
+                        candidate = datetime.strptime(cleaned, fmt).date()
+                    except ValueError:
+                        continue
+                    if "%Y" not in fmt:
+                        candidate = candidate.replace(year=today.year)
+                        if candidate < today:
+                            candidate = candidate.replace(year=today.year + 1)
+                    parsed = candidate
+                    break
+                if parsed is None:
+                    raise ValueError(
+                        "Use today, tomorrow, this/next week, next weekday, or a calendar/ISO date"
+                    )
+                start = end = parsed
     return {"start_date": start.isoformat(), "end_date": end.isoformat()}
 
 
