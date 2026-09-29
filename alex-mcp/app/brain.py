@@ -735,7 +735,8 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         block |= {"save_item", "remove_saved_item"}
     if re.search(
         r"\b(?:do not|don't|dont|not asking(?: you)? to)\s+(?:actually\s+)?"
-        r"(?:delete|remove|cancel|complete|reschedule|change|update)\b.*\breminder\b",
+        r"(?:delete|remove|cancel|complete|reschedule|change|update)\b.*"
+        r"\b(?:reminder|reminders|remnder|remidn|remindn|remidr)\b",
         low,
     ):
         block |= {"create_reminder", "update_reminder"}
