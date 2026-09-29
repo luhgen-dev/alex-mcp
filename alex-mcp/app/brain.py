@@ -1823,8 +1823,16 @@ _CAPABILITY_DENIAL_RE = re.compile(
 
 
 def _looks_like_false_capability_denial(text: str) -> bool:
-    """Detect a model claiming Alex lacks a capability before it tried a tool."""
-    return bool(_CAPABILITY_DENIAL_RE.search(text or ""))
+    """Detect an unsupported capability claim, not a privacy/ACL refusal."""
+    value = text or ""
+    low = value.casefold()
+    if re.search(
+        r"\b(?:private|privacy|permission|authorized|authorised|"
+        r"another person|someone else|spouse|wife|husband)\b",
+        low,
+    ):
+        return False
+    return bool(_CAPABILITY_DENIAL_RE.search(value))
 
 
 def _requested_non_english_output(user_text: str) -> bool:
@@ -2060,6 +2068,10 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
             if (
                 tools
                 and not capability_retry_used
+                and not any(
+                    str(name) != DISCOVERY_TOOL_NAME
+                    for name in (trace.get("tools_called") or [])
+                )
                 and _looks_like_false_capability_denial(candidate)
             ):
                 capability_retry_used = True
