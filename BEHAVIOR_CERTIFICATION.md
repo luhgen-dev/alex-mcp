@@ -177,6 +177,7 @@ without stopping at the first failing contract.
 ```bash
 ALEX_CERT_SOURCE_OPTIONS=/data/options.json \
 python alex-mcp/app/behavior_cert.py --mode live --phase all --provider auto \
+  --max-live-cost-usd 0.25 \
   --report /tmp/alex-behavior-live.json
 ```
 
@@ -210,7 +211,16 @@ rig then reads Alex's own `tool_audit` / `_turn_trace` evidence and checks:
 - expected answer terms where the fixture gives an objective answer;
 - actual attachment queue when a file is required;
 - English voice transcript does not drift into a clearly Malay response;
-- hard latency threshold (default 20 seconds).
+- hard latency threshold (default 20 seconds);
+- the estimated cost of each turn;
+- durable household state changed/not-changed by table (row counts + hashes only, never row contents);
+- a mutating tool that claims success but produces no durable household-state change is flagged;
+- relative dates are evaluated against a fixed 29 September 2026 certification clock.
+
+The live runner defaults to a **US$0.25 cumulative estimated spend cap**. If the
+cap is reached before all cases run, the result is `INCOMPLETE_BUDGET`, never a
+false PASS. The cap can be changed explicitly with `--max-live-cost-usd`; zero
+disables the runner-level cap.
 
 Multi-turn contracts keep one conversation ID so pronouns/deictic references
 must survive naturally.
@@ -227,7 +237,10 @@ For every future Alex phase or significant capability:
    - existing `stress_test.py`;
    - `behavior_cert.py --mode catalog`;
    - `behavior_cert.py --mode offline --phase <phase>`.
-4. When offline is clean, run live provider certification for that phase.
+   Offline reports distinguish direct routes from cases that genuinely require
+   the model's `discover_alex_tools` valve; those are marked `LIVE_REQUIRED`
+   rather than being falsely passed.
+4. When offline has no hard failures, run live provider certification for that phase.
 5. Only after both internal layers pass should the work return to the owner for
    the reduced manual WhatsApp/HA gate list.
 6. After targeted manual gates pass, perform one short whole-system acceptance
