@@ -578,7 +578,8 @@ class TurnLoopTests(V044Base):
             conn.close()
         args, result = json.loads(row[0]), json.loads(row[1])
         self.assertEqual(args["source"], "voice")
-        self.assertIn("list_reminders", args["exposed_tools"])
+        self.assertIn("reminders_view", args["exposed_tools"])
+        self.assertNotIn("list_reminders", args["exposed_tools"])
         self.assertEqual(result["outcome"], "answered")
         self.assertEqual(turns, ["[voice note] any reminders"])
 
