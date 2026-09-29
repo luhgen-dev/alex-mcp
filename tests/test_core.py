@@ -755,6 +755,90 @@ class AlexCoreTests(unittest.TestCase):
         self.assertNotIn("xai_api_key", str(health))
 
 
+    def test_natural_planning_references_never_require_model_uuid_invention(self):
+        self.sync_phase2_fixture()
+        goal = phase2_finance.create_goal(
+            "Family Holiday Savings", 5000, 200,
+            "+60111111111", visibility="private"
+        )
+        self.assertEqual(
+            phase2_finance.resolve_goal_reference(
+                None, "holiday savings", "+60111111111"
+            ),
+            goal["goal_id"],
+        )
+
+        cash = phase2_finance.record_cash_event(
+            "OT", 400, "2026-09-29", "+60111111111",
+            visibility="private"
+        )
+        resolved_cash = phase2_finance.resolve_cash_event_reference(
+            None, "+60111111111", event_type="OT",
+            event_date="2026-09-29", require_unallocated=True,
+        )
+        self.assertEqual(resolved_cash, cash["cash_event_id"])
+
+        allocation = phase2_finance.allocate_cash_to_goal(
+            resolved_cash,
+            phase2_finance.resolve_goal_reference(
+                None, "Family Holiday Savings", "+60111111111"
+            ),
+            100, "+60111111111", contribution_date="2026-09-29",
+        )
+        self.assertEqual(allocation["remaining_unallocated"], 300)
+
+        # The model need not calculate or invent the period's actual
+        # contribution before asking whether the goal is below plan.
+        deviation = phase2_finance.evaluate_goal_deviation(
+            goal["goal_id"], None, "2026-09", "+60111111111"
+        )
+        self.assertEqual(deviation["actual"], 100)
+        self.assertEqual(deviation["status"], "BELOW_PLAN")
+
+        pool = phase2_finance.create_cash_pool(
+            "Holiday Buffer", "+60111111111", visibility="private"
+        )
+        self.assertEqual(
+            phase2_finance.resolve_cash_pool_reference(
+                None, "holiday buffer", "+60111111111"
+            ),
+            pool["pool_id"],
+        )
+        phase2_finance.allocate_cash_to_pool(
+            cash["cash_event_id"], pool["pool_id"], 50, "+60111111111"
+        )
+        self.assertEqual(
+            phase2_finance.cash_pool_balance(
+                phase2_finance.resolve_cash_pool_reference(
+                    None, "Holiday Buffer", "+60111111111"
+                ),
+                "+60111111111",
+            )["balance"],
+            50,
+        )
+
+        reserve = phase2_finance.add_plan_reserve(
+            "School Reserve", 300, "+60111111111", visibility="private"
+        )
+        self.assertEqual(
+            phase2_finance.resolve_reserve_reference(
+                None, "school reserve", "+60111111111"
+            ),
+            reserve["reserve_id"],
+        )
+
+    def test_natural_reference_resolution_refuses_ambiguous_planning_objects(self):
+        phase2_finance.create_goal(
+            "Holiday Europe", 5000, 0, "+60111111111", visibility="private"
+        )
+        phase2_finance.create_goal(
+            "Holiday Japan", 5000, 0, "+60111111111", visibility="private"
+        )
+        with self.assertRaises(ValueError):
+            phase2_finance.resolve_goal_reference(
+                None, "Holiday", "+60111111111"
+            )
+
     def test_advanced_goal_cash_and_obligation_lifecycle(self):
         self.sync_phase2_fixture()
         goal = phase2_finance.create_goal(
@@ -829,6 +913,37 @@ class AlexCoreTests(unittest.TestCase):
             phase2_work.next_ot_payout_dates("2026-09-26", "+60111111111", count=4),
             ["2026-10-07", "2026-10-12", "2026-11-07", "2026-11-12"],
         )
+
+    def test_asset_name_and_current_attachment_are_groundable(self):
+        asset = phase2_library.create_asset(
+            "Water Dispenser", "+60111111111", visibility="private"
+        )
+        self.assertEqual(
+            phase2_library.resolve_asset_reference(
+                None, "water dispenser", "+60111111111"
+            ),
+            asset["asset_id"],
+        )
+
+        self.claim("asset-doc", "+60111111111", "attach this manual")
+        media_id = media.save_media(
+            "asset-doc", "PDF", "application/pdf",
+            base64.b64encode(b"%PDF-1.4 synthetic manual").decode("ascii"),
+        )
+        actor = self.actor("asset-doc", "+60111111111", [media_id])
+        # This mirrors the MCP wrapper's deterministic current-attachment bind.
+        linked = phase2_library.link_document(
+            phase2_library.resolve_asset_reference(
+                None, "Water Dispenser", "+60111111111"
+            ),
+            "MANUAL", actor.media_ids[0], "+60111111111",
+            source_message_id=actor.source_message_id,
+        )
+        self.assertEqual(linked["asset_id"], asset["asset_id"])
+        stored = phase2_library.list_assets(
+            "+60111111111", include_documents=True
+        )
+        self.assertEqual(stored[0]["documents"][0]["evidence_ref"], media_id)
 
     def test_asset_warranty_privacy_and_exact_document_reference(self):
         self.sync_phase2_fixture()
