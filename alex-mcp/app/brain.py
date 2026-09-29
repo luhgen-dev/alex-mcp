@@ -463,14 +463,11 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
     if re.search(r"\bcalculate\b|\b\d+(?:\.\d+)?\s*(?:minus|plus|times|divided by)\s*\d", low):
         selected.add("calculate")
 
-    # Tamil script: favor coverage over a false-negative router. It is still a
-    # much smaller catalog than advertising every MCP tool on every turn.
-    if re.search(r"[\u0B80-\u0BFF]", text):
-        selected |= (
-            CORE_FINANCE | REMINDER_TOOLS | MEMORY_TOOLS | SHOPPING_TOOLS
-            | {"get_agenda","work_schedule","planning_brief","bills_list"}
-        )
-
+    # Tamil-only wording deliberately falls through to CORE_READ_FALLBACK +
+    # discovery. A broad fixed Tamil tool union was unsafe and, after the
+    # six-tool cap, accidentally exposed an alphabetic subset unrelated to the
+    # user's intent. Discovery lets the model normalize Tamil/mixed input to a
+    # short English intent and then loads the correct narrow tool set.
     # An explicit "save/remember this" attachment is memory-only unless the
     # user also explicitly asked for a financial write. This closes the old
     # Smoke-4 failure where saving a receipt could accidentally log an expense.
