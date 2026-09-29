@@ -965,6 +965,14 @@ class FinalHardeningTests(V044Base):
         self.assertNotIn("update_reminder", names)
         self.assertNotIn("create_reminder", names)
 
+    def test_typo_heavy_negated_reminder_stays_read_only(self):
+        names = _names(asyncio.run(brain._tool_specs(
+            "Don't delete the remnder, just show it."
+        )))
+        self.assertIn("list_reminders", names)
+        self.assertNotIn("update_reminder", names)
+        self.assertNotIn("create_reminder", names)
+
     def test_unrelated_dont_does_not_disable_positive_mutation(self):
         self.assertTrue(
             brain._trusted_mutation_requested(
