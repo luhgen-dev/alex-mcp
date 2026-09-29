@@ -309,7 +309,7 @@ def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
     )
 
 
-def packet_audit(packets: list[dict[str, Any]]) -> dict[str, Any]:
+def packet_audit(packets: list[dict[str, Any]], phase: str = "all") -> dict[str, Any]:
     ids = [row["packet_id"] for row in packets]
     domains = {row["_domain"] for row in packets}
     sources = {row["source"] for row in packets}
@@ -318,7 +318,59 @@ def packet_audit(packets: list[dict[str, Any]]) -> dict[str, Any]:
         row["packet_id"] for row in packets
         if not row.get("available_tools") and row["_domain"] not in {"language"}
     ]
-    status = "PASS" if not duplicate_ids and not missing_tools and packets else "FAIL"
+
+    # Packet generation is itself part of certification. Before handing a blind
+    # packet to ChatGPT/human QC, prove that the packet actually contains the
+    # owner-required capability and excludes forbidden ones. Otherwise a clean
+    # external reasoner could be asked to solve an impossible turn.
+    prompts, conversations = _contract_maps(phase)
+    routing_gaps: list[dict[str, Any]] = []
+    forbidden_exposure: list[dict[str, Any]] = []
+    for row in packets:
+        expected = _expectation_for_packet(row, prompts, conversations)
+        names = {
+            str(tool.get("name"))
+            for tool in row.get("available_tools", [])
+            if tool.get("name")
+        }
+        caps = set(capabilities_for_tools(names))
+        required_any = set(expected.required_any) - {"routing.discovery"}
+        required_all = set(getattr(expected, "required_all", frozenset())) - {
+            "routing.discovery"
+        }
+        forbidden = set(getattr(expected, "forbidden", frozenset())) - {
+            "routing.discovery"
+        }
+
+        missing_any = bool(required_any) and not bool(caps & required_any)
+        missing_all = sorted(required_all - caps)
+        if missing_any or missing_all:
+            routing_gaps.append({
+                "packet_id": row["packet_id"],
+                "contract_id": row["_contract_id"],
+                "source": row["source"],
+                "conversation_step": row.get("conversation_step"),
+                "missing_any_of": sorted(required_any) if missing_any else [],
+                "missing_required_all": missing_all,
+                "available_capabilities": sorted(caps),
+            })
+
+        bad = sorted(caps & forbidden)
+        if bad:
+            forbidden_exposure.append({
+                "packet_id": row["packet_id"],
+                "contract_id": row["_contract_id"],
+                "source": row["source"],
+                "conversation_step": row.get("conversation_step"),
+                "forbidden_capabilities": bad,
+            })
+
+    status = (
+        "PASS"
+        if packets and not duplicate_ids and not missing_tools
+        and not routing_gaps and not forbidden_exposure
+        else "FAIL"
+    )
     return {
         "mode": "human_ai_packet_audit",
         "status": status,
@@ -328,7 +380,11 @@ def packet_audit(packets: list[dict[str, Any]]) -> dict[str, Any]:
             "sources": sorted(sources),
             "duplicate_packet_ids": duplicate_ids,
             "packets_without_tools": missing_tools,
+            "routing_gaps": len(routing_gaps),
+            "forbidden_exposure": len(forbidden_exposure),
         },
+        "routing_gaps": routing_gaps,
+        "forbidden_exposure": forbidden_exposure,
     }
 
 
@@ -358,7 +414,7 @@ def main() -> dict[str, Any]:
         decisions = _read_jsonl(Path(args.decisions))
         report = score_packets(packets, decisions, args.phase)
     else:
-        report = packet_audit(packets)
+        report = packet_audit(packets, args.phase)
 
     Path(args.report).write_text(
         json.dumps(report, ensure_ascii=False, indent=2),
