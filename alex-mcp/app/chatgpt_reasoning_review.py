@@ -142,6 +142,15 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
     ):
         return result("tools", _one(tools, "log_expense"))
 
+    # Plain spending/expense/transaction questions are ledger reads. Keep this
+    # ahead of planning/report vocabulary so "spending today" cannot fall
+    # through to an unrelated domain.
+    if (
+        re.search(r"\b(?:spending|expenses?|transactions?)\b", text)
+        and not re.search(r"\b(?:log|record|add|correct|fix)\b", text)
+    ):
+        return result("tools", _one(tools, "query_finances"))
+
     # "Anything I need to remember later?" is naturally a reminder query, not
     # an explicit saved-memory browse.
     if text == "anything i need to remember later?":
@@ -215,8 +224,16 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
         )
 
     # Confirming a draft plan is the operation that creates its linked diary
-    # event; calling add_diary_event separately risks duplication.
-    if "plan" in text and re.search(r"\b(?:make .* real|lock|confirm)\b", text):
+    # event; calling add_diary_event separately risks duplication. Negated
+    # locking ("don't lock it", "unlocked") is creation/refinement, not consent.
+    plan_lock_negated = bool(
+        re.search(r"\b(?:don'?t|do not|not)\s+lock\b|\bunlocked\b", text)
+    )
+    if (
+        "plan" in text
+        and not plan_lock_negated
+        and re.search(r"\b(?:make .* real|lock|confirm)\b", text)
+    ):
         return result("tools", _one(tools, "confirm_plan"))
 
     if (
@@ -267,7 +284,7 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
 
     # Explicit monitor/track verbs are delegation semantics even when the
     # monitored subject is a goal.
-    if re.search(r"\b(?:monitor|track)\b", text):
+    if re.search(r"\b(?:monitor|monitoring|track|tracking)\b", text):
         if re.search(r"\b(?:stop|cancel)\b", text):
             return result("tools", _one(tools, "monitor_cancel"))
         if re.search(r"\b(?:what|show|list)\b", text):
