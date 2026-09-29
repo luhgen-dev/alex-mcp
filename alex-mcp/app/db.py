@@ -4,7 +4,7 @@ import json
 import os
 import sqlite3
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import runtime_clock
 
@@ -322,6 +322,91 @@ def recent_turns(conversation_id: str, limit: int) -> list[dict]:
             (conversation_id, max(2, min(20, limit))),
         ).fetchall()
         return [dict(r) for r in reversed(rows)]
+    finally:
+        conn.close()
+
+
+def set_focus(actor: ActorContext, focus_key: str, *,
+              object_type: str | None = None, object_id: str | None = None,
+              payload: dict | None = None, ttl_seconds: int = 900) -> None:
+    """Store one short-lived pointer scoped to the authenticated actor+chat."""
+    key = str(focus_key or "").strip().casefold()
+    if not key:
+        raise ValueError("focus_key is required")
+    ttl = max(15, min(3600, int(ttl_seconds)))
+    expires = (runtime_clock.now_utc() + timedelta(seconds=ttl)).isoformat()
+    conn = connect()
+    try:
+        conn.execute(
+            """INSERT INTO conversation_focus(
+                   user_id,conversation_id,focus_key,object_type,object_id,
+                   payload_json,source_message_id,expires_at_utc
+               ) VALUES(?,?,?,?,?,?,?,?)
+               ON CONFLICT(user_id,conversation_id,focus_key) DO UPDATE SET
+                 object_type=excluded.object_type,
+                 object_id=excluded.object_id,
+                 payload_json=excluded.payload_json,
+                 source_message_id=excluded.source_message_id,
+                 created_at_utc=CURRENT_TIMESTAMP,
+                 expires_at_utc=excluded.expires_at_utc""",
+            (
+                actor.user_id, actor.conversation_id, key,
+                str(object_type or "")[:80] or None,
+                str(object_id or "")[:240] or None,
+                json.dumps(payload or {}, ensure_ascii=False, separators=(",", ":"))[:4000],
+                actor.source_message_id or None,
+                expires,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_focus(actor: ActorContext, focus_key: str, *, consume: bool = False) -> dict | None:
+    """Read an unexpired pointer from the same actor and same conversation."""
+    key = str(focus_key or "").strip().casefold()
+    conn = connect()
+    try:
+        conn.execute(
+            "DELETE FROM conversation_focus WHERE expires_at_utc<=?",
+            (runtime_clock.utc_iso(),),
+        )
+        row = conn.execute(
+            """SELECT * FROM conversation_focus
+               WHERE user_id=? AND conversation_id=? AND focus_key=?
+                 AND expires_at_utc>? LIMIT 1""",
+            (actor.user_id, actor.conversation_id, key, runtime_clock.utc_iso()),
+        ).fetchone()
+        if not row:
+            conn.commit()
+            return None
+        result = dict(row)
+        try:
+            result["payload"] = json.loads(result.pop("payload_json") or "{}")
+        except Exception:
+            result["payload"] = {}
+            result.pop("payload_json", None)
+        if consume:
+            conn.execute(
+                "DELETE FROM conversation_focus WHERE user_id=? AND conversation_id=? AND focus_key=?",
+                (actor.user_id, actor.conversation_id, key),
+            )
+        conn.commit()
+        return result
+    finally:
+        conn.close()
+
+
+def clear_focus(actor: ActorContext, focus_key: str) -> None:
+    key = str(focus_key or "").strip().casefold()
+    conn = connect()
+    try:
+        conn.execute(
+            "DELETE FROM conversation_focus WHERE user_id=? AND conversation_id=? AND focus_key=?",
+            (actor.user_id, actor.conversation_id, key),
+        )
+        conn.commit()
     finally:
         conn.close()
 
