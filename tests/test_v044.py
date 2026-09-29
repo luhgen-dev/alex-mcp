@@ -253,6 +253,16 @@ class RoutingTests(V044Base):
         self.assertIn("find_receipts", names)
         self.assertIn("get_receipt", names)
 
+    def test_retained_receipt_browse_is_not_explicit_saved_memory(self):
+        names = _names(asyncio.run(brain._tool_specs(
+            "What receipts have I saved recently?"
+        )))
+        self.assertIn("find_receipts", names)
+        self.assertIn("get_receipt", names)
+        self.assertNotIn("save_item", names)
+        self.assertNotIn("search_saved_items", names)
+        self.assertNotIn("remove_saved_item", names)
+
     def test_contextual_followup_does_not_replay_prior_mutator(self):
         names = _names(asyncio.run(brain._tool_specs(
             "Actually it was RM12.80.",
