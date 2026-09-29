@@ -1354,11 +1354,17 @@ def _judge_observation(
 ) -> list[str]:
     import brain
 
-    called_tools = {
-        call["tool"] for call in trace.get("calls", [])
+    calls = [
+        call for call in trace.get("calls", [])
         if call.get("tool") and not str(call["tool"]).startswith("_")
-    }
+    ]
+    called_tools = {call["tool"] for call in calls}
     called_caps = set(capabilities_for_tools(called_tools))
+    successful_tools = {
+        call["tool"] for call in calls
+        if str(call.get("status") or "").upper() in {"OK", "PASS", "SUCCESS"}
+    }
+    successful_caps = set(capabilities_for_tools(successful_tools))
     required_caps = set(contract.required_any) - {"routing.discovery"}
     required_all_caps = set(getattr(contract, "required_all", frozenset())) - {"routing.discovery"}
     forbidden_caps = set(contract.forbidden) - {"routing.discovery"}
@@ -1370,7 +1376,7 @@ def _judge_observation(
         not contract.expect_clarification
         and not getattr(contract, "expect_refusal", False)
         and not getattr(contract, "expect_duplicate", False)
-        and not (called_caps & required_caps)
+        and not (successful_caps & required_caps)
     ):
         problems.append(
             "required capability was not actually executed: "
@@ -1381,11 +1387,11 @@ def _judge_observation(
         and not contract.expect_clarification
         and not getattr(contract, "expect_refusal", False)
         and not getattr(contract, "expect_duplicate", False)
-        and not required_all_caps.issubset(called_caps)
+        and not required_all_caps.issubset(successful_caps)
     ):
         problems.append(
             "required-all capabilities were not all executed: "
-            + ", ".join(sorted(required_all_caps - called_caps))
+            + ", ".join(sorted(required_all_caps - successful_caps))
         )
     bad = sorted(called_caps & forbidden_caps)
     if bad:
