@@ -204,6 +204,29 @@ class TurnTests(V044Base):
         finally:
             os.unlink(path)
 
+    def test_explicit_local_whisper_still_fails_closed_on_mutation_disagreement(self):
+        self.claim("explicit-local-voice", text="")
+        voice_id = media.save_media(
+            "explicit-local-voice", "AUDIO", "audio/ogg",
+            base64.b64encode(b"voice").decode(),
+        )
+        settings = SimpleNamespace(
+            stt_provider="local_whisper",
+            whisper_model="base",
+            cloud_stt_rescue_enabled=False,
+            xai_api_key="", openai_api_key="", gemini_api_key="",
+            gemini_model="gemini",
+        )
+        decodes = {
+            "auto": "add milk to my shopping list",
+            "en": "what time is it today",
+            "ta": "நாளைக்கு வானிலை எப்படி",
+        }
+        with patch.object(media, "get_settings", return_value=settings), \
+                patch.object(media, "_local_whisper", side_effect=lambda _p, _m, lang: decodes[lang]):
+            with self.assertRaises(media.VoiceTranscriptionUncertain):
+                media.transcribe_audio(voice_id)
+
     def test_mutating_voice_requires_two_local_decoders_to_agree(self):
         agreed = [
             ("local_auto", "add test toothpaste to my shopping list"),
