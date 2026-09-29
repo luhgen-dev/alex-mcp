@@ -290,7 +290,12 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         ),
         _fs("list_reminders", "get_agenda_range"), seed="core",
         expected_terms=("Dentist",),
-        forbidden_terms=("no reminders set for next thursday", "no reminders for next thursday"),
+        forbidden_terms=(
+            "no reminders set for next thursday",
+            "no reminders for next thursday",
+            "don't have any reminders",
+            "do not have any reminders",
+        ),
         sources=("text", "voice"),
     ),
     PromptContract(
@@ -336,12 +341,12 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         state_expectations=(
             StateExpectation(
                 "shopping_items",
-                fields=(("item_name", "Milk"), ("space_id", "FAMILY_SHARED"), ("status", "OPEN")),
+                fields=(("item_name", "milk"), ("space_id", "FAMILY_SHARED"), ("status", "OPEN")),
                 count=1, delta=1,
             ),
             StateExpectation(
                 "shopping_items",
-                fields=(("item_name", "Banana"), ("space_id", "FAMILY_SHARED"), ("status", "OPEN")),
+                fields=(("item_name", "bananas"), ("space_id", "FAMILY_SHARED"), ("status", "OPEN")),
                 count=1, delta=1,
             ),
         ),
@@ -594,7 +599,7 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
             "Do I have an electricity bill coming up?",
             "What's due for TNB?",
         ),
-        _fs("bills_list"), seed="core",
+        _fs("bills_list"), seed="core", expected_terms=("TNB",),
     ),
 
     PromptContract(
@@ -1205,7 +1210,7 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         "p2.home.automation", "phase2", "home_assistant",
         "Automation requests must create a draft, never deploy silently.",
         (
-            "Draft an automation to turn on the hall light at sunset.",
+            "Draft an automation to turn on the living room light at sunset.",
             "Prepare a Home Assistant automation for the hall light; don't deploy it.",
         ),
         _fs("ha_draft_automation"), seed="empty", expected_terms=("draft",),
@@ -1401,7 +1406,7 @@ CONVERSATION_CONTRACTS: tuple[ConversationContract, ...] = (
             ConversationStep(
                 "What do I have on 1 October 2026?",
                 _fs("get_agenda_range", "get_agenda"),
-                ("Dentist",),
+                expected_terms=("Dentist",),
             ),
             ConversationStep(
                 "Remind me two hours before that dentist appointment.",
@@ -1410,7 +1415,7 @@ CONVERSATION_CONTRACTS: tuple[ConversationContract, ...] = (
             ConversationStep(
                 "What reminders do I have on 1 October 2026?",
                 _fs("list_reminders"),
-                ("Dentist",),
+                expected_terms=("Dentist",),
             ),
         ),
         sources=("text", "voice"),
@@ -1431,7 +1436,7 @@ CONVERSATION_CONTRACTS: tuple[ConversationContract, ...] = (
             ConversationStep(
                 "What do we have in the Malacca plan so far?",
                 _fs("list_plans"),
-                ("kid", "9"),
+                expected_terms=("kid", "9"),
             ),
         ),
         sources=("text", "voice"),
@@ -1449,7 +1454,7 @@ CONVERSATION_CONTRACTS: tuple[ConversationContract, ...] = (
             ConversationStep(
                 "Show me Family Holiday Savings including its monthly contribution.",
                 _fs("planning_goal_progress", "planning_list_goals"),
-                ("Family Holiday",),
+                expected_terms=("Family Holiday",),
             ),
         ),
     ),
