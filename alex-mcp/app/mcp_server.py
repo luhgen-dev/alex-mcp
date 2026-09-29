@@ -86,6 +86,20 @@ def get_receipt(media_id: str, actor: Actor) -> dict:
 
 
 @mcp.tool()
+def find_media(actor: Actor, media_type: str = "all", query: str | None = None,
+               start_date: str | None = None, end_date: str | None = None,
+               limit: int = 10) -> dict:
+    """Browse preserved original voice notes, images or documents the authenticated user is allowed to retrieve. Results are numbered for follow-up retrieval."""
+    return services.find_media(actor, media_type, query, start_date, end_date, limit)
+
+
+@mcp.tool()
+def get_media_original(media_id: str, actor: Actor) -> dict:
+    """Retrieve one authorized original media object, including the original voice-note audio."""
+    return services.get_media_original(actor, media_id)
+
+
+@mcp.tool()
 def save_item(title: str, content: str, actor: Actor, tags: str | None = None,
               shared: bool = False) -> dict:
     """Explicitly remember something the user asked Alex to save. This is separate from automatic receipt retention."""
