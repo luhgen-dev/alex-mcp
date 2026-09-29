@@ -70,6 +70,7 @@ class AlexCoreTests(unittest.TestCase):
                 "alex_profile_config_versions",
                 "tool_audit", "tool_execution_claims", "ai_usage", "diagnostic_runs", "monitor_notifications",
                 "outbound_messages", "conversation_turns", "selection_sets", "reminder_events",
+                "task_reminder_links", "task_events", "tasks",
                 "diary_reminder_links", "plan_diary_links", "schedule_conflicts", "diary_events", "plans",
                 "leave_records", "work_roster", "cashflow_baselines",
                 "event_media_links", "financial_event_corrections", "financial_events",
@@ -627,6 +628,82 @@ class AlexCoreTests(unittest.TestCase):
             self.assertEqual(dst["space_id"], "FAMILY_SHARED")
             self.assertIsNone(dst["notes"])
             self.assertFalse(copied["private_notes_copied"])
+        finally:
+            conn.close()
+
+    def test_task_lifecycle_is_first_class_and_does_not_mutate_links(self):
+        self.claim("task-life", "+60111111111", "passport task")
+        base = self.actor("task-life", "+60111111111")
+        plan = phase2.create_plan(
+            with_action_key(base, "task-plan"),
+            "Malacca trip",
+            notes="private trip notes",
+        )
+        reminder = services.create_reminder(
+            with_action_key(base, "task-reminder"),
+            "Check passports",
+            "2026-10-01T09:00:00+08:00",
+        )
+        created = phase2.create_task(
+            with_action_key(base, "task-create"),
+            "Check passport expiry dates",
+            notes="Check every passport",
+            due_local="2026-09-30",
+            plan_id=plan["plan_id"],
+            reminder_id=reminder["reminder_id"],
+        )
+        self.assertEqual(created["task_status"], "OPEN")
+        self.assertIsNone(created["due_at_utc"])
+        self.assertEqual(created["due_date_local"], "2026-09-30")
+
+        listed = phase2.list_tasks(base, "open", plan["plan_id"])
+        self.assertEqual([t["task_id"] for t in listed["tasks"]], [created["task_id"]])
+        self.assertEqual(listed["tasks"][0]["reminder_id"], reminder["reminder_id"])
+
+        phase2.update_task(
+            with_action_key(base, "task-update"),
+            created["task_id"],
+            title="Check all passport expiry dates",
+            notes="Check every passport and copy",
+        )
+        phase2.complete_task(with_action_key(base, "task-complete"), created["task_id"])
+        self.assertEqual(
+            phase2.list_tasks(base, "done", plan["plan_id"])["tasks"][0]["task_id"],
+            created["task_id"],
+        )
+        phase2.reopen_task(with_action_key(base, "task-reopen"), created["task_id"])
+        phase2.cancel_task(with_action_key(base, "task-cancel"), created["task_id"])
+
+        conn = db.connect()
+        try:
+            task = conn.execute(
+                "SELECT status,title,plan_id FROM tasks WHERE task_id=?",
+                (created["task_id"],),
+            ).fetchone()
+            self.assertEqual(task["status"], "CANCELLED")
+            self.assertEqual(task["title"], "Check all passport expiry dates")
+            self.assertEqual(task["plan_id"], plan["plan_id"])
+            self.assertEqual(
+                conn.execute(
+                    "SELECT status FROM plans WHERE plan_id=?", (plan["plan_id"],)
+                ).fetchone()[0],
+                "DRAFT",
+            )
+            self.assertEqual(
+                conn.execute(
+                    "SELECT status FROM reminders WHERE reminder_id=?",
+                    (reminder["reminder_id"],),
+                ).fetchone()[0],
+                "OPEN",
+            )
+            events = conn.execute(
+                "SELECT event_type FROM task_events WHERE task_id=? ORDER BY created_at_utc,rowid",
+                (created["task_id"],),
+            ).fetchall()
+            self.assertEqual(
+                [r["event_type"] for r in events],
+                ["CREATED", "UPDATED", "COMPLETED", "REOPENED", "CANCELLED"],
+            )
         finally:
             conn.close()
 
