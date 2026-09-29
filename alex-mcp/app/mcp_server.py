@@ -19,7 +19,7 @@ import phase2_reports
 
 mcp = MCPServer(
     "Alex Household Tools",
-    version="0.4.4",
+    version="0.4.4.2",
     instructions="Deterministic household tools. Identity and permissions are injected by Alex and are never model-controlled.",
 )
 
