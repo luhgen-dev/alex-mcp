@@ -232,6 +232,36 @@ disables the runner-level cap.
 Multi-turn contracts keep one conversation ID so pronouns/deictic references
 must survive naturally.
 
+## One-command phase gate
+
+For day-to-day development, `phase_certify.py` is the handoff command. It runs
+the existing unit suite, structural self-test, Tier-A stress harness, final
+architecture audit, Tier-B catalog audit and the requested phase's offline
+behaviour certification in one isolated workflow.
+
+Zero-provider-cost preflight:
+
+```bash
+python alex-mcp/app/phase_certify.py --phase phase2
+```
+
+A clean preflight reports `READY_FOR_LIVE`. Then run the same gate with live
+provider behaviour enabled:
+
+```bash
+python alex-mcp/app/phase_certify.py --phase phase2 --live \
+  --provider auto --max-live-cost-usd 0.25
+```
+
+Live provider work is automatically skipped if a cheaper deterministic/offline
+gate is already failing, so known structural defects do not consume tokens.
+`PASS_INTERNAL` means every internal layer passed; it **does not** claim the
+external WhatsApp/device manual gates passed.
+
+The available phase names are derived from the contract catalog rather than
+hard-coded, so a future phase becomes selectable when its contracts/manual
+gates are added.
+
 ## Phase workflow going forward
 
 For every future Alex phase or significant capability:
