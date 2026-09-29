@@ -855,7 +855,7 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
         return result("tools" if selected else "answer", selected)
 
     # Conservative fallback: choose a read-only data source if one is clearly
-    # present. Never guess a mutator in the independent oracle.
+    # present. Never guess a mutator in the deterministic regression oracle.
     for name in (
         "get_agenda_range", "query_finances", "list_reminders",
         "list_shopping_items", "search_saved_items", "planning_list_goals",
@@ -870,7 +870,7 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
 
 async def main() -> dict[str, Any]:
     parser = argparse.ArgumentParser(
-        description="Run the frozen independent ChatGPT reasoning QC review"
+        description="Run the deterministic reasoning regression oracle"
     )
     parser.add_argument("--report", default=None)
     args = parser.parse_args()
@@ -883,7 +883,7 @@ async def main() -> dict[str, Any]:
     decisions = [{
         "_meta": {
             "corpus_fingerprint": REVIEWED_CORPUS_FINGERPRINT,
-            "reviewer": "ChatGPT pre-release engineering/QC",
+            "reviewer": "deterministic regression oracle",
         }
     }]
     decisions.extend(_decision(packet) for packet in public_packets)
@@ -891,8 +891,9 @@ async def main() -> dict[str, Any]:
         private_packets, decisions, "all"
     )
     report["review"] = {
-        "independent_public_packet_only": True,
-        "reviewer": "ChatGPT pre-release engineering/QC",
+        "independent_public_packet_only": False,
+        "classification": "deterministic regression oracle; not an independent model test",
+        "reviewer": "deterministic regression oracle",
         "decision_counts": {
             kind: sum(
                 1 for row in decisions if row.get("decision") == kind
