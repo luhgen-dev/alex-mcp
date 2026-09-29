@@ -183,6 +183,25 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
 
 
     PromptContract(
+        "p1.finance.pending", "phase1", "finance",
+        "Pending/ambiguous financial items must be recoverable for clarification.",
+        (
+            "What expenses are waiting for me to clarify?",
+            "Show the pending expenses.",
+            "Which payment still needs my confirmation?",
+        ),
+        _fs("list_pending_expenses"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p1.finance.confirm", "phase1", "finance",
+        "A clarification reply must be able to confirm the exact pending expense.",
+        (
+            "Yes, approve that pending expense.",
+            "Confirm that one as food.",
+        ),
+        _fs("confirm_expense", "list_pending_expenses"), seed="core", live=False,
+    ),
+    PromptContract(
         "p1.finance.correct", "phase1", "finance",
         "Natural corrections must expose append-only correction rather than a second expense write.",
         (
@@ -396,6 +415,25 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         _fs("planning_list_reserves", "planning_baseline"), seed="core",
     ),
     PromptContract(
+        "p2.leave.write", "phase2", "work",
+        "Future/taken leave lifecycle updates must use the leave-record path.",
+        (
+            "Record annual leave for 10 October.",
+            "Mark 10 October as planned annual leave.",
+            "I took MC on 10 October; record it.",
+        ),
+        _fs("set_leave_record", "work_record_event"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p2.leave.records", "phase2", "work",
+        "Leave lifecycle records must be listable separately from balance calculations.",
+        (
+            "Show my recorded leave entries.",
+            "List my planned and taken leave.",
+        ),
+        _fs("list_leave_records"), seed="core",
+    ),
+    PromptContract(
         "p2.leave.read", "phase2", "work",
         "Leave queries must expose the work/leave read path.",
         (
@@ -497,7 +535,7 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
             "2",
             "3",
         ),
-        _fs("resolve_latest_diary_conflict", "resolve_numbered_choice"),
+        _fs("resolve_latest_diary_conflict", "resolve_diary_conflict", "resolve_numbered_choice"),
         seed="core", live=False,
     ),
     PromptContract(
@@ -592,6 +630,33 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
             "Record a RM200 contribution to my holiday goal.",
         ),
         _fs("planning_record_goal_contribution"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p2.goals.deviation", "phase2", "goals",
+        "Goal deviation analysis must compare actual contribution with the approved period plan.",
+        (
+            "Am I below plan on my holiday goal this month?",
+            "Compare this month's holiday contribution with the target.",
+        ),
+        _fs("planning_goal_deviation"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p2.salary.compare", "phase2", "cash_planning",
+        "Actual salary comparison must use the configured fixed salary without rewriting it.",
+        (
+            "Compare this salary payment with my normal salary.",
+            "Was my latest salary different from the configured salary?",
+        ),
+        _fs("planning_compare_salary"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p2.goal.alias", "phase2", "goals",
+        "Goal aliases must resolve conservatively before allocation.",
+        (
+            "Which goal does this holiday account refer to?",
+            "Match the alias 'holiday account' to my goal.",
+        ),
+        _fs("planning_match_goal_alias"), seed="core", live=False,
     ),
     PromptContract(
         "p2.goals.projection", "phase2", "goals",
@@ -782,6 +847,33 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
             "Cancel the holiday-goal tracking.",
         ),
         _fs("monitor_cancel"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p2.home.summary", "phase2", "home_assistant",
+        "Whole-home state summaries must use actual HA state data.",
+        (
+            "What's on at home right now?",
+            "Give me a home status summary.",
+        ),
+        _fs("ha_home_summary"), seed="empty", live=False,
+    ),
+    PromptContract(
+        "p2.home.report", "phase2", "home_assistant",
+        "A requested home status image must use deterministic local rendering.",
+        (
+            "Send me the home status card.",
+            "Generate a picture of the current home status.",
+        ),
+        _fs("ha_home_report"), seed="empty", live=False,
+    ),
+    PromptContract(
+        "p2.home.automation", "phase2", "home_assistant",
+        "Automation requests must create a draft, never deploy silently.",
+        (
+            "Draft an automation to turn on the hall light at sunset.",
+            "Prepare a Home Assistant automation for the hall light; don't deploy it.",
+        ),
+        _fs("ha_draft_automation"), seed="empty", live=False,
     ),
     PromptContract(
         "p2.home.control", "phase2", "home_assistant",
@@ -1009,20 +1101,20 @@ REQUIRED_DOMAINS = {
 # behavioural contract.  This prevents future phases from adding a tool while
 # silently forgetting to teach the certification rig how a human reaches it.
 REQUIRED_OWNER_TOOL_COVERAGE = {
-    "log_expense", "query_finances", "correct_expense",
+    "log_expense", "confirm_expense", "query_finances", "list_pending_expenses", "correct_expense",
     "find_receipts", "get_receipt",
     "save_item", "search_saved_items", "get_saved_item", "remove_saved_item",
     "resolve_numbered_choice",
     "create_reminder", "list_reminders", "update_reminder", "reminder_history",
     "add_shopping_item", "list_shopping_items", "update_shopping_item",
-    "add_diary_event", "update_diary_event", "resolve_latest_diary_conflict",
+    "add_diary_event", "resolve_diary_conflict", "update_diary_event", "resolve_latest_diary_conflict",
     "get_agenda", "get_agenda_range", "create_plan", "list_plans",
     "confirm_plan", "share_plan", "check_my_availability",
     "check_spouse_availability",
     "planning_create_goal", "planning_lock_goal", "planning_reopen_goal",
     "planning_set_period_target", "planning_change_goal_baseline",
-    "planning_record_goal_contribution", "planning_goal_progress",
-    "planning_goal_projection", "planning_record_cash", "planning_cash_status",
+    "planning_record_goal_contribution", "planning_goal_progress", "planning_goal_deviation",
+    "planning_goal_projection", "planning_record_cash", "planning_compare_salary", "planning_match_goal_alias", "planning_cash_status",
     "planning_allocate_cash_to_goal", "planning_create_cash_pool",
     "planning_cash_pool_balance", "planning_allocate_cash_to_pool",
     "planning_add_reserve", "planning_update_reserve", "planning_list_reserves",
@@ -1033,9 +1125,23 @@ REQUIRED_OWNER_TOOL_COVERAGE = {
     "work_ot_status", "work_leave_balance", "work_departure_plan",
     "asset_create", "asset_link_document", "asset_list", "warranty_expiring",
     "monitor_delegate", "monitor_list", "monitor_cancel",
-    "ha_find_entities", "ha_get_state", "ha_control",
+    "ha_find_entities", "ha_get_state", "ha_home_summary", "ha_home_report", "ha_draft_automation", "ha_control",
     "report_snapshot", "report_export", "report_payload",
     "system_health", "recent_failures", "calculate",
+}
+
+
+
+
+# Legacy/simple MCP tools intentionally superseded by the advanced Phase-2
+# surfaces. They remain in mcp_server for compatibility but are removed from
+# provider exposure by brain.LEGACY_SIMPLE_PLANNING, so Tier B does not certify
+# them as user-facing routes.
+TOOL_COVERAGE_EXEMPTIONS = {
+    "set_goal", "list_goals",
+    "get_leave_balance", "set_leave_balance", "set_work_roster",
+    "set_cashflow_baseline", "get_cashflow_baseline",
+    "set_money_bucket", "list_money_buckets",
 }
 
 
