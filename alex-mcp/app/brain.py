@@ -230,11 +230,10 @@ LEGACY_SIMPLE_PLANNING = {
 TOOL_EXPOSURE_MAX = 6
 MAX_MODEL_CALLS = 4
 
-# v0.4.4 stopgap until the v0.5.0 facade: when the keyword gate recognises no
-# domain for a genuine (non-chat) request, the model previously received ZERO
-# data tools and answered "I don't have access" (e.g. plural "expenses",
-# "transactions", "what pictures did I save"). Read-only tools cannot change
-# data or devices, so exposing them is safe; writes still need the gate.
+# Safe read-only recovery surface. Deterministic routing and semantic discovery
+# are primary; this bounded fallback ensures unfamiliar read phrasing never
+# collapses into a false "I don't have access" answer. Mutators are never added
+# by this fallback.
 CORE_READ_FALLBACK = (
     "query_finances", "list_reminders", "list_shopping_items",
     "search_saved_items", "get_agenda_range",
@@ -1733,7 +1732,7 @@ def _history_user_text(actor: ActorContext, user_text: str,
                        vision_parts: list[dict] | None) -> str:
     """What gets remembered as the user's turn.
 
-    v0.4.4: never persist OCR/PDF/transcript blobs into conversation history;
+    Privacy invariant: never persist OCR/PDF/transcript blobs into conversation history;
     replaying them later leaked unrelated content into new turns. Store only
     the user's own words plus compact markers.
     """
