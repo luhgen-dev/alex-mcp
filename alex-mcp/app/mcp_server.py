@@ -593,12 +593,15 @@ def planning_goal_deviation(actor: Actor, goal_id: str | None = None,
 
 
 @mcp.tool()
-def planning_record_cash(event_type: str, amount: float, event_date: str, actor: Actor,
+def planning_record_cash(event_type: str, amount: float, actor: Actor,
+                         event_date: str | None = None,
                          currency: str = "MYR", description: str | None = None,
                          shared: bool = False) -> dict:
-    """Record salary/OT/bonus/refund/other cash. Variable cash starts UNALLOCATED."""
+    """Record salary/OT/bonus/refund/other cash. Variable cash starts UNALLOCATED. Omit event_date only when the user means the current local day."""
+    import runtime_clock
+    effective_date = event_date or runtime_clock.today(actor.timezone).isoformat()
     return phase2_finance.record_cash_event(
-        event_type, amount, event_date, actor.phone, actor.conversation_type,
+        event_type, amount, effective_date, actor.phone, actor.conversation_type,
         "family" if shared or actor.conversation_type == "GROUP" else "private",
         currency, description, actor.source_message_id,
     )
@@ -761,11 +764,15 @@ def planning_baseline(actor: Actor, currency: str = "MYR",
 
 
 @mcp.tool()
-def planning_income_outlook(period: str, actor: Actor, currency: str = "MYR",
+def planning_income_outlook(actor: Actor, period: str | None = None,
+                            currency: str = "MYR",
                             reveal_sources: bool = False) -> dict:
-    """Read confirmed/expected/possible income for a period. OT remains possible/unknown until observed."""
+    """Read confirmed/expected/possible income. Omitted period means the current local month. OT remains possible/unknown until observed."""
+    import runtime_clock
+    effective_period = period or runtime_clock.today(actor.timezone).strftime("%Y-%m")
     return phase2_finance.income_outlook(
-        period, actor.phone, actor.conversation_type, "all", reveal_sources, currency
+        effective_period, actor.phone, actor.conversation_type,
+        "all", reveal_sources, currency
     )
 
 
@@ -783,10 +790,13 @@ def planning_goal_projection(actor: Actor, goal_id: str | None = None,
 
 
 @mcp.tool()
-def planning_cashflow(period: str, actor: Actor, currency: str = "MYR") -> dict:
-    """Read a dated monthly forecast. OT/variable income remains separate from guaranteed baseline."""
+def planning_cashflow(actor: Actor, period: str | None = None,
+                      currency: str = "MYR") -> dict:
+    """Read a dated monthly forecast. Omitted period means the current local month. OT/variable income remains separate from guaranteed baseline."""
+    import runtime_clock
+    effective_period = period or runtime_clock.today(actor.timezone).strftime("%Y-%m")
     return phase2_finance.cashflow_forecast(
-        period, actor.phone, actor.conversation_type, "all", currency,
+        effective_period, actor.phone, actor.conversation_type, "all", currency,
     )
 
 
@@ -965,10 +975,13 @@ def asset_list(actor: Actor, include_documents: bool = False) -> dict:
 
 
 @mcp.tool()
-def warranty_expiring(within_days: int, as_of_date: str, actor: Actor) -> dict:
-    """Find warranties expiring within a deterministic date window."""
+def warranty_expiring(actor: Actor, within_days: int = 90,
+                      as_of_date: str | None = None) -> dict:
+    """Find warranties expiring in a deterministic window. Omitted as_of_date means today locally; a vague 'warranties I should know about' uses the next 90 days."""
+    import runtime_clock
+    effective_date = as_of_date or runtime_clock.today(actor.timezone).isoformat()
     return {"warranties": phase2_library.warranties_expiring(
-        within_days, as_of_date, actor.phone, actor.conversation_type, "all"
+        within_days, effective_date, actor.phone, actor.conversation_type, "all"
     )}
 
 
