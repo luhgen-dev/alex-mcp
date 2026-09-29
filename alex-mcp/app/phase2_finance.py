@@ -365,6 +365,218 @@ def _get_authorized_goal(conn, goal_id, sender_phone, conversation_type):
     return row
 
 
+def _normalized_ref(value):
+    return " ".join(re.findall(r"[a-z0-9]+", str(value or "").casefold()))
+
+
+def resolve_goal_reference(goal_id, goal_name, sender_phone,
+                           conversation_type="DIRECT_DM"):
+    """Resolve an authorized goal from an opaque id or a unique natural name.
+
+    User-facing reasoning should not need to invent UUIDs. Fuzzy matching is
+    deliberately conservative: one unique exact/containment match is required.
+    """
+    ensure_schema()
+    conn = tools.get_db()
+    try:
+        if goal_id:
+            return _get_authorized_goal(
+                conn, goal_id, sender_phone, conversation_type
+            )["goal_id"]
+    finally:
+        conn.close()
+
+    wanted = _normalized_ref(goal_name)
+    if not wanted:
+        raise ValueError("Provide goal_id or goal_name.")
+    goals = list_goals(sender_phone, conversation_type, requested_scope="all")
+    exact = [
+        row for row in goals
+        if _normalized_ref(row.get("name")) == wanted
+    ]
+    candidates = exact or [
+        row for row in goals
+        if wanted in _normalized_ref(row.get("name"))
+        or _normalized_ref(row.get("name")) in wanted
+    ]
+    if len(candidates) == 1:
+        return candidates[0]["goal_id"]
+    if not candidates:
+        raise ValueError(f"No authorized goal uniquely matches {goal_name!r}.")
+    names = ", ".join(str(row.get("name")) for row in candidates[:5])
+    raise ValueError(
+        f"Goal name is ambiguous; ask which one: {names}"
+    )
+
+
+def _get_authorized_cash_event(conn, cash_event_id, sender_phone,
+                               conversation_type):
+    user_id, private_space, shared = _context(
+        conn, sender_phone, conversation_type
+    )
+    row = conn.execute(
+        "SELECT * FROM alex_phase2_cash_events WHERE cash_event_id=?",
+        (cash_event_id,),
+    ).fetchone()
+    if not row:
+        raise ValueError("Cash event not found")
+    if row["owner_user_id"] != user_id:
+        raise PermissionError("Cash event not authorized")
+    if conversation_type == "GROUP":
+        if row["space_id"] != "FAMILY_SHARED":
+            raise PermissionError("Private cash event cannot be used in group")
+    elif row["space_id"] not in (
+        private_space, "FAMILY_SHARED" if shared else private_space
+    ):
+        raise PermissionError("Cash event not authorized")
+    return row
+
+
+def resolve_cash_event_reference(
+    cash_event_id, sender_phone, conversation_type="DIRECT_DM",
+    *, event_type=None, event_date=None, amount=None,
+    source_message_id=None, require_unallocated=False, latest=False,
+):
+    """Resolve one authorized cash event without asking the model to invent ids."""
+    ensure_schema()
+    conn = tools.get_db()
+    try:
+        if cash_event_id:
+            return _get_authorized_cash_event(
+                conn, cash_event_id, sender_phone, conversation_type
+            )["cash_event_id"]
+
+        user_id, private_space, shared = _context(
+            conn, sender_phone, conversation_type
+        )
+        if conversation_type == "GROUP":
+            space_sql, space_args = "space_id='FAMILY_SHARED'", []
+        elif shared:
+            space_sql, space_args = "(space_id=? OR space_id='FAMILY_SHARED')", [private_space]
+        else:
+            space_sql, space_args = "space_id=?", [private_space]
+
+        where = [space_sql, "owner_user_id=?"]
+        params = list(space_args) + [user_id]
+        if event_type:
+            where.append("event_type=?")
+            params.append(str(event_type).upper())
+        if event_date:
+            where.append("event_date=?")
+            params.append(str(event_date)[:10])
+        if amount is not None:
+            where.append("amount_minor=?")
+            params.append(_minor(amount))
+        if require_unallocated:
+            where.append("allocation_state IN ('UNALLOCATED','PARTIAL')")
+
+        rows = conn.execute(
+            """SELECT * FROM alex_phase2_cash_events WHERE """
+            + " AND ".join(where)
+            + " ORDER BY event_date DESC,created_at_utc DESC",
+            params,
+        ).fetchall()
+
+        # A cash record created by this exact inbound message is unambiguous.
+        if source_message_id:
+            source_matches = [
+                row for row in rows
+                if row["source_message_id"] == source_message_id
+            ]
+            if len(source_matches) == 1:
+                return source_matches[0]["cash_event_id"]
+
+        if len(rows) == 1 or (latest and rows):
+            return rows[0]["cash_event_id"]
+        if not rows:
+            raise ValueError("No authorized cash event matches that description.")
+        choices = "; ".join(
+            f"{row['event_type']} {row['event_date']} "
+            f"{_money(row['amount_minor']):.2f} {row['currency']}"
+            for row in rows[:5]
+        )
+        raise ValueError(
+            "More than one cash event matches. Ask the user which one: " + choices
+        )
+    finally:
+        conn.close()
+
+
+def resolve_cash_pool_reference(pool_id, pool_name, sender_phone,
+                                conversation_type="DIRECT_DM"):
+    ensure_schema()
+    conn = tools.get_db()
+    try:
+        if pool_id:
+            return _get_authorized_pool(
+                conn, pool_id, sender_phone, conversation_type
+            )["pool_id"]
+        user_id, private_space, shared = _context(
+            conn, sender_phone, conversation_type
+        )
+        wanted = _normalized_ref(pool_name)
+        if not wanted:
+            raise ValueError("Provide pool_id or pool_name.")
+        if conversation_type == "GROUP":
+            clause, args = "space_id='FAMILY_SHARED'", []
+        elif shared:
+            clause, args = "(space_id=? OR space_id='FAMILY_SHARED')", [private_space]
+        else:
+            clause, args = "space_id=?", [private_space]
+        rows = conn.execute(
+            "SELECT * FROM alex_phase2_cash_pools WHERE status='ACTIVE' AND "
+            + clause + " ORDER BY name",
+            args,
+        ).fetchall()
+        exact = [
+            row for row in rows if _normalized_ref(row["name"]) == wanted
+        ]
+        candidates = exact or [
+            row for row in rows
+            if wanted in _normalized_ref(row["name"])
+            or _normalized_ref(row["name"]) in wanted
+        ]
+        if len(candidates) == 1:
+            return candidates[0]["pool_id"]
+        if not candidates:
+            raise ValueError(f"No authorized cash pool uniquely matches {pool_name!r}.")
+        names = ", ".join(row["name"] for row in candidates[:5])
+        raise ValueError("Cash-pool name is ambiguous; ask which one: " + names)
+    finally:
+        conn.close()
+
+
+def resolve_reserve_reference(reserve_id, reserve_name, sender_phone,
+                              conversation_type="DIRECT_DM"):
+    ensure_schema()
+    conn = tools.get_db()
+    try:
+        if reserve_id:
+            return _authorized_reserve(
+                conn, reserve_id, sender_phone, conversation_type
+            )["reserve_id"]
+    finally:
+        conn.close()
+    wanted = _normalized_ref(reserve_name)
+    if not wanted:
+        raise ValueError("Provide reserve_id or reserve_name.")
+    rows = list_plan_reserves(
+        sender_phone, conversation_type, "all", include_inactive=True
+    )
+    exact = [row for row in rows if _normalized_ref(row["name"]) == wanted]
+    candidates = exact or [
+        row for row in rows
+        if wanted in _normalized_ref(row["name"])
+        or _normalized_ref(row["name"]) in wanted
+    ]
+    if len(candidates) == 1:
+        return candidates[0]["reserve_id"]
+    if not candidates:
+        raise ValueError(f"No authorized reserve uniquely matches {reserve_name!r}.")
+    names = ", ".join(row["name"] for row in candidates[:5])
+    raise ValueError("Reserve name is ambiguous; ask which one: " + names)
+
+
 def lock_goal(goal_id, sender_phone, conversation_type="DIRECT_DM"):
     ensure_schema()
     conn = tools.get_db()
@@ -545,11 +757,20 @@ def goal_progress(goal_id, sender_phone, conversation_type="DIRECT_DM"):
 def evaluate_goal_deviation(goal_id, actual_amount, period, sender_phone,
                             conversation_type="DIRECT_DM"):
     ensure_schema()
+    period = period or _period()
     conn = tools.get_db()
     try:
         goal = _get_authorized_goal(conn, goal_id, sender_phone, conversation_type)
         expected = goal_expected_for_period(conn, goal, period)
-        actual = _minor(actual_amount)
+        if actual_amount is None:
+            actual = conn.execute(
+                """SELECT COALESCE(SUM(amount_minor),0) AS total
+                   FROM alex_phase2_goal_contributions
+                   WHERE goal_id=? AND period=?""",
+                (goal_id, period),
+            ).fetchone()["total"]
+        else:
+            actual = _minor(actual_amount)
         delta = actual - expected
         if delta == 0:
             status = "ON_PLAN"
