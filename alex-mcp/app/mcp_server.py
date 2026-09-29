@@ -423,10 +423,11 @@ def recent_failures(actor: Actor, hours: int = 24, limit: int = 20) -> dict:
 
 
 @mcp.tool()
-def planning_create_goal(name: str, target_amount: float, baseline_monthly: float, actor: Actor,
+def planning_create_goal(name: str, target_amount: float, actor: Actor,
+                         baseline_monthly: float = 0,
                          currency: str = "MYR", target_date: str | None = None,
-                         status: str = "ACTIVE", shared: bool = False) -> dict:
-    """Create a goal with a recurring baseline. One-off contributions never silently change this baseline."""
+                         status: str = "DRAFT", shared: bool = False) -> dict:
+    """Create an unlocked draft goal. baseline_monthly is optional and defaults to zero; never invent a contribution."""
     return phase2_finance.create_goal(
         name, target_amount, baseline_monthly, actor.phone, actor.conversation_type,
         "family" if shared or actor.conversation_type == "GROUP" else "private",
