@@ -108,7 +108,11 @@ The catalog spans all three historical Alex phases.
 - reports;
 - cross-domain diary -> reminder conversation;
 - multi-turn plan refinement;
-- goal owner-agency conversation.
+- goal owner-agency conversation;
+- simulated **post-wake** family-group and spouse-DM privacy checks. These
+  deliberately bypass the WhatsApp wake gate so the ACL/brain behaviour can be
+  certified internally, while genuine @mention/swipe-reply metadata remains a
+  manual WhatsApp gate.
 
 The task contracts are intentional even though the current MCP surface has no
 dedicated task lifecycle. A certification rig must represent the owner's
@@ -190,6 +194,9 @@ Safety properties:
 - credentials are never printed into the report;
 - the rig verifies the bound DB path is inside the temporary directory;
 - Home Assistant is replaced with an in-memory fake before behavioural calls;
+- HA read/control/summary/report/automation reasoning is therefore testable
+  internally without touching a physical device; the real physical effect remains
+  a manual gate;
 - production `/data` records are not read/written by the certification turns.
 
 Seed fixtures include:
