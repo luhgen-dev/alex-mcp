@@ -189,6 +189,21 @@ class TurnTests(V044Base):
             2,
         )
 
+    def test_whisper_model_cache_requires_published_checksum(self):
+        fd, path = tempfile.mkstemp(suffix=".bin")
+        os.close(fd)
+        try:
+            blob = b"x" * (1024 * 1024 + 1)
+            with open(path, "wb") as handle:
+                handle.write(blob)
+            digest = __import__("hashlib").sha1(blob).hexdigest()
+            with patch.dict(media.WHISPER_MODEL_SHA1, {"tiny": digest}, clear=False):
+                self.assertTrue(media._valid_whisper_model(path, "tiny"))
+            with patch.dict(media.WHISPER_MODEL_SHA1, {"tiny": "0" * 40}, clear=False):
+                self.assertFalse(media._valid_whisper_model(path, "tiny"))
+        finally:
+            os.unlink(path)
+
     def test_mutating_voice_requires_two_local_decoders_to_agree(self):
         agreed = [
             ("local_auto", "add test toothpaste to my shopping list"),
