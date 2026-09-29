@@ -1582,6 +1582,54 @@ class AlexCoreTests(unittest.TestCase):
         with self.assertRaises(PermissionError):
             services.query_finances(group, scope="private")
 
+    def test_dm_receipt_media_does_not_widen_private_finance_scope(self):
+        self.claim("scope-receipt-private", "+60111111111", "log this receipt")
+        raw = base64.b64encode(b"generic-receipt").decode("ascii")
+        receipt_media = media.save_media(
+            "scope-receipt-private", "IMAGE", "image/jpeg", raw
+        )
+        actor = with_action_key(
+            self.actor(
+                "scope-receipt-private", "+60111111111", [receipt_media],
+                trusted_text="log this receipt",
+            ),
+            "scope-receipt-private-a",
+        )
+        result = services.log_expense(
+            actor, "Personal purchase", 15, "personal", currency="MYR"
+        )
+        self.assertEqual(result["space"], "HUSBAND_PVT")
+
+    def test_sensitive_finance_categories_default_private_but_family_can_be_explicit(self):
+        self.claim("scope-pharmacy-private", "+60111111111", "pharmacy medicine")
+        actor = with_action_key(
+            self.actor(
+                "scope-pharmacy-private", "+60111111111",
+                trusted_text="pharmacy medicine",
+            ),
+            "scope-pharmacy-private-a",
+        )
+        private = services.log_expense(
+            actor, "Pharmacy medicine", 20, "pharmacy", currency="MYR"
+        )
+        self.assertEqual(private["space"], "HUSBAND_PVT")
+
+        self.claim(
+            "scope-pharmacy-family", "+60111111111",
+            "share with the family pharmacy medicine",
+        )
+        family_actor = with_action_key(
+            self.actor(
+                "scope-pharmacy-family", "+60111111111",
+                trusted_text="share with the family pharmacy medicine",
+            ),
+            "scope-pharmacy-family-a",
+        )
+        family = services.log_expense(
+            family_actor, "Pharmacy medicine", 20, "pharmacy", currency="MYR"
+        )
+        self.assertEqual(family["space"], "FAMILY_SHARED")
+
     def test_shopping_private_and_family_lists_do_not_collapse_each_other(self):
         self.claim("shop-scope", "+60111111111", "shopping")
         actor = self.actor("shop-scope", "+60111111111")
