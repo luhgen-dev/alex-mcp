@@ -381,7 +381,9 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
             "Where's the saved turntable picture?",
             "Open the vinyl setup image I asked you to keep.",
         ),
-        _fs("search_saved_items", "get_saved_item"), seed="core",
+        _fs("search_saved_items", "get_saved_item"),
+        required_all=_fs("search_saved_items", "get_saved_item"),
+        seed="core",
         expect_attachment=True, expect_attachment_of="vinyl",
     ),
 
@@ -406,7 +408,9 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
             "Open the original audio note I sent.",
             "Get that preserved voice recording for me.",
         ),
-        _fs("get_media_original"), seed="core", live=False,
+        _fs("get_media_original"),
+        required_all=_fs("find_media", "get_media_original"),
+        seed="core", live=False,
     ),
 
     PromptContract(
