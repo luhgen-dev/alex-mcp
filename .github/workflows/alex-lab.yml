@@ -43,6 +43,8 @@ jobs:
             --phase "$PHASE" \
             --report /tmp/alex-lab-report.json \
             --packets /tmp/alex-lab-failures.jsonl \
+            --human-ai-packets /tmp/alex-human-ai-packets.jsonl \
+            --human-ai-report /tmp/alex-human-ai-report.json \
             $GATE
 
       - name: Upload Alex Lab evidence
@@ -53,6 +55,8 @@ jobs:
           path: |
             /tmp/alex-lab-report.json
             /tmp/alex-lab-failures.jsonl
+            /tmp/alex-human-ai-packets.jsonl
+            /tmp/alex-human-ai-report.json
           if-no-files-found: error
           retention-days: 14
 
