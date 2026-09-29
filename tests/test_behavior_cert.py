@@ -187,6 +187,44 @@ class BehaviourRigJudgeMutationTests(unittest.TestCase):
             behavior_cert.CERT_FIXTURES.clear()
             behavior_cert.CERT_FIXTURES.update(old)
 
+    def test_compound_request_fails_when_one_required_capability_is_missing(self):
+        contract = self.contract("p3.multi.finance.reminder")
+        trace = {
+            "turn": {"result": {"outcome": "complete"}},
+            "calls": [{
+                "tool": "log_expense",
+                "arguments": {
+                    "description": "Parking",
+                    "amount": 6,
+                    "currency": "MYR",
+                },
+                "result": {"status": "logged"},
+                "latency_ms": 1,
+            }],
+        }
+        problems = behavior_cert._judge_observation(
+            contract, source="text", reply="Done.", outbounds=[], trace=trace,
+            elapsed_ms=1, state_changes={"financial_events": {}},
+            state_expectation_problems=[],
+            ha_before={}, ha_after={}, ingress_result={"ok": True},
+        )
+        self.assertTrue(any("required-all" in p for p in problems), problems)
+
+    def test_privacy_refusal_can_pass_without_executing_protected_mutation(self):
+        contract = self.contract("p2.privacy.wife.private_write")
+        problems = behavior_cert._judge_observation(
+            contract, source="text",
+            reply="I can't access or remove another person's private saved item.",
+            outbounds=[],
+            trace={"turn": {"result": {"outcome": "complete"}}, "calls": []},
+            elapsed_ms=1, state_changes={}, state_expectation_problems=[],
+            ha_before={}, ha_after={}, ingress_result={"ok": True},
+        )
+        self.assertFalse(
+            any("required capability" in p or "durable household state" in p for p in problems),
+            problems,
+        )
+
     def test_non_english_output_fails_policy(self):
         self.assertIsNotNone(behavior_cert._english_output_problem(
             "Boleh, saya faham. Adakah anda mahu saya teruskan?"
