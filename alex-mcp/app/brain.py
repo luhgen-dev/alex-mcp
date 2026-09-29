@@ -1058,13 +1058,25 @@ def _quoted_context_message(quoted_context: dict | None) -> str | None:
             "use this exact event_id rather than searching for a different transaction."
         )
     if quoted_context.get("context_kind") or quoted_context.get("context_id"):
+        durable_kind = str(quoted_context.get("context_kind") or "").upper()
+        durable_id = quoted_context.get("context_id")
         parts.append(
             "Durable context: "
             + json.dumps({
-                "kind": quoted_context.get("context_kind"),
-                "id": quoted_context.get("context_id"),
+                "kind": durable_kind,
+                "id": durable_id,
             }, ensure_ascii=False, separators=(",", ":"))
         )
+        if durable_kind == "RECEIPT" and durable_id:
+            parts.append(
+                "If the user asks to send/show/repeat this again, call get_receipt "
+                "with this exact durable id. Do not merely restate the receipt text."
+            )
+        elif durable_kind == "SAVED_ITEM" and durable_id:
+            parts.append(
+                "If the user asks to send/show/repeat this again, call get_saved_item "
+                "with this exact durable id. Do not substitute another saved item."
+            )
     return " ".join(parts)
 
 
