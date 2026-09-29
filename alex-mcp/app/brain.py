@@ -6,7 +6,7 @@ import re
 import time
 import uuid
 from datetime import datetime
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo\n\nimport runtime_clock
 
 from mcp import Client
 from mcp.types import TextContent
@@ -904,7 +904,7 @@ def _needs_exact_clock(user_text: str) -> bool:
 
 
 def _runtime_context(actor: ActorContext, user_text: str = "") -> str:
-    now = datetime.now(ZoneInfo(actor.timezone))
+    now = runtime_clock.now_in(actor.timezone)
     channel = "the Family Shared WhatsApp group" if actor.conversation_type == "GROUP" else "a private WhatsApp DM"
     clock = (
         f"current local datetime is {now.isoformat()}"
