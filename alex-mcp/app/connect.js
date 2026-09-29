@@ -660,17 +660,18 @@ function startEgress() {
         if (!to) throw new Error('Missing target conversation');
 
         let sent;
+        const sendOptions = payload.message_id ? { messageId: String(payload.message_id) } : {};
         if (payload.kind === 'text') {
-          sent = await currentSock.sendMessage(to, { text: payload.text || '' });
+          sent = await currentSock.sendMessage(to, { text: payload.text || '' }, sendOptions);
         } else if (payload.kind === 'image') {
           const buf = Buffer.from(payload.file_b64 || '', 'base64');
-          sent = await currentSock.sendMessage(to, { image: buf, mimetype: payload.mimetype || 'image/jpeg', caption: payload.caption || undefined });
+          sent = await currentSock.sendMessage(to, { image: buf, mimetype: payload.mimetype || 'image/jpeg', caption: payload.caption || undefined }, sendOptions);
         } else if (payload.kind === 'document') {
           const buf = Buffer.from(payload.file_b64 || '', 'base64');
-          sent = await currentSock.sendMessage(to, { document: buf, mimetype: payload.mimetype || 'application/octet-stream', fileName: payload.filename || 'file', caption: payload.caption || undefined });
+          sent = await currentSock.sendMessage(to, { document: buf, mimetype: payload.mimetype || 'application/octet-stream', fileName: payload.filename || 'file', caption: payload.caption || undefined }, sendOptions);
         } else if (payload.kind === 'audio') {
           const buf = Buffer.from(payload.file_b64 || '', 'base64');
-          sent = await currentSock.sendMessage(to, { audio: buf, mimetype: payload.mimetype || 'audio/ogg', ptt: true });
+          sent = await currentSock.sendMessage(to, { audio: buf, mimetype: payload.mimetype || 'audio/ogg', ptt: true }, sendOptions);
         } else {
           throw new Error('Unsupported outbound kind');
         }
