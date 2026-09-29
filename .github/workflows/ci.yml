@@ -66,6 +66,12 @@ jobs:
               )
           PY
 
+      - name: Build full human-AI reasoning corpus
+        run: |
+          python alex-mcp/app/human_ai_lab.py --mode selftest --phase all \
+            --packets /tmp/alex-human-ai-packets.jsonl \
+            --report /tmp/alex-human-ai-report.json
+
       - name: Run final parity architecture audit
         run: python alex-mcp/app/final_audit.py
 
