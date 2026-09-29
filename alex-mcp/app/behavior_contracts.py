@@ -28,6 +28,7 @@ class StateExpectation:
     table: str
     where: tuple[tuple[str, Any], ...] = ()
     fields: tuple[tuple[str, Any], ...] = ()
+    contains: tuple[tuple[str, str], ...] = ()
     count: int | None = None
     delta: int | None = None
 
@@ -81,6 +82,12 @@ class ConversationStep:
     forbid_private_fixture_leak: bool = False
     expect_clarification: bool = False
     quote_previous: bool = False
+    actor: str = "husband"
+    conversation_type: str = "DIRECT_DM"
+    expect_duplicate: bool = False
+    reuse_previous_message_id: bool = False
+    restart_before: bool = False
+    clock_utc: str | None = None
     reply_language: str = "en"
 
 
@@ -1281,6 +1288,143 @@ CONVERSATION_CONTRACTS: tuple[ConversationContract, ...] = (
                 "Show me Family Holiday Savings including its monthly contribution.",
                 _fs("planning_goal_progress", "planning_list_goals"),
                 ("Family Holiday",),
+            ),
+        ),
+    ),
+    ConversationContract(
+        "conv.finance.correction", "phase1", "finance",
+        "Natural correction must supersede the original expense and keep history.",
+        "empty",
+        (
+            ConversationStep(
+                "I paid RM12.50 for parking.",
+                _fs("log_expense"),
+                state_expectations=(
+                    StateExpectation(
+                        "financial_events",
+                        where=(("source_message_id", "$MID"),),
+                        fields=(("amount_minor", 1250), ("currency", "MYR"), ("status", "ACTIVE")),
+                        count=1, delta=1,
+                    ),
+                ),
+            ),
+            ConversationStep(
+                "Actually it was RM12.80.",
+                _fs("correct_expense"),
+                state_expectations=(
+                    StateExpectation(
+                        "financial_events",
+                        where=(("source_message_id", "$MID"),),
+                        fields=(("amount_minor", 1280), ("currency", "MYR"), ("status", "ACTIVE")),
+                        count=1, delta=1,
+                    ),
+                    StateExpectation(
+                        "financial_events",
+                        fields=(("amount_minor", 1250), ("status", "SUPERSEDED")),
+                        count=1, delta=1,
+                    ),
+                    StateExpectation(
+                        "financial_event_corrections",
+                        count=1, delta=1,
+                    ),
+                ),
+            ),
+        ),
+    ),
+    ConversationContract(
+        "conv.finance.replay", "phase1", "finance",
+        "Replaying the same inbound message id must be exactly-once.",
+        "empty",
+        (
+            ConversationStep(
+                "I paid RM6 for parking.",
+                _fs("log_expense"),
+                state_expectations=(
+                    StateExpectation(
+                        "financial_events",
+                        where=(("source_message_id", "$MID"),),
+                        fields=(("amount_minor", 600), ("currency", "MYR"), ("status", "ACTIVE")),
+                        count=1, delta=1,
+                    ),
+                ),
+            ),
+            ConversationStep(
+                "I paid RM6 for parking.",
+                _fs("log_expense"),
+                expect_duplicate=True,
+                reuse_previous_message_id=True,
+                unchanged_tables=("financial_events", "financial_event_corrections"),
+            ),
+        ),
+    ),
+    ConversationContract(
+        "conv.memory.restart", "phase1", "memory",
+        "Saved memory must survive service reinitialization and remain retrievable.",
+        "empty",
+        (
+            ConversationStep(
+                "Remember that the restart-test code word is cobalt.",
+                _fs("save_item"),
+                state_expectations=(
+                    StateExpectation(
+                        "saved_items",
+                        where=(("source_message_id", "$MID"),),
+                        contains=(("content", "cobalt"),),
+                        count=1, delta=1,
+                    ),
+                ),
+            ),
+            ConversationStep(
+                "What was the restart-test code word I asked you to remember?",
+                _fs("search_saved_items"),
+                expected_terms=("cobalt",),
+                restart_before=True,
+            ),
+        ),
+    ),
+    ConversationContract(
+        "conv.privacy.dm.group", "phase2", "privacy",
+        "Private data visible in the owner's DM must not leak when the same owner asks from family group.",
+        "core",
+        (
+            ConversationStep(
+                "What saved code word do I have?",
+                _fs("search_saved_items"),
+                expected_terms=("cobalt",),
+            ),
+            ConversationStep(
+                "What saved code word do I have?",
+                _fs("search_saved_items"),
+                conversation_type="GROUP",
+                forbid_private_fixture_leak=True,
+                forbidden_terms=("cobalt",),
+            ),
+        ),
+    ),
+    ConversationContract(
+        "conv.reminder.midnight", "phase1", "reminders",
+        "Relative-date semantics must roll over correctly across local midnight.",
+        "empty",
+        (
+            ConversationStep(
+                "Remind me tomorrow at 9am to pay electricity.",
+                _fs("create_reminder"),
+                clock_utc="2026-09-29T15:55:00+00:00",
+                state_expectations=(
+                    StateExpectation(
+                        "reminders",
+                        where=(("source_message_id", "$MID"),),
+                        contains=(("due_at_utc", "2026-09-30T01:00"),),
+                        fields=(("status", "OPEN"),),
+                        count=1, delta=1,
+                    ),
+                ),
+            ),
+            ConversationStep(
+                "What reminders do I have today?",
+                _fs("list_reminders"),
+                expected_terms=("electricity",),
+                clock_utc="2026-09-29T16:05:00+00:00",
             ),
         ),
     ),
