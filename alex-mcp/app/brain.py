@@ -385,14 +385,14 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
     force: set[str] = set()
     block: set[str] = set()
 
-    money = bool(re.search(r"\\b(?:rm|myr|sgd)\\s*\\d|\\b\\d+(?:[.,]\\d+)?\\s*(?:rm|myr|sgd)\\b", low))
+    money = bool(re.search(r"\b(?:rm|myr|sgd)\s*\d|\b\d+(?:[.,]\d+)?\s*(?:rm|myr|sgd)\b", low))
     explicit_expense_write = bool(
-        (money and re.search(r"\\b(?:i\\s+)?(?:spent|paid|bought)\\b", low))
-        or re.search(r"\\b(?:log|record|add)\\b.*\\b(?:expense|rm|myr|sgd)\\b", low)
-        or re.search(r"\\b(?:correct|fix|wrong amount|actually)\\b", low)
+        (money and re.search(r"\b(?:i\s+)?(?:spent|paid|bought)\b", low))
+        or re.search(r"\b(?:log|record|add)\b.*\b(?:expense|rm|myr|sgd)\b", low)
+        or re.search(r"\b(?:correct|fix|wrong amount|actually)\b", low)
     )
     finance_read = bool(re.search(
-        r"\\b(?:expenses?|transactions?|spending|last few things .*paid|how many .*expenses?)\\b",
+        r"\b(?:expenses?|transactions?|spending|last few things .*paid|how many .*expenses?)\b",
         low,
     ))
     if finance_read and not explicit_expense_write:
@@ -400,79 +400,79 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         block |= {"log_expense", "correct_expense", "confirm_expense"}
 
     # Captioned payment documents are financial writes, not report-export asks.
-    if re.search(r"\\b(?:add|log|record)\\b.*\\b(?:payment|receipt)\\b.*\\b(?:pdf|document|image)\\b", low):
+    if re.search(r"\b(?:add|log|record)\b.*\b(?:payment|receipt)\b.*\b(?:pdf|document|image)\b", low):
         force.add("log_expense")
 
     plan_read = bool(
-        re.search(r"\\b(?:show|what|remind me what)\\b.*\\b(?:plan|draft|planned|decided)\\b", low)
-        or re.search(r"\\bwhat (?:do we have planned|have we decided)\\b", low)
+        re.search(r"\b(?:show|what|remind me what)\b.*\b(?:plan|draft|planned|decided)\b", low)
+        or re.search(r"\bwhat (?:do we have planned|have we decided)\b", low)
     )
     plan_create = bool(
-        re.search(r"\\b(?:start|create|brainstorm)\\b.*\\b(?:plan|draft)\\b", low)
-        or re.search(r"\\blet'?s (?:start )?planning\\b", low)
+        re.search(r"\b(?:start|create|brainstorm)\b.*\b(?:plan|draft)\b", low)
+        or re.search(r"\blet'?s (?:start )?planning\b", low)
     )
     if plan_read and not plan_create:
         force.add("list_plans")
         block.add("create_plan")
-        if re.search(r"\\bremind me what\\b", low):
+        if re.search(r"\bremind me what\b", low):
             block.add("create_reminder")
     if plan_create:
         force.add("create_plan")
         block.add("add_diary_event")
 
     diary_read = bool(re.search(
-        r"\\b(?:what information|show|what do i have|what have i got|when is|when's)\\b.*"
-        r"\\b(?:appointment|meeting|event|calendar|agenda)\\b",
+        r"\b(?:what information|show|what do i have|what have i got|when is|when's)\b.*"
+        r"\b(?:appointment|meeting|event|calendar|agenda)\b",
         low,
     ))
     if diary_read:
         force.add("get_agenda_range")
         block.add("add_diary_event")
 
-    if re.search(r"\\b(?:put|allocate|channel)\\b.*\\b(?:stash|cash pool|buffer)\\b", low):
+    if re.search(r"\b(?:put|allocate|channel)\b.*\b(?:stash|cash pool|buffer)\b", low):
         force.add("planning_allocate_cash_to_pool")
     if money and re.search(
-        r"\\b(?:got|received|credited|came in|record)\\b.*\\b(?:ot|overtime|bonus|salary|refund|extra cash)\\b"
-        r"|\\b(?:ot|overtime|bonus|salary|refund|extra cash)\\b.*\\b(?:came in|received|credited)\\b",
+        r"\b(?:got|received|credited|came in|record)\b.*\b(?:ot|overtime|bonus|salary|refund|extra cash)\b"
+        r"|\b(?:ot|overtime|bonus|salary|refund|extra cash)\b.*\b(?:came in|received|credited)\b",
         low,
     ):
         force.add("planning_record_cash")
-    if re.search(r"\\b(?:what'?s|what is|how much).*\\bleft\\b.*\\b(?:ot|overtime|cash|money)\\b", low):
+    if re.search(r"\b(?:what'?s|what is|how much).*\bleft\b.*\b(?:ot|overtime|cash|money)\b", low):
         force.add("planning_cash_status")
 
-    if re.search(r"\\b(?:which goal.*refer to|match .*alias|alias .*goal|match .*account.*goal)\\b", low):
+    if re.search(r"\b(?:which goal.*refer to|match .*alias|alias .*goal|match .*account.*goal)\b", low):
         force.add("planning_match_goal_alias")
     if re.search(
-        r"\\b(?:contribution|contributed)\\b.*\\b(?:goal|saving|holiday)\\b"
-        r"|\\bput\\b.*\\b(?:goal|savings?)\\b",
+        r"\b(?:contribution|contributed)\b.*\b(?:goal|saving|holiday)\b"
+        r"|\bput\b.*\b(?:goal|savings?)\b",
         low,
     ):
         force.add("planning_record_goal_contribution")
-    if re.search(r"\\b(?:what am i saving towards|show my goals|list .*goals|what goals)\\b", low):
+    if re.search(r"\b(?:what am i saving towards|show my goals|list .*goals|what goals)\b", low):
         force.add("planning_list_goals")
-    if re.search(r"\\b(?:compare .*salary|salary .*different|normal salary|configured salary)\\b", low):
+    if re.search(r"\b(?:compare .*salary|salary .*different|normal salary|configured salary)\b", low):
         force.add("planning_compare_salary")
-    if re.search(r"\\b(?:safe monthly baseline|fixed income .*locked commitments|locked commitments.*fixed income)\\b", low):
+    if re.search(r"\b(?:safe monthly baseline|fixed income .*locked commitments|locked commitments.*fixed income)\b", low):
         force.add("planning_baseline")
 
-    if re.search(r"\\b(?:monitor|track)\\b.*\\b(?:goal|payment|bill|subject)\\b", low):
+    if re.search(r"\b(?:monitor|track)\b.*\b(?:goal|payment|bill|subject)\b", low):
         force.add("monitor_delegate")
-    if re.search(r"\\b(?:stop monitoring|cancel .*tracking|stop tracking)\\b", low):
+    if re.search(r"\b(?:stop monitoring|cancel .*tracking|stop tracking)\b", low):
         force.discard("monitor_delegate")
         force.add("monitor_cancel")
 
     if re.search(
-        r"\\b(?:i worked .*\\bot\\b|worked .*overtime|shift .*swapp(?:ed)?|took mc|record .*mc)\\b",
+        r"\b(?:i worked .*\bot\b|worked .*overtime|shift .*swapp(?:ed)?|took mc|record .*mc)\b",
         low,
     ):
         force.add("work_record_event")
 
     # Frequent phone-typing reminder misspellings still have a deterministic,
     # safe action path instead of being crowded out by bill tools.
-    if re.search(r"\\b(?:rember|remnder|remidn|remindn|remidr)\\b", low):
+    if re.search(r"\b(?:rember|remnder|remidn|remindn|remidr)\b", low):
         force.add("create_reminder")
 
-    if re.search(r"[\\u0B80-\\u0BFF]", text or ""):
+    if re.search(r"[\u0B80-\u0BFF]", text or ""):
         # Tamil intent hints. Unknown Tamil still falls through to the broad
         # multilingual safety valve below; known reminder/memory wording stays
         # narrow enough to survive the tool cap.
