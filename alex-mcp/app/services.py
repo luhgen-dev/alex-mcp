@@ -61,14 +61,31 @@ def _clean_category(value: str | None) -> str | None:
     return None if cleaned in GENERIC_CATEGORIES else cleaned
 
 
+def _routing_keyword_matches(keyword: str, text: str) -> bool:
+    """Match routing keywords as lexical phrases, not arbitrary substrings.
+
+    Short catalogue entries such as "fine", "tng" and "bhp" must not match
+    inside unrelated words. Flexible whitespace is allowed for multi-word
+    phrases while preserving word boundaries.
+    """
+    key = str(keyword or "").strip().casefold()
+    value = str(text or "").casefold()
+    if not key:
+        return False
+    pieces = [re.escape(part) for part in key.split() if part]
+    if not pieces:
+        return False
+    pattern = r"(?<!\w)" + r"\s+".join(pieces) + r"(?!\w)"
+    return bool(re.search(pattern, value))
+
+
 def _find_rule(conn, actor: ActorContext, text: str):
-    lowered = (text or "").lower()
     rows = conn.execute(
         "SELECT * FROM routing_rules WHERE user_id=? ORDER BY LENGTH(keyword) DESC",
         (actor.user_id,),
     ).fetchall()
     for row in rows:
-        if row["keyword"].lower() in lowered:
+        if _routing_keyword_matches(row["keyword"], text):
             return row
     return None
 
@@ -83,7 +100,25 @@ def _route(conn, actor: ActorContext, text: str, category: str | None) -> tuple[
     # If a transfer description contains no established purpose keyword, do not trust
     # a model-supplied category. Alex must ask the user instead.
     resolved_category = (rule["category"] if rule else None) or (None if generic_transfer else proposed)
+
+    trusted = str(getattr(actor, "trusted_text", "") or "")
+    explicit_private = bool(re.search(
+        r"\b(?:private|privately|just\s+for\s+me|only\s+for\s+me|my\s+private)\b",
+        trusted,
+        re.IGNORECASE,
+    ))
+    explicit_family = bool(re.search(
+        r"\b(?:family\s+shared|shared\s+with\s+(?:the\s+)?family|share\s+with\s+(?:the\s+)?family)\b",
+        trusted,
+        re.IGNORECASE,
+    ))
+
     if actor.conversation_type == "GROUP":
+        space = "FAMILY_SHARED"
+    elif explicit_private:
+        # An explicit privacy request always outranks catalogue defaults.
+        space = actor.private_space
+    elif explicit_family:
         space = "FAMILY_SHARED"
     elif rule and rule["force_space_id"]:
         space = rule["force_space_id"]
