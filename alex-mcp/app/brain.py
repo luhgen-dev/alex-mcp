@@ -19,6 +19,7 @@ from context import ActorContext, use_actor, with_action_key
 from db import add_turn, connect, recent_turns, record_usage, current_month_ai_cost
 from mcp_server import mcp
 import phase2_intent
+import facade
 
 SYSTEM_PROMPT = """You are Alex, one household assistant.
 
@@ -868,6 +869,25 @@ def _money_only_reply(user_text: str) -> bool:
     )) and not bool(re.fullmatch(r"\s*[123]\s*", text))
 
 
+async def _provider_tool_specs(user_text: str, media_context: list[str] | None = None,
+                               quoted_context: dict | None = None) -> list[dict]:
+    """Return the stable v0.5 facade exposed to the conversational model.
+
+    The legacy/detailed MCP surface remains available behind the facade and for
+    deterministic tests.  Mapping starts from the already-hardened semantic
+    router so the migration cannot silently drop a known capability.
+    """
+    legacy = await _tool_specs(user_text, media_context, quoted_context)
+    underlying = {
+        str(spec.get("function", {}).get("name") or "")
+        for spec in legacy
+        if isinstance(spec, dict)
+    }
+    underlying.discard("")
+    specs = facade.specs_for_underlying(underlying, TOOL_EXPOSURE_MAX)
+    return specs[:TOOL_EXPOSURE_MAX]
+
+
 async def _tool_specs(user_text: str, media_context: list[str] | None = None,
                       quoted_context: dict | None = None) -> list[dict]:
     # Casual conversation stays model-only unless a trusted WhatsApp reply
@@ -1657,7 +1677,7 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
             return local_reply, []
 
     settings = get_settings()
-    tools = await _tool_specs(user_text, media_context, quoted_context)
+    tools = await _provider_tool_specs(user_text, media_context, quoted_context)
     trace["exposed_tools"] = [x["function"]["name"] for x in tools] if tools else []
     routes = _provider_routes(
         settings, user_text=user_text, tools=tools,
@@ -1815,12 +1835,50 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
             except json.JSONDecodeError:
                 args = {}
 
+            if name == "load_pack":
+                trace["tools_called"].append(name)
+                pack = str(args.get("pack") or "").strip().casefold()
+                try:
+                    pack_names = facade.pack_tools(pack)
+                    # Rank the detailed specialist surface against the original
+                    # user request so even a loaded pack stays within the same
+                    # six-schema budget.
+                    pack_names = _cap_tool_names(
+                        pack_names, user_text, media_context
+                    )
+                    tools = await _tool_specs_for_names(pack_names)
+                    tools = tools[:TOOL_EXPOSURE_MAX]
+                    trace["exposed_tools"] = sorted(set(trace["exposed_tools"]) | {
+                        x["function"]["name"] for x in tools
+                    })
+                    pack_payload = {
+                        "status": "pack_loaded",
+                        "pack": pack,
+                        "tool_names": [x["function"]["name"] for x in tools],
+                    }
+                except Exception as exc:
+                    pack_payload = {
+                        "status": "error",
+                        "message": str(exc)[:500],
+                    }
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": call.id,
+                    "content": json.dumps(
+                        pack_payload, ensure_ascii=False, separators=(",", ":")
+                    ),
+                })
+                continue
+
+            # Compatibility path for an older discovery call that can still
+            # appear in replayed certification traces. Production v0.5 does
+            # not advertise this tool; load_pack replaces it.
             if name == DISCOVERY_TOOL_NAME:
                 trace["tools_called"].append(name)
                 normalized = str(args.get("intent") or "").strip()
                 discovered = _select_tool_names(normalized, media_context)
                 discovered_specs = await _tool_specs_for_names(discovered)
-                tools = discovered_specs[:TOOL_EXPOSURE_MAX - 1] + [DISCOVERY_TOOL]
+                tools = discovered_specs[:TOOL_EXPOSURE_MAX]
                 trace["exposed_tools"] = sorted(set(trace["exposed_tools"]) | {
                     x["function"]["name"] for x in tools
                 })
@@ -1830,10 +1888,7 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                     "content": json.dumps({
                         "status": "tools_loaded",
                         "normalized_intent": normalized,
-                        "tool_names": [
-                            x["function"]["name"]
-                            for x in discovered_specs[:TOOL_EXPOSURE_MAX - 1]
-                        ],
+                        "tool_names": [x["function"]["name"] for x in tools],
                     }, ensure_ascii=False, separators=(",", ":")),
                 })
                 continue
@@ -1843,7 +1898,19 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
             action_key = _action_key(actor, name, args, occurrence[signature])
 
             try:
-                result, files = await _call_mcp(actor, name, args, action_key)
+                if name in facade.FACADE_NAMES:
+                    async def _facade_call(tool_name: str, tool_args: dict, sub_key: str):
+                        return await _call_mcp(
+                            actor, tool_name, tool_args, sub_key
+                        )
+                    result, files = await facade.execute(
+                        name, args, _facade_call, action_key
+                    )
+                else:
+                    # Detailed tools are reachable only after an explicit
+                    # bounded load_pack step (or legacy replay); execution still
+                    # uses the exact same audited/idempotent MCP path.
+                    result, files = await _call_mcp(actor, name, args, action_key)
                 new_files = []
                 for item in files or []:
                     path = item.get("path") if isinstance(item, dict) else None
