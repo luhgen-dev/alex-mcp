@@ -24,6 +24,7 @@ from typing import Any
 APP = Path(__file__).resolve().parent
 REPO = APP.parents[1]
 CERT_NOW = "2026-09-29T02:00:00+00:00"
+KNOWN_FAILURES = APP / "behavior_known_failures.json"
 
 
 def _isolated_env(root: Path, label: str, *, fixed_clock: bool = False) -> dict[str, str]:
@@ -76,6 +77,13 @@ def _run(label: str, cmd: list[str], env: dict[str, str],
         "stdout_tail": "\n".join(proc.stdout.splitlines()[-25:]),
         "stderr_tail": "\n".join(proc.stderr.splitlines()[-25:]),
     }
+
+
+def _contract_args(contract_ids: list[str]) -> list[str]:
+    args: list[str] = []
+    for contract_id in contract_ids:
+        args.extend(["--contract", contract_id])
+    return args
 
 
 def _load_json(path: str | None) -> dict[str, Any] | None:
@@ -183,8 +191,9 @@ def _offline_failure_packets(report: dict[str, Any]) -> list[dict[str, Any]]:
     return packets
 
 
-def run_lab(phase: str, imported_live: dict[str, Any] | None) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+def run_lab(phase: str, imported_live: dict[str, Any] | None, contract_ids: list[str] | None = None) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     py = sys.executable
+    contract_ids = list(contract_ids or [])
     with tempfile.TemporaryDirectory(prefix="alex-external-lab-") as tmp:
         root = Path(tmp)
         reports = root / "reports"
@@ -225,7 +234,8 @@ def run_lab(phase: str, imported_live: dict[str, Any] | None) -> tuple[dict[str,
         offline = _run(
             "tier_b_offline",
             [py, "alex-mcp/app/behavior_cert.py", "--mode", "offline",
-             "--phase", phase, "--no-fail-exit", "--report", str(offline_path)],
+             "--phase", phase, "--no-fail-exit", "--report", str(offline_path)]
+            + _contract_args(contract_ids),
             _isolated_env(root, "offline", fixed_clock=True),
             offline_path,
         )
@@ -265,6 +275,7 @@ def run_lab(phase: str, imported_live: dict[str, Any] | None) -> tuple[dict[str,
             "home_assistant_dependency": False,
             "whatsapp_transport_started": False,
             "provider_calls_made": False,
+            "contracts": contract_ids,
             "certification_clock": CERT_NOW,
             "summary": {
                 "infrastructure_errors": infrastructure_errors,
@@ -292,13 +303,54 @@ def run_lab(phase: str, imported_live: dict[str, Any] | None) -> tuple[dict[str,
         return report, packets
 
 
+
+def run_live_provider(
+    phase: str,
+    contract_ids: list[str],
+    provider: str,
+    source_options: str,
+    max_cost_usd: float,
+    report_path: Path,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Run the real provider tier externally against the certification sandbox."""
+    py = sys.executable
+    with tempfile.TemporaryDirectory(prefix="alex-external-live-") as tmp:
+        root = Path(tmp)
+        env = _isolated_env(root, "live", fixed_clock=True)
+        cmd = [
+            py, "alex-mcp/app/behavior_cert.py",
+            "--mode", "live",
+            "--phase", phase,
+            "--provider", provider,
+            "--source-options", source_options,
+            "--max-live-cost-usd", str(max(0.0, max_cost_usd)),
+            "--report", str(report_path),
+            "--no-fail-exit",
+        ] + _contract_args(contract_ids)
+        result = _run("tier_b_live_provider", cmd, env, report_path)
+    report = result.get("report") or {
+        "mode": "live",
+        "status": "ERROR",
+        "summary": {"failures": 0},
+    }
+    return report, _live_failure_packets(report)
+
+
 def main() -> dict[str, Any]:
     parser = argparse.ArgumentParser(description="Run Alex externally, outside Home Assistant")
     parser.add_argument("--phase", choices=("all", "phase1", "phase2", "phase3"), default="all")
     parser.add_argument(
+        "--contract", action="append", default=[],
+        help="target one behaviour contract; repeatable for cheap repair loops",
+    )
+    parser.add_argument(
         "--live-report",
         help="optional prior behavior_cert live JSON; imported only for triage, never re-executed",
     )
+    parser.add_argument("--run-live", action="store_true", help="opt in to real provider certification outside HA")
+    parser.add_argument("--provider", choices=("auto", "gemini", "grok", "openai"), default="auto")
+    parser.add_argument("--source-options", default=os.environ.get("ALEX_CERT_SOURCE_OPTIONS", "/data/options.json"))
+    parser.add_argument("--max-live-cost-usd", type=float, default=0.25)
     parser.add_argument("--report", default="alex-lab-report.json")
     parser.add_argument("--packets", default="alex-lab-failures.jsonl")
     parser.add_argument(
@@ -308,7 +360,23 @@ def main() -> dict[str, Any]:
     args = parser.parse_args()
 
     imported_live = _load_json(args.live_report)
-    report, packets = run_lab(args.phase, imported_live)
+    report, packets = run_lab(args.phase, imported_live, args.contract)
+
+    if args.run_live:
+        live_path = Path(args.report).with_name("alex-lab-live.json")
+        live_report, live_packets = run_live_provider(
+            args.phase, args.contract, args.provider, args.source_options,
+            args.max_live_cost_usd, live_path,
+        )
+        packets.extend(live_packets)
+        report["provider_calls_made"] = True
+        report["live_provider"] = {
+            "status": live_report.get("status"),
+            "summary": live_report.get("summary", {}),
+            "report": str(live_path),
+        }
+        if live_report.get("status") != "PASS" and report.get("status") == "PASS":
+            report["status"] = "PRODUCT_FAIL"
 
     report_path = Path(args.report)
     report_path.parent.mkdir(parents=True, exist_ok=True)
