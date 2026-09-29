@@ -130,8 +130,8 @@ def catalog_audit() -> dict:
             failures.append(f"{contract.id}: fewer than two natural-language variants")
         if not contract.required_any:
             failures.append(f"{contract.id}: no required capability/tool")
-        if contract.required_any & contract.forbidden:
-            failures.append(f"{contract.id}: same tool is both required and forbidden")
+        if (contract.required_any | contract.required_all) & contract.forbidden:
+            failures.append(f"{contract.id}: same capability is both required and forbidden")
     if not failures:
         checks.append("prompt contracts have multiple variants and coherent tool requirements")
 
@@ -152,10 +152,10 @@ def catalog_audit() -> dict:
 
     covered_capabilities = set()
     for contract in PROMPT_CONTRACTS:
-        covered_capabilities |= set(contract.required_any)
+        covered_capabilities |= set(contract.required_any) | set(contract.required_all)
     for contract in CONVERSATION_CONTRACTS:
         for step in contract.steps:
-            covered_capabilities |= set(step.required_any)
+            covered_capabilities |= set(step.required_any) | set(step.required_all)
 
     # Future-proofing is capability based. New MCP functions must be classified
     # in the adapter; new owner capabilities must be represented by a contract.
@@ -384,9 +384,13 @@ def offline_certify(phase: str, heldout_path: str | None = None) -> dict:
 
     for contract in contracts_for_phase(phase):
         required_caps = set(contract.required_any) - {"routing.discovery"}
+        required_all_caps = set(contract.required_all) - {"routing.discovery"}
         forbidden_caps = set(contract.forbidden) - {"routing.discovery"}
         implemented_required = {
             cap for cap in required_caps if implementation_exists(cap, tool_names)
+        }
+        missing_required_all_impl = {
+            cap for cap in required_all_caps if not implementation_exists(cap, tool_names)
         }
         if not implemented_required:
             failures.append({
@@ -397,6 +401,17 @@ def offline_certify(phase: str, heldout_path: str | None = None) -> dict:
                     + " / ".join(sorted(required_caps))
                 ),
                 "missing_capabilities": sorted(required_caps),
+            })
+
+        if missing_required_all_impl:
+            failures.append({
+                "contract": contract.id,
+                "kind": "missing-required-all-capability",
+                "detail": (
+                    "required-all semantic capabilities are not implemented: "
+                    + ", ".join(sorted(missing_required_all_impl))
+                ),
+                "missing_capabilities": sorted(missing_required_all_impl),
             })
 
         for source in contract.sources:
@@ -411,6 +426,7 @@ def offline_certify(phase: str, heldout_path: str | None = None) -> dict:
                 }
                 selected_caps = set(capabilities_for_tools(selected_tools))
                 direct = bool(selected_caps & required_caps)
+                direct_all = required_all_caps.issubset(selected_caps)
                 discovery_available = "routing.discovery" in selected_caps
                 forbidden = sorted(selected_caps & forbidden_caps)
                 over_cap = len(selected_tools) > brain.TOOL_EXPOSURE_MAX
@@ -422,6 +438,7 @@ def offline_certify(phase: str, heldout_path: str | None = None) -> dict:
                     "prompt": _report_prompt(phrase, variant_kind),
                     "variant_kind": variant_kind,
                     "required_capabilities": sorted(required_caps),
+                    "required_all_capabilities": sorted(required_all_caps),
                     "provider_facing_capabilities": sorted(selected_caps),
                     "provider_facing_tools": sorted(selected_tools),
                 }
@@ -433,6 +450,23 @@ def offline_certify(phase: str, heldout_path: str | None = None) -> dict:
                 if over_cap:
                     problems.append(
                         f"tool exposure {len(selected_tools)} exceeds cap {brain.TOOL_EXPOSURE_MAX}"
+                    )
+
+                if required_all_caps and not direct_all:
+                    missing_all = sorted(required_all_caps - selected_caps)
+                    if discovery_available and not problems:
+                        needs_live.append({
+                            **row,
+                            "kind": "required-all-discovery-dependent",
+                            "detail": (
+                                "compound intent is not directly fully exposed; "
+                                "live certification must execute all required capabilities: "
+                                + ", ".join(missing_all)
+                            ),
+                        })
+                        continue
+                    problems.append(
+                        "required-all capabilities not exposed: " + ", ".join(missing_all)
                     )
 
                 if not direct and not implemented_required:
@@ -1316,15 +1350,32 @@ def _judge_observation(
     }
     called_caps = set(capabilities_for_tools(called_tools))
     required_caps = set(contract.required_any) - {"routing.discovery"}
+    required_all_caps = set(getattr(contract, "required_all", frozenset())) - {"routing.discovery"}
     forbidden_caps = set(contract.forbidden) - {"routing.discovery"}
 
     problems: list[str] = []
     if ingress_result is not None and not ingress_result.get("ok"):
         problems.append("production ingress path returned failure")
-    if not contract.expect_clarification and not getattr(contract, "expect_duplicate", False) and not (called_caps & required_caps):
+    if (
+        not contract.expect_clarification
+        and not getattr(contract, "expect_refusal", False)
+        and not getattr(contract, "expect_duplicate", False)
+        and not (called_caps & required_caps)
+    ):
         problems.append(
             "required capability was not actually executed: "
             + " / ".join(sorted(required_caps))
+        )
+    if (
+        required_all_caps
+        and not contract.expect_clarification
+        and not getattr(contract, "expect_refusal", False)
+        and not getattr(contract, "expect_duplicate", False)
+        and not required_all_caps.issubset(called_caps)
+    ):
+        problems.append(
+            "required-all capabilities were not all executed: "
+            + ", ".join(sorted(required_all_caps - called_caps))
         )
     bad = sorted(called_caps & forbidden_caps)
     if bad:
@@ -1362,7 +1413,12 @@ def _judge_observation(
         for call in trace.get("calls", [])
         if call.get("tool") and not str(call["tool"]).startswith("_")
     )
-    if persistent_mutation_called and not state_changes and not getattr(contract, "expect_duplicate", False):
+    if (
+        persistent_mutation_called
+        and not state_changes
+        and not getattr(contract, "expect_duplicate", False)
+        and not getattr(contract, "expect_refusal", False)
+    ):
         problems.append("mutating capability returned without durable household-state change")
 
     for table in contract.unchanged_tables:
@@ -1374,6 +1430,12 @@ def _judge_observation(
             problems.append("expected a clarification question")
         if persistent_mutation_called:
             problems.append("clarification turn performed a persistent mutation")
+
+    if getattr(contract, "expect_refusal", False):
+        if state_changes:
+            problems.append("refusal/privacy-denial turn changed durable household state")
+        if _attachment_rows(outbounds):
+            problems.append("refusal/privacy-denial turn queued an attachment")
 
     if getattr(contract, "expect_duplicate", False):
         if not (ingress_result or {}).get("duplicate"):
@@ -1576,10 +1638,10 @@ def _step_contract(parent, step):
 
     view = StepView()
     for name in (
-        "required_any", "forbidden", "expected_terms", "forbidden_terms",
+        "required_any", "required_all", "forbidden", "expected_terms", "forbidden_terms",
         "nonzero_forbidden_args", "expect_attachment", "expect_attachment_of",
         "state_expectations", "unchanged_tables", "ha_expectations",
-        "forbid_private_fixture_leak", "expect_clarification", "expect_duplicate",
+        "forbid_private_fixture_leak", "expect_clarification", "expect_refusal", "expect_duplicate",
         "media_fixture", "reply_language",
     ):
         if hasattr(step, name):
