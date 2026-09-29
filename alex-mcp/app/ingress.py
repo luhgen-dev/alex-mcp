@@ -310,9 +310,9 @@ def build_turn(payload: dict, media_lines: list[str]) -> dict:
 
 
 _SAVE_NEXT_RE = re.compile(
-    r"(?i)\\b(?:save|remember|keep)\\s+(?:the\\s+)?next\\s+"
-    r"(?P<kind>picture|photo|image|document|pdf|file)\\b"
-    r"(?:\\s+(?:as|called|named)\\s+(?P<title>.+?))?[.!?]*\\s*$"
+    r"(?i)\b(?:save|remember|keep)\s+(?:the\s+)?next\s+"
+    r"(?P<kind>picture|photo|image|document|pdf|file)\b"
+    r"(?:\s+(?:as|called|named)\s+(?P<title>.+?))?[.!?]*\s*$"
 )
 
 
