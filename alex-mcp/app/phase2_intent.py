@@ -179,7 +179,7 @@ def classify_write_intent(text, *, has_media=False):
 
     cash_natural = bool(
         has_money
-        and re.search(r"\b(?:got|received|credited|earned|paid\s+me)\b", low)
+        and re.search(r"\b(?:got|received|credited|earned|paid\s+me|came\s+in)\b", low)
         and re.search(r"\b(?:ot|overtime|bonus|salary|refund|extra cash)\b", low)
     )
     if cash_natural:
