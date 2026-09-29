@@ -852,7 +852,7 @@ async def main() -> dict[str, Any]:
         "reviewer": "ChatGPT pre-release engineering/QC",
         "decision_counts": {
             kind: sum(
-                1 for row in decisions if row["decision"] == kind
+                1 for row in decisions if row.get("decision") == kind
             )
             for kind in ("tools", "clarify", "refuse", "answer")
         },
