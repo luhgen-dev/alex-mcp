@@ -45,6 +45,76 @@ def _decisions_from_snapshot(
             f"(snapshot={reviewed or '<missing>'}, current={fingerprint})"
         )
 
+    version = int(snapshot.get("snapshot_version") or 0)
+    decisions: list[dict[str, Any]] = [{
+        "_meta": {
+            "corpus_fingerprint": fingerprint,
+            "reviewer": snapshot.get("reviewer"),
+            "review_date": snapshot.get("review_date"),
+            "method": snapshot.get("method"),
+            "snapshot_version": version,
+        }
+    }]
+
+    if version >= 3:
+        by_id = snapshot.get("decisions_by_packet_id")
+        if not isinstance(by_id, dict):
+            raise ValueError("v3 real-AI snapshot is missing decisions_by_packet_id")
+        expected_ids = {str(packet["packet_id"]) for packet in packets}
+        actual_ids = {str(pid) for pid in by_id}
+        missing = sorted(expected_ids - actual_ids)
+        extra = sorted(actual_ids - expected_ids)
+        if missing or extra:
+            raise ValueError(
+                "v3 real-AI packet-id mismatch "
+                f"(missing={missing[:5]}, extra={extra[:5]})"
+            )
+        if int(snapshot.get("decision_count") or -1) != len(expected_ids):
+            raise ValueError("v3 real-AI decision_count does not match packet set")
+
+        delta = snapshot.get("delta_review") or {}
+        parent = snapshot.get("parent_review") or {}
+        reviewed_delta = {
+            str(pid) for pid in (delta.get("reviewed_packet_ids") or [])
+        }
+        if len(reviewed_delta) != int(delta.get("changed_existing") or 0) + int(
+            delta.get("newly_added") or 0
+        ):
+            raise ValueError("v3 real-AI delta provenance count is inconsistent")
+        carried = sum(
+            1 for row in by_id.values()
+            if isinstance(row, dict)
+            and row.get("provenance") == "parent_independent_model"
+        )
+        refreshed = sum(
+            1 for row in by_id.values()
+            if isinstance(row, dict)
+            and row.get("provenance") == "delta_engineering_review"
+        )
+        if carried != int(parent.get("carried_forward_unchanged") or -1):
+            raise ValueError("v3 carried-forward provenance count is inconsistent")
+        if refreshed != len(reviewed_delta):
+            raise ValueError("v3 delta-review provenance count is inconsistent")
+        if not reviewed_delta <= expected_ids:
+            raise ValueError("v3 delta-review contains unknown packet ids")
+
+        for packet in packets:
+            pid = str(packet["packet_id"])
+            row = by_id.get(pid)
+            if not isinstance(row, dict):
+                raise ValueError(f"invalid v3 real-AI decision for {pid}")
+            decisions.append({
+                "packet_id": pid,
+                "decision": str(row.get("decision") or "").strip().lower(),
+                "tools": [
+                    str(name) for name in (row.get("tools") or [])
+                    if str(name).strip()
+                ],
+                "reply_language": str(row.get("reply_language") or "en"),
+            })
+        return decisions
+
+    # Backward-compatible v2 ordered snapshots.
     sequence = snapshot.get("sequence")
     toolsets = snapshot.get("toolsets")
     if not isinstance(sequence, list) or not isinstance(toolsets, dict):
@@ -56,30 +126,18 @@ def _decisions_from_snapshot(
     if int(snapshot.get("decision_count") or -1) != len(sequence):
         raise ValueError("real-AI snapshot decision_count does not match sequence")
 
-    decisions: list[dict[str, Any]] = [{
-        "_meta": {
-            "corpus_fingerprint": fingerprint,
-            "reviewer": snapshot.get("reviewer"),
-            "review_date": snapshot.get("review_date"),
-            "method": snapshot.get("method"),
-            "snapshot_version": snapshot.get("snapshot_version"),
-        }
-    }]
-
     for packet, code in zip(packets, sequence):
         template = toolsets.get(str(code))
         if not isinstance(template, dict):
             raise ValueError(f"unknown real-AI decision code: {code}")
-        kind = str(template.get("decision") or "").strip().lower()
-        tools = [
-            str(name) for name in (template.get("tools") or [])
-            if str(name).strip()
-        ]
         decisions.append({
             "packet_id": packet["packet_id"],
-            "decision": kind,
-            "tools": tools,
-            "reply_language": "en",
+            "decision": str(template.get("decision") or "").strip().lower(),
+            "tools": [
+                str(name) for name in (template.get("tools") or [])
+                if str(name).strip()
+            ],
+            "reply_language": str(template.get("reply_language") or "en"),
         })
     return decisions
 
@@ -89,15 +147,21 @@ async def run(snapshot_path: Path) -> dict[str, Any]:
     snapshot = _load_snapshot(snapshot_path)
     decisions = _decisions_from_snapshot(packets, snapshot)
     report = human_ai_lab.score_packets(packets, decisions, "all")
+    parent = snapshot.get("parent_review") or {}
+    delta = snapshot.get("delta_review") or {}
     report["external_model_review"] = {
         "reviewer": snapshot.get("reviewer"),
         "review_date": snapshot.get("review_date"),
         "method": snapshot.get("method"),
         "snapshot_version": snapshot.get("snapshot_version"),
         "static_snapshot_not_live_api": True,
+        "parent_independent_model_packets": parent.get("carried_forward_unchanged"),
+        "delta_engineering_review_packets": len(delta.get("reviewed_packet_ids") or []),
         "note": (
-            "This proves one fresh model pass over this exact public packet corpus. "
-            "It does not prove unseen wording or real WhatsApp/audio transport."
+            "For v3, unchanged public packets retain the prior independent-model "
+            "judgment only after packet comparison; changed/new packets are explicitly "
+            "labelled engineering delta review rather than a blind first pass. "
+            "The score does not prove unseen wording or real WhatsApp/audio transport."
         ),
     }
     return report
