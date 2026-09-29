@@ -668,6 +668,9 @@ function startEgress() {
         } else if (payload.kind === 'document') {
           const buf = Buffer.from(payload.file_b64 || '', 'base64');
           sent = await currentSock.sendMessage(to, { document: buf, mimetype: payload.mimetype || 'application/octet-stream', fileName: payload.filename || 'file', caption: payload.caption || undefined });
+        } else if (payload.kind === 'audio') {
+          const buf = Buffer.from(payload.file_b64 || '', 'base64');
+          sent = await currentSock.sendMessage(to, { audio: buf, mimetype: payload.mimetype || 'audio/ogg', ptt: true });
         } else {
           throw new Error('Unsupported outbound kind');
         }
