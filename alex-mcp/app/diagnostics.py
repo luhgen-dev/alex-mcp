@@ -6,13 +6,14 @@ from datetime import datetime, timedelta, timezone
 
 from config import DATA_DIR, get_settings
 from db import connect
+import runtime_clock
 
 SELFTEST_FILE = os.path.join(DATA_DIR, "selftest.json")
 
 
 def _cutoff(hours: int) -> str:
     bounded = max(1, min(24 * 30, int(hours)))
-    return (datetime.now(timezone.utc) - timedelta(hours=bounded)).isoformat()
+    return (runtime_clock.now_utc() - timedelta(hours=bounded)).isoformat()
 
 
 def _selftest() -> dict | None:
@@ -92,6 +93,92 @@ def usage_summary(hours: int = 24) -> dict:
         conn.close()
 
 
+def _parse_utc(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    raw = str(value).strip().replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _percentile(values: list[float], fraction: float) -> float:
+    if not values:
+        return 0.0
+    ordered = sorted(values)
+    index = max(0, min(len(ordered) - 1, int(round(fraction * (len(ordered) - 1)))))
+    return float(ordered[index])
+
+
+def delivery_latency_summary(hours: int = 24) -> dict:
+    """Separate Alex processing/queue time from durable WhatsApp egress delay.
+
+    This cannot measure when the phone UI actually rendered a message, but it
+    can prove whether a delay happened before queueing or while the durable
+    outbox retried the bridge.
+    """
+    bounded = max(1, min(24 * 30, int(hours)))
+    cutoff = _cutoff(bounded)
+    conn = connect()
+    try:
+        rows = conn.execute(
+            """SELECT o.source_message_id,o.created_at_utc,o.delivered_at_utc,
+                      o.attempt_count,o.delivery_status,
+                      i.received_at_utc,i.completed_at_utc
+               FROM outbound_messages o
+               LEFT JOIN inbound_messages i ON i.message_id=o.source_message_id
+               WHERE o.created_at_utc>=? AND o.kind='TEXT'
+               ORDER BY o.created_at_utc DESC LIMIT 500""",
+            (cutoff,),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    processing_ms: list[float] = []
+    egress_ms: list[float] = []
+    end_to_end_ms: list[float] = []
+    attempts: list[int] = []
+    delivered = 0
+    for row in rows:
+        received = _parse_utc(row["received_at_utc"])
+        queued = _parse_utc(row["created_at_utc"])
+        delivered_at = _parse_utc(row["delivered_at_utc"])
+        if received and queued:
+            processing_ms.append(max(0.0, (queued - received).total_seconds() * 1000.0))
+        if queued and delivered_at:
+            delivered += 1
+            egress_ms.append(max(0.0, (delivered_at - queued).total_seconds() * 1000.0))
+        if received and delivered_at:
+            end_to_end_ms.append(max(0.0, (delivered_at - received).total_seconds() * 1000.0))
+        attempts.append(int(row["attempt_count"] or 0))
+
+    def stats(values: list[float]) -> dict:
+        return {
+            "count": len(values),
+            "p50_ms": round(_percentile(values, 0.50), 1),
+            "p95_ms": round(_percentile(values, 0.95), 1),
+            "max_ms": round(max(values) if values else 0.0, 1),
+        }
+
+    return {
+        "window_hours": bounded,
+        "queued_text_rows": len(rows),
+        "delivered_text_rows": delivered,
+        "processing_to_queue": stats(processing_ms),
+        "queue_to_bridge_delivery": stats(egress_ms),
+        "inbound_to_bridge_delivery": stats(end_to_end_ms),
+        "max_delivery_attempts": max(attempts) if attempts else 0,
+        "interpretation": (
+            "processing_to_queue isolates Alex/AI/tool time; queue_to_bridge_delivery "
+            "isolates durable outbox/bridge retry delay. Phone rendering remains external."
+        ),
+    }
+
+
 def system_health(actor, hours: int = 24) -> dict:
     cutoff = _cutoff(hours)
     settings = get_settings()
@@ -160,6 +247,7 @@ def system_health(actor, hours: int = 24) -> dict:
                 "average_ai_latency_ms": round(float(usage["avg_latency"] or 0), 1),
                 "estimated_ai_cost_usd": round(float(usage["estimated_cost"] or 0), 6),
                 "last_completed_message_at": last_completed["completed_at_utc"] if last_completed else None,
+                "delivery_latency": delivery_latency_summary(hours),
             },
             "note": "These are observed local facts only. A cause must not be claimed unless supported by a recorded error.",
         }
