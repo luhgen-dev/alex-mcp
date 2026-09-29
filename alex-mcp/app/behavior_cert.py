@@ -906,6 +906,7 @@ def _validate_seed(seed: str | None) -> None:
             "diary_events": 1,
             "reminders": 1,
             "plans": 1,
+            "tasks": 1,
             "alex_phase2_goals": 1,
         }
         bad = []
@@ -1065,12 +1066,23 @@ def _seed_core():
     # Draft Malacca plan.
     mid = "seed-malacca"
     _claim(mid, "Malacca family day trip", conv)
-    phase2.create_plan(
+    malacca = phase2.create_plan(
         with_action_key(_actor(mid, conv, "Malacca family day trip"), "seed-malacca-action"),
         "Family Day Trip to Malacca",
         notes="Date undecided. Kid-friendly activities. Aim to be back home by around 9pm.",
         locked=False,
     )
+
+    # First-class task fixture under the Malacca draft.
+    mid = "seed-malacca-task"
+    _claim(mid, "check passport expiry dates", conv)
+    task = phase2.create_task(
+        with_action_key(_actor(mid, conv, "check passport expiry dates"), "seed-malacca-task-action"),
+        "Check passport expiry dates",
+        notes="Check every passport before the trip.",
+        plan_id=malacca.get("plan_id"),
+    )
+    CERT_FIXTURES["malacca_task_id"] = task.get("task_id")
 
     # Goal with a zero deterministic baseline, used only as read fixture.
     phase2_finance.create_goal(
