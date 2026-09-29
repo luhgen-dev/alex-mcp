@@ -41,6 +41,7 @@ from behavior_contracts import (
     PROMPT_CONTRACTS,
     REQUIRED_DOMAINS,
     REQUIRED_OWNER_TOOL_COVERAGE,
+    TOOL_COVERAGE_EXEMPTIONS,
     PromptContract,
     contracts_for_phase,
     conversations_for_phase,
@@ -112,6 +113,25 @@ def catalog_audit() -> dict:
         )
     else:
         checks.append("every declared owner-visible MCP tool is represented by behaviour contracts")
+
+    # Future-proofing: if a new MCP tool is added later, catalog CI fails until
+    # it is either given a human behaviour contract or explicitly documented as
+    # a compatibility/internal exemption.
+    try:
+        current_surface = _tool_names_from_mcp()
+        uncovered_surface = sorted(
+            current_surface - covered_tools - set(TOOL_COVERAGE_EXEMPTIONS)
+        )
+        if uncovered_surface:
+            failures.append(
+                "current MCP surface has unclassified tools: "
+                + ", ".join(uncovered_surface)
+            )
+        else:
+            checks.append("current MCP surface has no unclassified user-facing tools")
+    except Exception as exc:
+        failures.append(f"unable to inspect MCP surface for coverage drift: {exc}")
+
 
     if not any(g.id == "manual.group.mention" for g in MANUAL_GATES):
         failures.append("real WhatsApp @mention gate is not represented")
