@@ -1619,6 +1619,44 @@ def _attachment_request_finished(trace: dict) -> bool:
     return bool(meaningful) and all(x in _ATTACHMENT_RETRIEVAL_TOOLS for x in meaningful)
 
 
+_CAPABILITY_DENIAL_RE = re.compile(
+    r"\b(?:i\s+)?(?:do\s+not|don't|dont)\s+have\s+(?:the\s+)?(?:ability|capability|access)\b"
+    r"|\b(?:i\s+)?(?:cannot|can't|cant|am\s+unable\s+to|am\s+not\s+able\s+to)\s+"
+    r"(?:access|update|change|mark|add|remove|retrieve|check|manage|do)\b",
+    re.IGNORECASE,
+)
+
+
+def _looks_like_false_capability_denial(text: str) -> bool:
+    """Detect a model claiming Alex lacks a capability before it tried a tool."""
+    return bool(_CAPABILITY_DENIAL_RE.search(text or ""))
+
+
+def _requested_non_english_output(user_text: str) -> bool:
+    low = (user_text or "").casefold()
+    return bool(re.search(
+        r"\b(?:reply|answer|respond|translate|say|write)\b.{0,30}"
+        r"\b(?:tamil|malay|bahasa|indonesian|mandarin|chinese)\b",
+        low,
+    ))
+
+
+def _looks_like_wrong_language_reply(text: str, user_text: str = "") -> bool:
+    """Catch obvious Malay/Indonesian answer drift when English is required.
+
+    This is deliberately narrow: Malay remains valid input, and an explicit
+    request for another output language always wins.
+    """
+    if _requested_non_english_output(user_text):
+        return False
+    low = (text or "").casefold()
+    markers = (
+        "mohon maaf", "apakah anda", "silakan", "bermaksud",
+        "sebelumnya", "jika anda", "ingin saya", "perlu saya",
+    )
+    return sum(1 for marker in markers if marker in low) >= 2
+
+
 async def respond(actor: ActorContext, user_text: str, media_context: list[str] | None = None,
                   vision_parts: list[dict] | None = None,
                   quoted_context: dict | None = None) -> tuple[str, list[dict]]:
@@ -1727,6 +1765,8 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
     route_index = 0
     active_route: dict | None = None
     provider_failures: list[dict] = []
+    capability_retry_used = False
+    language_retry_used = False
 
     for _ in range(MAX_MODEL_CALLS):
         # If the cheap model is genuinely looping through tools, escalate the
@@ -1794,7 +1834,55 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
         )
 
         if not calls:
-            final = _content_text(msg.content).strip() or ("Here it is." if attachments else "Done.")
+            candidate = _content_text(msg.content).strip() or ("Here it is." if attachments else "Done.")
+
+            # Real smoke tests exposed a dangerous model failure mode: the
+            # model sometimes claimed Alex "doesn't have the ability" even
+            # though the correct MCP mutator/read was already available. Give
+            # it one bounded self-correction turn instead of returning a false
+            # capability statement to the household.
+            if (
+                tools
+                and not capability_retry_used
+                and _looks_like_false_capability_denial(candidate)
+            ):
+                capability_retry_used = True
+                messages.append({"role": "assistant", "content": candidate})
+                messages.append({
+                    "role": "system",
+                    "content": (
+                        "Re-evaluate that answer. Alex has the MCP tools currently supplied to you. "
+                        "Do not claim a capability is unavailable before trying the relevant tool. "
+                        "Use the appropriate supplied tool, use discover_alex_tools if needed, or ask "
+                        "one focused clarification when the user's intent is genuinely ambiguous. "
+                        "Reply in English."
+                    ),
+                })
+                trace["routes"].append("self_repair:capability_denial")
+                continue
+
+            # The system contract requires English unless the user explicitly
+            # asks otherwise. A narrow post-answer guard repairs the exact
+            # Malay/Indonesian drift seen in live voice testing. No tools are
+            # exposed during this rewrite, so committed actions cannot repeat.
+            if (
+                not language_retry_used
+                and _looks_like_wrong_language_reply(candidate, user_text)
+            ):
+                language_retry_used = True
+                messages.append({"role": "assistant", "content": candidate})
+                messages.append({
+                    "role": "system",
+                    "content": (
+                        "Rewrite only your immediately previous answer in concise English. "
+                        "Preserve its factual meaning. Do not perform or repeat any household action."
+                    ),
+                })
+                tools = []
+                trace["routes"].append("self_repair:reply_language")
+                continue
+
+            final = candidate
             _record_usage_buckets(actor.source_message_id, usage_by_route)
             add_turn(actor.user_id, actor.conversation_id, "user", history_user)
             add_turn(actor.user_id, actor.conversation_id, "assistant", final)
