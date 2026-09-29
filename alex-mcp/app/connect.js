@@ -26,6 +26,12 @@ const CERT_RUN_URL = 'http://127.0.0.1:5001/certification-live';
 const CERT_REPORT_URL = 'http://127.0.0.1:5001/certification-report';
 const EGRESS_PORT = 5002;
 const UI_PORT = 8099;
+// If a private-DM turn is genuinely slow (voice transcription, OCR, provider
+// recovery, etc.), acknowledge it without interrupting the durable final reply.
+// Group messages are excluded because an untracked interim reply would weaken
+// quoted-message context binding there.
+const SLOW_ACK_MS = 6000;
+const SLOW_ACK_TEXT = 'Sure, I’m working on that and will get it to you shortly…';
 const logger = pino({ level: process.env.ALEX_LOG_LEVEL || 'silent' });
 
 let currentSock = null;
@@ -309,6 +315,21 @@ async function handleIncoming(message) {
     pdf_data: media.type === 'pdf' && mediaData ? mediaData.data : null,
   };
 
+  let slowAckTimer = null;
+  if (!isGroup) {
+    slowAckTimer = setTimeout(async function() {
+      try {
+        if (currentSock) {
+          await currentSock.sendMessage(remoteJid, { text: SLOW_ACK_TEXT });
+          // Keep the visible working state after the interim acknowledgement.
+          try { await currentSock.sendPresenceUpdate('composing', remoteJid); } catch (_err) {}
+        }
+      } catch (err) {
+        console.error('[Alex MCP] Slow acknowledgement failed:', err.message);
+      }
+    }, SLOW_ACK_MS);
+  }
+
   try {
     await forwardToPython(payload);
   } catch (err) {
@@ -318,6 +339,8 @@ async function handleIncoming(message) {
         await currentSock.sendMessage(remoteJid, { text: 'Alex is temporarily unavailable. Please try that message once more.' });
       }
     } catch (_err) {}
+  } finally {
+    if (slowAckTimer) clearTimeout(slowAckTimer);
   }
 }
 
