@@ -34,7 +34,7 @@ from behavior_contracts import (
 )
 
 
-PACKET_VERSION = 1
+PACKET_VERSION = 2
 DECISION_KINDS = {"tools", "clarify", "refuse", "answer"}
 
 
@@ -101,7 +101,9 @@ async def build_packets(phase: str = "all") -> list[dict[str, Any]]:
     for contract in contracts_for_phase(phase):
         for source in contract.sources:
             for index, prompt in enumerate(contract.variants):
-                packet_id = _opaque_packet_id(f"{contract.id}|{source}|v{index + 1}")
+                packet_id = _opaque_packet_id(
+                    f"{contract.id}|{source}|v{index + 1}|{prompt}"
+                )
                 packet = _packet_base(
                     packet_id, contract.id, contract.phase, contract.domain,
                     source, prompt, contract.conversation_type, contract.actor,
@@ -114,7 +116,9 @@ async def build_packets(phase: str = "all") -> list[dict[str, Any]]:
         for source in contract.sources:
             history: list[dict[str, str]] = []
             for index, step in enumerate(contract.steps):
-                packet_id = _opaque_packet_id(f"{contract.id}|{source}|s{index + 1}")
+                packet_id = _opaque_packet_id(
+                    f"{contract.id}|{source}|s{index + 1}|{step.prompt}"
+                )
                 packet = _packet_base(
                     packet_id, contract.id, contract.phase, contract.domain,
                     source, step.prompt, step.conversation_type, step.actor,
@@ -273,6 +277,7 @@ def score_packets(packets: list[dict[str, Any]], decisions: list[dict[str, Any]]
         "status": "PASS" if not failed else "FAIL",
         "summary": {
             "packets": len(packets),
+            "corpus_fingerprint": _corpus_fingerprint(packets),
             "decisions_received": len(decision_by_id),
             "passed": len(results) - len(failed),
             "failed": len(failed),
@@ -303,6 +308,19 @@ def _public_packet(row: dict[str, Any]) -> dict[str, Any]:
         key: value for key, value in row.items()
         if not key.startswith("_")
     }
+
+
+def _corpus_fingerprint(rows: list[dict[str, Any]]) -> str:
+    digest = hashlib.sha256()
+    for row in rows:
+        public = _public_packet(row)
+        digest.update(
+            json.dumps(
+                public, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+            ).encode("utf-8")
+        )
+        digest.update(b"\n")
+    return digest.hexdigest()
 
 
 def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
@@ -383,6 +401,7 @@ def packet_audit(packets: list[dict[str, Any]], phase: str = "all") -> dict[str,
         "status": status,
         "summary": {
             "packets": len(packets),
+            "corpus_fingerprint": _corpus_fingerprint(packets),
             "domains": sorted(domains),
             "sources": sorted(sources),
             "duplicate_packet_ids": duplicate_ids,
