@@ -42,6 +42,12 @@ class ExternalAlexLabTests(unittest.TestCase):
         }
         self.assertEqual(alex_lab._live_failure_packets(report), [])
 
+    def test_target_contract_arguments_are_repeatable(self):
+        self.assertEqual(
+            alex_lab._contract_args(["p2.plan.update", "conv.plan.refine"]),
+            ["--contract", "p2.plan.update", "--contract", "conv.plan.refine"],
+        )
+
     def test_offline_live_required_is_preserved(self):
         report = {
             "failures": [],
