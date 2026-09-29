@@ -72,7 +72,12 @@ jobs:
             --packets /tmp/alex-human-ai-packets.jsonl \
             --report /tmp/alex-human-ai-report.json
 
-      - name: Run independent ChatGPT reasoning QC
+      - name: Run frozen real-AI reasoning snapshot
+        run: |
+          python alex-mcp/app/real_ai_snapshot_review.py \
+            --report /tmp/alex-real-ai-review.json
+
+      - name: Run deterministic reasoning regression oracle
         run: python alex-mcp/app/chatgpt_reasoning_review.py
 
       - name: Run final parity architecture audit
