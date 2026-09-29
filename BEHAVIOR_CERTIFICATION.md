@@ -282,19 +282,52 @@ not a PASS list and must not be expanded merely to silence a regression.
 
 ### Live — opt-in, spend-capped, sandboxed
 
+Two paid strategies exist.
+
+**Benchmark** (default) is the cost-efficient diagnostic mode:
+
 ```bash
-python alex-mcp/app/behavior_cert.py --mode live --phase phase2 --provider auto \
-  --max-live-cost-usd 0.25 --report /tmp/alex-behavior-live.json
+python alex-mcp/app/behavior_cert.py --mode live --phase all --provider auto \
+  --live-strategy benchmark --max-live-cost-usd 3.00 \
+  --report /tmp/alex-behavior-live-benchmark.json
 ```
 
-This uses a real configured provider against synthetic state only. The
-one-command phase gate deliberately refuses to spend provider tokens while a
-cheaper deterministic/offline hard failure already exists.
+It first reruns the zero-cost offline analysis, then spends provider calls in
+this order:
 
-**A full paid live run has not been claimed or performed for the currently
-known-broken v0.4.4 product.** That is intentional: v0.4.4 still has offline
-hard failures (including task lifecycle and goal owner-agency) that should be
-repaired first.
+1. exact/high-value regressions seen in the owner's real WhatsApp smoke test;
+2. discovery-dependent cases that cannot be proven offline;
+3. multi-turn conversations that test focus, pronouns, privacy and attachment identity;
+4. one representative live phrasing for other implementable contracts.
+
+If a contract is already structurally impossible because its required capability
+does not exist (for example the current v0.4.4 task lifecycle), benchmark mode
+records the skip and **does not waste an API call proving the same fact again**.
+
+**Full** is the final exhaustive paid gate:
+
+```bash
+python alex-mcp/app/behavior_cert.py --mode live --phase all --provider auto \
+  --live-strategy full --max-live-cost-usd 3.00 \
+  --report /tmp/alex-behavior-live-full.json
+```
+
+Full mode keeps all configured live phrasing coverage and is intended after the
+cheap deterministic/offline failures have been repaired.
+
+Both strategies use the real configured provider against synthetic state only.
+The spend cap is hard at the runner level (a final in-flight turn may finish
+slightly above the threshold), every turn records estimated cost and latency,
+and the report shows planned/executed cases plus contracts skipped because a
+paid call would add no evidence.
+
+The one-command `phase_certify.py` gate keeps **full** live certification
+behind an offline PASS. Its **benchmark** strategy may run against known product
+failures for diagnosis/benchmarking, but the overall phase remains FAIL until
+those cheaper failures are actually repaired.
+
+Provider spend should therefore be used for uncertainty that only the real AI
+brain can resolve—not for deterministic facts the free tiers have already proven.
 
 ## Manual gates that remain intentionally external
 
