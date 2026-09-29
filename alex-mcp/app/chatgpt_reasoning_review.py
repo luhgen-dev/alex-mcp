@@ -19,9 +19,11 @@ longer understands.
 """
 from __future__ import annotations
 
+import argparse
 import asyncio
 import json
 import re
+from pathlib import Path
 from typing import Any
 
 import human_ai_lab
@@ -853,6 +855,12 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
 
 
 async def main() -> dict[str, Any]:
+    parser = argparse.ArgumentParser(
+        description="Run the frozen independent ChatGPT reasoning QC review"
+    )
+    parser.add_argument("--report", default=None)
+    args = parser.parse_args()
+
     private_packets = await human_ai_lab.build_packets("all")
     public_packets = [
         human_ai_lab._public_packet(packet)
@@ -878,7 +886,12 @@ async def main() -> dict[str, Any]:
             for kind in ("tools", "clarify", "refuse", "answer")
         },
     }
-    print(json.dumps(report, ensure_ascii=False, indent=2))
+    payload = json.dumps(report, ensure_ascii=False, indent=2)
+    if args.report:
+        target = Path(args.report)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(payload + "\n", encoding="utf-8")
+    print(payload)
     if report["status"] != "PASS":
         raise SystemExit(1)
     return report
