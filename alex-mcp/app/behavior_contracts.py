@@ -60,6 +60,7 @@ class PromptContract:
     forbid_private_fixture_leak: bool = False
     expect_clarification: bool = False
     expect_refusal: bool = False
+    allow_answer: bool = False
     media_fixture: str | None = None
     seed: str | None = None
     live: bool = True
@@ -84,6 +85,7 @@ class ConversationStep:
     forbid_private_fixture_leak: bool = False
     expect_clarification: bool = False
     expect_refusal: bool = False
+    allow_answer: bool = False
     media_fixture: str | None = None
     quote_previous: bool = False
     actor: str = "husband"
@@ -1285,6 +1287,7 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
             "I am not asking you to switch the AC off.",
         ),
         _fs("ha_find_entities", "ha_get_state"), forbidden=_fs("ha_control"),
+        allow_answer=True,
         seed="empty",
     ),
     PromptContract(
