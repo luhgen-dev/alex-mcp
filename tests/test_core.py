@@ -286,6 +286,71 @@ class AlexCoreTests(unittest.TestCase):
         xai.assert_not_called()
         self.assertEqual(media.get_media(media_id)["transcript_text"], "வணக்கம் alex")
 
+    def test_auto_stt_fails_closed_on_uncertain_mutating_command_without_cloud_opt_in(self):
+        self.claim("voice-uncertain", "+60111111111", "")
+        raw = base64.b64encode(b"dummy-voice-bytes").decode("ascii")
+        media_id = media.save_media("voice-uncertain", "AUDIO", "audio/ogg", raw)
+        settings = Settings(
+            stt_provider="auto",
+            cloud_stt_rescue_enabled=False,
+            whisper_model="base",
+            gemini_api_key="configured-chat-key",
+        )
+
+        def local_side_effect(_path, _model, language="auto"):
+            return {
+                "auto": "add milk to my shopping list",
+                "en": "what time is it today",
+                "ta": "நாளைக்கு வானிலை எப்படி",
+            }[language]
+
+        with patch.object(media, "get_settings", return_value=settings), \
+             patch.object(media, "_local_whisper", side_effect=local_side_effect) as local, \
+             patch.object(media, "_gemini_stt") as gemini, \
+             patch.object(media, "_openai_stt") as openai_stt, \
+             patch.object(media, "_xai_stt") as xai:
+            with self.assertRaises(media.VoiceTranscriptionUncertain):
+                media.transcribe_audio(media_id)
+
+        self.assertEqual(local.call_count, 3)
+        gemini.assert_not_called()
+        openai_stt.assert_not_called()
+        xai.assert_not_called()
+        stored = media.get_media(media_id)
+        self.assertIn('"confidence": "uncertain"', stored["transcript_meta_json"])
+
+    def test_auto_stt_cloud_rescue_requires_explicit_opt_in(self):
+        self.claim("voice-cloud-rescue", "+60111111111", "")
+        raw = base64.b64encode(b"dummy-voice-bytes").decode("ascii")
+        media_id = media.save_media("voice-cloud-rescue", "AUDIO", "audio/ogg", raw)
+        settings = Settings(
+            stt_provider="auto",
+            cloud_stt_rescue_enabled=True,
+            whisper_model="base",
+            gemini_api_key="configured-key",
+        )
+
+        def local_side_effect(_path, _model, language="auto"):
+            return {
+                "auto": "add milk to my shopping list",
+                "en": "what time is it today",
+                "ta": "நாளைக்கு வானிலை எப்படி",
+            }[language]
+
+        with patch.object(media, "get_settings", return_value=settings), \
+             patch.object(media, "_local_whisper", side_effect=local_side_effect), \
+             patch.object(media, "_gemini_stt", return_value="add milk to my shopping list") as gemini, \
+             patch.object(media, "_openai_stt") as openai_stt, \
+             patch.object(media, "_xai_stt") as xai:
+            text_value = media.transcribe_audio(media_id)
+
+        self.assertEqual(text_value, "add milk to my shopping list")
+        gemini.assert_called_once()
+        openai_stt.assert_not_called()
+        xai.assert_not_called()
+        stored = media.get_media(media_id)
+        self.assertIn('"cloud_rescue": true', stored["transcript_meta_json"])
+
     def test_nonfinancial_image_is_available_to_model_vision(self):
         self.claim("img1", "+60111111111", "what is this?")
         payload = {
