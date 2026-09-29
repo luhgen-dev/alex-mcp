@@ -8,7 +8,7 @@ Alex MCP is a separate Home Assistant app. It does not modify the existing `alex
 2. Open **Configuration**.
 3. Choose the AI mode. **Auto** is recommended: Gemini Flash-Lite handles routine turns, Gemini 3.8 Flash handles harder turns, and Grok/OpenAI are used only as configured fallbacks.
 4. Enter the API keys you want Alex to use. For Auto mode, a Gemini key is the preferred primary key; adding Grok provides a resilient fallback.
-5. Enter both authorised WhatsApp phone numbers in international format.
+5. Enter the authorised WhatsApp number(s) you want active in international format. The spouse/second number may remain blank until you intentionally enable it.
 6. Save and restart the app.
 7. Open **Web UI** and scan the WhatsApp QR from **WhatsApp → Linked devices → Link a device**.
 8. When the page shows **Connected**, send Alex a normal WhatsApp message.
@@ -29,7 +29,9 @@ No API key, phone number, provider or pairing credential is stored in source cod
 - WhatsApp session state
 - startup structural diagnostics
 
-The AI layer is used only for natural-language understanding, reasoning, tool selection and final wording. Normal household calls default to low reasoning, expose at most six relevant MCP tools and avoid replaying conversation history unless the new message is actually a follow-up.
+The AI layer is used only for natural-language understanding, reasoning, tool selection and final wording. Alex v0.5 presents the model with a stable **14-tool provider facade** and exposes at most six relevant schemas on an ordinary turn. Detailed deterministic MCP tools stay behind that facade and are loaded only through a bounded specialist pack when needed. This reduces tool-choice drift without moving privacy, arithmetic, writes or household truth into the model.
+
+Short follow-ups use actor-and-chat-scoped conversational focus containing stable object IDs only. The underlying MCP tool re-checks authorization whenever an ID is dereferenced. Explicit requests such as "save the next picture as wedding invitation" create a single-use three-minute attachment focus; unrelated chats/users cannot consume it.
 
 ### Auto Saver routing
 
@@ -61,13 +63,15 @@ Changing Auto ↔ Grok ↔ Gemini ↔ OpenAI is an app setting. The MCP tools an
 
 Voice notes are transcribed before the conversational model sees the request. With `stt_provider=auto`, Alex uses **local multilingual Whisper first**. This uses no AI API tokens and is the preferred path for Tamil/English/Tanglish voice notes.
 
-The default local model is `base`. It downloads automatically on the first voice note and is then kept under persistent `/data/models`. You can select `small` in Configuration later if you want to trade more storage/RAM for harder multilingual transcription. If local transcription fails, configured cloud transcription providers are fallback options.
+The default local model is `base`. It downloads automatically on the first voice note and is then kept under persistent `/data/models`. You can select `small` in Configuration later if you want to trade more storage/RAM for harder multilingual transcription.
+
+v0.5 no longer treats every non-empty auto-language transcript as trustworthy. Suspicious/low-signal local output gets a second local English hypothesis; obvious repetitive/hallucinated output may fall through to a configured cloud STT provider in `auto` mode. The normalized transcript then receives the same provider-facing capabilities as typed text. Alex also retries once rather than falsely claiming a clearly routed action is unsupported, and user-facing replies remain English unless translation is explicitly requested.
 
 Alex replies in text only.
 
 ## Receipts
 
-Every incoming image/PDF is stored before AI reasoning. When it represents a financial transaction, the ledger tool links the original media to the transaction. Explicit "save/remember this" memory is separate from receipt retention.
+Every incoming image/PDF is stored before AI reasoning. When it represents a financial transaction, the ledger tool links the original media to the transaction. Explicit "save/remember this" memory is separate from receipt retention. Repeated monthly receipts remain separate evidence objects even when merchant, bank and amount are identical; date/reference/media identity remains available for later retrieval.
 
 Use ordinary language such as:
 
