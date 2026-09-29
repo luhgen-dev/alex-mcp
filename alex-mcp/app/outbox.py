@@ -5,7 +5,9 @@ import json
 import os
 import time
 import urllib.request
-from datetime import datetime, timedelta, timezone\n\nimport runtime_clock
+from datetime import datetime, timedelta, timezone
+
+import runtime_clock
 
 from db import connect
 
