@@ -150,6 +150,60 @@ def main() -> dict:
             <= brain.TOOL_EXPOSURE_MAX for q in representative),
         "representative intents stay inside MCP token schema budget",
     )
+    async def exposed_for(text):
+        return {
+            spec["function"]["name"]
+            for spec in await brain._tool_specs(text)
+            if isinstance(spec, dict) and spec.get("function")
+        }
+
+    # A mutator that needs an opaque id must be exposed with a safe resolver/read
+    # path on the same natural turn. This prevents a model from fabricating UUIDs.
+    grounding_cases = {
+        "Actually change that parking expense to RM8.50": {
+            "correct_expense", "query_finances",
+        },
+        "Approve that pending expense as food": {
+            "confirm_expense", "list_pending_expenses",
+        },
+        "Send me my management receipt": {
+            "find_receipts", "get_receipt",
+        },
+        "Delete the cobalt note I asked you to remember": {
+            "remove_saved_item", "search_saved_items",
+        },
+        "Cancel my dentist reminder": {
+            "update_reminder", "list_reminders",
+        },
+        "Complete the Malacca passport task": {
+            "complete_task", "list_tasks",
+        },
+        "Mark bread as bought": {
+            "update_shopping_item", "list_shopping_items",
+        },
+        "Turn off the living room light": {
+            "ha_control", "ha_find_entities",
+        },
+        "Confirm the Malacca plan": {
+            "confirm_plan", "list_plans",
+        },
+        "Move my dentist appointment to 5pm": {
+            "update_diary_event", "get_agenda_range",
+        },
+        "Record the TNB bill as paid": {
+            "bills_record_payment", "bills_list",
+        },
+        "Stop monitoring my holiday goal": {
+            "monitor_cancel", "monitor_list",
+        },
+    }
+    for phrase, expected in grounding_cases.items():
+        exposed = asyncio.run(exposed_for(phrase))
+        require(
+            expected <= exposed,
+            "opaque-id action is grounded: " + phrase,
+        )
+
     require(
         brain.DISCOVERY_TOOL_NAME == "discover_alex_tools",
         "AI intent-discovery fallback present for novel/typo-heavy wording",
