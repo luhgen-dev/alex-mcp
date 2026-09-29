@@ -32,7 +32,7 @@ import sys
 import tempfile
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from dataclasses import asdict, replace
 from pathlib import Path
 from typing import Any
@@ -61,6 +61,9 @@ APP = Path(__file__).resolve().parent
 DEFAULT_REPORT = "behavior-cert-report.json"
 HUSBAND = "+60111111111"
 WIFE = "+60222222222"
+CERT_NOW_UTC = "2026-09-29T02:00:00+00:00"
+CERT_FIXTURES: dict[str, Any] = {}
+_FAKE_HA_STATES: dict[str, dict[str, Any]] = {}
 
 
 def _emit(report: dict, report_path: str | None) -> dict:
@@ -477,10 +480,16 @@ def _sandbox_options(provider: str, creds: dict) -> dict:
 
 
 def _install_fake_ha():
-    """Make live certification incapable of touching a real HA instance."""
+    """Make certification incapable of touching a real HA instance.
+
+    Every call goes through ha._request, which is replaced here. The state map
+    is exported only in-process so the judge can prove the exact entity changed
+    and unrelated entities did not.
+    """
     import ha
 
-    states = {
+    global _FAKE_HA_STATES
+    _FAKE_HA_STATES = {
         "climate.hall_ac": {
             "entity_id": "climate.hall_ac",
             "state": "on",
@@ -488,45 +497,58 @@ def _install_fake_ha():
                 "friendly_name": "Hall AC",
                 "temperature": 24,
             },
-            "last_changed": "2026-09-29T01:00:00+00:00",
+            "last_changed": CERT_NOW_UTC,
         },
+        # Start ON so "turn it off" must produce an observable target change.
         "light.living_room": {
             "entity_id": "light.living_room",
-            "state": "off",
+            "state": "on",
             "attributes": {"friendly_name": "Living Room Light"},
-            "last_changed": "2026-09-29T01:00:00+00:00",
+            "last_changed": CERT_NOW_UTC,
         },
     }
 
     def fake_request(method: str, path: str, payload: dict | None = None):
         if method == "GET" and path == "/states":
-            return list(states.values())
+            return [dict(row) for row in _FAKE_HA_STATES.values()]
         if method == "GET" and path.startswith("/states/"):
             entity = path.split("/states/", 1)[1]
-            if entity not in states:
+            if entity not in _FAKE_HA_STATES:
                 raise LookupError("CERTIFICATION entity not found")
-            return states[entity]
+            return dict(_FAKE_HA_STATES[entity])
         if method == "POST" and path.startswith("/services/"):
-            # Mutations are simulated in-memory only.
             entity = str((payload or {}).get("entity_id") or "")
             service = path.rsplit("/", 1)[-1]
-            if entity in states:
+            if entity in _FAKE_HA_STATES:
                 if service == "turn_on":
-                    states[entity]["state"] = "on"
+                    _FAKE_HA_STATES[entity]["state"] = "on"
                 elif service == "turn_off":
-                    states[entity]["state"] = "off"
+                    _FAKE_HA_STATES[entity]["state"] = "off"
+                elif service == "toggle":
+                    _FAKE_HA_STATES[entity]["state"] = (
+                        "off" if _FAKE_HA_STATES[entity]["state"] == "on" else "on"
+                    )
             return []
         raise RuntimeError(f"CERTIFICATION fake HA does not support {method} {path}")
 
     ha._request = fake_request
 
 
-def _install_fixed_clock():
-    """Freeze only the model-facing runtime clock for reproducible relative dates."""
-    import brain
+def _ha_snapshot() -> dict[str, dict[str, Any]]:
+    return json.loads(json.dumps(_FAKE_HA_STATES))
 
+
+def _install_fixed_clock():
+    """Freeze Alex's Python-level clock for deterministic relative dates.
+
+    Certification intentionally patches all loaded household modules that bind
+    datetime/date classes directly. SQLite audit timestamps may still use wall
+    clock CURRENT_TIMESTAMP; behavioural assertions never depend on those audit
+    timestamps.
+    """
     real_datetime = datetime
-    fixed_utc = real_datetime(2026, 9, 29, 2, 0, 0, tzinfo=timezone.utc)
+    real_date = date
+    fixed_utc = real_datetime.fromisoformat(CERT_NOW_UTC)
 
     class CertificationDateTime(real_datetime):
         @classmethod
@@ -535,7 +557,31 @@ def _install_fixed_clock():
                 return fixed_utc.replace(tzinfo=None)
             return fixed_utc.astimezone(tz)
 
-    brain.datetime = CertificationDateTime
+        @classmethod
+        def utcnow(cls):
+            return fixed_utc.replace(tzinfo=None)
+
+    class CertificationDate(real_date):
+        @classmethod
+        def today(cls):
+            return fixed_utc.date()
+
+    modules = []
+    for name in (
+        "brain", "db", "ingress", "outbox", "services", "phase2",
+        "phase2_finance", "phase2_work", "phase2_library",
+        "phase2_delegation", "profile_config",
+    ):
+        try:
+            modules.append(__import__(name))
+        except Exception:
+            continue
+    for module in modules:
+        if hasattr(module, "datetime"):
+            module.datetime = CertificationDateTime
+        if hasattr(module, "date"):
+            module.date = CertificationDate
+
 
 
 def _initialize_sandbox():
