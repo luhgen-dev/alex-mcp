@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 from datetime import datetime, timedelta, timezone
+from dataclasses import replace
 
 TEST_DIR = tempfile.mkdtemp(prefix="alex-mcp-tests-")
 OPTIONS = os.path.join(TEST_DIR, "options.json")
@@ -1589,8 +1590,10 @@ class AlexCoreTests(unittest.TestCase):
             "scope-receipt-private", "IMAGE", "image/jpeg", raw
         )
         actor = with_action_key(
-            self.actor(
-                "scope-receipt-private", "+60111111111", [receipt_media],
+            replace(
+                self.actor(
+                    "scope-receipt-private", "+60111111111", [receipt_media]
+                ),
                 trusted_text="log this receipt",
             ),
             "scope-receipt-private-a",
@@ -1603,8 +1606,8 @@ class AlexCoreTests(unittest.TestCase):
     def test_sensitive_finance_categories_default_private_but_family_can_be_explicit(self):
         self.claim("scope-pharmacy-private", "+60111111111", "pharmacy medicine")
         actor = with_action_key(
-            self.actor(
-                "scope-pharmacy-private", "+60111111111",
+            replace(
+                self.actor("scope-pharmacy-private", "+60111111111"),
                 trusted_text="pharmacy medicine",
             ),
             "scope-pharmacy-private-a",
@@ -1619,8 +1622,8 @@ class AlexCoreTests(unittest.TestCase):
             "share with the family pharmacy medicine",
         )
         family_actor = with_action_key(
-            self.actor(
-                "scope-pharmacy-family", "+60111111111",
+            replace(
+                self.actor("scope-pharmacy-family", "+60111111111"),
                 trusted_text="share with the family pharmacy medicine",
             ),
             "scope-pharmacy-family-a",
