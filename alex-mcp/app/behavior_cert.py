@@ -698,9 +698,12 @@ def _reset_case_database(sandbox_dir: Path, seed: str | None) -> str:
     """Give every prompt variant an independent DB so one wording cannot contaminate another."""
     import db
 
+    global CERT_FIXTURES
+    CERT_FIXTURES = {}
     case_path = sandbox_dir / f"case-{uuid.uuid4().hex}.db"
     db.DB_PATH = str(case_path)
     _initialize_sandbox()
+    _install_fixed_clock()
     _install_fake_ha()
     if seed == "core":
         _seed_core()
@@ -757,18 +760,27 @@ def _seed_core():
         _actor(mid, conv, "management fee receipt", media_ids=[media_id]),
         "seed-management-action",
     )
-    services.log_expense(
+    expense = services.log_expense(
         a, "Management fee", 593.62, "housing", "MYR",
         "2026-09-28", "CERT-MGMT-001",
     )
+    receipt_row = media.get_media(media_id)
+    CERT_FIXTURES.update({
+        "management_event_id": expense.get("event_id"),
+        "management_media_id": media_id,
+        "management_receipt_path": receipt_row["local_path"] if receipt_row else None,
+    })
 
     # Explicit memory and saved picture.
     mid = "seed-cobalt"
     _claim(mid, "remember cobalt", conv)
-    services.save_item(
+    cobalt = services.save_item(
         with_action_key(_actor(mid, conv, "remember cobalt"), "seed-cobalt-action"),
-        "Smoke-test code word", "cobalt", "test,code", False,
+        "Smoke-test code word",
+        "cobalt PRIVATE-CERT-CANARY-COBALT-7K2",
+        "test,code", False,
     )
+    CERT_FIXTURES["private_cobalt_item_id"] = cobalt.get("item_id")
 
     mid = "seed-vinyl"
     _claim(mid, "save this vinyl setup", conv)
@@ -776,14 +788,21 @@ def _seed_core():
         mid, "IMAGE", "image/png",
         base64.b64encode(b"CERTIFICATION vinyl image").decode("ascii"),
     )
-    services.save_item(
+    vinyl = services.save_item(
         with_action_key(
             _actor(mid, conv, "save this vinyl setup", media_ids=[vinyl_media]),
             "seed-vinyl-action",
         ),
-        "Vinyl Setup & Music Inspo", "Turntable and Raavanan vinyl setup",
+        "Vinyl Setup & Music Inspo",
+        "Turntable and Raavanan vinyl setup PRIVATE-CERT-CANARY-VINYL-9Q4",
         "vinyl,music,turntable", False,
     )
+    vinyl_row = media.get_media(vinyl_media)
+    CERT_FIXTURES.update({
+        "private_vinyl_item_id": vinyl.get("item_id"),
+        "private_vinyl_media_id": vinyl_media,
+        "vinyl_path": vinyl_row["local_path"] if vinyl_row else None,
+    })
 
     # Family shopping state.
     for idx, item in enumerate(("Diapers", "Bread"), 1):
@@ -794,21 +813,27 @@ def _seed_core():
             item, shared=True,
         )
 
-    # Dentist diary event + reminder.
+    # Dentist diary event + reminder. 17:00 is deliberately outside the
+    # synthetic morning work shift, so the seed itself cannot be rejected as a
+    # work conflict before behavioural cases run.
     mid = "seed-dentist-diary"
-    _claim(mid, "dentist appointment 1 October 4pm", conv)
-    phase2.add_diary_event(
+    _claim(mid, "dentist appointment 1 October 5pm", conv)
+    diary = phase2.add_diary_event(
         with_action_key(_actor(mid, conv, "dentist appointment"), "seed-dentist-diary-action"),
         "Dentist Appointment",
-        "2026-10-01T16:00:00+08:00",
-        "2026-10-01T16:15:00+08:00",
+        "2026-10-01T17:00:00+08:00",
+        "2026-10-01T17:15:00+08:00",
     )
+    if diary.get("status") == "needs_choice":
+        raise RuntimeError("CERTIFICATION SEED INVALID: dentist fixture unexpectedly conflicts with work")
+    CERT_FIXTURES["dentist_diary_id"] = diary.get("diary_id")
     mid = "seed-dentist-rem"
-    _claim(mid, "remind dentist 2pm", conv)
-    services.create_reminder(
-        with_action_key(_actor(mid, conv, "remind dentist 2pm"), "seed-dentist-rem-action"),
-        "Dentist Appointment", "2026-10-01T14:00:00+08:00",
+    _claim(mid, "remind dentist 3pm", conv)
+    reminder = services.create_reminder(
+        with_action_key(_actor(mid, conv, "remind dentist 3pm"), "seed-dentist-rem-action"),
+        "Dentist Appointment", "2026-10-01T15:00:00+08:00",
     )
+    CERT_FIXTURES["dentist_reminder_id"] = reminder.get("reminder_id")
 
     # Draft Malacca plan.
     mid = "seed-malacca"
