@@ -40,6 +40,7 @@ from behavior_contracts import (
     MANUAL_GATES,
     PROMPT_CONTRACTS,
     REQUIRED_DOMAINS,
+    REQUIRED_OWNER_TOOL_COVERAGE,
     PromptContract,
     contracts_for_phase,
     conversations_for_phase,
@@ -96,6 +97,21 @@ def catalog_audit() -> dict:
             failures.append(f"{phase}: missing domains from certification catalog: {missing}")
         else:
             checks.append(f"{phase} declared domains covered")
+
+    covered_tools = set()
+    for contract in PROMPT_CONTRACTS:
+        covered_tools |= set(contract.required_any)
+    for contract in CONVERSATION_CONTRACTS:
+        for step in contract.steps:
+            covered_tools |= set(step.required_any)
+    missing_owner_tools = sorted(REQUIRED_OWNER_TOOL_COVERAGE - covered_tools)
+    if missing_owner_tools:
+        failures.append(
+            "owner-visible MCP tools missing behavioural contracts: "
+            + ", ".join(missing_owner_tools)
+        )
+    else:
+        checks.append("every declared owner-visible MCP tool is represented by behaviour contracts")
 
     if not any(g.id == "manual.group.mention" for g in MANUAL_GATES):
         failures.append("real WhatsApp @mention gate is not represented")
