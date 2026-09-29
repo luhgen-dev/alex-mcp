@@ -418,6 +418,82 @@ class AlexCoreTests(unittest.TestCase):
             conn.close()
 
 
+    def test_mcp_natural_reference_facades_execute_without_opaque_ids(self):
+        goal = phase2_finance.create_goal(
+            "Family Holiday Savings", 5000, 200,
+            "+60111111111", visibility="private"
+        )
+        cash = phase2_finance.record_cash_event(
+            "OT", 400, "2026-09-29", "+60111111111",
+            visibility="private"
+        )
+        asset = phase2_library.create_asset(
+            "Water Dispenser", "+60111111111", visibility="private"
+        )
+        self.claim("mcp-natural", "+60111111111", "natural references")
+        media_id = media.save_media(
+            "mcp-natural", "PDF", "application/pdf",
+            base64.b64encode(b"%PDF-1.4 natural facade manual").decode("ascii"),
+        )
+        actor = self.actor(
+            "mcp-natural", "+60111111111", [media_id]
+        )
+
+        async def exercise():
+            with use_actor(actor):
+                async with Client(mcp) as client:
+                    progress = await client.call_tool(
+                        "planning_goal_progress",
+                        {"goal_name": "holiday savings"},
+                    )
+                    self.assertFalse(progress.is_error)
+
+                    deviation = await client.call_tool(
+                        "planning_goal_deviation",
+                        {"goal_name": "Family Holiday Savings",
+                         "period": "2026-09"},
+                    )
+                    self.assertFalse(deviation.is_error)
+
+                    allocation = await client.call_tool(
+                        "planning_allocate_cash_to_goal",
+                        {
+                            "amount": 100,
+                            "cash_event_type": "OT",
+                            "cash_event_date": "2026-09-29",
+                            "goal_name": "Family Holiday Savings",
+                        },
+                    )
+                    self.assertFalse(allocation.is_error)
+
+                    linked = await client.call_tool(
+                        "asset_link_document",
+                        {
+                            "document_type": "MANUAL",
+                            "asset_name": "Water Dispenser",
+                        },
+                    )
+                    self.assertFalse(linked.is_error)
+
+        asyncio.run(exercise())
+        self.assertEqual(
+            phase2_finance.goal_progress(
+                goal["goal_id"], "+60111111111"
+            )["funded"],
+            100,
+        )
+        stored = phase2_library.list_assets(
+            "+60111111111", include_documents=True
+        )
+        self.assertEqual(stored[0]["asset_id"], asset["asset_id"])
+        self.assertEqual(stored[0]["documents"][0]["evidence_ref"], media_id)
+        self.assertEqual(
+            phase2_finance.cash_event_status(
+                cash["cash_event_id"], "+60111111111"
+            )["unallocated"],
+            300,
+        )
+
     def test_audio_media_does_not_force_private_expense_shared(self):
         self.claim("audio-route", "+60111111111", "")
         raw = base64.b64encode(b"dummy-audio").decode("ascii")
