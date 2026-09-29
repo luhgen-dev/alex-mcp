@@ -46,8 +46,13 @@ def _source_media_context(source: str) -> list[str] | None:
     return None
 
 
-async def _tool_snapshot(prompt: str, source: str) -> list[dict[str, Any]]:
-    specs = await brain._tool_specs(prompt, _source_media_context(source))
+async def _tool_snapshot(
+    prompt: str, source: str, prior_user_text: str | None = None
+) -> list[dict[str, Any]]:
+    specs = await brain._tool_specs(
+        prompt, _source_media_context(source),
+        prior_user_text=prior_user_text,
+    )
     out: list[dict[str, Any]] = []
     for spec in specs:
         fn = spec.get("function", {})
@@ -114,7 +119,17 @@ async def build_packets(phase: str = "all") -> list[dict[str, Any]]:
                     packet_id, contract.id, contract.phase, contract.domain,
                     source, step.prompt, step.conversation_type, step.actor,
                 )
-                packet["available_tools"] = await _tool_snapshot(step.prompt, source)
+                prior_user_text = next(
+                    (
+                        item["content"]
+                        for item in reversed(history)
+                        if item.get("role") == "user"
+                    ),
+                    None,
+                )
+                packet["available_tools"] = await _tool_snapshot(
+                    step.prompt, source, prior_user_text
+                )
                 packet["conversation_history"] = list(history)
                 packet["conversation_step"] = index + 1
                 packets.append(packet)
