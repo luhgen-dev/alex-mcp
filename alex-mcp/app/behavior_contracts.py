@@ -60,6 +60,7 @@ class PromptContract:
     ha_expectations: tuple[HAExpectation, ...] = ()
     forbid_private_fixture_leak: bool = False
     expect_clarification: bool = False
+    media_fixture: str | None = None
     seed: str | None = None
     live: bool = True
     conversation_type: str = "DIRECT_DM"
@@ -81,6 +82,7 @@ class ConversationStep:
     ha_expectations: tuple[HAExpectation, ...] = ()
     forbid_private_fixture_leak: bool = False
     expect_clarification: bool = False
+    media_fixture: str | None = None
     quote_previous: bool = False
     actor: str = "husband"
     conversation_type: str = "DIRECT_DM"
@@ -179,6 +181,80 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
             "Find that management payment receipt for me.",
         ),
         _fs("find_receipts", "search_saved_items"), seed="core",
+    ),
+    PromptContract(
+        "p1.receipt.ingest.image", "phase1", "receipts",
+        "A captioned receipt image must traverse ingress/media and create the exact ledger record while preserving the original media.",
+        (
+            "Log this management fee receipt.",
+            "Add this management payment from the receipt.",
+        ),
+        _fs("log_expense"),
+        sources=("image",), media_fixture="management_receipt", seed="empty",
+        state_expectations=(
+            StateExpectation(
+                "financial_events",
+                where=(("source_message_id", "$MID"),),
+                fields=(("amount_minor", 59362), ("currency", "MYR"), ("status", "ACTIVE")),
+                count=1, delta=1,
+            ),
+            StateExpectation(
+                "media_objects",
+                where=(("source_message_id", "$MID"),),
+                fields=(("media_type", "IMAGE"),),
+                count=1, delta=1,
+            ),
+            StateExpectation("event_media_links", count=1, delta=1),
+        ),
+    ),
+    PromptContract(
+        "p1.receipt.ingest.pdf", "phase1", "receipts",
+        "A captioned receipt PDF must traverse ingress/media and create the exact ledger record while preserving the original document.",
+        (
+            "Log this payment receipt.",
+            "Add the payment shown in this PDF.",
+        ),
+        _fs("log_expense"),
+        sources=("pdf",), media_fixture="payment_pdf", seed="empty",
+        state_expectations=(
+            StateExpectation(
+                "financial_events",
+                where=(("source_message_id", "$MID"),),
+                fields=(("amount_minor", 44179), ("currency", "MYR"), ("status", "ACTIVE")),
+                count=1, delta=1,
+            ),
+            StateExpectation(
+                "media_objects",
+                where=(("source_message_id", "$MID"),),
+                fields=(("media_type", "PDF"),),
+                count=1, delta=1,
+            ),
+            StateExpectation("event_media_links", count=1, delta=1),
+        ),
+    ),
+    PromptContract(
+        "p1.memory.caption.image", "phase1", "memory",
+        "A captioned image explicitly saved as memory must create a saved-item link to the preserved image.",
+        (
+            "Save this picture for me as Vinyl test image.",
+            "Remember this image as Vinyl test image.",
+        ),
+        _fs("save_item"),
+        sources=("image",), media_fixture="plain_image", seed="empty",
+        state_expectations=(
+            StateExpectation(
+                "saved_items",
+                where=(("source_message_id", "$MID"),),
+                contains=(("title", "Vinyl"),),
+                count=1, delta=1,
+            ),
+            StateExpectation(
+                "media_objects",
+                where=(("source_message_id", "$MID"),),
+                fields=(("media_type", "IMAGE"),),
+                count=1, delta=1,
+            ),
+        ),
     ),
     PromptContract(
         "p1.reminder.read", "phase1", "reminders",
