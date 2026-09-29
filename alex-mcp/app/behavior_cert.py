@@ -36,6 +36,7 @@ from datetime import date, datetime, timezone
 from dataclasses import asdict, replace
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 from behavior_capabilities import (
     CAPABILITY_TO_TOOLS,
@@ -909,10 +910,387 @@ def _is_nonzero(value: Any) -> bool:
         return bool(str(value).strip())
 
 
-def _live_one(contract: PromptContract, prompt: str, source: str,
-              hard_latency_ms: int) -> dict:
+def _resolve_expectation_value(value: Any, mid: str) -> Any:
+    if value == "$MID":
+        return mid
+    if value == "$HUSBAND":
+        return "USR_HUSBAND"
+    if value == "$WIFE":
+        return "USR_WIFE"
+    return value
+
+
+def _safe_identifier(value: str) -> str:
+    if not value or not value.replace("_", "").isalnum() or value[0].isdigit():
+        raise ValueError(f"unsafe certification SQL identifier: {value!r}")
+    return value
+
+
+def _matching_state_count(expectation: StateExpectation, mid: str) -> int:
+    import db
+
+    table = _safe_identifier(expectation.table)
+    predicates = []
+    params = []
+    for key, raw in (*expectation.where, *expectation.fields):
+        column = _safe_identifier(str(key))
+        value = _resolve_expectation_value(raw, mid)
+        if value is None:
+            predicates.append(f'"{column}" IS NULL')
+        else:
+            predicates.append(f'"{column}"=?')
+            params.append(value)
+    sql = f'SELECT COUNT(*) FROM "{table}"'
+    if predicates:
+        sql += " WHERE " + " AND ".join(predicates)
+    conn = db.connect()
+    try:
+        return int(conn.execute(sql, params).fetchone()[0])
+    finally:
+        conn.close()
+
+
+def _expectation_counts(expectations: tuple[StateExpectation, ...], mid: str) -> list[int]:
+    return [_matching_state_count(expectation, mid) for expectation in expectations]
+
+
+def _state_expectation_problems(
+    expectations: tuple[StateExpectation, ...],
+    before_counts: list[int],
+    after_counts: list[int],
+) -> list[str]:
+    problems: list[str] = []
+    for index, expectation in enumerate(expectations):
+        before = before_counts[index] if index < len(before_counts) else 0
+        after = after_counts[index] if index < len(after_counts) else 0
+        if expectation.count is not None and after != expectation.count:
+            problems.append(
+                f"state expectation {expectation.table} count={after}; expected {expectation.count}"
+            )
+        elif expectation.count is None and after < 1:
+            problems.append(
+                f"state expectation {expectation.table} has no matching row"
+            )
+        if expectation.delta is not None and (after - before) != expectation.delta:
+            problems.append(
+                f"state expectation {expectation.table} delta={after-before}; "
+                f"expected {expectation.delta}"
+            )
+    return problems
+
+
+def _outbound_rows(mid: str) -> list[dict[str, Any]]:
+    import db
+
+    conn = db.connect()
+    try:
+        rows = conn.execute(
+            """SELECT outbound_id,kind,text_body,local_path,mime_type,
+                      delivery_status,provider_message_id,conversation_id
+               FROM outbound_messages
+               WHERE source_message_id=?
+               ORDER BY created_at_utc,rowid""",
+            (mid,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def _reply_from_outbound(rows: list[dict[str, Any]]) -> str:
+    texts = [str(row.get("text_body") or "") for row in rows if row.get("kind") == "TEXT"]
+    return texts[-1] if texts else ""
+
+
+def _attachment_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [row for row in rows if row.get("kind") in {"IMAGE", "DOCUMENT"}]
+
+
+def _fixture_attachment_path(name: str | None) -> str | None:
+    if not name:
+        return None
+    mapping = {
+        "vinyl": "vinyl_path",
+        "management_receipt": "management_receipt_path",
+    }
+    key = mapping.get(name, name)
+    value = CERT_FIXTURES.get(key)
+    return str(value) if value else None
+
+
+def _private_fixture_tokens() -> list[str]:
+    values = [
+        CERT_FIXTURES.get("private_cobalt_item_id"),
+        CERT_FIXTURES.get("private_vinyl_item_id"),
+        CERT_FIXTURES.get("private_vinyl_media_id"),
+        CERT_FIXTURES.get("vinyl_path"),
+        "PRIVATE-CERT-CANARY-COBALT-7K2",
+        "PRIVATE-CERT-CANARY-VINYL-9Q4",
+        "Smoke-test code word",
+        "Vinyl Setup & Music Inspo",
+    ]
+    return [str(value) for value in values if value]
+
+
+def _english_output_problem(reply: str) -> str | None:
+    # Owner policy: input may be mixed-language; Alex output is always English.
+    if any("\u0b80" <= ch <= "\u0bff" for ch in (reply or "")):
+        return "reply contains Tamil script; certification requires English output"
+    if _looks_malay(reply):
+        return "reply appears to be Malay; certification requires English output"
+    return None
+
+
+def _ha_expectation_problems(contract, before: dict, after: dict) -> list[str]:
+    problems: list[str] = []
+    for expectation in contract.ha_expectations:
+        current = after.get(expectation.entity_id)
+        if not current:
+            problems.append(f"HA expectation missing entity {expectation.entity_id}")
+            continue
+        if str(current.get("state")) != str(expectation.state):
+            problems.append(
+                f"HA {expectation.entity_id} state={current.get('state')!r}; "
+                f"expected {expectation.state!r}"
+            )
+        if expectation.unchanged and before.get(expectation.entity_id) != current:
+            problems.append(f"HA {expectation.entity_id} changed but must remain unchanged")
+    return problems
+
+
+def _privacy_leak_problems(contract, reply: str, outbounds: list[dict], trace: dict) -> list[str]:
+    if not contract.forbid_private_fixture_leak:
+        return []
+    blob = json.dumps(
+        {"reply": reply, "outbounds": outbounds, "trace": trace},
+        ensure_ascii=False, sort_keys=True, default=str,
+    )
+    leaked = [token for token in _private_fixture_tokens() if token in blob]
+    return (
+        ["private fixture leaked through tool result/reply/attachment: " + ", ".join(leaked)]
+        if leaked else []
+    )
+
+
+def _attachment_identity_problems(contract, outbounds: list[dict]) -> list[str]:
+    attachments = _attachment_rows(outbounds)
+    problems: list[str] = []
+    if contract.expect_attachment and not attachments:
+        problems.append("expected original attachment was not queued")
+    if contract.expect_attachment_of:
+        expected = _fixture_attachment_path(contract.expect_attachment_of)
+        if not expected:
+            problems.append(
+                f"fixture attachment {contract.expect_attachment_of!r} is unavailable"
+            )
+        else:
+            matching = [
+                row for row in attachments
+                if os.path.realpath(str(row.get("local_path") or "")) == os.path.realpath(expected)
+            ]
+            if len(matching) != 1:
+                problems.append(
+                    f"expected attachment {contract.expect_attachment_of!r} exactly once; "
+                    f"queued {len(matching)} matching files"
+                )
+            if len(attachments) != 1:
+                problems.append(
+                    f"expected exactly one attachment for {contract.expect_attachment_of!r}; "
+                    f"queued {len(attachments)}"
+                )
+    return problems
+
+
+def _judge_observation(
+    contract,
+    *,
+    source: str,
+    reply: str,
+    outbounds: list[dict],
+    trace: dict,
+    elapsed_ms: int,
+    state_changes: dict,
+    state_expectation_problems: list[str],
+    ha_before: dict,
+    ha_after: dict,
+    ingress_result: dict | None = None,
+) -> list[str]:
     import brain
 
+    called_tools = {
+        call["tool"] for call in trace.get("calls", [])
+        if call.get("tool") and not str(call["tool"]).startswith("_")
+    }
+    called_caps = set(capabilities_for_tools(called_tools))
+    required_caps = set(contract.required_any) - {"routing.discovery"}
+    forbidden_caps = set(contract.forbidden) - {"routing.discovery"}
+
+    problems: list[str] = []
+    if ingress_result is not None and not ingress_result.get("ok"):
+        problems.append("production ingress path returned failure")
+    if not (called_caps & required_caps):
+        problems.append(
+            "required capability was not actually executed: "
+            + " / ".join(sorted(required_caps))
+        )
+    bad = sorted(called_caps & forbidden_caps)
+    if bad:
+        problems.append("forbidden capability executed: " + ", ".join(bad))
+    if trace.get("turn", {}).get("result", {}).get("outcome") == "max_steps":
+        problems.append("turn exhausted model/tool step budget")
+
+    problems.extend(_attachment_identity_problems(contract, outbounds))
+    problems.extend(state_expectation_problems)
+    problems.extend(_ha_expectation_problems(contract, ha_before, ha_after))
+    problems.extend(_privacy_leak_problems(contract, reply, outbounds, trace))
+
+    low_reply = (reply or "").casefold()
+    for term in contract.expected_terms:
+        if term.casefold() not in low_reply:
+            problems.append(f"reply missing expected term: {term}")
+    for term in contract.forbidden_terms:
+        if term.casefold() in low_reply:
+            problems.append(f"reply contains forbidden/contradictory phrase: {term}")
+
+    for call in trace.get("calls", []):
+        for arg_name in contract.nonzero_forbidden_args:
+            if arg_name in call.get("arguments", {}) and _is_nonzero(call["arguments"][arg_name]):
+                problems.append(
+                    f"tool {call['tool']} invented non-zero {arg_name}="
+                    f"{call['arguments'][arg_name]!r}"
+                )
+
+    lang_problem = _english_output_problem(reply)
+    if contract.reply_language == "en" and lang_problem:
+        problems.append(lang_problem)
+
+    persistent_mutation_called = any(
+        brain._is_mutating_tool(call["tool"]) and call["tool"] != "ha_control"
+        for call in trace.get("calls", [])
+        if call.get("tool") and not str(call["tool"]).startswith("_")
+    )
+    if persistent_mutation_called and not state_changes:
+        problems.append("mutating capability returned without durable household-state change")
+
+    for table in contract.unchanged_tables:
+        if table in state_changes:
+            problems.append(f"table {table} changed but contract requires it unchanged")
+
+    if contract.expect_clarification:
+        if "?" not in (reply or ""):
+            problems.append("expected a clarification question")
+        if persistent_mutation_called:
+            problems.append("clarification turn performed a persistent mutation")
+
+    if elapsed_ms > 0 and elapsed_ms > getattr(contract, "hard_latency_ms", 10**12):
+        problems.append("contract-specific latency exceeded")
+    return problems
+
+
+def _bind_outbound_provider_id(mid: str, provider_message_id: str) -> None:
+    import db
+
+    conn = db.connect()
+    try:
+        conn.execute(
+            """UPDATE outbound_messages SET provider_message_id=?
+               WHERE source_message_id=? AND kind='TEXT'""",
+            (provider_message_id, mid),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _run_ingress_turn(
+    *,
+    mid: str,
+    conv: str,
+    prompt: str,
+    source: str,
+    phone: str,
+    conversation_type: str,
+    quoted_message_id: str | None = None,
+) -> dict:
+    import ingress
+    import media
+
+    payload = {
+        "message_id": mid,
+        "provider": "CERTIFICATION",
+        "conversation_id": conv,
+        "conversation_type": conversation_type,
+        "sender_phone": phone,
+        "text": prompt if source != "voice" else "",
+        "quoted_message_id": quoted_message_id,
+        "sent_at_ms": 1790647200000,  # 29 Sep 2026 02:00:00 UTC
+    }
+    if source == "voice":
+        payload.update({
+            "audio_data": base64.b64encode(b"CERTIFICATION VOICE FIXTURE").decode("ascii"),
+            "audio_mime_type": "audio/ogg",
+        })
+        with patch.object(media, "transcribe_audio", return_value=prompt):
+            return ingress.process(payload)
+    return ingress.process(payload)
+
+
+def _observe_ingress_turn(
+    contract,
+    *,
+    prompt: str,
+    source: str,
+    mid: str,
+    conv: str,
+    phone: str,
+    conversation_type: str,
+    quoted_message_id: str | None = None,
+) -> dict:
+    state_before = _state_fingerprint()
+    state_expect_before = _expectation_counts(contract.state_expectations, mid)
+    ha_before = _ha_snapshot()
+    started = time.monotonic()
+    ingress_result = _run_ingress_turn(
+        mid=mid, conv=conv, prompt=prompt, source=source, phone=phone,
+        conversation_type=conversation_type, quoted_message_id=quoted_message_id,
+    )
+    elapsed_ms = int((time.monotonic() - started) * 1000)
+    trace = _trace(mid)
+    outbounds = _outbound_rows(mid)
+    reply = _reply_from_outbound(outbounds)
+    state_after = _state_fingerprint()
+    state_changes = _state_diff(state_before, state_after)
+    state_expect_after = _expectation_counts(contract.state_expectations, mid)
+    state_problems = _state_expectation_problems(
+        contract.state_expectations, state_expect_before, state_expect_after
+    )
+    ha_after = _ha_snapshot()
+    problems = _judge_observation(
+        contract,
+        source=source,
+        reply=reply,
+        outbounds=outbounds,
+        trace=trace,
+        elapsed_ms=elapsed_ms,
+        state_changes=state_changes,
+        state_expectation_problems=state_problems,
+        ha_before=ha_before,
+        ha_after=ha_after,
+        ingress_result=ingress_result,
+    )
+    return {
+        "reply": reply,
+        "outbounds": outbounds,
+        "elapsed_ms": elapsed_ms,
+        "trace": trace,
+        "durable_state_diff": state_changes,
+        "ingress_result": ingress_result,
+        "problems": problems,
+    }
+
+
+def _live_one(contract: PromptContract, prompt: str, source: str,
+              hard_latency_ms: int) -> dict:
     mid = f"cert-{contract.id}-{uuid.uuid4().hex[:12]}"
     phone = WIFE if contract.actor == "wife" else HUSBAND
     ctype = contract.conversation_type
@@ -921,60 +1299,16 @@ def _live_one(contract: PromptContract, prompt: str, source: str,
         if ctype == "GROUP"
         else f"{contract.id}-{uuid.uuid4().hex[:8]}@s.whatsapp.net"
     )
-    state_before = _state_fingerprint()
-    _claim(mid, prompt, conv, phone=phone, conversation_type=ctype)
-    actor = _actor(
-        mid, conv, prompt, source=source, phone=phone,
-        conversation_type=ctype,
+    observed = _observe_ingress_turn(
+        contract, prompt=prompt, source=source, mid=mid, conv=conv,
+        phone=phone, conversation_type=ctype,
     )
-    started = time.monotonic()
-    reply, attachments = asyncio.run(brain.respond(actor, prompt))
-    elapsed_ms = int((time.monotonic() - started) * 1000)
-    trace = _trace(mid)
-    state_after = _state_fingerprint()
-    state_changes = _state_diff(state_before, state_after)
-    cost_usd = _turn_cost_usd(mid)
-    called = {
-        c["tool"] for c in trace["calls"]
-        if not c["tool"].startswith("_")
-    }
-    problems: list[str] = []
-    if not (called & contract.required_any):
+    problems = list(observed["problems"])
+    if observed["elapsed_ms"] > hard_latency_ms:
         problems.append(
-            "required tool was not called: " + " / ".join(sorted(contract.required_any))
+            f"hard latency exceeded: {observed['elapsed_ms']}ms > {hard_latency_ms}ms"
         )
-    bad = sorted(called & contract.forbidden)
-    if bad:
-        problems.append("forbidden tool called: " + ", ".join(bad))
-    if trace["turn"]["result"].get("outcome") == "max_steps":
-        problems.append("turn exhausted model/tool step budget")
-    if contract.expect_attachment and not attachments:
-        problems.append("expected original attachment was not queued")
-    low_reply = (reply or "").casefold()
-    for term in contract.expected_terms:
-        if term.casefold() not in low_reply:
-            problems.append(f"reply missing expected term: {term}")
-    for term in contract.forbidden_terms:
-        if term.casefold() in low_reply:
-            problems.append(f"reply contains forbidden/contradictory phrase: {term}")
-    for call in trace["calls"]:
-        for arg_name in contract.nonzero_forbidden_args:
-            if arg_name in call["arguments"] and _is_nonzero(call["arguments"][arg_name]):
-                problems.append(
-                    f"tool {call['tool']} invented non-zero {arg_name}="
-                    f"{call['arguments'][arg_name]!r}"
-                )
-    if source == "voice" and prompt.isascii() and _looks_malay(reply):
-        problems.append("English voice transcript received an unsolicited Malay reply")
-    persistent_mutation_called = any(
-        brain._is_mutating_tool(call["tool"]) and call["tool"] != "ha_control"
-        for call in trace["calls"]
-        if not call["tool"].startswith("_")
-    )
-    if persistent_mutation_called and not state_changes:
-        problems.append("mutating tool returned without any durable household-state change")
-    if elapsed_ms > hard_latency_ms:
-        problems.append(f"hard latency exceeded: {elapsed_ms}ms > {hard_latency_ms}ms")
+    cost_usd = _turn_cost_usd(mid)
     return {
         "contract": contract.id,
         "phase": contract.phase,
@@ -983,78 +1317,72 @@ def _live_one(contract: PromptContract, prompt: str, source: str,
         "actor": contract.actor,
         "conversation_type": contract.conversation_type,
         "prompt": prompt,
-        "reply": reply,
-        "attachment_count": len(attachments),
-        "elapsed_ms": elapsed_ms,
+        "reply": observed["reply"],
+        "outbound_count": len(observed["outbounds"]),
+        "attachment_count": len(_attachment_rows(observed["outbounds"])),
+        "elapsed_ms": observed["elapsed_ms"],
         "estimated_cost_usd": cost_usd,
-        "durable_state_diff": state_changes,
-        "trace": trace,
+        "durable_state_diff": observed["durable_state_diff"],
+        "trace": observed["trace"],
         "status": "PASS" if not problems else "FAIL",
         "problems": problems,
     }
 
 
-def _live_conversation(contract, source: str, hard_latency_ms: int) -> dict:
-    import brain
+def _step_contract(parent, step):
+    """Present a ConversationStep through the same judge interface."""
+    class StepView:
+        pass
 
+    view = StepView()
+    for name in (
+        "required_any", "forbidden", "expected_terms", "forbidden_terms",
+        "nonzero_forbidden_args", "expect_attachment", "expect_attachment_of",
+        "state_expectations", "unchanged_tables", "ha_expectations",
+        "forbid_private_fixture_leak", "expect_clarification", "reply_language",
+    ):
+        if hasattr(step, name):
+            setattr(view, name, getattr(step, name))
+        else:
+            setattr(view, name, frozenset() if name == "forbidden" else ())
+    view.forbidden = getattr(step, "forbidden", frozenset())
+    view.reply_language = getattr(step, "reply_language", "en")
+    return view
+
+
+def _live_conversation(contract, source: str, hard_latency_ms: int) -> dict:
     conv = f"{contract.id}-{source}-{uuid.uuid4().hex[:8]}@s.whatsapp.net"
     rows = []
+    previous_mid = None
+    previous_provider_id = None
     for index, step in enumerate(contract.steps, 1):
         mid = f"cert-{contract.id}-{source}-{index}-{uuid.uuid4().hex[:8]}"
-        state_before = _state_fingerprint()
-        _claim(mid, step.prompt, conv)
-        actor = _actor(mid, conv, step.prompt, source=source)
-        started = time.monotonic()
-        reply, attachments = asyncio.run(brain.respond(actor, step.prompt))
-        elapsed_ms = int((time.monotonic() - started) * 1000)
-        trace = _trace(mid)
-        state_after = _state_fingerprint()
-        state_changes = _state_diff(state_before, state_after)
-        cost_usd = _turn_cost_usd(mid)
-        called = {c["tool"] for c in trace["calls"] if not c["tool"].startswith("_")}
-        problems = []
-        if not (called & step.required_any):
-            problems.append(
-                "required tool was not called: " + " / ".join(sorted(step.required_any))
-            )
-        low_reply = (reply or "").casefold()
-        for term in step.expected_terms:
-            if term.casefold() not in low_reply:
-                problems.append(f"reply missing expected term: {term}")
-        for term in step.forbidden_terms:
-            if term.casefold() in low_reply:
-                problems.append(f"reply contains forbidden/contradictory phrase: {term}")
-        for call in trace["calls"]:
-            for arg_name in step.nonzero_forbidden_args:
-                if arg_name in call["arguments"] and _is_nonzero(call["arguments"][arg_name]):
-                    problems.append(
-                        f"tool {call['tool']} invented non-zero {arg_name}="
-                        f"{call['arguments'][arg_name]!r}"
-                    )
-        if step.expect_attachment and not attachments:
-            problems.append("expected original attachment was not queued")
-        if trace["turn"]["result"].get("outcome") == "max_steps":
-            problems.append("turn exhausted model/tool step budget")
-        if source == "voice" and step.prompt.isascii() and _looks_malay(reply):
-            problems.append("English voice transcript received an unsolicited Malay reply")
-        persistent_mutation_called = any(
-            brain._is_mutating_tool(call["tool"]) and call["tool"] != "ha_control"
-            for call in trace["calls"]
-            if not call["tool"].startswith("_")
+        view = _step_contract(contract, step)
+        quoted = previous_provider_id if step.quote_previous else None
+        observed = _observe_ingress_turn(
+            view, prompt=step.prompt, source=source, mid=mid, conv=conv,
+            phone=HUSBAND, conversation_type="DIRECT_DM",
+            quoted_message_id=quoted,
         )
-        if persistent_mutation_called and not state_changes:
-            problems.append("mutating tool returned without any durable household-state change")
-        if elapsed_ms > hard_latency_ms:
-            problems.append(f"hard latency exceeded: {elapsed_ms}ms > {hard_latency_ms}ms")
+        problems = list(observed["problems"])
+        if observed["elapsed_ms"] > hard_latency_ms:
+            problems.append(
+                f"hard latency exceeded: {observed['elapsed_ms']}ms > {hard_latency_ms}ms"
+            )
+        provider_id = f"cert-provider-{contract.id}-{index}-{uuid.uuid4().hex[:6]}"
+        _bind_outbound_provider_id(mid, provider_id)
+        previous_mid = mid
+        previous_provider_id = provider_id
         rows.append({
             "step": index,
             "prompt": step.prompt,
-            "reply": reply,
-            "attachment_count": len(attachments),
-            "elapsed_ms": elapsed_ms,
-            "estimated_cost_usd": cost_usd,
-            "durable_state_diff": state_changes,
-            "trace": trace,
+            "reply": observed["reply"],
+            "outbound_count": len(observed["outbounds"]),
+            "attachment_count": len(_attachment_rows(observed["outbounds"])),
+            "elapsed_ms": observed["elapsed_ms"],
+            "estimated_cost_usd": _turn_cost_usd(mid),
+            "durable_state_diff": observed["durable_state_diff"],
+            "trace": observed["trace"],
             "status": "PASS" if not problems else "FAIL",
             "problems": problems,
         })
