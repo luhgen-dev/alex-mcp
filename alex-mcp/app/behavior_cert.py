@@ -1089,6 +1089,11 @@ def _matching_state_count(expectation: StateExpectation, mid: str) -> int:
         else:
             predicates.append(f'"{column}"=?')
             params.append(value)
+    for key, raw in expectation.contains:
+        column = _safe_identifier(str(key))
+        value = str(_resolve_expectation_value(raw, mid))
+        predicates.append(f'CAST("{column}" AS TEXT) LIKE ?')
+        params.append(f"%{value}%")
     sql = f'SELECT COUNT(*) FROM "{table}"'
     if predicates:
         sql += " WHERE " + " AND ".join(predicates)
@@ -1263,6 +1268,7 @@ def _judge_observation(
     ha_before: dict,
     ha_after: dict,
     ingress_result: dict | None = None,
+    outbound_before_count: int = 0,
 ) -> list[str]:
     import brain
 
@@ -1277,7 +1283,7 @@ def _judge_observation(
     problems: list[str] = []
     if ingress_result is not None and not ingress_result.get("ok"):
         problems.append("production ingress path returned failure")
-    if not contract.expect_clarification and not (called_caps & required_caps):
+    if not contract.expect_clarification and not getattr(contract, "expect_duplicate", False) and not (called_caps & required_caps):
         problems.append(
             "required capability was not actually executed: "
             + " / ".join(sorted(required_caps))
@@ -1318,7 +1324,7 @@ def _judge_observation(
         for call in trace.get("calls", [])
         if call.get("tool") and not str(call["tool"]).startswith("_")
     )
-    if persistent_mutation_called and not state_changes:
+    if persistent_mutation_called and not state_changes and not getattr(contract, "expect_duplicate", False):
         problems.append("mutating capability returned without durable household-state change")
 
     for table in contract.unchanged_tables:
@@ -1330,6 +1336,14 @@ def _judge_observation(
             problems.append("expected a clarification question")
         if persistent_mutation_called:
             problems.append("clarification turn performed a persistent mutation")
+
+    if getattr(contract, "expect_duplicate", False):
+        if not (ingress_result or {}).get("duplicate"):
+            problems.append("expected ingress duplicate/idempotent outcome")
+        if state_changes:
+            problems.append("duplicate replay changed durable household state")
+        if len(outbounds) != outbound_before_count:
+            problems.append("duplicate replay queued additional outbound messages")
 
     if elapsed_ms > 0 and elapsed_ms > getattr(contract, "hard_latency_ms", 10**12):
         problems.append("contract-specific latency exceeded")
@@ -1363,6 +1377,7 @@ def _run_ingress_turn(
 ) -> dict:
     import ingress
     import media
+    import runtime_clock
 
     payload = {
         "message_id": mid,
@@ -1372,7 +1387,7 @@ def _run_ingress_turn(
         "sender_phone": phone,
         "text": prompt if source != "voice" else "",
         "quoted_message_id": quoted_message_id,
-        "sent_at_ms": 1790647200000,  # 29 Sep 2026 02:00:00 UTC
+        "sent_at_ms": int(runtime_clock.now_utc().timestamp() * 1000),
     }
     if source == "voice":
         payload.update({
@@ -1397,6 +1412,7 @@ def _observe_ingress_turn(
 ) -> dict:
     state_before = _state_fingerprint()
     state_expect_before = _expectation_counts(contract.state_expectations, mid)
+    outbound_before = _outbound_rows(mid)
     ha_before = _ha_snapshot()
     started = time.monotonic()
     ingress_result = _run_ingress_turn(
@@ -1426,6 +1442,7 @@ def _observe_ingress_turn(
         ha_before=ha_before,
         ha_after=ha_after,
         ingress_result=ingress_result,
+        outbound_before_count=len(outbound_before),
     )
     return {
         "reply": reply,
@@ -1489,7 +1506,8 @@ def _step_contract(parent, step):
         "required_any", "forbidden", "expected_terms", "forbidden_terms",
         "nonzero_forbidden_args", "expect_attachment", "expect_attachment_of",
         "state_expectations", "unchanged_tables", "ha_expectations",
-        "forbid_private_fixture_leak", "expect_clarification", "reply_language",
+        "forbid_private_fixture_leak", "expect_clarification", "expect_duplicate",
+        "reply_language",
     ):
         if hasattr(step, name):
             setattr(view, name, getattr(step, name))
@@ -1501,17 +1519,38 @@ def _step_contract(parent, step):
 
 
 def _live_conversation(contract, source: str, hard_latency_ms: int) -> dict:
-    conv = f"{contract.id}-{source}-{uuid.uuid4().hex[:8]}@s.whatsapp.net"
+    conv_token = uuid.uuid4().hex[:8]
+    conversations = {
+        "DIRECT_DM": f"{contract.id}-{source}-{conv_token}@s.whatsapp.net",
+        "GROUP": f"{contract.id}-{source}-{conv_token}@g.us",
+    }
     rows = []
     previous_mid = None
     previous_provider_id = None
     for index, step in enumerate(contract.steps, 1):
-        mid = f"cert-{contract.id}-{source}-{index}-{uuid.uuid4().hex[:8]}"
+        if step.clock_utc:
+            os.environ["ALEX_CERT_NOW"] = step.clock_utc
+        if step.restart_before:
+            # Re-run service/schema initialization against the same DB file.
+            # This is a process-lifecycle surrogate: state must remain durable
+            # without reseeding or changing db.DB_PATH.
+            _initialize_sandbox()
+        mid = (
+            previous_mid
+            if step.reuse_previous_message_id and previous_mid
+            else f"cert-{contract.id}-{source}-{index}-{uuid.uuid4().hex[:8]}"
+        )
         view = _step_contract(contract, step)
         quoted = previous_provider_id if step.quote_previous else None
+        ctype = step.conversation_type
+        conv = conversations.get(
+            ctype,
+            f"{contract.id}-{source}-{conv_token}@s.whatsapp.net",
+        )
+        phone = WIFE if step.actor == "wife" else HUSBAND
         observed = _observe_ingress_turn(
             view, prompt=step.prompt, source=source, mid=mid, conv=conv,
-            phone=HUSBAND, conversation_type="DIRECT_DM",
+            phone=phone, conversation_type=ctype,
             quoted_message_id=quoted,
         )
         problems = list(observed["problems"])
@@ -1519,8 +1558,11 @@ def _live_conversation(contract, source: str, hard_latency_ms: int) -> dict:
             problems.append(
                 f"hard latency exceeded: {observed['elapsed_ms']}ms > {hard_latency_ms}ms"
             )
-        provider_id = f"cert-provider-{contract.id}-{index}-{uuid.uuid4().hex[:6]}"
-        _bind_outbound_provider_id(mid, provider_id)
+        if step.expect_duplicate:
+            provider_id = previous_provider_id
+        else:
+            provider_id = f"cert-provider-{contract.id}-{index}-{uuid.uuid4().hex[:6]}"
+            _bind_outbound_provider_id(mid, provider_id)
         previous_mid = mid
         previous_provider_id = provider_id
         rows.append({
@@ -1537,6 +1579,7 @@ def _live_conversation(contract, source: str, hard_latency_ms: int) -> dict:
             "status": "PASS" if not problems else "FAIL",
             "problems": problems,
         })
+    os.environ["ALEX_CERT_NOW"] = CERT_NOW_UTC
     return {
         "contract": contract.id,
         "phase": contract.phase,
