@@ -82,9 +82,26 @@ artifact is preserved while repairs are in progress.
 manually. It uploads both evidence files as the `alex-lab-evidence` artifact
 for 14 days.
 
-The workflow intentionally does not contain provider secrets. Paid live-provider
-certification remains an explicit separate action. This keeps the default
+The workflow intentionally does not contain provider secrets. This keeps the default
 external repair loop zero-cost and deterministic.
+
+For a targeted provider-dependent repair, the same external lab can opt in to
+the real Tier-B provider path without Home Assistant:
+
+```bash
+python alex-mcp/app/alex_lab.py --phase phase2 \
+  --contract p2.plan.update --contract conv.plan.refine \
+  --run-live --provider auto \
+  --source-options /path/to/options.json \
+  --max-live-cost-usd 0.20 \
+  --report /tmp/alex-lab-report.json \
+  --packets /tmp/alex-lab-failures.jsonl
+```
+
+The provider child still uses the certification rig's disposable database, fake
+Home Assistant and spend cap. Targeted contract selection is specifically meant
+for the repair loop: after a code change, re-run only the affected behaviour
+instead of paying to repeat the whole benchmark.
 
 ## Important boundary
 
