@@ -433,6 +433,9 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         or re.search(r"\b(?:log|record|add)\b.*\b(?:expense|payment|receipt)\b", low)
     ):
         force.add("log_expense")
+        # A fresh, unambiguous money write should not expose correction or
+        # pending-approval mutators.  Those are separate lifecycle intents.
+        block |= {"correct_expense", "confirm_expense", "list_pending_expenses"}
     if re.search(
         r"\b(?:pending|waiting)\b.*\b(?:expenses?|payments?)\b"
         r"|\b(?:expenses?|payments?)\b.*\b(?:clarify|confirmation|pending)\b",
@@ -628,6 +631,17 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
     ):
         force |= {"list_leave_records", "work_leave_balance"}
 
+    # Drafting an automation is a proposal, never a live device action even
+    # though the requested YAML naturally contains phrases such as "turn on".
+    ha_draft = bool(re.search(
+        r"\b(?:draft|propose|write|create)\b.*\b(?:home assistant\s+)?automation\b"
+        r"|\bautomation\b.*\b(?:draft|proposal)\b",
+        low,
+    ))
+    if ha_draft:
+        force.add("ha_draft_automation")
+        block.add("ha_control")
+
     # Explicit low-risk HA action synonyms. Negated/hypothetical wording
     # gets only entity/state reads and can never expose the mutator.
     ha_switch = bool(re.search(
@@ -641,7 +655,7 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
     if ha_switch and ha_negated:
         force |= {"ha_find_entities", "ha_get_state"}
         block.add("ha_control")
-    elif ha_switch:
+    elif ha_switch and not ha_draft:
         force.add("ha_control")
 
     # Frequent phone-typing reminder misspellings still have a deterministic,
