@@ -327,40 +327,42 @@ For each new Alex phase/capability:
 A new owner-facing capability cannot silently appear without classification and
 behavioural coverage.
 
-## Independent second-review request
+## Completion policy
 
-Please review this PR again as a **test architecture**, not as a claim that
-v0.4.4 itself is green.
+The owner chose not to repeat architecture review after every repair pass. Claude's
+first independent review already identified the material weaknesses; those
+findings were used as the repair specification above.
 
-In particular, verify:
+The test rig itself is considered ready to merge when:
 
-1. the first-review B1 false-pass probes now fail;
-2. the core seed can initialize;
-3. discovery can no longer count as success;
-4. exact state/object/file/HA/privacy assertions are adequate;
-5. live behaviour really traverses `ingress.process` and inspects
-   `outbound_messages`;
-6. capability mapping is maintainable for the future facade;
-7. the shared clock is sufficiently complete for user-visible semantics;
-8. English-only output policy is enforced coherently;
-9. held-out text cannot leak into committed/report output;
-10. replay, correction, numbered selection, restart, privacy-scope and midnight
-    chains are meaningful;
-11. sandbox/HA/outbox isolation is fail-closed;
-12. tester mutation tests are capable of catching a weakened judge;
-13. latency evidence is useful without overstating phone-render visibility;
-14. the CI known-failure ratchet prevents new regressions without treating
-    existing v0.4.4 debt as a PASS;
-15. anything remains that would let a broken Alex receive a false behavioural
-    PASS.
+- the first-review material findings are addressed in code;
+- tester mutation probes reject the demonstrated false-pass cases;
+- the core seed/self-tests pass;
+- normal unit, Tier-A, catalog, offline-runner, architecture and container CI are green;
+- the PR remains sandbox-safe and no manual-only gate is falsely claimed as internal.
 
-Do not merge or modify the PR during review. Do not weaken a valid behavioural
-requirement merely because the current product fails it.
+After that, development proceeds. We review the **completed Alex product/release**
+rather than repeatedly reviewing the testing idea itself.
 
-Please finish with exactly one of:
+This does not weaken the certification standard. Alex still cannot receive
+`PASS_INTERNAL` while product-level behavioural failures remain. The known
+v0.4.4 failure baseline is repair debt, not acceptance.
 
-- **APPROVE TEST RIG AS COMPLETE**
-- **APPROVE AFTER MINOR CHANGES**
-- **REQUIRES MATERIAL CHANGES**
+## Owner language policy
 
-The rig is complete only after this second review and GPT independently agree.
+Input may be English, Tamil, Tanglish, Malay terms, typo-heavy text, incomplete
+sentences, or a natural mix. Alex's normal response must **always be English**.
+Another language is allowed only when the user explicitly asks for translation
+or quoted content in that language.
+
+## Next use
+
+Once this rig is merged, product work should consume it in this order:
+
+1. repair the currently exposed v0.4.4 behavioural failures;
+2. rerun the deterministic and offline gates after each capability repair;
+3. run spend-capped live certification only when cheaper gates are clean enough
+   to justify provider cost;
+4. return to the owner only for explicit manual gates;
+5. perform one short whole-system acceptance run before declaring the completed
+   Alex release certified.
