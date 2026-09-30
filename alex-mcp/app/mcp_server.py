@@ -364,7 +364,7 @@ def set_leave_record(leave_date: str, actor: Actor, status: str = "PLANNED",
                      portion: str = "FULL", notes: str | None = None,
                      end_date: str | None = None,
                      leave_type: str = "ANNUAL_LEAVE") -> dict:
-    """Store owner-private leave lifecycle. PLANNED/CONFIRMED do not count as historical absence; only TAKEN materializes dated annual/medical leave into the work engine."""
+    """Store ALEX's personal leave ledger. This is not an employer/HR submission. PLANNED/CONFIRMED do not count as historical absence; TAKEN materializes dated annual/medical leave into the work engine."""
     return phase2.set_leave_record(
         actor, leave_date, status, portion, notes, end_date, leave_type
     )
@@ -1010,8 +1010,17 @@ def bills_confirm_unpaid(instance_id: str, actor: Actor, note: str | None = None
 
 @mcp.tool()
 def work_schedule(start_date: str, end_date: str, actor: Actor) -> dict:
-    """Read repeating roster, explicit shift exceptions and effective OT over a date range."""
-    return phase2_work.work_summary(start_date, end_date, actor.phone, actor.conversation_type)
+    """Read repeating roster and shift exceptions. OT is included only when its separate policy is configured."""
+    try:
+        return phase2_work.work_summary(start_date, end_date, actor.phone, actor.conversation_type)
+    except ValueError as exc:
+        if "No active roster profile configured" in str(exc):
+            return {
+                "status": "not_configured",
+                "dependency": "roster",
+                "message": "I don't have your work roster configured yet.",
+            }
+        raise
 
 
 @mcp.tool()
