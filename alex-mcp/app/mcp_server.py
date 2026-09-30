@@ -504,6 +504,19 @@ def planning_create_goal(name: str, target_amount: float, actor: Actor,
 
 
 @mcp.tool()
+def planning_update_goal_target(new_target_amount: float, actor: Actor,
+                                goal_id: str | None = None,
+                                goal_name: str | None = None) -> dict:
+    """Change only an existing goal's target amount after explicit user instruction. This never creates a deadline or recurring contribution."""
+    resolved = phase2_finance.resolve_goal_reference(
+        goal_id, goal_name, actor.phone, actor.conversation_type
+    )
+    return phase2_finance.update_goal_target(
+        resolved, new_target_amount, actor.phone, actor.conversation_type
+    )
+
+
+@mcp.tool()
 def planning_lock_goal(actor: Actor, goal_id: str | None = None,
                        goal_name: str | None = None) -> dict:
     """Lock/activate one draft goal after explicit owner approval. Provide either goal_id from a prior result or its natural goal_name; Alex resolves names conservatively."""
@@ -958,6 +971,25 @@ def asset_create(name: str, actor: Actor, category: str | None = None,
         name, actor.phone, actor.conversation_type,
         "family" if shared or actor.conversation_type == "GROUP" else "private",
         category, brand, model, serial_number, purchase_date, warranty_end, note,
+    )
+
+
+@mcp.tool()
+def asset_update(actor: Actor, asset_id: str | None = None,
+                 asset_name: str | None = None, name: str | None = None,
+                 category: str | None = None, brand: str | None = None,
+                 model: str | None = None, serial_number: str | None = None,
+                 purchase_date: str | None = None,
+                 warranty_end: str | None = None, note: str | None = None,
+                 status: str | None = None) -> dict:
+    """Edit an authorized asset, including warranty expiry, without replacing its linked receipt/manual/photo evidence."""
+    resolved = phase2_library.resolve_asset_reference(
+        asset_id, asset_name, actor.phone, actor.conversation_type
+    )
+    return phase2_library.update_asset(
+        resolved, actor.phone, actor.conversation_type,
+        name, category, brand, model, serial_number,
+        purchase_date, warranty_end, note, status,
     )
 
 
