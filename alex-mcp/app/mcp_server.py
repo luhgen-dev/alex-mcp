@@ -186,6 +186,12 @@ def reminder_history(actor: Actor, reminder_id: str | None = None,
 
 
 @mcp.tool()
+def handoff_reminder_claim(reminder_id: str, recipient: str, actor: Actor) -> dict:
+    """Ask a household member such as Priya/spouse to accept your claimed Family Shared reminder. You remain claimant until they react to the DM request."""
+    return services.request_reminder_handoff(actor, reminder_id, recipient)
+
+
+@mcp.tool()
 def release_reminder_claim(reminder_id: str, actor: Actor) -> dict:
     """Explicitly release a claimable family reminder after the claimant says they cannot do it / release it. Removing a WhatsApp reaction never releases ownership."""
     return services.release_reminder_claim(actor, reminder_id)
