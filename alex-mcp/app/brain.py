@@ -2103,11 +2103,7 @@ def _requested_non_english_output(user_text: str) -> bool:
 
 
 def _looks_like_wrong_language_reply(text: str, user_text: str = "") -> bool:
-    """Catch obvious Malay/Indonesian answer drift when English is required.
-
-    This is deliberately narrow: Malay remains valid input, and an explicit
-    request for another output language always wins.
-    """
+    """Catch obvious Malay/Indonesian/Tamil output drift when English is required."""
     if _requested_non_english_output(user_text):
         return False
     value = text or ""
@@ -2116,14 +2112,98 @@ def _looks_like_wrong_language_reply(text: str, user_text: str = "") -> bool:
         "mohon maaf", "apakah anda", "silakan", "bermaksud",
         "sebelumnya", "jika anda", "ingin saya", "perlu saya",
     )
-    # Tamil is a supported *input* language, but Alex's owner-selected default
-    # output is English. A fully Tamil answer without an explicit language
-    # request is therefore the same drift class as the observed Indonesian
-    # response.
     tamil_chars = len(re.findall(r"[\u0B80-\u0BFF]", value))
     return (
         sum(1 for marker in markers if marker in low) >= 2
         or tamil_chars >= 4
+    )
+
+
+_REPAIR_SCAFFOLD_RE = re.compile(
+    r"\b(?:my previous response|previous answer analysis|now rewrite|"
+    r"self[- ]correction|constraint check|system message|assistant message|"
+    r"rewrite only|role:\s*(?:assistant|system|user))\b",
+    re.IGNORECASE,
+)
+
+
+def _validated_rewrite(original: str, rewritten: str) -> str | None:
+    """Accept only a compact user-facing rewrite; never leak repair scaffolding."""
+    value = (rewritten or "").strip()
+    if not value or _REPAIR_SCAFFOLD_RE.search(value):
+        return None
+    # A translation/rewrite should not explode into model analysis.
+    original_len = max(1, len((original or "").strip()))
+    if len(value) > max(700, int(original_len * 2.5)):
+        return None
+    return value
+
+
+_SUCCESS_CLAIM_RE = re.compile(
+    r"\b(?:done|successfully|i(?:'ve| have)\s+(?:updated|saved|corrected|"
+    r"rescheduled|recorded|contributed|added|changed|created|completed|cancelled|"
+    r"canceled|renamed|snoozed|deferred|removed|marked)|"
+    r"(?:has|have|was|were)\s+(?:been\s+)?(?:updated|saved|corrected|"
+    r"rescheduled|recorded|added|changed|created|completed|cancelled|canceled|"
+    r"renamed|snoozed|deferred|removed|marked))\b",
+    re.IGNORECASE,
+)
+_SUCCESS_NEGATION_RE = re.compile(
+    r"\b(?:couldn't|could not|didn't|did not|unable|failed|not\s+(?:yet\s+)?)\b",
+    re.IGNORECASE,
+)
+_NON_COMMITTED_STATUSES = {
+    "clarification_required", "still_needs_information", "not_pending",
+    "not_found", "no_match", "refused", "failed", "error",
+    "requested_unconfirmed", "unsupported",
+}
+
+
+def _looks_like_success_claim(text: str) -> bool:
+    value = text or ""
+    if _SUCCESS_NEGATION_RE.search(value):
+        return False
+    return bool(_SUCCESS_CLAIM_RE.search(value))
+
+
+def _mutation_result_committed(
+    tool_name: str, result: dict | None, *, has_media: bool = False
+) -> tuple[bool, str]:
+    """Normalize authoritative tool outcomes for user-visible success claims."""
+    if not isinstance(result, dict):
+        return False, "tool returned no structured result"
+    if result.get("error"):
+        return False, str(result.get("error"))[:240]
+    status = str(result.get("status") or "").strip().casefold()
+    if status in _NON_COMMITTED_STATUSES:
+        return False, status
+    if tool_name == "save_item" and has_media and result.get("media_saved") is False:
+        return False, "requested media was not persisted"
+    if tool_name == "ha_control" and status != "executed_and_verified":
+        return False, status or "device state was not verified"
+    # An idempotent replay whose desired state already exists is safe to
+    # acknowledge; the important invariant is that the state is authoritative.
+    return True, status or "committed"
+
+
+def _guard_mutation_success(
+    candidate: str, user_text: str, mutation_ledger: list[dict]
+) -> str:
+    if not _trusted_mutation_requested(user_text) or not _looks_like_success_claim(candidate):
+        return candidate
+    committed = [x for x in mutation_ledger if x.get("committed")]
+    failed = [x for x in mutation_ledger if not x.get("committed")]
+    if committed and not failed:
+        return candidate
+    if committed and failed:
+        return (
+            "I completed part of that request, but I couldn't verify every requested change. "
+            "I won't claim the rest was done."
+        )
+    reason = failed[-1].get("reason") if failed else "no committed mutation was returned"
+    return (
+        "I couldn't verify that change, so I won't claim it was completed. "
+        f"Reason: {reason}."
     )
 
 
@@ -2208,6 +2288,17 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
             "role": "system",
             "content": "The current user message is a transcribed WhatsApp voice note from the user.",
         })
+    if (
+        re.search(r"[\u0B80-\u0BFF]", user_text or "")
+        and not _requested_non_english_output(user_text)
+    ):
+        messages.append({
+            "role": "system",
+            "content": (
+                "The user's current message may be Tamil. Understand the Tamil request, "
+                "but answer the user in concise English unless they explicitly requested another language."
+            ),
+        })
     trusted_quote = _quoted_context_message(quoted_context)
     if trusted_quote:
         messages.append({"role": "system", "content": trusted_quote})
@@ -2249,6 +2340,7 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
     provider_failures: list[dict] = []
     capability_retry_used = False
     language_retry_used = False
+    mutation_ledger: list[dict] = []
 
     for _ in range(MAX_MODEL_CALLS):
         # If the cheap model is genuinely looping through tools, escalate the
@@ -2333,42 +2425,67 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                 and _looks_like_false_capability_denial(candidate)
             ):
                 capability_retry_used = True
-                messages.append({"role": "assistant", "content": candidate})
+                # Re-issue the trusted current request instead of appending the
+                # rejected assistant answer. This prevents a repair prompt from
+                # becoming conversational authority on the next model turn.
                 messages.append({
                     "role": "system",
                     "content": (
-                        "Re-evaluate that answer. Alex has the MCP tools currently supplied to you. "
+                        "Re-evaluate the user's current request using the MCP tools supplied to you. "
                         "Do not claim a capability is unavailable before trying the relevant tool. "
-                        "Use the appropriate supplied tool, use discover_alex_tools if needed, or ask "
-                        "one focused clarification when the user's intent is genuinely ambiguous. "
-                        "Reply in English."
+                        "Use discover_alex_tools if needed, or ask one focused clarification when "
+                        "the intent is genuinely ambiguous. Reply in English."
                     ),
+                })
+                messages.append({
+                    "role": "user",
+                    "content": current_content if vision_parts else current,
                 })
                 trace["routes"].append("self_repair:capability_denial")
                 continue
 
-            # The system contract requires English unless the user explicitly
-            # asks otherwise. A narrow post-answer guard repairs the exact
-            # Malay/Indonesian drift seen in live voice testing. No tools are
-            # exposed during this rewrite, so committed actions cannot repeat.
+            # Language repair is isolated from the household conversation.
+            # The rejected answer and the rewrite instruction are never appended
+            # to live history, so provider scaffolding cannot contaminate later turns.
             if (
                 not language_retry_used
                 and _looks_like_wrong_language_reply(candidate, user_text)
             ):
                 language_retry_used = True
-                messages.append({"role": "assistant", "content": candidate})
-                messages.append({
-                    "role": "system",
-                    "content": (
-                        "Rewrite only your immediately previous answer in concise English. "
-                        "Preserve its factual meaning. Do not perform or repeat any household action."
-                    ),
-                })
-                tools = []
                 trace["routes"].append("self_repair:reply_language")
-                continue
+                rewritten = None
+                try:
+                    rewrite_messages = [
+                        {
+                            "role": "system",
+                            "content": (
+                                "Translate the supplied assistant reply into concise natural English. "
+                                "Preserve facts exactly. Return only the user-facing answer, with no "
+                                "analysis, labels, commentary, or mention of rewriting."
+                            ),
+                        },
+                        {"role": "user", "content": candidate},
+                    ]
+                    rewrite_started = time.monotonic()
+                    rewrite_client = _client_for(active_route["provider"], settings)
+                    rewrite_response = rewrite_client.chat.completions.create(
+                        **_completion_kwargs(active_route, rewrite_messages, [], actor)
+                    )
+                    rewrite_ms = int((time.monotonic() - rewrite_started) * 1000)
+                    rewrite_msg = rewrite_response.choices[0].message
+                    rewritten = _validated_rewrite(
+                        candidate, _content_text(rewrite_msg.content)
+                    )
+                    _accumulate_usage(
+                        usage_by_route, active_route,
+                        getattr(rewrite_response, "usage", None),
+                        rewrite_ms, had_tool_calls=False,
+                    )
+                except Exception:
+                    rewritten = None
+                candidate = rewritten or candidate
 
-            final = candidate
+            final = _guard_mutation_success(candidate, user_text, mutation_ledger)
             _record_usage_buckets(actor.source_message_id, usage_by_route)
             add_turn(actor.user_id, actor.conversation_id, "user", history_user)
             add_turn(actor.user_id, actor.conversation_id, "assistant", final)
@@ -2447,9 +2564,22 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                         "note": "Alex sends these original files with your reply automatically.",
                     }
                 trace["tools_called"].append(name)
+                if _is_mutating_tool(name):
+                    committed, reason = _mutation_result_committed(
+                        name, payload,
+                        has_media=bool(media_context or vision_parts or actor.media_ids),
+                    )
+                    mutation_ledger.append({
+                        "tool": name, "committed": committed, "reason": reason,
+                    })
             except Exception as exc:
                 payload = {"error": str(exc)[:1000]}
                 trace["tools_called"].append(name + ":error")
+                if _is_mutating_tool(name):
+                    mutation_ledger.append({
+                        "tool": name, "committed": False,
+                        "reason": str(exc)[:240],
+                    })
                 _audit(actor, name, args, payload, False, 0, action_key)
 
             messages.append({
@@ -2465,7 +2595,19 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
     elif attachments:
         final = "I sent the file, but I couldn't finish the rest of that request."
     else:
-        final = "I couldn't complete that safely after several tool steps. Nothing else was changed."
+        committed = [x for x in mutation_ledger if x.get("committed")]
+        if committed:
+            final = (
+                "I completed at least one requested change, but I couldn't finish the rest safely. "
+                "I won't claim the unfinished part was done."
+            )
+        elif _trusted_mutation_requested(user_text):
+            final = (
+                "I couldn't complete that safely after several tool steps, and no requested "
+                "change was verified."
+            )
+        else:
+            final = "I couldn't complete that safely after several tool steps."
     add_turn(actor.user_id, actor.conversation_id, "user", history_user)
     add_turn(actor.user_id, actor.conversation_id, "assistant", final)
     trace["outcome"] = "max_steps"
