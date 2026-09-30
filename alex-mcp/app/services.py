@@ -8,6 +8,7 @@ import re
 import uuid
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from datetime import datetime, time, timedelta, timezone
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import runtime_clock
@@ -15,6 +16,7 @@ import runtime_clock
 from dateutil.rrule import rrulestr
 
 from context import ActorContext
+from config import DATA_DIR
 from db import connect, utc_now
 
 
@@ -1063,6 +1065,18 @@ def _active_user_phone(conn, user_id: str) -> str | None:
     return row["phone_number"] if row else None
 
 
+def _family_group_conversation_id() -> str:
+    """Read the family-group JID persisted by the Baileys bridge."""
+    try:
+        data = json.loads((Path(DATA_DIR) / "family_group.json").read_text(encoding="utf-8"))
+        value = str(data.get("group_jid") or "").strip()
+        if value.endswith("@g.us"):
+            return value
+    except Exception:
+        pass
+    raise ValueError("Family Shared group is not paired yet")
+
+
 def _reminder_targets(actor: ActorContext, recipient: str) -> list[str]:
     value = (recipient or "me").strip().lower()
     if value in {"me", "self", "myself"}:
@@ -1094,7 +1108,8 @@ def _record_reminder_event(conn, reminder_id: str, event_type: str,
 
 def create_reminder(actor: ActorContext, task: str, due_local: str,
                     recurrence_rule: str | None = None, shared: bool = False,
-                    recipient: str = "me", presence_aware: bool = False,
+                    recipient: str = "me", destination: str = "dm",
+                    presence_aware: bool = False,
                     delivery_class: str = "routine",
                     follow_up_after_hours: int = 24) -> dict:
     if not actor.action_key:
@@ -1104,9 +1119,12 @@ def create_reminder(actor: ActorContext, task: str, due_local: str,
     if delivery_class not in {"routine", "time_critical"}:
         raise ValueError("delivery_class must be routine or time_critical")
     follow_up_after_hours = max(0, min(24 * 30, int(follow_up_after_hours)))
+    destination = (destination or "dm").strip().lower()
+    if destination not in {"dm", "group"}:
+        raise ValueError("destination must be dm or group")
     conn = connect()
     try:
-        targets = _reminder_targets(actor, recipient)
+        targets = [actor.user_id] if destination == "group" else _reminder_targets(actor, recipient)
         created = []
         for target_user in targets:
             action_key = actor.action_key if len(targets) == 1 else f"{actor.action_key}:{target_user}"
@@ -1118,15 +1136,18 @@ def create_reminder(actor: ActorContext, task: str, due_local: str,
                 created.append({"status": "already_created", **dict(existing)})
                 continue
 
-            if target_user == actor.user_id:
-                conversation_id = actor.conversation_id
+            if destination == "group":
+                conversation_id = _family_group_conversation_id()
             else:
                 phone = _active_user_phone(conn, target_user)
                 if not phone:
                     raise ValueError("target household member has no configured WhatsApp number")
                 conversation_id = phone.replace("+", "") + "@s.whatsapp.net"
 
-            space = "FAMILY_SHARED" if shared or actor.conversation_type == "GROUP" or target_user != actor.user_id or len(targets) > 1 else actor.private_space
+            space = "FAMILY_SHARED" if (
+                destination == "group" or shared or actor.conversation_type == "GROUP"
+                or target_user != actor.user_id or len(targets) > 1
+            ) else actor.private_space
             if space not in actor.allowed_spaces:
                 raise PermissionError("requested reminder space is not accessible")
 
@@ -1144,12 +1165,13 @@ def create_reminder(actor: ActorContext, task: str, due_local: str,
             )
             _record_reminder_event(
                 conn, rid, "CREATED", None, "OPEN", None, due_utc,
-                f"recipient={recipient}; delivery_class={delivery_class}"
+                f"recipient={recipient}; destination={destination}; delivery_class={delivery_class}"
             )
             created.append({
                 "status": "created", "reminder_id": rid, "task": task, "due_at_utc": due_utc,
                 "timezone": actor.timezone, "recurrence_rule": recurrence_rule,
-                "recipient_user_id": target_user, "space": space,
+                "recipient_user_id": target_user, "destination": destination,
+                "conversation_id": conversation_id, "space": space,
                 "presence_aware": bool(presence_aware), "delivery_class": delivery_class,
                 "follow_up_after_hours": follow_up_after_hours,
             })
@@ -1169,24 +1191,42 @@ def list_reminders(actor: ActorContext, include_completed: bool = False, limit: 
                 ORDER BY due_at_utc ASC LIMIT ?""",
             spaces + [max(1, min(50, int(limit)))],
         ).fetchall()
-        return {"reminders": [dict(r) for r in rows]}
+        reminders = []
+        tz = ZoneInfo(actor.timezone)
+        for row in rows:
+            item = dict(row)
+            try:
+                due = datetime.fromisoformat(str(item["due_at_utc"]).replace("Z", "+00:00"))
+                if due.tzinfo is None:
+                    due = due.replace(tzinfo=timezone.utc)
+                item["due_local"] = due.astimezone(tz).isoformat()
+            except Exception:
+                item["due_local"] = None
+            reminders.append(item)
+        return {"reminders": reminders}
     finally:
         conn.close()
 
 
-def update_reminder(actor: ActorContext, reminder_id: str, status: str,
-                    new_due_local: str | None = None) -> dict:
+def update_reminder(actor: ActorContext, reminder_id: str, status: str = "open",
+                    new_due_local: str | None = None,
+                    snooze_minutes: int | None = None,
+                    snooze_until_local: str | None = None) -> dict:
     status_map = {
         "ack": "ACK", "acknowledged": "ACK", "complete": "COMP", "completed": "COMP",
         "cancel": "CANC", "cancelled": "CANC", "defer": "DEFERRED", "deferred": "DEFERRED",
-        "open": "OPEN",
+        "open": "OPEN", "snooze": "OPEN", "snoozed": "OPEN",
     }
     event_map = {
         "ACK": "ACKNOWLEDGED", "COMP": "COMPLETED", "CANC": "CANCELLED",
-        "DEFERRED": "DEFERRED", "OPEN": "RESCHEDULED", "DUE": "DUE",
+        "DEFERRED": "DEFERRED", "OPEN": "RESCHEDULED",
     }
-    resolved = status_map.get(status.lower(), status.upper())
-    if resolved not in {"OPEN","DUE","ACK","DEFERRED","COMP","CANC"}:
+    if snooze_minutes is not None and snooze_until_local:
+        raise ValueError("provide either snooze_minutes or snooze_until_local, not both")
+    resolved = status_map.get((status or "open").lower(), (status or "open").upper())
+    if resolved == "DUE":
+        raise ValueError("DUE is scheduler-owned; use snooze/reschedule/open instead")
+    if resolved not in {"OPEN","ACK","DEFERRED","COMP","CANC"}:
         raise ValueError("unsupported reminder status")
     marks, spaces = _spaces_sql(actor)
     conn = connect()
@@ -1200,7 +1240,18 @@ def update_reminder(actor: ActorContext, reminder_id: str, status: str,
             raise PermissionError("reminder not found in your accessible spaces")
         previous_state = row["status"]
         previous_due = row["due_at_utc"]
-        new_due = _parse_event_time(new_due_local, actor.timezone) if new_due_local else previous_due
+        snooze_note = None
+        if snooze_minutes is not None:
+            minutes = max(1, min(60 * 24 * 30, int(snooze_minutes)))
+            new_due = (runtime_clock.now_utc() + timedelta(minutes=minutes)).isoformat()
+            resolved = "OPEN"
+            snooze_note = f"snoozed_from_now={minutes}m"
+        elif snooze_until_local:
+            new_due = _parse_event_time(snooze_until_local, actor.timezone)
+            resolved = "OPEN"
+            snooze_note = "snoozed_until_local"
+        else:
+            new_due = _parse_event_time(new_due_local, actor.timezone) if new_due_local else previous_due
         acknowledged = utc_now() if resolved == "ACK" else None
         if resolved == "ACK":
             conn.execute(
@@ -1216,8 +1267,8 @@ def update_reminder(actor: ActorContext, reminder_id: str, status: str,
             )
         _record_reminder_event(
             conn, reminder_id,
-            "RESCHEDULED" if new_due_local and resolved in {"OPEN","DEFERRED"} else event_map[resolved],
-            previous_state, resolved, previous_due, new_due,
+            event_map[resolved],
+            previous_state, resolved, previous_due, new_due, snooze_note,
         )
         conn.commit()
         return {"status": "updated", "reminder_id": reminder_id, "state": resolved,
@@ -1226,23 +1277,37 @@ def update_reminder(actor: ActorContext, reminder_id: str, status: str,
         conn.close()
 
 
-def reminder_history(actor: ActorContext, reminder_id: str) -> dict:
+def reminder_history(actor: ActorContext, reminder_id: str | None = None,
+                     limit: int = 50) -> dict:
     marks, spaces = _spaces_sql(actor)
+    bounded = max(1, min(200, int(limit)))
     conn = connect()
     try:
-        owned = conn.execute(
-            f"SELECT 1 FROM reminders WHERE reminder_id=? AND space_id IN ({marks})",
-            [reminder_id] + spaces,
-        ).fetchone()
-        if not owned:
-            raise PermissionError("reminder not found in your accessible spaces")
+        if reminder_id:
+            owned = conn.execute(
+                f"SELECT 1 FROM reminders WHERE reminder_id=? AND space_id IN ({marks})",
+                [reminder_id] + spaces,
+            ).fetchone()
+            if not owned:
+                raise PermissionError("reminder not found in your accessible spaces")
+            rows = conn.execute(
+                """SELECT event_type,previous_state,new_state,previous_due_at_utc,new_due_at_utc,
+                          note,created_at_utc
+                   FROM reminder_events WHERE reminder_id=? ORDER BY created_at_utc""",
+                (reminder_id,),
+            ).fetchall()
+            return {"reminder_id": reminder_id, "history": [dict(r) for r in rows]}
+
         rows = conn.execute(
-            """SELECT event_type,previous_state,new_state,previous_due_at_utc,new_due_at_utc,
-                      note,created_at_utc
-               FROM reminder_events WHERE reminder_id=? ORDER BY created_at_utc""",
-            (reminder_id,),
+            f"""SELECT e.reminder_id,r.task_text,e.event_type,e.previous_state,e.new_state,
+                       e.previous_due_at_utc,e.new_due_at_utc,e.note,e.created_at_utc
+                FROM reminder_events e
+                JOIN reminders r ON r.reminder_id=e.reminder_id
+                WHERE r.space_id IN ({marks})
+                ORDER BY e.created_at_utc DESC LIMIT ?""",
+            spaces + [bounded],
         ).fetchall()
-        return {"history": [dict(r) for r in rows]}
+        return {"history": [dict(r) for r in rows], "aggregate": True}
     finally:
         conn.close()
 
@@ -1415,12 +1480,18 @@ def list_shopping_items(actor: ActorContext, include_purchased: bool = False, li
         conn.close()
 
 
-def update_shopping_item(actor: ActorContext, item_id: str, status: str = "purchased",
-                         quantity: str | None = None, notes: str | None = None) -> dict:
-    resolved = {"open": "OPEN", "purchased": "PURCHASED", "bought": "PURCHASED",
-                "removed": "REMOVED", "remove": "REMOVED"}.get((status or "").strip().lower())
-    if not resolved:
-        raise ValueError("shopping status must be open, purchased, or removed")
+def update_shopping_item(actor: ActorContext, item_id: str, status: str | None = None,
+                         quantity: str | None = None, notes: str | None = None,
+                         item: str | None = None) -> dict:
+    resolved = None
+    if status is not None:
+        resolved = {"open": "OPEN", "purchased": "PURCHASED", "bought": "PURCHASED",
+                    "removed": "REMOVED", "remove": "REMOVED"}.get(status.strip().lower())
+        if not resolved:
+            raise ValueError("shopping status must be open, purchased, or removed")
+    clean_item = (item or "").strip() if item is not None else None
+    if item is not None and not clean_item:
+        raise ValueError("shopping item name cannot be empty")
     marks, spaces = _spaces_sql(actor)
     conn = connect()
     try:
@@ -1430,13 +1501,22 @@ def update_shopping_item(actor: ActorContext, item_id: str, status: str = "purch
         ).fetchone()
         if not row:
             raise PermissionError("shopping item not found in your accessible spaces")
+        next_state = resolved or row["status"]
+        next_name = clean_item[:200] if clean_item is not None else row["item_name"]
         conn.execute(
-            """UPDATE shopping_items SET status=?,quantity=?,notes=?,updated_at_utc=? WHERE item_id=?""",
-            (resolved, quantity if quantity is not None else row["quantity"],
+            """UPDATE shopping_items
+               SET item_name=?,status=?,quantity=?,notes=?,updated_at_utc=? WHERE item_id=?""",
+            (next_name, next_state,
+             quantity if quantity is not None else row["quantity"],
              notes if notes is not None else row["notes"], utc_now(), item_id),
         )
         conn.commit()
-        return {"status": "updated", "item_id": item_id, "state": resolved}
+        return {
+            "status": "updated", "item_id": item_id, "state": next_state,
+            "item": next_name,
+            "quantity": quantity if quantity is not None else row["quantity"],
+            "notes": notes if notes is not None else row["notes"],
+        }
     finally:
         conn.close()
 
