@@ -1135,6 +1135,7 @@ def _record_reminder_event(conn, reminder_id: str, event_type: str,
 def create_reminder(actor: ActorContext, task: str, due_local: str,
                     recurrence_rule: str | None = None, shared: bool = False,
                     recipient: str = "me", destination: str = "dm",
+                    claimable: bool = False,
                     presence_aware: bool = False,
                     delivery_class: str = "routine",
                     follow_up_after_hours: int = 24) -> dict:
@@ -1148,6 +1149,8 @@ def create_reminder(actor: ActorContext, task: str, due_local: str,
     destination = (destination or "dm").strip().lower()
     if destination not in {"dm", "group"}:
         raise ValueError("destination must be dm or group")
+    if claimable and destination != "group":
+        raise ValueError("claimable reminders must use destination=group")
     conn = connect()
     try:
         targets = [actor.user_id] if destination == "group" else _reminder_targets(actor, recipient)
@@ -1182,22 +1185,24 @@ def create_reminder(actor: ActorContext, task: str, due_local: str,
                 """INSERT INTO reminders(
                     reminder_id,action_key,source_message_id,owner_id,space_id,conversation_id,
                     task_text,due_at_utc,timezone_name,recurrence_rule,
-                    presence_aware,delivery_class,follow_up_after_hours
-                   ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    presence_aware,delivery_class,follow_up_after_hours,claimable
+                   ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (rid, action_key, actor.source_message_id, target_user, space,
                  conversation_id, task[:500], due_utc, actor.timezone,
                  (recurrence_rule or "")[:500] or None,
-                 1 if presence_aware else 0, delivery_class, follow_up_after_hours),
+                 1 if presence_aware else 0, delivery_class, follow_up_after_hours,
+                 1 if claimable else 0),
             )
             _record_reminder_event(
                 conn, rid, "CREATED", None, "OPEN", None, due_utc,
-                f"recipient={recipient}; destination={destination}; delivery_class={delivery_class}"
+                f"recipient={recipient}; destination={destination}; claimable={bool(claimable)}; delivery_class={delivery_class}"
             )
             created.append({
                 "status": "created", "reminder_id": rid, "task": task, "due_at_utc": due_utc,
                 "timezone": actor.timezone, "recurrence_rule": recurrence_rule,
                 "recipient_user_id": target_user, "destination": destination,
                 "conversation_id": conversation_id, "space": space,
+                "claimable": bool(claimable),
                 "presence_aware": bool(presence_aware), "delivery_class": delivery_class,
                 "follow_up_after_hours": follow_up_after_hours,
             })
@@ -1212,7 +1217,9 @@ def list_reminders(actor: ActorContext, include_completed: bool = False, limit: 
     conn = connect()
     try:
         rows = conn.execute(
-            f"""SELECT reminder_id,owner_id,task_text,due_at_utc,timezone_name,recurrence_rule,status
+            f"""SELECT reminder_id,owner_id,task_text,due_at_utc,timezone_name,
+                       recurrence_rule,status,space_id,conversation_id,claimable,
+                       claimed_by_user_id,claimed_at_utc
                 FROM reminders WHERE space_id IN ({marks}) {states}
                 ORDER BY due_at_utc ASC LIMIT ?""",
             spaces + [max(1, min(50, int(limit)))],
@@ -1258,7 +1265,9 @@ def update_reminder(actor: ActorContext, reminder_id: str, status: str = "open",
     conn = connect()
     try:
         row = conn.execute(
-            f"""SELECT reminder_id,status,due_at_utc FROM reminders
+            f"""SELECT reminder_id,status,due_at_utc,owner_id,claimable,
+                       claimed_by_user_id,claimed_at_utc
+                FROM reminders
                 WHERE reminder_id=? AND space_id IN ({marks})""",
             [reminder_id] + spaces,
         ).fetchone()
@@ -1279,17 +1288,40 @@ def update_reminder(actor: ActorContext, reminder_id: str, status: str = "open",
         else:
             new_due = _parse_event_time(new_due_local, actor.timezone) if new_due_local else previous_due
         acknowledged = utc_now() if resolved == "ACK" else None
+        claim_clear_event = None
+        if resolved == "COMP" and row["claimed_by_user_id"]:
+            claim_clear_event = "CLEARED_COMPLETED"
+        elif resolved == "CANC" and row["claimed_by_user_id"]:
+            claim_clear_event = "CLEARED_CANCELLED"
+
         if resolved == "ACK":
             conn.execute(
                 """UPDATE reminders SET status=?,due_at_utc=?,acknowledged_at_utc=?,
                    next_delivery_at_utc=NULL,defer_reason=NULL WHERE reminder_id=?""",
                 (resolved, new_due, acknowledged, reminder_id),
             )
+        elif resolved in {"COMP", "CANC"}:
+            conn.execute(
+                """UPDATE reminders SET status=?,due_at_utc=?,next_delivery_at_utc=NULL,
+                   defer_reason=NULL,claimed_by_user_id=NULL,claimed_at_utc=NULL
+                   WHERE reminder_id=?""",
+                (resolved, new_due, reminder_id),
+            )
         else:
             conn.execute(
                 """UPDATE reminders SET status=?,due_at_utc=?,next_delivery_at_utc=NULL,
                    defer_reason=NULL WHERE reminder_id=?""",
                 (resolved, new_due, reminder_id),
+            )
+        if claim_clear_event:
+            conn.execute(
+                """INSERT INTO reminder_claim_events(
+                       claim_event_id,reminder_id,actor_user_id,event_type,note
+                   ) VALUES(?,?,?,?,?)""",
+                (
+                    str(uuid.uuid4()), reminder_id, actor.user_id,
+                    claim_clear_event, "claim cleared by reminder lifecycle",
+                ),
             )
         _record_reminder_event(
             conn, reminder_id,
@@ -1322,7 +1354,18 @@ def reminder_history(actor: ActorContext, reminder_id: str | None = None,
                    FROM reminder_events WHERE reminder_id=? ORDER BY created_at_utc""",
                 (reminder_id,),
             ).fetchall()
-            return {"reminder_id": reminder_id, "history": [dict(r) for r in rows]}
+            claim_rows = conn.execute(
+                """SELECT actor_user_id,event_type,provider_message_id,reaction_text,
+                          note,created_at_utc
+                   FROM reminder_claim_events
+                   WHERE reminder_id=? ORDER BY created_at_utc""",
+                (reminder_id,),
+            ).fetchall()
+            return {
+                "reminder_id": reminder_id,
+                "history": [dict(r) for r in rows],
+                "claim_history": [dict(r) for r in claim_rows],
+            }
 
         rows = conn.execute(
             f"""SELECT e.reminder_id,r.task_text,e.event_type,e.previous_state,e.new_state,
@@ -1336,6 +1379,151 @@ def reminder_history(actor: ActorContext, reminder_id: str | None = None,
         return {"history": [dict(r) for r in rows], "aggregate": True}
     finally:
         conn.close()
+
+def claim_reminder_from_reaction(
+    actor: ActorContext, provider_message_id: str, reaction_text: str | None
+) -> dict:
+    """Atomically claim a Family Shared reminder from any non-empty reaction."""
+    reaction = str(reaction_text or "")
+    if not reaction.strip():
+        return {"status": "ignored_reaction_removal"}
+    if actor.conversation_type != "GROUP":
+        raise PermissionError("reminder reactions are accepted only in the family group")
+    conn = connect()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        outbound = conn.execute(
+            """SELECT context_id FROM outbound_messages
+               WHERE conversation_id=? AND provider_message_id=?
+                 AND context_kind IN (
+                     'REMINDER_INITIAL','REMINDER_FOLLOWUP',
+                     'REMINDER_CLAIMANT_FOLLOWUP','REMINDER_FAMILY_RESURFACE'
+                 )
+               ORDER BY delivered_at_utc DESC LIMIT 1""",
+            (actor.conversation_id, provider_message_id),
+        ).fetchone()
+        if not outbound or not outbound["context_id"]:
+            conn.rollback()
+            return {"status": "not_a_reminder_message"}
+        reminder_id = outbound["context_id"]
+        row = conn.execute(
+            """SELECT reminder_id,task_text,status,space_id,claimable,
+                      claimed_by_user_id,follow_up_after_hours
+               FROM reminders WHERE reminder_id=?""",
+            (reminder_id,),
+        ).fetchone()
+        if not row or row["space_id"] != "FAMILY_SHARED":
+            conn.rollback()
+            raise PermissionError("reminder not accessible from the family group")
+        if not int(row["claimable"] or 0):
+            conn.rollback()
+            return {"status": "not_claimable", "reminder_id": reminder_id}
+        if row["status"] in {"COMP", "CANC"}:
+            conn.rollback()
+            return {"status": "closed", "reminder_id": reminder_id}
+        if row["claimed_by_user_id"]:
+            conn.rollback()
+            return {
+                "status": "already_claimed", "reminder_id": reminder_id,
+                "claimed_by_user_id": row["claimed_by_user_id"],
+                "claimed_by_me": row["claimed_by_user_id"] == actor.user_id,
+            }
+        now = runtime_clock.now_utc()
+        follow_hours = max(1, int(row["follow_up_after_hours"] or 24))
+        next_delivery = (now + timedelta(hours=follow_hours)).isoformat()
+        updated = conn.execute(
+            """UPDATE reminders
+               SET claimed_by_user_id=?,claimed_at_utc=?,
+                   claimant_follow_up_at_utc=NULL,family_resurfaced_at_utc=NULL,
+                   next_delivery_at_utc=?
+               WHERE reminder_id=? AND claimed_by_user_id IS NULL
+                 AND claimable=1 AND status NOT IN ('COMP','CANC')""",
+            (actor.user_id, now.isoformat(), next_delivery, reminder_id),
+        )
+        if updated.rowcount != 1:
+            winner = conn.execute(
+                "SELECT claimed_by_user_id FROM reminders WHERE reminder_id=?",
+                (reminder_id,),
+            ).fetchone()
+            conn.rollback()
+            return {
+                "status": "already_claimed", "reminder_id": reminder_id,
+                "claimed_by_user_id": winner["claimed_by_user_id"] if winner else None,
+            }
+        conn.execute(
+            """INSERT INTO reminder_claim_events(
+                   claim_event_id,reminder_id,actor_user_id,event_type,
+                   provider_message_id,reaction_text,note
+               ) VALUES(?,?,?,?,?,?,?)""",
+            (
+                str(uuid.uuid4()), reminder_id, actor.user_id, "CLAIMED",
+                provider_message_id, reaction[:32], "first valid reaction won atomically",
+            ),
+        )
+        conn.commit()
+        return {
+            "status": "claimed", "reminder_id": reminder_id,
+            "task": row["task_text"], "claimed_by_user_id": actor.user_id,
+            "next_claimant_follow_up_at_utc": next_delivery,
+        }
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def release_reminder_claim(actor: ActorContext, reminder_id: str) -> dict:
+    """Release a claim explicitly; deleting the reaction never releases it."""
+    marks, spaces = _spaces_sql(actor)
+    conn = connect()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            f"""SELECT reminder_id,owner_id,status,claimable,claimed_by_user_id,
+                       follow_up_after_hours
+                FROM reminders
+                WHERE reminder_id=? AND space_id IN ({marks})""",
+            [reminder_id] + spaces,
+        ).fetchone()
+        if not row:
+            conn.rollback()
+            raise PermissionError("reminder not found in your accessible spaces")
+        if not row["claimed_by_user_id"]:
+            conn.rollback()
+            return {"status": "already_unclaimed", "reminder_id": reminder_id}
+        if actor.user_id not in {row["claimed_by_user_id"], row["owner_id"]}:
+            conn.rollback()
+            raise PermissionError("only the claimant or reminder owner can release the claim")
+        next_delivery = (
+            runtime_clock.now_utc()
+            + timedelta(hours=max(1, int(row["follow_up_after_hours"] or 24)))
+        ).isoformat()
+        conn.execute(
+            """UPDATE reminders
+               SET claimed_by_user_id=NULL,claimed_at_utc=NULL,
+                   claimant_follow_up_at_utc=NULL,family_resurfaced_at_utc=NULL,
+                   next_delivery_at_utc=?
+               WHERE reminder_id=?""",
+            (next_delivery, reminder_id),
+        )
+        conn.execute(
+            """INSERT INTO reminder_claim_events(
+                   claim_event_id,reminder_id,actor_user_id,event_type,note
+               ) VALUES(?,?,?,?,?)""",
+            (
+                str(uuid.uuid4()), reminder_id, actor.user_id, "RELEASED",
+                "explicit release; reaction removal alone never releases",
+            ),
+        )
+        conn.commit()
+        return {"status": "released", "reminder_id": reminder_id}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
 
 def set_goal(actor: ActorContext, name: str, target_amount: float | None = None,
              current_amount: float | None = None, currency: str = "MYR",
