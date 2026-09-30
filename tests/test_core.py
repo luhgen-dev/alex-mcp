@@ -73,7 +73,8 @@ class AlexCoreTests(unittest.TestCase):
                 "alex_phase2_work_events", "alex_phase2_delegations",
                 "alex_profile_config_versions",
                 "tool_audit", "tool_execution_claims", "ai_usage", "diagnostic_runs", "monitor_notifications",
-                "outbound_messages", "conversation_turns", "selection_sets", "active_report_contexts", "reminder_events",
+                "outbound_messages", "conversation_turns", "selection_sets", "active_report_contexts",
+                "reminder_claim_events", "reminder_events",
                 "task_reminder_links", "task_events", "tasks",
                 "diary_reminder_links", "plan_diary_links", "schedule_conflicts", "diary_events", "plans",
                 "leave_records", "work_roster", "cashflow_baselines",
@@ -2001,6 +2002,135 @@ class AlexCoreTests(unittest.TestCase):
         )
         self.assertEqual(shared["conversation_id"], group_id)
         self.assertEqual(shared["space"], "FAMILY_SHARED")
+
+    def test_claimable_group_reminder_first_reaction_wins_and_release_is_explicit(self):
+        group_id = "120363999999@g.us"
+        with open(os.path.join(TEST_DIR, "family_group.json"), "w", encoding="utf-8") as handle:
+            handle.write('{"group_jid":"%s"}' % group_id)
+
+        db.claim_inbound({
+            "message_id": "claimable-create",
+            "provider": "WHATSAPP",
+            "conversation_id": group_id,
+            "conversation_type": "GROUP",
+            "sender_phone": "+60111111111",
+            "text": "@Alex remind the family about parcel pickup",
+        })
+        creator = with_action_key(
+            db.resolve_actor(
+                "+60111111111", group_id, "GROUP", "claimable-create", []
+            ),
+            "claimable-create-action",
+        )
+        reminder = services.create_reminder(
+            creator, "pick up parcel", "2026-10-01T18:00:00+08:00",
+            destination="group", claimable=True,
+        )
+        outbound_id = db.queue_outbound(
+            group_id, "TEXT", text="⏰ Reminder: pick up parcel",
+            context_kind="REMINDER_INITIAL", context_id=reminder["reminder_id"],
+        )
+        conn = db.connect()
+        try:
+            conn.execute(
+                """UPDATE outbound_messages
+                   SET provider_message_id='wa-reminder-1',delivery_state='DELIVERED',
+                       delivered_at_utc=CURRENT_TIMESTAMP
+                   WHERE outbound_id=?""",
+                (outbound_id,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        db.claim_inbound({
+            "message_id": "wife-reaction",
+            "provider": "WHATSAPP",
+            "conversation_id": group_id,
+            "conversation_type": "GROUP",
+            "sender_phone": "+60222222222",
+            "text": "",
+        })
+        wife = db.resolve_actor(
+            "+60222222222", group_id, "GROUP", "wife-reaction", []
+        )
+        claimed = services.claim_reminder_from_reaction(
+            wife, "wa-reminder-1", "👍"
+        )
+        self.assertEqual(claimed["status"], "claimed")
+        self.assertEqual(claimed["claimed_by_user_id"], "USR_WIFE")
+
+        # A different emoji or second household member must not steal the claim.
+        second = services.claim_reminder_from_reaction(
+            creator, "wa-reminder-1", "❤️"
+        )
+        self.assertEqual(second["status"], "already_claimed")
+        self.assertEqual(second["claimed_by_user_id"], "USR_WIFE")
+
+        # Removing the reaction is intentionally a no-op.
+        removed = services.claim_reminder_from_reaction(
+            wife, "wa-reminder-1", ""
+        )
+        self.assertEqual(removed["status"], "ignored_reaction_removal")
+        history = services.reminder_history(
+            wife, reminder["reminder_id"]
+        )["claim_history"]
+        self.assertEqual([x["event_type"] for x in history], ["CLAIMED"])
+
+        released = services.release_reminder_claim(
+            wife, reminder["reminder_id"]
+        )
+        self.assertEqual(released["status"], "released")
+        history = services.reminder_history(
+            wife, reminder["reminder_id"]
+        )["claim_history"]
+        self.assertEqual(
+            [x["event_type"] for x in history], ["CLAIMED", "RELEASED"]
+        )
+
+    def test_declared_stash_balance_and_spend_do_not_require_cash_event(self):
+        pool = phase2_finance.create_cash_pool(
+            "Stash", "+60111111111", visibility="private"
+        )
+        declared = phase2_finance.declare_cash_pool_balance(
+            pool["pool_id"], 300, "2026-09-30", "+60111111111",
+            source_message_id="stash-declare-1",
+        )
+        self.assertEqual(declared["balance"], 300.0)
+        balance = phase2_finance.cash_pool_balance(
+            pool["pool_id"], "+60111111111"
+        )
+        self.assertEqual(balance["balance"], 300.0)
+        self.assertEqual(balance["cash_event_allocations"], 0.0)
+
+        spent = phase2_finance.record_cash_pool_spend(
+            pool["pool_id"], 40, "2026-09-30", "+60111111111",
+            category="food", funding_source="stash",
+            source_message_id="stash-spend-1",
+        )
+        self.assertEqual(spent["spent"], 40.0)
+        self.assertEqual(spent["balance"], 260.0)
+        after = phase2_finance.cash_pool_balance(
+            pool["pool_id"], "+60111111111"
+        )
+        self.assertEqual(after["balance"], 260.0)
+
+        conn = db.connect()
+        try:
+            rows = conn.execute(
+                """SELECT adjustment_kind,amount_minor,category,funding_source
+                   FROM alex_phase2_cash_pool_adjustments
+                   WHERE pool_id=? ORDER BY created_at_utc,rowid""",
+                (pool["pool_id"],),
+            ).fetchall()
+        finally:
+            conn.close()
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["adjustment_kind"], "OPENING_BALANCE")
+        self.assertEqual(rows[0]["amount_minor"], 30000)
+        self.assertEqual(rows[1]["adjustment_kind"], "SPEND")
+        self.assertEqual(rows[1]["amount_minor"], -4000)
+        self.assertEqual(rows[1]["category"], "food")
 
     def test_leave_full_to_half_edits_same_record(self):
         self.claim("leave-full", "+60111111111", "record annual leave")
