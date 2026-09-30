@@ -534,7 +534,9 @@ def find_receipts(actor: ActorContext, query: str | None = None, amount: float |
         ]
 
         remaining = bounded - len(matches)
-        if remaining > 0:
+        # Unlinked media is private provenance from the sender's DM. A group
+        # request must never surface that private material into Family Shared.
+        if remaining > 0 and actor.conversation_type != "GROUP":
             orphan_sql = """SELECT m.media_id,m.created_at_utc,m.ocr_text
                             FROM media_objects m
                             JOIN inbound_messages i ON i.message_id=m.source_message_id
@@ -595,6 +597,9 @@ def get_receipt(actor: ActorContext, media_id: str) -> dict:
                 "_attachments": [{"path": row["local_path"], "mime_type": row["mime_type"],
                                   "kind": "IMAGE" if row["media_type"] == "IMAGE" else "DOCUMENT"}],
             }
+
+        if actor.conversation_type == "GROUP":
+            raise PermissionError("receipt not found in your accessible data")
 
         orphan = conn.execute(
             """SELECT m.* FROM media_objects m
