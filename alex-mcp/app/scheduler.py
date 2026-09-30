@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 from dateutil.rrule import rrulestr
 
 from db import connect, utc_now
+import runtime_clock
 import ha
 import phase2_presence
 import phase2_monitor
@@ -69,13 +70,18 @@ def _delivery_decision(conn, row, now: datetime) -> dict:
     )
 
 
-def _queue(conn, row, text: str, kind: str) -> None:
+def _queue_to(conn, conversation_id: str, reminder_id: str,
+              text: str, kind: str) -> None:
     conn.execute(
         """INSERT INTO outbound_messages(
             outbound_id,conversation_id,kind,text_body,context_kind,context_id
            ) VALUES(?,?, 'TEXT', ?,?,?)""",
-        (str(uuid.uuid4()), row["conversation_id"], text, kind, row["reminder_id"]),
+        (str(uuid.uuid4()), conversation_id, text, kind, reminder_id),
     )
+
+
+def _queue(conn, row, text: str, kind: str) -> None:
+    _queue_to(conn, row["conversation_id"], row["reminder_id"], text, kind)
 
 
 def _event(conn, reminder_id: str, event_type: str, previous_state: str | None,
@@ -89,7 +95,7 @@ def _event(conn, reminder_id: str, event_type: str, previous_state: str | None,
 
 
 def fire_due():
-    now = datetime.now(timezone.utc)
+    now = runtime_clock.now_utc()
     conn = connect()
     try:
         conn.execute("BEGIN IMMEDIATE")
@@ -140,12 +146,112 @@ def fire_due():
                     )
                     _event(conn, row["reminder_id"], "DUE", previous_state, "DUE")
             else:
+                next_claimable = None
+                if int(row["claimable"] or 0):
+                    next_claimable = (
+                        now + timedelta(hours=max(1, int(row["follow_up_after_hours"] or 24)))
+                    ).isoformat()
                 conn.execute(
-                    """UPDATE reminders SET status='DUE',next_delivery_at_utc=NULL,
+                    """UPDATE reminders SET status='DUE',next_delivery_at_utc=?,
                        defer_reason=NULL WHERE reminder_id=?""",
-                    (row["reminder_id"],),
+                    (next_claimable, row["reminder_id"]),
                 )
                 _event(conn, row["reminder_id"], "DUE", previous_state, "DUE")
+
+        # Claimable family reminder escalation is deterministic and model-free.
+        # 1) If nobody claims the initial group reminder, send one gentle group
+        #    follow-up after the configured delay.
+        unclaimed_rows = conn.execute(
+            """SELECT * FROM reminders
+               WHERE status='DUE' AND claimable=1 AND claimed_by_user_id IS NULL
+                 AND next_delivery_at_utc IS NOT NULL
+                 AND next_delivery_at_utc<=?
+                 AND last_follow_up_at_utc IS NULL
+               ORDER BY next_delivery_at_utc LIMIT 40""",
+            (now.isoformat(),),
+        ).fetchall()
+        for row in unclaimed_rows:
+            _queue(
+                conn, row,
+                f"↪️ Still unclaimed: {row['task_text']}",
+                "REMINDER_FOLLOWUP",
+            )
+            conn.execute(
+                """UPDATE reminders
+                   SET last_follow_up_at_utc=?,next_delivery_at_utc=NULL
+                   WHERE reminder_id=?""",
+                (now.isoformat(), row["reminder_id"]),
+            )
+
+        # 2) Once claimed, follow up privately with the claimant first.
+        claimant_rows = conn.execute(
+            """SELECT * FROM reminders
+               WHERE status='DUE' AND claimable=1
+                 AND claimed_by_user_id IS NOT NULL
+                 AND next_delivery_at_utc IS NOT NULL
+                 AND next_delivery_at_utc<=?
+                 AND claimant_follow_up_at_utc IS NULL
+               ORDER BY next_delivery_at_utc LIMIT 40""",
+            (now.isoformat(),),
+        ).fetchall()
+        for row in claimant_rows:
+            claimant_phone = _owner_phone(conn, row["claimed_by_user_id"])
+            if not claimant_phone:
+                continue
+            claimant_conversation = claimant_phone.replace("+", "") + "@s.whatsapp.net"
+            decision_row = dict(row)
+            decision_row["owner_id"] = row["claimed_by_user_id"]
+            decision = _delivery_decision(conn, decision_row, now)
+            if decision.get("decision") != "DELIVER":
+                conn.execute(
+                    """UPDATE reminders SET next_delivery_at_utc=?,defer_reason=?
+                       WHERE reminder_id=?""",
+                    (
+                        (now + timedelta(minutes=15)).isoformat(),
+                        decision.get("reason"), row["reminder_id"],
+                    ),
+                )
+                continue
+            _queue_to(
+                conn, claimant_conversation, row["reminder_id"],
+                f"↪️ You claimed this and it is still outstanding: {row['task_text']}",
+                "REMINDER_CLAIMANT_FOLLOWUP",
+            )
+            later = (
+                now + timedelta(hours=max(1, int(row["follow_up_after_hours"] or 24)))
+            ).isoformat()
+            conn.execute(
+                """UPDATE reminders
+                   SET claimant_follow_up_at_utc=?,next_delivery_at_utc=?,defer_reason=NULL
+                   WHERE reminder_id=?""",
+                (now.isoformat(), later, row["reminder_id"]),
+            )
+
+        # 3) If it is still not completed after the claimant follow-up, resurface
+        #    it to Family Shared once. Ownership remains with the claimant.
+        resurface_rows = conn.execute(
+            """SELECT * FROM reminders
+               WHERE status='DUE' AND claimable=1
+                 AND claimed_by_user_id IS NOT NULL
+                 AND claimant_follow_up_at_utc IS NOT NULL
+                 AND family_resurfaced_at_utc IS NULL
+                 AND next_delivery_at_utc IS NOT NULL
+                 AND next_delivery_at_utc<=?
+               ORDER BY next_delivery_at_utc LIMIT 40""",
+            (now.isoformat(),),
+        ).fetchall()
+        for row in resurface_rows:
+            _queue(
+                conn, row,
+                f"↪️ Still outstanding with its claimant: {row['task_text']}",
+                "REMINDER_FAMILY_RESURFACE",
+            )
+            conn.execute(
+                """UPDATE reminders
+                   SET family_resurfaced_at_utc=?,next_delivery_at_utc=NULL
+                   WHERE reminder_id=?""",
+                (now.isoformat(), row["reminder_id"]),
+            )
 
         # An acknowledged reminder may receive one quiet/presence-aware follow-up
         # after the configured delay. Completion/cancellation stops it.
