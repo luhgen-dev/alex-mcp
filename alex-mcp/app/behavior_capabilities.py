@@ -116,6 +116,7 @@ CAPABILITY_TO_TOOLS: dict[str, frozenset[str]] = {
     "asset.list": frozenset({"asset_list"}),
     "asset.warranty": frozenset({"warranty_expiring"}),
     "monitor.delegate": frozenset({"monitor_delegate"}),
+    "monitor.home.state": frozenset({"monitor_home_state"}),
     "monitor.list": frozenset({"monitor_list"}),
     "monitor.cancel": frozenset({"monitor_cancel"}),
 
