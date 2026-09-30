@@ -338,6 +338,11 @@ def _candidate_text(candidate: dict) -> str:
             f"from OT is still unallocated for {candidate.get('goal_name')}. "
             "I haven't moved it anywhere."
         )
+    if kind == "HOME_STATE_MATCH":
+        return (
+            f"📌 {candidate.get('friendly_name') or candidate.get('entity_id')} "
+            f"is now {candidate.get('state')}."
+        )
     return "📌 Alex has an update from a monitor you explicitly enabled."
 
 
@@ -372,6 +377,7 @@ def run_delegated_monitors():
                 candidates.extend(phase2_monitor.bill_candidates(now.date().isoformat(), phone, "DIRECT_DM"))
                 candidates.extend(phase2_monitor.goal_candidates(now.strftime("%Y-%m"), phone, "DIRECT_DM"))
                 candidates.extend(phase2_monitor.ot_allocation_candidates(phone, "DIRECT_DM"))
+                candidates.extend(phase2_monitor.home_state_candidates(phone, "DIRECT_DM"))
             except Exception as exc:
                 print(f"[Alex MCP monitor] candidate error for {user['user_id']}: {exc}", flush=True)
                 continue
@@ -403,6 +409,13 @@ def run_delegated_monitors():
                      candidate.get("kind") or "UNKNOWN",
                      json.dumps(candidate, ensure_ascii=False, sort_keys=True)),
                 )
+                if candidate.get("one_shot") and candidate.get("delegation_id"):
+                    conn.execute(
+                        """UPDATE alex_phase2_delegations
+                           SET status='COMPLETED',updated_at_utc=CURRENT_TIMESTAMP
+                           WHERE delegation_id=? AND status='ACTIVE'""",
+                        (candidate["delegation_id"],),
+                    )
         conn.commit()
     finally:
         conn.close()
