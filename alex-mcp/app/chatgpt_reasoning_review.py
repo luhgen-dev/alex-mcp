@@ -25,7 +25,7 @@ import human_ai_lab
 
 # Frozen deterministic regression corpus. Any prompt/tool-surface change
 # invalidates this oracle until its regression expectations are reviewed.
-REVIEWED_CORPUS_FINGERPRINT = "a71c3d1887bb02a4a6015df2795fe9759b7093f9aa8de0b9afae3c12bea27bf7"
+REVIEWED_CORPUS_FINGERPRINT = "fb1f56c6dc24afd91e4ea2e3617c1e2c7b2d1e67aa75e3b5f665947acdae660f"
 
 
 def _low(value: str) -> str:
@@ -184,6 +184,18 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
     # wrong-domain answers. Keep them ahead of generic finance/monitor/reminder
     # keyword handling.
     if (
+        (
+            re.search(r"\b(?:push|hand|give|pass|transfer|ask)\b", text)
+            and re.search(r"\b(?:priya|wife|husband|spouse|partner)\b", text)
+        )
+        or (
+            re.search(r"\b(?:priya|wife|husband|spouse|partner)\b", text)
+            and re.search(r"\b(?:take|claim|handle)\b", text)
+        )
+    ) and "handoff_reminder_claim" in tools:
+        return result("tools", ["handoff_reminder_claim"])
+
+    if (
         "reminder" in text
         and re.search(r"\b(?:release|unclaim|can'?t handle|cannot handle|can'?t do)\b", text)
     ):
@@ -194,7 +206,7 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
         )
 
     if re.search(r"\b(?:took|had)\s+(?:annual leave|medical leave|mc)\b", text):
-        return result("tools", _one(tools, "work_record_event"))
+        return result("tools", _one(tools, "set_leave_record", "work_record_event"))
     if re.search(r"\b(?:annual leave|medical leave|\bmc\b)\b", text) and (
         re.search(r"\b(?:tomorrow|next|planned|planning)\b", text)
         or re.search(r"\b(?:i'?m|i am|will be)\s+(?:on\s+)?(?:annual leave|medical leave|mc)\b", text)
@@ -856,11 +868,13 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
         if re.search(
             r"\b(?:record|mark|took mc|worked .*ot|shift was swapped)\b", text
         ):
-            if "annual leave" in text or "planned annual leave" in text:
+            if (
+                "annual leave" in text
+                or "medical leave" in text
+                or re.search(r"\bmc\b", text)
+            ):
                 return result("tools", _one(tools, "set_leave_record"))
-            return result(
-                "tools", _one(tools, "work_record_event", "set_leave_record")
-            )
+            return result("tools", _one(tools, "work_record_event"))
         if "leave balance" in text or "annual leave do i have left" in text:
             return result("tools", _one(tools, "work_leave_balance"))
         if "leave" in text and re.search(
@@ -971,6 +985,17 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
             _pick(tools, "ha_find_entities", "ha_get_state")
             or _one(tools, "ha_get_state"),
         )
+
+    if (
+        re.search(
+            r"\b(?:finance|financial|expense|spending)\s+report\b"
+            r"|\breport\b.*\b(?:finance|financial|expenses?|spending)\b",
+            text,
+        )
+        and not re.search(r"\b(?:pdf|csv|export|send .*file|google sheets)\b", text)
+        and "finance_report" in tools
+    ):
+        return result("tools", ["finance_report"])
 
     # Reports / exports.
     if any(
