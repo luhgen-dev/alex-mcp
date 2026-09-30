@@ -16,6 +16,7 @@ import phase2_delegation
 import phase2_monitor
 import phase2_home
 import phase2_reports
+import scope_policy
 
 mcp = MCPServer(
     "Alex Household Tools",
@@ -195,7 +196,7 @@ def create_task(title: str, actor: Actor, notes: str | None = None,
                 assignee: str = "unassigned", shared: bool = False,
                 due_local: str | None = None, plan_id: str | None = None,
                 reminder_id: str | None = None) -> dict:
-    """Create a first-class task with OPEN lifecycle state. due_local and plan_id are optional. A reminder is never created implicitly; reminder_id only links an already-created authorized reminder. DM defaults private, while group/shared tasks are family-visible."""
+    """Create a first-class task with OPEN lifecycle state. New-write scope is resolved from the trusted user command. A reminder is never created implicitly."""
     return phase2.create_task(
         actor, title, notes, assignee, shared, due_local, plan_id, reminder_id
     )
@@ -382,7 +383,7 @@ def create_plan(title: str, actor: Actor, start_local: str | None = None,
                 end_local: str | None = None, notes: str | None = None,
                 shared: bool = False, locked: bool = False,
                 time_known: bool | None = None) -> dict:
-    """Create a draft life plan. If the user gave a date but no clock time, set time_known=false; never invent midnight. DM defaults private; group/shared is family."""
+    """Create a draft life plan. New-write scope is resolved from the trusted user command; edits never move scope. If a date has no clock time, set time_known=false."""
     return phase2.create_plan(
         actor, title, start_local, end_local, notes, shared, locked, time_known
     )
@@ -523,7 +524,7 @@ def planning_create_goal(name: str, target_amount: float, actor: Actor,
     """Create an unlocked draft goal. baseline_monthly is optional and defaults to zero; never invent a contribution."""
     return phase2_finance.create_goal(
         name, target_amount, baseline_monthly, actor.phone, actor.conversation_type,
-        "family" if shared or actor.conversation_type == "GROUP" else "private",
+        scope_policy.visibility_for_new_write(actor, shared),
         currency, target_date, status,
     )
 
@@ -737,7 +738,7 @@ def planning_create_cash_pool(name: str, actor: Actor, currency: str = "MYR",
     """Create a stash/cash pool without allocating any money into it."""
     return phase2_finance.create_cash_pool(
         name, actor.phone, actor.conversation_type,
-        "family" if shared or actor.conversation_type == "GROUP" else "private",
+        scope_policy.visibility_for_new_write(actor, shared),
         currency,
     )
 
@@ -822,7 +823,7 @@ def planning_add_reserve(name: str, monthly_amount: float, actor: Actor,
     """Add an explicit monthly reserve/allowance to the baseline only because the user asked to reserve it."""
     return phase2_finance.add_plan_reserve(
         name, monthly_amount, actor.phone, actor.conversation_type,
-        "family" if shared or actor.conversation_type == "GROUP" else "private",
+        scope_policy.visibility_for_new_write(actor, shared),
         currency,
     )
 
@@ -1039,7 +1040,7 @@ def work_record_event(event_type: str, event_date: str, actor: Actor,
     """Record leave/MC/shift-swap or OT offered/pending/planned/worked/unavailable as a dated fact."""
     return phase2_work.record_work_event(
         event_type, event_date, actor.phone, actor.conversation_type,
-        "family" if shared or actor.conversation_type == "GROUP" else "private",
+        scope_policy.visibility_for_new_write(actor, shared),
         shift_code, start_time, end_time, hours, units_days, work_scope,
         manager_override, note, actor.source_message_id,
     )
@@ -1076,7 +1077,7 @@ def asset_create(name: str, actor: Actor, category: str | None = None,
     """Create household asset metadata such as appliance/warranty records."""
     return phase2_library.create_asset(
         name, actor.phone, actor.conversation_type,
-        "family" if shared or actor.conversation_type == "GROUP" else "private",
+        scope_policy.visibility_for_new_write(actor, shared),
         category, brand, model, serial_number, purchase_date, warranty_end, note,
     )
 
@@ -1171,7 +1172,7 @@ def monitor_home_state(entity_id: str, target_state: str, actor: Actor,
     created = phase2_delegation.create_delegation(
         "CUSTOM", str(friendly), actor.phone, actor.source_message_id,
         actor.conversation_type,
-        "family" if shared or actor.conversation_type == "GROUP" else "private",
+        scope_policy.visibility_for_new_write(actor, shared),
         {
             "kind": "HA_STATE",
             "entity_id": entity_id,
@@ -1196,7 +1197,7 @@ def monitor_delegate(delegation_type: str, subject: str, actor: Actor,
     return phase2_delegation.create_delegation(
         delegation_type, subject, actor.phone, actor.source_message_id,
         actor.conversation_type,
-        "family" if shared or actor.conversation_type == "GROUP" else "private",
+        scope_policy.visibility_for_new_write(actor, shared),
         None, True,
     )
 
