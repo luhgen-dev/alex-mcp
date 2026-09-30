@@ -108,7 +108,13 @@ def initialize() -> None:
         # Small additive migrations keep persistent /data safe across app updates.
         _ensure_column(conn, "inbound_messages", "attempt_count", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(conn, "inbound_messages", "processing_started_at_utc", "TEXT")
+        _ensure_column(conn, "inbound_messages", "sender_provider_jid", "TEXT")
         _ensure_column(conn, "outbound_messages", "next_attempt_at_utc", "TEXT")
+        _ensure_column(conn, "outbound_messages", "job_reacted_at_utc", "TEXT")
+        _ensure_column(conn, "outbound_messages", "job_pinned_at_utc", "TEXT")
+        _ensure_column(conn, "outbound_messages", "job_reaction_cleared_at_utc", "TEXT")
+        _ensure_column(conn, "outbound_messages", "job_unpinned_at_utc", "TEXT")
+        _ensure_column(conn, "outbound_messages", "job_failure_notice_at_utc", "TEXT")
         _ensure_column(conn, "reminders", "presence_aware", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(conn, "reminders", "delivery_class", "TEXT NOT NULL DEFAULT 'routine'")
         _ensure_column(conn, "reminders", "follow_up_after_hours", "INTEGER NOT NULL DEFAULT 24")
@@ -308,15 +314,17 @@ def claim_inbound(payload: dict) -> str:
             return "CLAIMED"
         conn.execute(
             """INSERT INTO inbound_messages(
-                message_id,provider_name,conversation_id,conversation_type,sender_phone,raw_text,
-                quoted_message_id,processing_state,attempt_count,processing_started_at_utc
-               ) VALUES(?,?,?,?,?,?,?, 'PROCESSING',1,?)""",
+                message_id,provider_name,conversation_id,conversation_type,sender_phone,
+                sender_provider_jid,raw_text,quoted_message_id,
+                processing_state,attempt_count,processing_started_at_utc
+               ) VALUES(?,?,?,?,?,?,?,?, 'PROCESSING',1,?)""",
             (
                 payload["message_id"],
                 payload.get("provider","WHATSAPP"),
                 payload["conversation_id"],
                 payload.get("conversation_type","DIRECT_DM"),
                 normalize_phone(payload["sender_phone"]),
+                payload.get("sender_provider_jid") or None,
                 payload.get("text","") or "",
                 payload.get("quoted_message_id") or None,
                 now.isoformat(),
