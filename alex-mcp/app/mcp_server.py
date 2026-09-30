@@ -87,9 +87,10 @@ def correct_expense(event_id: str, actor: Actor, amount: float | None = None,
 
 @mcp.tool()
 def find_receipts(actor: Actor, query: str | None = None, amount: float | None = None,
-                  start_date: str | None = None, end_date: str | None = None, limit: int = 10) -> dict:
-    """Find saved original receipts by merchant/bank/reference text, amount or date. Similar recurring receipts remain distinct."""
-    return services.find_receipts(actor, query, amount, start_date, end_date, limit)
+                  start_date: str | None = None, end_date: str | None = None, limit: int = 10,
+                  scope: str | None = None) -> dict:
+    """Find original receipts by merchant/bank/reference, amount or date. scope may be all/family/private and is enforced by the backend."""
+    return services.find_receipts(actor, query, amount, start_date, end_date, limit, scope)
 
 
 @mcp.tool()
@@ -1204,9 +1205,45 @@ def monitor_cancel(delegation_id: str, actor: Actor) -> dict:
 
 
 @mcp.tool()
+def finance_report(actor: Actor, period: str | None = None,
+                   scope: str = "all") -> dict:
+    """Build the canonical monthly finance report from the full ledger. This is actual financial activity, not the household planning snapshot."""
+    import calendar
+    import runtime_clock
+
+    effective_period = period or runtime_clock.today(actor.timezone).strftime("%Y-%m")
+    try:
+        year, month = (int(x) for x in effective_period.split("-", 1))
+        last_day = calendar.monthrange(year, month)[1]
+    except Exception as exc:
+        raise ValueError("period must be YYYY-MM") from exc
+    start_date = f"{year:04d}-{month:02d}-01"
+    end_date = f"{year:04d}-{month:02d}-{last_day:02d}"
+    ledger = services.query_finances(
+        actor, start_date=start_date, end_date=end_date,
+        scope=scope, include_all_records=True,
+    )
+    try:
+        phase2_finance.ensure_obligation_instances(
+            effective_period, actor.phone, actor.conversation_type, scope
+        )
+    except ValueError:
+        # Missing recurring-payment configuration must not hide real ledger data.
+        pass
+    result = phase2_reports.build_monthly_finance_report(
+        ledger, effective_period, actor.phone, actor.conversation_type, scope
+    )
+    phase2_reports.remember_active_report(
+        actor.user_id, actor.conversation_id, "monthly_finance", result,
+        period=effective_period, spec={"period": effective_period, "scope": scope},
+    )
+    return result
+
+
+@mcp.tool()
 def report_snapshot(actor: Actor, period: str | None = None,
                     include_raw_income: bool = False) -> dict:
-    """Build a privacy-scoped household/finance/work snapshot. Raw private income is never exposed in a family group."""
+    """Build the broader household/planning overview (goals, obligations, assets and leave). Use finance_report for actual monthly ledger activity."""
     if include_raw_income and actor.conversation_type == "GROUP":
         raise PermissionError("raw private income cannot be requested from the family group")
     result = phase2_reports.build_snapshot(
@@ -1223,8 +1260,11 @@ def report_snapshot(actor: Actor, period: str | None = None,
 @mcp.tool()
 def report_export(format: str, actor: Actor, period: str | None = None,
                   include_raw_income: bool = False) -> dict:
-    """Create a local privacy-scoped PDF/CSV/JSON report and return it as a WhatsApp document attachment."""
+    """Export the active report to PDF/CSV/JSON from a freshly re-queried canonical dataset."""
+    import calendar
+    import json
     import os
+    import re
     import uuid
     from pathlib import Path
     from config import DATA_DIR
@@ -1240,46 +1280,95 @@ def report_export(format: str, actor: Actor, period: str | None = None,
         if period is None and not include_raw_income else None
     )
     report_kind = active["kind"] if active else "snapshot"
-    snapshot = (
-        active["payload"] if active
-        else phase2_reports.build_snapshot(
-            actor.phone, actor.conversation_type, "all", period,
-            include_raw_income=include_raw_income, include_assets=True, include_leave=True,
-        )
-    )
     effective_period = (active.get("period") if active else None) or period
-    out_dir = Path(DATA_DIR) / "reports"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    safe_period = (effective_period or "current").replace("/", "-").replace("..", "-")
-    # One immutable path per export prevents a queued private report from
-    # being overwritten by another user's/group's export before outbox send.
-    path = out_dir / f"alex-{safe_period}-{uuid.uuid4().hex}.{fmt}"
-    if fmt == "pdf":
-        if report_kind == "finance_query":
-            payload = phase2_reports.text_pdf(
-                phase2_reports.finance_query_text(snapshot), title="ALEX Finance Report"
+    spec = (active.get("spec") or {}) if active else {}
+
+    if report_kind in {"finance_query", "monthly_finance"}:
+        if report_kind == "monthly_finance":
+            effective_period = spec.get("period") or effective_period
+            scope = spec.get("scope") or "all"
+            if not effective_period:
+                raise ValueError("monthly finance report has no period")
+            year, month = (int(x) for x in effective_period.split("-", 1))
+            start_date = f"{year:04d}-{month:02d}-01"
+            end_date = f"{year:04d}-{month:02d}-{calendar.monthrange(year, month)[1]:02d}"
+            ledger = services.query_finances(
+                actor, start_date=start_date, end_date=end_date,
+                scope=scope, include_all_records=True,
             )
         else:
-            payload = phase2_reports.minimal_pdf(snapshot)
+            scope = spec.get("scope")
+            ledger = services.query_finances(
+                actor,
+                start_date=spec.get("start_date"),
+                end_date=spec.get("end_date"),
+                category=spec.get("category"),
+                search=spec.get("search"),
+                currency=spec.get("currency"),
+                limit=max(int(spec.get("limit") or 20), 1),
+                scope=scope,
+                source=spec.get("source"),
+                include_all_records=True,
+            )
+        if effective_period and re.fullmatch(r"\d{4}-\d{2}", str(effective_period)):
+            report = phase2_reports.build_monthly_finance_report(
+                ledger, effective_period, actor.phone, actor.conversation_type,
+                scope or "all",
+            )
+        else:
+            report = {
+                "report_type": "finance_query",
+                "period": effective_period or "Custom range",
+                "scope": scope or "all",
+                "ledger": ledger,
+                "category_totals": [
+                    {**row, "label": phase2_reports._human_category(row.get("category"))}
+                    for row in ledger.get("category_totals", [])
+                ],
+                "obligations": [],
+                "goals": [],
+            }
+        canonical = report
+    else:
+        canonical = phase2_reports.build_snapshot(
+            actor.phone, actor.conversation_type, "all", effective_period,
+            include_raw_income=include_raw_income, include_assets=True, include_leave=True,
+        )
+
+    out_dir = Path(DATA_DIR) / "reports"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    safe_period = str(effective_period or "current").replace("/", "-").replace("..", "-")
+    path = out_dir / f"alex-{safe_period}-{uuid.uuid4().hex}.{fmt}"
+
+    if fmt == "pdf":
+        if report_kind in {"finance_query", "monthly_finance"}:
+            payload = phase2_reports.premium_finance_pdf(canonical)
+        else:
+            payload = phase2_reports.minimal_pdf(canonical)
         path.write_bytes(payload)
         mime = "application/pdf"
     elif fmt == "csv":
         payload = (
-            phase2_reports.finance_query_csv(snapshot)
-            if report_kind == "finance_query"
-            else phase2_reports.finance_csv(snapshot)
+            phase2_reports.monthly_finance_csv(canonical)
+            if report_kind in {"finance_query", "monthly_finance"}
+            else phase2_reports.finance_csv(canonical)
         )
         path.write_text(payload, encoding="utf-8")
         mime = "text/csv"
     else:
-        payload = phase2_reports.snapshot_json(snapshot)
+        payload = json.dumps(canonical, ensure_ascii=False, indent=2, sort_keys=True)
         path.write_text(payload, encoding="utf-8")
         mime = "application/json"
+
     return {
         "status": "ready",
         "format": fmt,
         "period": effective_period,
         "source_report_kind": report_kind,
+        "record_count": (
+            int((canonical.get("ledger") or {}).get("count") or 0)
+            if report_kind in {"finance_query", "monthly_finance"} else None
+        ),
         "_attachments": [{"path": os.fspath(path), "kind": "DOCUMENT", "mime_type": mime}],
     }
 
