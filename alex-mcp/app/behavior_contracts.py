@@ -1221,10 +1221,10 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
     ),
     PromptContract(
         "p2.work.record", "phase2", "work",
-        "Observed leave/OT/shift changes must expose deterministic work-event recording.",
+        "Observed OT/shift changes must expose deterministic work-event recording. Leave/MC uses the dedicated leave lifecycle so it cannot be double-written.",
         (
             "I worked 4 hours OT on Saturday.",
-            "Record that I took MC today.",
+            "Record 2 hours of OT worked today.",
             "My shift was swapped to evening today.",
         ),
         _fs("work_record_event"), seed="core", live=False,
