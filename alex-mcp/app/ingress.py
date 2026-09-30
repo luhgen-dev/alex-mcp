@@ -340,6 +340,28 @@ def _dm_conversation_for_actor(actor) -> str:
     return actor.phone.replace("+", "") + "@s.whatsapp.net"
 
 
+def _error_report_command(text: str) -> tuple[bool, str]:
+    raw = str(text or "").strip()
+    match = re.match(
+        r"(?is)^\s*mark\s+(?:this|that)\s+as\s+(?:an\s+)?error\b"
+        r"(?:\s*[:,-]?\s*(?:because\s+)?(.*))?$",
+        raw,
+    )
+    if not match:
+        return False, ""
+    explanation = str(match.group(1) or "").strip()
+    return True, explanation
+
+
+def _finish_simple_turn(actor, reply: str, **extra) -> dict:
+    db.queue_outbound(
+        actor.conversation_id, "TEXT", text=reply,
+        source_message_id=actor.source_message_id,
+    )
+    db.finish_inbound(actor.source_message_id, reply)
+    return {"ok": True, **extra}
+
+
 def process(payload: dict) -> dict:
     required = ("message_id", "conversation_id", "sender_phone")
     if any(not payload.get(k) for k in required):
@@ -417,6 +439,43 @@ def process(payload: dict) -> dict:
                 actor.conversation_id, actor.phone, actor.source_message_id
             )
         db.touch_inbound_processing(payload["message_id"])
+
+        # User-reported behavioural errors are captured deterministically from
+        # a swipe-reply. This is diagnostics only: no action is retried or undone.
+        is_error_command, inline_explanation = _error_report_command(
+            turn["trusted_text"]
+        )
+        pending_error = diagnostics.pending_user_error_report(actor)
+        if is_error_command:
+            if not quoted_context or not quoted_context.get("outbound_id"):
+                return _finish_simple_turn(
+                    actor,
+                    "Swipe-reply to the Alex message that was wrong, then say “Mark this as error.”",
+                    error_report=True,
+                )
+            if inline_explanation:
+                recorded = diagnostics.complete_user_error_report(
+                    actor, inline_explanation, quoted_context
+                )
+                return _finish_simple_turn(
+                    actor,
+                    f"Marked as {recorded['error_id']}. I saved the diagnostic evidence only; I did not retry or undo anything.",
+                    error_report=True,
+                )
+            diagnostics.begin_user_error_report(actor, quoted_context)
+            return _finish_simple_turn(
+                actor, "What was wrong?", error_report=True
+            )
+
+        if pending_error and turn["trusted_text"].strip():
+            recorded = diagnostics.complete_user_error_report(
+                actor, turn["trusted_text"]
+            )
+            return _finish_simple_turn(
+                actor,
+                f"Marked as {recorded['error_id']}. I saved the diagnostic evidence only; I did not retry or undo anything.",
+                error_report=True,
+            )
 
         # Private reads asked from Family Shared are handed to the authenticated
         # owner's DM without ever widening the group actor's ACL. This is one
