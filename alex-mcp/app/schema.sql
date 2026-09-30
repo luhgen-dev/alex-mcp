@@ -364,7 +364,6 @@ CREATE TABLE IF NOT EXISTS leave_records (
     FOREIGN KEY(space_id) REFERENCES spaces(space_id)
 );
 CREATE INDEX IF NOT EXISTS idx_leave_owner_date ON leave_records(owner_id,leave_date,status);
-CREATE INDEX IF NOT EXISTS idx_leave_owner_space_date ON leave_records(owner_id,space_id,leave_date,status);
 
 CREATE TABLE IF NOT EXISTS diary_events (
     diary_id TEXT PRIMARY KEY,
