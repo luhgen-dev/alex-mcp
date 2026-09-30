@@ -1554,10 +1554,12 @@ def reminder_history(actor: ActorContext, reminder_id: str | None = None,
 
 def _handoff_recipient_user(actor: ActorContext, recipient: str) -> str:
     value = str(recipient or "").strip().casefold()
-    if value in {"wife", "priya", "her", "spouse", "partner"}:
-        return "USR_WIFE" if actor.user_id == "USR_HUSBAND" else "USR_HUSBAND"
+    if value in {"wife", "priya", "her"}:
+        return "USR_WIFE"
     if value in {"husband", "him"}:
         return "USR_HUSBAND"
+    if value in {"spouse", "partner"}:
+        return "USR_WIFE" if actor.user_id == "USR_HUSBAND" else "USR_HUSBAND"
     if value in {"me", "self", "myself"}:
         return actor.user_id
     raise ValueError("recipient must be spouse, wife, husband, Priya, or me")
@@ -1633,7 +1635,7 @@ def request_reminder_handoff(actor: ActorContext, reminder_id: str,
                ) VALUES(?,?,'TEXT',?,'REMINDER_HANDOFF',?)""",
             (
                 str(uuid.uuid4()), dm_conversation,
-                f"{actor.user_id} asked you to take over this reminder: {row['task_text']}\nReact with any emoji to accept it.",
+                f"Your spouse asked you to take over this reminder: {row['task_text']}\nReact with any emoji to accept it.",
                 handoff_id,
             ),
         )
