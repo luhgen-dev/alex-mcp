@@ -222,7 +222,7 @@ FINANCE_READ_TOOLS = {"query_finances","find_receipts","get_receipt","calculate"
 ASSET_TOOLS = {"asset_create","asset_update","asset_link_document","asset_list","warranty_expiring"}
 DIAGNOSTIC_TOOLS = {"system_health","recent_failures"}
 MONITOR_TOOLS = {"monitor_delegate","monitor_home_state","monitor_list","monitor_cancel"}
-REPORT_TOOLS = {"report_snapshot","report_export","report_payload"}
+REPORT_TOOLS = {"finance_report","report_snapshot","report_export","report_payload"}
 LEGACY_SIMPLE_PLANNING = {
     "set_goal","list_goals","set_cashflow_baseline","get_cashflow_baseline",
     "set_money_bucket","list_money_buckets","get_leave_balance","set_leave_balance",
@@ -470,6 +470,9 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
     block: set[str] = set()
 
     money = bool(re.search(r"\b(?:rm|myr|sgd)\s*\d|\b\d+(?:[.,]\d+)?\s*(?:rm|myr|sgd)\b", low))
+    goal_contribution = bool(
+        money and re.search(r"\bcontribut(?:e|ed|ion|ing)\b", low)
+    )
     finance_correction = bool(re.search(
         r"\b(?:correct|fix|wrong amount|amount was wrong)\b"
         r"|\b(?:actually\s*,?\s*)?change\b.*\b(?:expense|transaction|payment|amount|parking)\b",
@@ -491,6 +494,9 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         r"|\bconfirm that one\b",
         low,
     ))
+    if goal_contribution:
+        force |= {"planning_record_goal_contribution", "planning_goal_progress"}
+        block |= {"log_expense", "confirm_expense", "correct_expense"}
     if finance_correction:
         force |= {"query_finances", "correct_expense"}
         block.add("log_expense")
@@ -501,7 +507,7 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
             block.add("confirm_expense")
 
     # Clear finance lifecycle wording gets a deterministic narrow route.
-    if explicit_expense_write and (
+    if explicit_expense_write and not goal_contribution and (
         money
         or re.search(r"\b(?:log|record|add)\b.*\b(?:expense|payment|receipt)\b", low)
     ):
@@ -691,6 +697,10 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
     if plan_create:
         force.add("create_plan")
         block.add("add_diary_event")
+    if re.match(r"\s*confirm\b", low) and not finance_confirmation:
+        force.add("confirm_plan")
+    if re.search(r"\b(?:cancel|edit|update|change|rename)\b.*\b(?:plan|draft)\b", low):
+        force.add("update_plan")
 
     diary_read = bool(re.search(
         r"\b(?:what information|show|what do i have|what have i got|when is|when's)\b.*"
@@ -761,11 +771,12 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
     if re.search(r"\b(?:which goal.*refer to|match .*alias|alias .*goal|match .*account.*goal)\b", low):
         force.add("planning_match_goal_alias")
     if re.search(
-        r"\b(?:contribution|contributed)\b.*\b(?:goal|saving|holiday)\b"
+        r"\bcontribut(?:e|ed|ion|ing)\b"
         r"|\bput\b.*\b(?:goal|savings?)\b",
         low,
-    ):
+    ) and money:
         force.add("planning_record_goal_contribution")
+        block |= {"log_expense", "confirm_expense", "correct_expense"}
     if re.search(r"\b(?:what am i saving towards|show my goals|list .*goals|what goals)\b", low):
         force.add("planning_list_goals")
     if re.search(r"\b(?:compare .*salary|salary .*different|normal salary|configured salary)\b", low):
@@ -817,7 +828,7 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         # Natural personal leave statements are work-state facts, not employer
         # booking requests and not generic saved-memory writes.
         force |= {"set_leave_record", "list_leave_records"}
-        block |= {"save_item", "create_plan"}
+        block |= {"save_item", "create_plan", "work_record_event"}
     if re.search(
         r"\b(?:recorded leave|leave entries|planned and taken leave|leave records?)\b"
         r"|\bwhat leave do i have recorded\b"
@@ -886,7 +897,10 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
 
     # Reminder-specific "due" is not a bill signal. Keep the reminder domain
     # authoritative so natural readback cannot be crowded out by five bill tools.
-    if re.search(r"\bremind(?:er|ers)?\b", low) and re.search(r"\bdue\b", low):
+    if (
+        (re.search(r"\bremind(?:er|ers)?\b", low) and re.search(r"\bdue\b", low))
+        or re.search(r"\bwhen\s+is\b.*\b(?:snooz\w*|check\b.*\bdue\s+now)\b", low)
+    ):
         force |= {"list_reminders", "reminder_history"}
         block |= BILL_TOOLS
     if re.search(
@@ -1041,8 +1055,10 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
         selected |= DIAGNOSTIC_TOOLS
     if re.search(r"\b(?:monitor|monitoring|track|tracking|watch this|proactive|follow this)\b", low):
         selected |= MONITOR_TOOLS
-    if re.search(r"\b(?:report|snapshot|export|csv|google sheets|dashboard|tv payload)\b|\bpdf\b.*\breport\b|\breport\b.*\bpdf\b", low):
+    if re.search(r"\b(?:report|snapshot|export|csv|pdf|google sheets|dashboard|tv payload)\b", low):
         selected |= REPORT_TOOLS
+    if re.search(r"\b(?:finance|financial|expense|spending)\s+report\b|\breport\b.*\b(?:finance|financial|expenses?|spending)\b", low):
+        selected.add("finance_report")
     if re.search(r"\b(?:calculate|calculator|minus|plus|subtract|add up|times|multiplied|divided)\b", low):
         selected.add("calculate")
 
@@ -2174,7 +2190,7 @@ def _attachment_request_finished(trace: dict) -> bool:
 _CAPABILITY_DENIAL_RE = re.compile(
     r"\b(?:i\s+)?(?:do\s+not|don't|dont)\s+have\s+(?:the\s+)?(?:ability|capability|access)\b"
     r"|\b(?:i\s+)?(?:cannot|can't|cant|am\s+unable\s+to|am\s+not\s+able\s+to)\s+"
-    r"(?:access|update|change|mark|add|remove|retrieve|check|manage|do|look\s*up|find|see|rename|forget|snooze)\b",
+    r"(?:access|update|change|mark|add|remove|retrieve|check|manage|do|look\s*up|find|see|rename|forget|snooze|save|record|display|show|send)\b",
     re.IGNORECASE,
 )
 
@@ -2189,7 +2205,12 @@ def _looks_like_false_capability_denial(text: str) -> bool:
         low,
     ):
         return False
-    return bool(_CAPABILITY_DENIAL_RE.search(value))
+    external_escape = bool(
+        re.search(r"\b(?:hr\s+portal|company\s+portal|home\s+management\s+app|"
+                  r"saved\s+media|personal\s+library|app\s+tab|settings\s+tab)\b", low)
+        and re.search(r"\b(?:can(?:not|'t)|unable|use|go\s+to|open)\b", low)
+    )
+    return bool(_CAPABILITY_DENIAL_RE.search(value) or external_escape)
 
 
 def _requested_non_english_output(user_text: str) -> bool:
@@ -2283,6 +2304,24 @@ def _mutation_result_committed(
     # An idempotent replay whose desired state already exists is safe to
     # acknowledge; the important invariant is that the state is authoritative.
     return True, status or "committed"
+
+
+_DELIVERY_CLAIM_RE = re.compile(
+    r"\b(?:pdf|csv|file|document|attachment)\b.{0,35}"
+    r"\b(?:queued|attached|sent|sending|ready)\b"
+    r"|\b(?:queued|attached|sent|sending)\b.{0,35}"
+    r"\b(?:pdf|csv|file|document|attachment)\b",
+    re.IGNORECASE,
+)
+
+
+def _guard_delivery_claim(candidate: str, attachments: list[dict]) -> str:
+    if attachments or not _DELIVERY_CLAIM_RE.search(candidate or ""):
+        return candidate
+    return (
+        "I haven't produced or queued that file yet, so I won't claim it was sent. "
+        "Please ask me to generate it again."
+    )
 
 
 def _guard_mutation_success(
@@ -2585,6 +2624,7 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                 candidate = rewritten or candidate
 
             final = _guard_mutation_success(candidate, user_text, mutation_ledger)
+            final = _guard_delivery_claim(final, attachments)
             _record_usage_buckets(actor.source_message_id, usage_by_route)
             add_turn(actor.user_id, actor.conversation_id, "user", history_user)
             add_turn(actor.user_id, actor.conversation_id, "assistant", final)
