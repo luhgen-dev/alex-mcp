@@ -16,10 +16,11 @@ import phase2_delegation
 import phase2_monitor
 import phase2_home
 import phase2_reports
+import scope_policy
 
 mcp = MCPServer(
     "Alex Household Tools",
-    version="0.5.1",
+    version="0.5.2",
     instructions="Deterministic household tools. Identity and permissions are injected by Alex and are never model-controlled.",
 )
 
@@ -87,9 +88,10 @@ def correct_expense(event_id: str, actor: Actor, amount: float | None = None,
 
 @mcp.tool()
 def find_receipts(actor: Actor, query: str | None = None, amount: float | None = None,
-                  start_date: str | None = None, end_date: str | None = None, limit: int = 10) -> dict:
-    """Find saved original receipts by merchant/bank/reference text, amount or date. Similar recurring receipts remain distinct."""
-    return services.find_receipts(actor, query, amount, start_date, end_date, limit)
+                  start_date: str | None = None, end_date: str | None = None, limit: int = 10,
+                  scope: str | None = None) -> dict:
+    """Find original receipts by merchant/bank/reference, amount or date. scope may be all/family/private and is enforced by the backend."""
+    return services.find_receipts(actor, query, amount, start_date, end_date, limit, scope)
 
 
 @mcp.tool()
@@ -184,6 +186,12 @@ def reminder_history(actor: Actor, reminder_id: str | None = None,
 
 
 @mcp.tool()
+def handoff_reminder_claim(reminder_id: str, recipient: str, actor: Actor) -> dict:
+    """Ask a household member such as Priya/spouse to accept your claimed Family Shared reminder. You remain claimant until they react to the DM request."""
+    return services.request_reminder_handoff(actor, reminder_id, recipient)
+
+
+@mcp.tool()
 def release_reminder_claim(reminder_id: str, actor: Actor) -> dict:
     """Explicitly release a claimable family reminder after the claimant says they cannot do it / release it. Removing a WhatsApp reaction never releases ownership."""
     return services.release_reminder_claim(actor, reminder_id)
@@ -194,7 +202,7 @@ def create_task(title: str, actor: Actor, notes: str | None = None,
                 assignee: str = "unassigned", shared: bool = False,
                 due_local: str | None = None, plan_id: str | None = None,
                 reminder_id: str | None = None) -> dict:
-    """Create a first-class task with OPEN lifecycle state. due_local and plan_id are optional. A reminder is never created implicitly; reminder_id only links an already-created authorized reminder. DM defaults private, while group/shared tasks are family-visible."""
+    """Create a first-class task with OPEN lifecycle state. New-write scope is resolved from the trusted user command. A reminder is never created implicitly."""
     return phase2.create_task(
         actor, title, notes, assignee, shared, due_local, plan_id, reminder_id
     )
@@ -363,7 +371,7 @@ def set_leave_record(leave_date: str, actor: Actor, status: str = "PLANNED",
                      portion: str = "FULL", notes: str | None = None,
                      end_date: str | None = None,
                      leave_type: str = "ANNUAL_LEAVE") -> dict:
-    """Store owner-private leave lifecycle. PLANNED/CONFIRMED do not count as historical absence; only TAKEN materializes dated annual/medical leave into the work engine."""
+    """Store ALEX's personal leave ledger. This is not an employer/HR submission. PLANNED/CONFIRMED do not count as historical absence; TAKEN materializes dated annual/medical leave into the work engine."""
     return phase2.set_leave_record(
         actor, leave_date, status, portion, notes, end_date, leave_type
     )
@@ -381,7 +389,7 @@ def create_plan(title: str, actor: Actor, start_local: str | None = None,
                 end_local: str | None = None, notes: str | None = None,
                 shared: bool = False, locked: bool = False,
                 time_known: bool | None = None) -> dict:
-    """Create a draft life plan. If the user gave a date but no clock time, set time_known=false; never invent midnight. DM defaults private; group/shared is family."""
+    """Create a draft life plan. New-write scope is resolved from the trusted user command; edits never move scope. If a date has no clock time, set time_known=false."""
     return phase2.create_plan(
         actor, title, start_local, end_local, notes, shared, locked, time_known
     )
@@ -394,20 +402,24 @@ def list_plans(actor: Actor, include_cancelled: bool = False, limit: int = 50) -
 
 
 @mcp.tool()
-def update_plan(plan_id: str, actor: Actor, status: str | None = None,
+def update_plan(actor: Actor, plan_id: str | None = None,
+                plan_name: str | None = None, status: str | None = None,
                 title: str | None = None, start_local: str | None = None,
                 end_local: str | None = None, notes: str | None = None) -> dict:
-    """Update a plan or mark it DRAFT, LOCKED or CANCELLED. Do not silently rewrite the user's baseline intent."""
-    return phase2.update_plan(actor, plan_id, status, title, start_local, end_local, notes)
+    """Update/cancel a plan by exact id or natural plan_name. Existing scope is preserved."""
+    resolved = phase2.resolve_plan_reference(actor, plan_id, plan_name)
+    return phase2.update_plan(actor, resolved, status, title, start_local, end_local, notes)
 
 
 @mcp.tool()
-def confirm_plan(plan_id: str, actor: Actor, add_to_diary: bool = True,
+def confirm_plan(actor: Actor, plan_id: str | None = None,
+                 plan_name: str | None = None, add_to_diary: bool = True,
                  reminder_minutes_before: int | None = None,
                  reminder_recipient: str = "me") -> dict:
-    """Confirm a plan. A dated plan materializes a linked Diary event; conflicts are gated before confirmation."""
+    """Confirm a plan by exact id or natural plan_name. A dated plan materializes a linked Diary event."""
+    resolved = phase2.resolve_plan_reference(actor, plan_id, plan_name)
     return phase2.confirm_plan(
-        actor, plan_id, add_to_diary, reminder_minutes_before, reminder_recipient
+        actor, resolved, add_to_diary, reminder_minutes_before, reminder_recipient
     )
 
 
@@ -518,7 +530,7 @@ def planning_create_goal(name: str, target_amount: float, actor: Actor,
     """Create an unlocked draft goal. baseline_monthly is optional and defaults to zero; never invent a contribution."""
     return phase2_finance.create_goal(
         name, target_amount, baseline_monthly, actor.phone, actor.conversation_type,
-        "family" if shared or actor.conversation_type == "GROUP" else "private",
+        scope_policy.visibility_for_new_write(actor, shared),
         currency, target_date, status,
     )
 
@@ -732,7 +744,7 @@ def planning_create_cash_pool(name: str, actor: Actor, currency: str = "MYR",
     """Create a stash/cash pool without allocating any money into it."""
     return phase2_finance.create_cash_pool(
         name, actor.phone, actor.conversation_type,
-        "family" if shared or actor.conversation_type == "GROUP" else "private",
+        scope_policy.visibility_for_new_write(actor, shared),
         currency,
     )
 
@@ -817,7 +829,7 @@ def planning_add_reserve(name: str, monthly_amount: float, actor: Actor,
     """Add an explicit monthly reserve/allowance to the baseline only because the user asked to reserve it."""
     return phase2_finance.add_plan_reserve(
         name, monthly_amount, actor.phone, actor.conversation_type,
-        "family" if shared or actor.conversation_type == "GROUP" else "private",
+        scope_policy.visibility_for_new_write(actor, shared),
         currency,
     )
 
@@ -1005,8 +1017,17 @@ def bills_confirm_unpaid(instance_id: str, actor: Actor, note: str | None = None
 
 @mcp.tool()
 def work_schedule(start_date: str, end_date: str, actor: Actor) -> dict:
-    """Read repeating roster, explicit shift exceptions and effective OT over a date range."""
-    return phase2_work.work_summary(start_date, end_date, actor.phone, actor.conversation_type)
+    """Read repeating roster and shift exceptions. OT is included only when its separate policy is configured."""
+    try:
+        return phase2_work.work_summary(start_date, end_date, actor.phone, actor.conversation_type)
+    except ValueError as exc:
+        if "No active roster profile configured" in str(exc):
+            return {
+                "status": "not_configured",
+                "dependency": "roster",
+                "message": "I don't have your work roster configured yet.",
+            }
+        raise
 
 
 @mcp.tool()
@@ -1025,7 +1046,7 @@ def work_record_event(event_type: str, event_date: str, actor: Actor,
     """Record leave/MC/shift-swap or OT offered/pending/planned/worked/unavailable as a dated fact."""
     return phase2_work.record_work_event(
         event_type, event_date, actor.phone, actor.conversation_type,
-        "family" if shared or actor.conversation_type == "GROUP" else "private",
+        scope_policy.visibility_for_new_write(actor, shared),
         shift_code, start_time, end_time, hours, units_days, work_scope,
         manager_override, note, actor.source_message_id,
     )
@@ -1062,7 +1083,7 @@ def asset_create(name: str, actor: Actor, category: str | None = None,
     """Create household asset metadata such as appliance/warranty records."""
     return phase2_library.create_asset(
         name, actor.phone, actor.conversation_type,
-        "family" if shared or actor.conversation_type == "GROUP" else "private",
+        scope_policy.visibility_for_new_write(actor, shared),
         category, brand, model, serial_number, purchase_date, warranty_end, note,
     )
 
@@ -1141,6 +1162,7 @@ def monitor_home_state(entity_id: str, target_state: str, actor: Actor,
         raise ValueError("an exact Home Assistant entity_id is required")
     if not target_state:
         raise ValueError("target_state is required")
+    import ha
     snapshot = ha.get_state(entity_id)
     current = str(snapshot.get("state") or "").strip().casefold()
     if current in {"unknown", "unavailable", ""}:
@@ -1156,7 +1178,7 @@ def monitor_home_state(entity_id: str, target_state: str, actor: Actor,
     created = phase2_delegation.create_delegation(
         "CUSTOM", str(friendly), actor.phone, actor.source_message_id,
         actor.conversation_type,
-        "family" if shared or actor.conversation_type == "GROUP" else "private",
+        scope_policy.visibility_for_new_write(actor, shared),
         {
             "kind": "HA_STATE",
             "entity_id": entity_id,
@@ -1181,7 +1203,7 @@ def monitor_delegate(delegation_type: str, subject: str, actor: Actor,
     return phase2_delegation.create_delegation(
         delegation_type, subject, actor.phone, actor.source_message_id,
         actor.conversation_type,
-        "family" if shared or actor.conversation_type == "GROUP" else "private",
+        scope_policy.visibility_for_new_write(actor, shared),
         None, True,
     )
 
@@ -1203,9 +1225,45 @@ def monitor_cancel(delegation_id: str, actor: Actor) -> dict:
 
 
 @mcp.tool()
+def finance_report(actor: Actor, period: str | None = None,
+                   scope: str = "all") -> dict:
+    """Build the canonical monthly finance report from the full ledger. This is actual financial activity, not the household planning snapshot."""
+    import calendar
+    import runtime_clock
+
+    effective_period = period or runtime_clock.today(actor.timezone).strftime("%Y-%m")
+    try:
+        year, month = (int(x) for x in effective_period.split("-", 1))
+        last_day = calendar.monthrange(year, month)[1]
+    except Exception as exc:
+        raise ValueError("period must be YYYY-MM") from exc
+    start_date = f"{year:04d}-{month:02d}-01"
+    end_date = f"{year:04d}-{month:02d}-{last_day:02d}"
+    ledger = services.query_finances(
+        actor, start_date=start_date, end_date=end_date,
+        scope=scope, include_all_records=True,
+    )
+    try:
+        phase2_finance.ensure_obligation_instances(
+            effective_period, actor.phone, actor.conversation_type, scope
+        )
+    except ValueError:
+        # Missing recurring-payment configuration must not hide real ledger data.
+        pass
+    result = phase2_reports.build_monthly_finance_report(
+        ledger, effective_period, actor.phone, actor.conversation_type, scope
+    )
+    phase2_reports.remember_active_report(
+        actor.user_id, actor.conversation_id, "monthly_finance", result,
+        period=effective_period, spec={"period": effective_period, "scope": scope},
+    )
+    return result
+
+
+@mcp.tool()
 def report_snapshot(actor: Actor, period: str | None = None,
                     include_raw_income: bool = False) -> dict:
-    """Build a privacy-scoped household/finance/work snapshot. Raw private income is never exposed in a family group."""
+    """Build the broader household/planning overview (goals, obligations, assets and leave). Use finance_report for actual monthly ledger activity."""
     if include_raw_income and actor.conversation_type == "GROUP":
         raise PermissionError("raw private income cannot be requested from the family group")
     result = phase2_reports.build_snapshot(
@@ -1222,8 +1280,11 @@ def report_snapshot(actor: Actor, period: str | None = None,
 @mcp.tool()
 def report_export(format: str, actor: Actor, period: str | None = None,
                   include_raw_income: bool = False) -> dict:
-    """Create a local privacy-scoped PDF/CSV/JSON report and return it as a WhatsApp document attachment."""
+    """Export the active report to PDF/CSV/JSON from a freshly re-queried canonical dataset."""
+    import calendar
+    import json
     import os
+    import re
     import uuid
     from pathlib import Path
     from config import DATA_DIR
@@ -1239,46 +1300,95 @@ def report_export(format: str, actor: Actor, period: str | None = None,
         if period is None and not include_raw_income else None
     )
     report_kind = active["kind"] if active else "snapshot"
-    snapshot = (
-        active["payload"] if active
-        else phase2_reports.build_snapshot(
-            actor.phone, actor.conversation_type, "all", period,
-            include_raw_income=include_raw_income, include_assets=True, include_leave=True,
-        )
-    )
     effective_period = (active.get("period") if active else None) or period
-    out_dir = Path(DATA_DIR) / "reports"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    safe_period = (effective_period or "current").replace("/", "-").replace("..", "-")
-    # One immutable path per export prevents a queued private report from
-    # being overwritten by another user's/group's export before outbox send.
-    path = out_dir / f"alex-{safe_period}-{uuid.uuid4().hex}.{fmt}"
-    if fmt == "pdf":
-        if report_kind == "finance_query":
-            payload = phase2_reports.text_pdf(
-                phase2_reports.finance_query_text(snapshot), title="ALEX Finance Report"
+    spec = (active.get("spec") or {}) if active else {}
+
+    if report_kind in {"finance_query", "monthly_finance"}:
+        if report_kind == "monthly_finance":
+            effective_period = spec.get("period") or effective_period
+            scope = spec.get("scope") or "all"
+            if not effective_period:
+                raise ValueError("monthly finance report has no period")
+            year, month = (int(x) for x in effective_period.split("-", 1))
+            start_date = f"{year:04d}-{month:02d}-01"
+            end_date = f"{year:04d}-{month:02d}-{calendar.monthrange(year, month)[1]:02d}"
+            ledger = services.query_finances(
+                actor, start_date=start_date, end_date=end_date,
+                scope=scope, include_all_records=True,
             )
         else:
-            payload = phase2_reports.minimal_pdf(snapshot)
+            scope = spec.get("scope")
+            ledger = services.query_finances(
+                actor,
+                start_date=spec.get("start_date"),
+                end_date=spec.get("end_date"),
+                category=spec.get("category"),
+                search=spec.get("search"),
+                currency=spec.get("currency"),
+                limit=max(int(spec.get("limit") or 20), 1),
+                scope=scope,
+                source=spec.get("source"),
+                include_all_records=True,
+            )
+        if effective_period and re.fullmatch(r"\d{4}-\d{2}", str(effective_period)):
+            report = phase2_reports.build_monthly_finance_report(
+                ledger, effective_period, actor.phone, actor.conversation_type,
+                scope or "all",
+            )
+        else:
+            report = {
+                "report_type": "finance_query",
+                "period": effective_period or "Custom range",
+                "scope": scope or "all",
+                "ledger": ledger,
+                "category_totals": [
+                    {**row, "label": phase2_reports._human_category(row.get("category"))}
+                    for row in ledger.get("category_totals", [])
+                ],
+                "obligations": [],
+                "goals": [],
+            }
+        canonical = report
+    else:
+        canonical = phase2_reports.build_snapshot(
+            actor.phone, actor.conversation_type, "all", effective_period,
+            include_raw_income=include_raw_income, include_assets=True, include_leave=True,
+        )
+
+    out_dir = Path(DATA_DIR) / "reports"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    safe_period = str(effective_period or "current").replace("/", "-").replace("..", "-")
+    path = out_dir / f"alex-{safe_period}-{uuid.uuid4().hex}.{fmt}"
+
+    if fmt == "pdf":
+        if report_kind in {"finance_query", "monthly_finance"}:
+            payload = phase2_reports.premium_finance_pdf(canonical)
+        else:
+            payload = phase2_reports.minimal_pdf(canonical)
         path.write_bytes(payload)
         mime = "application/pdf"
     elif fmt == "csv":
         payload = (
-            phase2_reports.finance_query_csv(snapshot)
-            if report_kind == "finance_query"
-            else phase2_reports.finance_csv(snapshot)
+            phase2_reports.monthly_finance_csv(canonical)
+            if report_kind in {"finance_query", "monthly_finance"}
+            else phase2_reports.finance_csv(canonical)
         )
         path.write_text(payload, encoding="utf-8")
         mime = "text/csv"
     else:
-        payload = phase2_reports.snapshot_json(snapshot)
+        payload = json.dumps(canonical, ensure_ascii=False, indent=2, sort_keys=True)
         path.write_text(payload, encoding="utf-8")
         mime = "application/json"
+
     return {
         "status": "ready",
         "format": fmt,
         "period": effective_period,
         "source_report_kind": report_kind,
+        "record_count": (
+            int((canonical.get("ledger") or {}).get("count") or 0)
+            if report_kind in {"finance_query", "monthly_finance"} else None
+        ),
         "_attachments": [{"path": os.fspath(path), "kind": "DOCUMENT", "mime_type": mime}],
     }
 

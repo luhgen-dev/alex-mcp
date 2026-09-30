@@ -17,6 +17,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import brain
 import db
 import media
+import services
+import scope_policy
 import diagnostics
 from config import DATA_DIR
 
@@ -310,31 +312,40 @@ def build_turn(payload: dict, media_lines: list[str]) -> dict:
 
 
 def _private_group_handoff_requested(text: str) -> bool:
-    """Deterministically identify private *read* requests that should answer in DM.
+    """Identify owner-private group requests that must execute in the owner's DM.
 
-    The group actor never gains private-space access. Instead, the same
-    authenticated household sender is re-resolved in their own DM context.
+    Reads stay read-intent gated. For writes, explicit private wording or the
+    owner's emoji shortcut is enough. The group actor itself never gains a
+    private space.
     """
     low = str(text or "").casefold()
     if not low.strip():
         return False
     readish = bool(re.search(
         r"\b(?:show|list|find|get|what|when|where|how much|how many|tell me|"
-        r"check|latest|recent|history|balance|did i|have i|do i)\b",
+        r"check|latest|recent|history|balance|did i|have i|do i|"
+        r"spend|spent|spending|transactions?)\b",
         low,
     ))
-    if not readish:
-        return False
-    explicit_private = bool(re.search(r"\bprivate\b", low))
-    sensitive = bool(re.search(
+    writeish = bool(re.search(
+        r"\b(?:add|create|record|log|save|remember|set|update|change|edit|"
+        r"correct|contribute|allocate|put|schedule|remind|monitor)\b",
+        low,
+    ))
+    explicit_private = scope_policy.explicit_private(text)
+    emoji_private_write = scope_policy.contains_emoji(text) and writeish
+    sensitive_read = readish and bool(re.search(
         r"\b(?:salary|paycheck|take[- ]home|income|ot rate|overtime rate|"
         r"overtime pay|exact ot|stash|cash pool|bank balance|"
-        r"my expenses?|my spending|my transactions?|my receipts?|"
+        r"(?:my\s+)?(?:expenses?|spending|transactions?|receipts?)|"
         r"my saved (?:items?|memories?)|my private (?:notes?|memory|data))\b",
         low,
     ))
-    return explicit_private or sensitive
-
+    return (
+        (explicit_private and (readish or writeish))
+        or emoji_private_write
+        or sensitive_read
+    )
 
 def _dm_conversation_for_actor(actor) -> str:
     return actor.phone.replace("+", "") + "@s.whatsapp.net"
@@ -351,6 +362,71 @@ def _error_report_command(text: str) -> tuple[bool, str]:
         return False, ""
     explanation = str(match.group(1) or "").strip()
     return True, explanation
+
+
+
+def _is_selection_followup(text: str) -> bool:
+    return bool(re.fullmatch(
+        r"\s*(?:yes|yep|yeah|sure|ok|okay|please\s+do|show\s+it|send\s+it|open\s+it|get\s+it)\s*[.!]?\s*",
+        str(text or ""),
+        re.IGNORECASE,
+    ))
+
+
+def _selection_context_for_offer(actor, reply: str, attachments: list[dict]) -> dict | None:
+    if attachments:
+        return None
+    if not re.search(
+        r"\b(?:would\s+you\s+like\s+me\s+to|want\s+me\s+to|shall\s+i|should\s+i)\s+"
+        r"(?:show|send|open|get)\b",
+        str(reply or ""),
+        re.IGNORECASE,
+    ):
+        return None
+    return services.latest_single_selection_context(
+        actor, created_after_utc=actor.received_at_utc
+    )
+
+
+def _selection_context_parts(context: dict | None) -> tuple[str, str] | None:
+    if not context or context.get("context_kind") != "SELECTION":
+        return None
+    value = str(context.get("context_id") or "")
+    if ":" not in value:
+        return None
+    kind, target_id = value.split(":", 1)
+    if not kind or not target_id:
+        return None
+    return kind, target_id
+
+
+def _deliver_selection_followup(actor, context: dict) -> dict:
+    parts = _selection_context_parts(context)
+    if not parts:
+        raise ValueError("invalid selection continuation context")
+    result = services.get_selection_target(actor, parts[0], parts[1])
+    attachments = list(result.get("_attachments") or [])
+    reply = "Here it is." if attachments else str(result.get("content") or result.get("title") or "Here it is.")
+    db.queue_outbound(
+        actor.conversation_id, "TEXT", text=reply,
+        source_message_id=actor.source_message_id,
+    )
+    sent_paths = set()
+    for item in attachments:
+        local_path = item.get("path")
+        if not local_path or local_path in sent_paths:
+            continue
+        sent_paths.add(local_path)
+        kind = item.get("kind", "DOCUMENT")
+        db.queue_outbound(
+            actor.conversation_id,
+            "IMAGE" if kind == "IMAGE" else "DOCUMENT",
+            local_path=local_path,
+            mime_type=item.get("mime_type"),
+            source_message_id=actor.source_message_id,
+        )
+    db.finish_inbound(actor.source_message_id, reply)
+    return {"ok": True, "selection_followup": True}
 
 
 def _finish_simple_turn(actor, reply: str, **extra) -> dict:
@@ -477,6 +553,15 @@ def process(payload: dict) -> dict:
                 error_report=True,
             )
 
+        if _is_selection_followup(turn["trusted_text"]):
+            selection_context = quoted_context
+            if not _selection_context_parts(selection_context):
+                selection_context = db.resolve_recent_outbound_context(
+                    actor.conversation_id, "SELECTION", max_age_seconds=600
+                )
+            if _selection_context_parts(selection_context):
+                return _deliver_selection_followup(actor, selection_context)
+
         # Private reads asked from Family Shared are handed to the authenticated
         # owner's DM without ever widening the group actor's ACL. This is one
         # model/tool turn, not a group answer followed by a second private retry.
@@ -501,11 +586,21 @@ def process(payload: dict) -> dict:
                     vision_parts, quoted_context=None,
                 )
             )
-            db.queue_outbound(
-                dm_conversation, "TEXT", text=private_reply,
-                source_message_id=actor.source_message_id,
+            private_selection = _selection_context_for_offer(
+                dm_actor, private_reply, private_attachments
             )
+            if not private_attachments:
+                db.queue_outbound(
+                    dm_conversation, "TEXT", text=private_reply,
+                    source_message_id=actor.source_message_id,
+                    context_kind="SELECTION" if private_selection else None,
+                    context_id=(
+                        f"{private_selection['kind']}:{private_selection['id']}"
+                        if private_selection else None
+                    ),
+                )
             sent_paths: set[str] = set()
+            first_private_attachment = True
             for item in private_attachments:
                 path = item.get("path")
                 kind = item.get("kind", "DOCUMENT")
@@ -514,11 +609,16 @@ def process(payload: dict) -> dict:
                     db.queue_outbound(
                         dm_conversation,
                         "IMAGE" if kind == "IMAGE" else "DOCUMENT",
+                        text=private_reply if first_private_attachment else None,
                         local_path=path,
                         mime_type=item.get("mime_type"),
                         source_message_id=actor.source_message_id,
                     )
-            group_reply = "I sent that to you privately."
+                    first_private_attachment = False
+            group_reply = (
+                "I’m handling that in your private DM."
+                if private_attachments else "I sent that to you privately."
+            )
             db.queue_outbound(
                 actor.conversation_id, "TEXT", text=group_reply,
                 source_message_id=actor.source_message_id,
@@ -533,11 +633,21 @@ def process(payload: dict) -> dict:
             )
         )
         db.touch_inbound_processing(payload["message_id"])
-        db.queue_outbound(
-            actor.conversation_id, "TEXT", text=reply,
-            source_message_id=actor.source_message_id,
+        selection_context = _selection_context_for_offer(
+            actor, reply, attachments
         )
+        if not attachments:
+            db.queue_outbound(
+                actor.conversation_id, "TEXT", text=reply,
+                source_message_id=actor.source_message_id,
+                context_kind="SELECTION" if selection_context else None,
+                context_id=(
+                    f"{selection_context['kind']}:{selection_context['id']}"
+                    if selection_context else None
+                ),
+            )
         sent_paths: set[str] = set()
+        first_attachment = True
         for item in attachments:
             path = item.get("path")
             kind = item.get("kind", "DOCUMENT")
@@ -546,10 +656,12 @@ def process(payload: dict) -> dict:
                 db.queue_outbound(
                     actor.conversation_id,
                     "IMAGE" if kind == "IMAGE" else "DOCUMENT",
+                    text=reply if first_attachment else None,
                     local_path=path,
                     mime_type=item.get("mime_type"),
                     source_message_id=actor.source_message_id,
                 )
+                first_attachment = False
         db.finish_inbound(actor.source_message_id, reply)
         return {"ok": True}
     except media.VoiceTranscriptionUncertain as exc:
@@ -576,6 +688,11 @@ def process(payload: dict) -> dict:
     except Exception as exc:
         db.fail_inbound(payload["message_id"], str(exc))
         _record_processing_error(exc, payload)
+        # Reaction events are transport-level signals. A broken reaction must
+        # never post a scary processing-error message into the family group.
+        if str(payload.get("event_kind") or "").upper() == "REACTION":
+            print(traceback.format_exc(), file=sys.stderr, flush=True)
+            return {"ok": False, "reaction_error": True, "error": str(exc)[:500]}
         try:
             db.queue_outbound(
                 payload["conversation_id"], "TEXT",

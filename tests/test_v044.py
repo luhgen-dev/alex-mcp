@@ -878,6 +878,85 @@ class FinalHardeningTests(V044Base):
         self.assertIn("couldn't understand", inbound["cached_response"])
         self.assertIn("couldn't understand", outbound["text_body"])
 
+    def test_document_delivery_stays_unresolved_until_provider_sent(self):
+        source_id = "doc-job-source"
+        db.claim_inbound({
+            "message_id": source_id,
+            "provider": "WHATSAPP",
+            "conversation_id": DM,
+            "conversation_type": "DIRECT_DM",
+            "sender_phone": HUSBAND,
+            "sender_provider_jid": DM,
+            "text": "Send my September report as PDF",
+        })
+        fd, path = tempfile.mkstemp(suffix=".pdf")
+        os.close(fd)
+        try:
+            with open(path, "wb") as handle:
+                handle.write(b"%PDF-1.4\n%test")
+            outbound_id = db.queue_outbound(
+                DM, "DOCUMENT", text="Here is your September report.",
+                local_path=path, mime_type="application/pdf",
+                source_message_id=source_id,
+            )
+
+            def fail_document(payload):
+                if payload.get("kind") == "document":
+                    return False, "temporary network outage"
+                return True, '{"ok":true,"message_id":"control-ok"}'
+
+            with patch.object(outbox, "_send", side_effect=fail_document):
+                outbox.sweep()
+
+            conn = db.connect()
+            try:
+                pending = conn.execute(
+                    """SELECT delivery_status,attempt_count,job_reacted_at_utc,
+                              job_pinned_at_utc,job_unpinned_at_utc
+                       FROM outbound_messages WHERE outbound_id=?""",
+                    (outbound_id,),
+                ).fetchone()
+                conn.execute(
+                    "UPDATE outbound_messages SET next_attempt_at_utc=NULL WHERE outbound_id=?",
+                    (outbound_id,),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+            self.assertEqual(pending["delivery_status"], "PENDING")
+            self.assertGreaterEqual(pending["attempt_count"], 1)
+            self.assertIsNotNone(pending["job_reacted_at_utc"])
+            self.assertIsNotNone(pending["job_pinned_at_utc"])
+            self.assertIsNone(pending["job_unpinned_at_utc"])
+
+            def deliver_document(payload):
+                if payload.get("kind") == "document":
+                    return True, '{"ok":true,"message_id":"wa-doc-sent"}'
+                return True, '{"ok":true,"message_id":"control-ok"}'
+
+            with patch.object(outbox, "_send", side_effect=deliver_document):
+                outbox.sweep()
+
+            conn = db.connect()
+            try:
+                sent = conn.execute(
+                    """SELECT delivery_status,provider_message_id,
+                              job_reaction_cleared_at_utc,job_unpinned_at_utc
+                       FROM outbound_messages WHERE outbound_id=?""",
+                    (outbound_id,),
+                ).fetchone()
+            finally:
+                conn.close()
+            self.assertEqual(sent["delivery_status"], "SENT")
+            self.assertEqual(sent["provider_message_id"], "wa-doc-sent")
+            self.assertIsNotNone(sent["job_reaction_cleared_at_utc"])
+            self.assertIsNotNone(sent["job_unpinned_at_utc"])
+        finally:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+
     def test_audio_attachment_is_emitted_as_whatsapp_audio_payload(self):
         fd, path = tempfile.mkstemp(suffix=".ogg")
         os.close(fd)

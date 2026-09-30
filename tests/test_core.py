@@ -76,7 +76,7 @@ class AlexCoreTests(unittest.TestCase):
                 "alex_profile_config_versions",
                 "tool_audit", "tool_execution_claims", "ai_usage", "diagnostic_runs", "monitor_notifications",
                 "outbound_messages", "conversation_turns", "selection_sets", "active_report_contexts",
-                "reminder_claim_events", "reminder_events",
+                "reminder_handoffs", "reminder_claim_events", "reminder_events",
                 "task_reminder_links", "task_events", "tasks",
                 "diary_reminder_links", "plan_diary_links", "schedule_conflicts", "diary_events", "plans",
                 "leave_records", "work_roster", "cashflow_baselines",
@@ -1589,55 +1589,74 @@ class AlexCoreTests(unittest.TestCase):
         with self.assertRaises(PermissionError):
             services.query_finances(group, scope="private")
 
-    def test_dm_receipt_media_does_not_widen_private_finance_scope(self):
-        self.claim("scope-receipt-private", "+60111111111", "log this receipt")
+    def test_dm_receipt_media_does_not_override_current_command_scope(self):
+        self.claim("scope-receipt-default", "+60111111111", "log this receipt")
         raw = base64.b64encode(b"generic-receipt").decode("ascii")
         receipt_media = media.save_media(
-            "scope-receipt-private", "IMAGE", "image/jpeg", raw
+            "scope-receipt-default", "IMAGE", "image/jpeg", raw
         )
         actor = with_action_key(
             replace(
                 self.actor(
-                    "scope-receipt-private", "+60111111111", [receipt_media]
+                    "scope-receipt-default", "+60111111111", [receipt_media]
                 ),
                 trusted_text="log this receipt",
             ),
-            "scope-receipt-private-a",
+            "scope-receipt-default-a",
         )
         result = services.log_expense(
             actor, "Personal purchase", 15, "personal", currency="MYR"
         )
-        self.assertEqual(result["space"], "HUSBAND_PVT")
+        # Current locked rule: new writes are Family Shared unless THIS user
+        # command explicitly says private or contains any emoji. The receipt
+        # bytes/OCR never influence that decision.
+        self.assertEqual(result["space"], "FAMILY_SHARED")
 
-    def test_sensitive_finance_categories_default_private_but_family_can_be_explicit(self):
-        self.claim("scope-pharmacy-private", "+60111111111", "pharmacy medicine")
+    def test_new_finance_write_scope_uses_command_not_category(self):
+        self.claim("scope-pharmacy-default", "+60111111111", "pharmacy medicine")
         actor = with_action_key(
             replace(
-                self.actor("scope-pharmacy-private", "+60111111111"),
+                self.actor("scope-pharmacy-default", "+60111111111"),
                 trusted_text="pharmacy medicine",
+            ),
+            "scope-pharmacy-default-a",
+        )
+        default_shared = services.log_expense(
+            actor, "Pharmacy medicine", 20, "pharmacy", currency="MYR"
+        )
+        self.assertEqual(default_shared["space"], "FAMILY_SHARED")
+
+        self.claim(
+            "scope-pharmacy-private", "+60111111111",
+            "log this privately pharmacy medicine",
+        )
+        private_actor = with_action_key(
+            replace(
+                self.actor("scope-pharmacy-private", "+60111111111"),
+                trusted_text="log this privately pharmacy medicine",
             ),
             "scope-pharmacy-private-a",
         )
-        private = services.log_expense(
-            actor, "Pharmacy medicine", 20, "pharmacy", currency="MYR"
+        explicit_private = services.log_expense(
+            private_actor, "Pharmacy medicine", 21, "pharmacy", currency="MYR"
         )
-        self.assertEqual(private["space"], "HUSBAND_PVT")
+        self.assertEqual(explicit_private["space"], "HUSBAND_PVT")
 
         self.claim(
-            "scope-pharmacy-family", "+60111111111",
-            "share with the family pharmacy medicine",
+            "scope-pharmacy-emoji", "+60111111111",
+            "pharmacy medicine 🙂",
         )
-        family_actor = with_action_key(
+        emoji_actor = with_action_key(
             replace(
-                self.actor("scope-pharmacy-family", "+60111111111"),
-                trusted_text="share with the family pharmacy medicine",
+                self.actor("scope-pharmacy-emoji", "+60111111111"),
+                trusted_text="pharmacy medicine 🙂",
             ),
-            "scope-pharmacy-family-a",
+            "scope-pharmacy-emoji-a",
         )
-        family = services.log_expense(
-            family_actor, "Pharmacy medicine", 20, "pharmacy", currency="MYR"
+        emoji_private = services.log_expense(
+            emoji_actor, "Pharmacy medicine", 22, "pharmacy", currency="MYR"
         )
-        self.assertEqual(family["space"], "FAMILY_SHARED")
+        self.assertEqual(emoji_private["space"], "HUSBAND_PVT")
 
     def test_shopping_private_and_family_lists_do_not_collapse_each_other(self):
         self.claim("shop-scope", "+60111111111", "shopping")
@@ -2047,6 +2066,296 @@ class AlexCoreTests(unittest.TestCase):
         self.assertEqual(shared["conversation_id"], group_id)
         self.assertEqual(shared["space"], "FAMILY_SHARED")
 
+    def test_reaction_entrypoint_is_quiet_and_claims_shared_reminder(self):
+        group_id = "120363777777@g.us"
+        with open(os.path.join(TEST_DIR, "family_group.json"), "w", encoding="utf-8") as handle:
+            handle.write('{"group_jid":"%s"}' % group_id)
+
+        self.claim("reaction-create", "+60111111111", "group reminder")
+        creator = with_action_key(
+            self.actor("reaction-create", "+60111111111"),
+            "reaction-create-action",
+        )
+        reminder = services.create_reminder(
+            creator, "pick up parcel", "2026-10-01T18:00:00+08:00",
+            destination="group",
+        )
+        self.assertTrue(reminder["claimable"])
+
+        confirmation_id = db.queue_outbound(
+            group_id, "TEXT", text="Reminder created.",
+            source_message_id="reaction-create",
+        )
+        reminder_outbound_id = db.queue_outbound(
+            group_id, "TEXT", text="Reminder: pick up parcel",
+            context_kind="REMINDER_INITIAL", context_id=reminder["reminder_id"],
+        )
+        conn = db.connect()
+        try:
+            conn.execute(
+                """UPDATE outbound_messages SET provider_message_id='wa-confirm',
+                   delivery_status='SENT',delivered_at_utc=CURRENT_TIMESTAMP
+                   WHERE outbound_id=?""",
+                (confirmation_id,),
+            )
+            conn.execute(
+                """UPDATE outbound_messages SET provider_message_id='wa-fired',
+                   delivery_status='SENT',delivered_at_utc=CURRENT_TIMESTAMP
+                   WHERE outbound_id=?""",
+                (reminder_outbound_id,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        ignored = ingress.process({
+            "message_id": "reaction-entry-ignore",
+            "provider": "WHATSAPP",
+            "conversation_id": group_id,
+            "conversation_type": "GROUP",
+            "sender_phone": "+60222222222",
+            "event_kind": "REACTION",
+            "reaction_target_message_id": "wa-confirm",
+            "reaction_text": "👍",
+        })
+        self.assertTrue(ignored["ok"])
+        self.assertEqual(ignored["reaction"]["status"], "not_a_reminder_message")
+
+        claimed = ingress.process({
+            "message_id": "reaction-entry-claim",
+            "provider": "WHATSAPP",
+            "conversation_id": group_id,
+            "conversation_type": "GROUP",
+            "sender_phone": "+60222222222",
+            "event_kind": "REACTION",
+            "reaction_target_message_id": "wa-fired",
+            "reaction_text": "✅",
+        })
+        self.assertTrue(claimed["ok"])
+        self.assertEqual(claimed["reaction"]["status"], "claimed")
+        self.assertEqual(claimed["reaction"]["claimed_by_user_id"], "USR_WIFE")
+
+        removed = ingress.process({
+            "message_id": "reaction-entry-remove",
+            "provider": "WHATSAPP",
+            "conversation_id": group_id,
+            "conversation_type": "GROUP",
+            "sender_phone": "+60222222222",
+            "event_kind": "REACTION",
+            "reaction_target_message_id": "wa-fired",
+            "reaction_text": "",
+        })
+        self.assertTrue(removed["ok"])
+        self.assertEqual(removed["reaction"]["status"], "ignored_reaction_removal")
+
+        conn = db.connect()
+        try:
+            error_posts = conn.execute(
+                """SELECT COUNT(*) AS n FROM outbound_messages
+                   WHERE source_message_id IN (
+                     'reaction-entry-ignore','reaction-entry-claim','reaction-entry-remove'
+                   )"""
+            ).fetchone()["n"]
+        finally:
+            conn.close()
+        self.assertEqual(error_posts, 0)
+
+    def test_reminder_claim_handoff_transfers_only_after_recipient_reaction(self):
+        group_id = "120363888888@g.us"
+        with open(os.path.join(TEST_DIR, "family_group.json"), "w", encoding="utf-8") as handle:
+            handle.write('{"group_jid":"%s"}' % group_id)
+
+        self.claim("handoff-create", "+60111111111", "put reminder in group")
+        creator = with_action_key(
+            replace(
+                self.actor("handoff-create", "+60111111111"),
+                trusted_text="put reminder in group",
+            ),
+            "handoff-create-action",
+        )
+        reminder = services.create_reminder(
+            creator, "pick up parcel", "2026-10-01T18:00:00+08:00",
+            destination="group",
+        )
+
+        reminder_outbound_id = db.queue_outbound(
+            group_id, "TEXT", text="Reminder: pick up parcel",
+            context_kind="REMINDER_INITIAL", context_id=reminder["reminder_id"],
+        )
+        conn = db.connect()
+        try:
+            conn.execute(
+                """UPDATE outbound_messages SET provider_message_id='wa-handoff-fired',
+                   delivery_status='SENT',delivered_at_utc=CURRENT_TIMESTAMP
+                   WHERE outbound_id=?""",
+                (reminder_outbound_id,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        claimed = ingress.process({
+            "message_id": "handoff-claim-husband",
+            "provider": "WHATSAPP",
+            "conversation_id": group_id,
+            "conversation_type": "GROUP",
+            "sender_phone": "+60111111111",
+            "event_kind": "REACTION",
+            "reaction_target_message_id": "wa-handoff-fired",
+            "reaction_text": "👍",
+        })
+        self.assertEqual(claimed["reaction"]["claimed_by_user_id"], "USR_HUSBAND")
+
+        self.claim("handoff-request", "+60111111111", "Push this to Priya")
+        handoff_actor = replace(
+            self.actor("handoff-request", "+60111111111"),
+            trusted_text="Push this to Priya",
+        )
+        requested = services.request_reminder_handoff(
+            handoff_actor, reminder["reminder_id"], "Priya"
+        )
+        self.assertEqual(requested["status"], "handoff_requested")
+        self.assertTrue(requested["claimant_unchanged"])
+
+        conn = db.connect()
+        try:
+            before = conn.execute(
+                "SELECT claimed_by_user_id FROM reminders WHERE reminder_id=?",
+                (reminder["reminder_id"],),
+            ).fetchone()["claimed_by_user_id"]
+            outbound = conn.execute(
+                """SELECT outbound_id FROM outbound_messages
+                   WHERE context_kind='REMINDER_HANDOFF' AND context_id=?""",
+                (requested["handoff_id"],),
+            ).fetchone()
+            conn.execute(
+                """UPDATE outbound_messages SET provider_message_id='wa-handoff-dm',
+                   delivery_status='SENT',delivered_at_utc=CURRENT_TIMESTAMP
+                   WHERE outbound_id=?""",
+                (outbound["outbound_id"],),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        self.assertEqual(before, "USR_HUSBAND")
+
+        accepted = ingress.process({
+            "message_id": "handoff-accept-wife",
+            "provider": "WHATSAPP",
+            "conversation_id": "60222222222@s.whatsapp.net",
+            "conversation_type": "DIRECT_DM",
+            "sender_phone": "+60222222222",
+            "event_kind": "REACTION",
+            "reaction_target_message_id": "wa-handoff-dm",
+            "reaction_text": "✅",
+        })
+        self.assertTrue(accepted["ok"])
+        self.assertEqual(accepted["reaction"]["status"], "handoff_accepted")
+        self.assertEqual(accepted["reaction"]["claimed_by_user_id"], "USR_WIFE")
+
+        conn = db.connect()
+        try:
+            after = conn.execute(
+                "SELECT claimed_by_user_id FROM reminders WHERE reminder_id=?",
+                (reminder["reminder_id"],),
+            ).fetchone()["claimed_by_user_id"]
+            status = conn.execute(
+                "SELECT status FROM reminder_handoffs WHERE handoff_id=?",
+                (requested["handoff_id"],),
+            ).fetchone()["status"]
+        finally:
+            conn.close()
+        self.assertEqual(after, "USR_WIFE")
+        self.assertEqual(status, "ACCEPTED")
+
+    def test_reminder_handoff_does_not_overwrite_pending_or_unreachable_recipient(self):
+        # With no active recipient phone, ownership must remain untouched.
+        self.claim("handoff-no-phone-create", "+60111111111", "shared reminder")
+        creator = with_action_key(
+            self.actor("handoff-no-phone-create", "+60111111111"),
+            "handoff-no-phone-action",
+        )
+        reminder = services.create_reminder(
+            creator, "parcel", "2026-10-01T18:00:00+08:00", destination="group"
+        )
+        conn = db.connect()
+        try:
+            conn.execute(
+                """UPDATE reminders SET claimed_by_user_id='USR_HUSBAND',
+                   claimed_at_utc=CURRENT_TIMESTAMP WHERE reminder_id=?""",
+                (reminder["reminder_id"],),
+            )
+            wife_phone = conn.execute(
+                """SELECT history_id FROM user_phone_history
+                   WHERE user_id='USR_WIFE' AND valid_to_utc IS NULL"""
+            ).fetchone()
+            if wife_phone:
+                conn.execute(
+                    "UPDATE user_phone_history SET valid_to_utc=CURRENT_TIMESTAMP WHERE history_id=?",
+                    (wife_phone["history_id"],),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+
+        self.claim("handoff-no-phone", "+60111111111", "Ask Priya to take this")
+        actor = replace(
+            self.actor("handoff-no-phone", "+60111111111"),
+            trusted_text="Ask Priya to take this",
+        )
+        result = services.request_reminder_handoff(
+            actor, reminder["reminder_id"], "Priya"
+        )
+        self.assertEqual(result["status"], "recipient_not_configured")
+        self.assertTrue(result["claimant_unchanged"])
+        conn = db.connect()
+        try:
+            claimant = conn.execute(
+                "SELECT claimed_by_user_id FROM reminders WHERE reminder_id=?",
+                (reminder["reminder_id"],),
+            ).fetchone()["claimed_by_user_id"]
+        finally:
+            conn.close()
+        self.assertEqual(claimant, "USR_HUSBAND")
+        # Restore test fixture phone for following tests.
+        db.initialize()
+
+    def test_monitor_home_state_executes_real_tool_body(self):
+        self.claim("monitor-entry", "+60111111111", "tell me when the Hall AC turns on")
+        actor = self.actor("monitor-entry", "+60111111111")
+        with patch.object(
+            ha, "get_state",
+            return_value={"state": "off", "attributes": {"friendly_name": "Hall AC"}},
+        ), patch.object(
+            phase2_delegation, "create_delegation",
+            return_value={"delegation_id": "monitor-1", "status": "ACTIVE"},
+        ) as create:
+            result = mcp_server.monitor_home_state(
+                "climate.hall_ac", "on", actor
+            )
+        self.assertEqual(result["monitor_kind"], "HA_STATE")
+        self.assertEqual(result["current_state"], "off")
+        create.assert_called_once()
+
+    def test_home_state_monitor_is_checked_each_scheduler_loop(self):
+        scheduler._last_monitor_hour = None
+        with patch.object(
+            phase2_monitor, "bill_candidates", return_value=[]
+        ) as bills, patch.object(
+            phase2_monitor, "goal_candidates", return_value=[]
+        ), patch.object(
+            phase2_monitor, "ot_allocation_candidates", return_value=[]
+        ), patch.object(
+            phase2_monitor, "home_state_candidates", return_value=[]
+        ) as home:
+            scheduler.run_delegated_monitors()
+            first_home_calls = home.call_count
+            first_bill_calls = bills.call_count
+            scheduler.run_delegated_monitors()
+        self.assertGreater(first_home_calls, 0)
+        self.assertEqual(home.call_count, first_home_calls * 2)
+        self.assertEqual(bills.call_count, first_bill_calls)
+
     def test_claimable_group_reminder_first_reaction_wins_and_release_is_explicit(self):
         group_id = "120363999999@g.us"
         with open(os.path.join(TEST_DIR, "family_group.json"), "w", encoding="utf-8") as handle:
@@ -2315,6 +2624,37 @@ class AlexCoreTests(unittest.TestCase):
         self.assertEqual(rows[1]["adjustment_kind"], "SPEND")
         self.assertEqual(rows[1]["amount_minor"], -4000)
         self.assertEqual(rows[1]["category"], "food")
+
+    def test_leave_new_write_scope_follows_current_trusted_command(self):
+        cases = (
+            ("leave-scope-shared", "I'm on annual leave 6 October 2026, save that", "FAMILY_SHARED"),
+            ("leave-scope-private", "Save my annual leave 7 October 2026 privately", "HUSBAND_PVT"),
+            ("leave-scope-emoji", "Save my annual leave 8 October 2026 🙂", "HUSBAND_PVT"),
+        )
+        for mid, trusted_text, expected_space in cases:
+            self.claim(mid, "+60111111111", trusted_text)
+            actor = with_action_key(
+                replace(
+                    self.actor(mid, "+60111111111"),
+                    trusted_text=trusted_text,
+                ),
+                mid + "-action",
+            )
+            day = {
+                "leave-scope-shared": "2026-10-06",
+                "leave-scope-private": "2026-10-07",
+                "leave-scope-emoji": "2026-10-08",
+            }[mid]
+            result = phase2.set_leave_record(
+                actor, day, "PLANNED", "FULL", leave_type="ANNUAL_LEAVE"
+            )
+            self.assertEqual(result["space"], expected_space)
+
+        group = self.group_actor("leave-scope-group", "+60111111111")
+        visible = phase2.list_leave_records(
+            group, "2026-10-06", "2026-10-08"
+        )["leave"]
+        self.assertEqual([row["leave_date"] for row in visible], ["2026-10-06"])
 
     def test_leave_full_to_half_edits_same_record(self):
         self.claim("leave-full", "+60111111111", "record annual leave")

@@ -12,6 +12,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import runtime_clock
+import scope_policy
 
 from dateutil.rrule import rrulestr
 
@@ -54,13 +55,19 @@ GENERIC_CATEGORIES = {
     "general", "other", "misc", "miscellaneous", "unknown",
     "payment", "transfer", "bank_transfer", "fund_transfer", "duitnow",
 }
+SCOPE_ONLY_CATEGORIES = {
+    "private", "privately", "personal", "family", "shared", "family_shared",
+    "family-shared", "just_for_me", "only_for_me", "my_private",
+}
 
 
 def _clean_category(value: str | None) -> str | None:
     if not value:
         return None
     cleaned = str(value).strip().lower().replace(" ", "_")[:80]
-    return None if cleaned in GENERIC_CATEGORIES else cleaned
+    if cleaned in GENERIC_CATEGORIES or cleaned in SCOPE_ONLY_CATEGORIES:
+        return None
+    return cleaned
 
 
 def _routing_keyword_matches(keyword: str, text: str) -> bool:
@@ -103,38 +110,12 @@ def _route(conn, actor: ActorContext, text: str, category: str | None) -> tuple[
     # a model-supplied category. Alex must ask the user instead.
     resolved_category = (rule["category"] if rule else None) or (None if generic_transfer else proposed)
 
-    trusted = str(getattr(actor, "trusted_text", "") or "")
-    explicit_private = bool(re.search(
-        r"\b(?:private|privately|just\s+for\s+me|only\s+for\s+me|my\s+private)\b",
-        trusted,
-        re.IGNORECASE,
-    ))
-    explicit_family = bool(re.search(
-        r"\b(?:family\s+shared|shared\s+with\s+(?:the\s+)?family|share\s+with\s+(?:the\s+)?family)\b",
-        trusted,
-        re.IGNORECASE,
-    ))
-
-    if actor.conversation_type == "GROUP":
-        space = "FAMILY_SHARED"
-    elif explicit_private:
-        # An explicit privacy request always outranks catalogue defaults.
-        space = actor.private_space
-    elif explicit_family:
-        space = "FAMILY_SHARED"
-    elif rule and rule["force_space_id"]:
-        space = rule["force_space_id"]
-    else:
-        # Input transport never widens privacy. A DM receipt/image/PDF is
-        # private unless the owner explicitly shares it or its trusted
-        # household-purpose routing rule is FAMILY_SHARED. Voice was already
-        # private; documents now follow the same principle.
-        space = actor.private_space
+    fallback = (rule["force_space_id"] if rule and rule["force_space_id"] else actor.private_space)
+    space = scope_policy.resolve_new_write_space(actor, fallback_space=fallback)
     if space not in actor.allowed_spaces:
         raise PermissionError("Resolved space is outside the authenticated user's memberships")
     threshold = rule["high_value_threshold_minor"] if rule else None
     return space, resolved_category, threshold
-
 
 def _parse_event_time(value: str | None, tz_name: str) -> str:
     if not value:
@@ -324,8 +305,14 @@ def confirm_expense(actor: ActorContext, event_id: str, approve: bool = True,
 def query_finances(actor: ActorContext, start_date: str | None = None, end_date: str | None = None,
                    category: str | None = None, search: str | None = None,
                    currency: str | None = None, limit: int = 20,
-                   scope: str | None = None, source: str | None = None) -> dict:
-    """Return exact aggregates over the full match set plus a bounded recent-record sample."""
+                   scope: str | None = None, source: str | None = None,
+                   include_all_records: bool = False) -> dict:
+    """Return exact aggregates over the full match set plus records.
+
+    Aggregates are always computed by SQL over the complete match set. By
+    default records are bounded for chat use; report/export callers may request
+    the full matching ledger with include_all_records=True.
+    """
     marks, spaces = _spaces_sql(actor, scope)
     where = f"status='ACTIVE' AND space_id IN ({marks})"
     params: list = spaces[:]
@@ -377,16 +364,27 @@ def query_finances(actor: ActorContext, start_date: str | None = None, end_date:
                 GROUP BY event_type,currency""",
             params,
         ).fetchall()
+        category_rows = conn.execute(
+            f"""SELECT COALESCE(NULLIF(category,''),'uncategorised') AS category,
+                       currency,COALESCE(SUM(amount_minor),0) AS total_minor,COUNT(*) AS n
+                FROM financial_events
+                WHERE {where} AND event_type='Expense'
+                GROUP BY category,currency
+                ORDER BY total_minor DESC,category""",
+            params,
+        ).fetchall()
         count_row = conn.execute(
             f"SELECT COUNT(*) AS n FROM financial_events WHERE {where}", params
         ).fetchone()
-        rows = [dict(r) for r in conn.execute(
-            f"""SELECT event_id,event_type,category,amount_minor,currency,event_date_utc,
-                       description,reference_text,space_id
-                FROM financial_events WHERE {where}
-                ORDER BY event_date_utc DESC, created_at_utc DESC, rowid DESC LIMIT ?""",
-            params + [max(1, min(100, int(limit)))],
-        ).fetchall()]
+        row_sql = f"""SELECT event_id,event_type,category,amount_minor,currency,event_date_utc,
+                             description,reference_text,space_id
+                      FROM financial_events WHERE {where}
+                      ORDER BY event_date_utc DESC, created_at_utc DESC, rowid DESC"""
+        row_params = list(params)
+        if not include_all_records:
+            row_sql += " LIMIT ?"
+            row_params.append(max(1, min(100, int(limit))))
+        rows = [dict(r) for r in conn.execute(row_sql, row_params).fetchall()]
     finally:
         conn.close()
 
@@ -396,6 +394,16 @@ def query_finances(actor: ActorContext, start_date: str | None = None, end_date:
         amount = (r["total_minor"] or 0) / 100
         target = spending_totals if r["event_type"] == "Expense" else income_totals
         target[r["currency"]] = round(amount, 2)
+
+    category_totals = [
+        {
+            "category": r["category"],
+            "currency": r["currency"],
+            "amount": round((r["total_minor"] or 0) / 100, 2),
+            "count": int(r["n"] or 0),
+        }
+        for r in category_rows
+    ]
 
     records = []
     tz = ZoneInfo(actor.timezone)
@@ -409,6 +417,7 @@ def query_finances(actor: ActorContext, start_date: str | None = None, end_date:
             "event_id": r["event_id"], "type": r["event_type"], "amount": amount,
             "currency": r["currency"], "category": r["category"], "description": r["description"],
             "date_local": local, "reference": r["reference_text"],
+            "scope": "family" if r["space_id"] == "FAMILY_SHARED" else "private",
         })
 
     currencies = set(spending_totals) | set(income_totals)
@@ -420,8 +429,10 @@ def query_finances(actor: ActorContext, start_date: str | None = None, end_date:
         "spending_totals": spending_totals,
         "income_totals": income_totals,
         "net_outflow": net_outflow,
+        "category_totals": category_totals,
         "count": int(count_row["n"] if count_row else 0),
         "returned_records": len(records),
+        "all_records_returned": bool(include_all_records),
         "latest_record": records[0] if records else None,
         "records": records,
     }
@@ -493,13 +504,14 @@ def _store_selection(conn, actor: ActorContext, kind: str, ids: list[str]) -> st
 
 
 def find_receipts(actor: ActorContext, query: str | None = None, amount: float | None = None,
-                  start_date: str | None = None, end_date: str | None = None, limit: int = 10) -> dict:
-    """Find linked receipts plus the caller's own preserved-but-unlinked media."""
-    marks, spaces = _spaces_sql(actor)
+                  start_date: str | None = None, end_date: str | None = None, limit: int = 10,
+                  scope: str | None = None) -> dict:
+    """Find linked receipts plus permitted preserved-but-unlinked media."""
+    marks, spaces = _spaces_sql(actor, scope)
     bounded = max(1, min(25, int(limit)))
     sql = f"""SELECT DISTINCT m.media_id,m.media_type,m.mime_type,m.created_at_utc,
                      f.event_id,f.amount_minor,f.currency,f.event_date_utc,f.description,
-                     f.reference_text,m.ocr_text,i.raw_text AS caption
+                     f.reference_text,f.space_id,m.ocr_text,i.raw_text AS caption
               FROM media_objects m
               JOIN inbound_messages i ON i.message_id=m.source_message_id
               JOIN event_media_links l ON l.media_id=m.media_id
@@ -545,6 +557,7 @@ def find_receipts(actor: ActorContext, query: str | None = None, amount: float |
              "currency": r["currency"], "description": r["description"],
              "caption": r["caption"], "label": (r["caption"] or r["description"]),
              "event_date_utc": r["event_date_utc"], "reference": r["reference_text"],
+             "scope": "family" if r["space_id"] == "FAMILY_SHARED" else "private",
              "linked": True}
             for r in linked
         ]
@@ -552,7 +565,8 @@ def find_receipts(actor: ActorContext, query: str | None = None, amount: float |
         remaining = bounded - len(matches)
         # Unlinked media is private provenance from the sender's DM. A group
         # request must never surface that private material into Family Shared.
-        if remaining > 0 and actor.conversation_type != "GROUP":
+        requested_scope = str(scope or "all").strip().casefold()
+        if remaining > 0 and actor.conversation_type != "GROUP" and requested_scope not in {"family", "shared"}:
             orphan_sql = """SELECT m.media_id,m.created_at_utc,m.ocr_text,i.raw_text AS caption
                             FROM media_objects m
                             JOIN inbound_messages i ON i.message_id=m.source_message_id
@@ -854,7 +868,7 @@ def save_item(actor: ActorContext, title: str, content: str, tags: str | None = 
         existing = conn.execute("SELECT item_id FROM saved_items WHERE action_key=?", (actor.action_key,)).fetchone()
         if existing:
             return {"status": "already_saved", "item_id": existing["item_id"]}
-        space = "FAMILY_SHARED" if shared or actor.conversation_type == "GROUP" else actor.private_space
+        space = scope_policy.resolve_new_write_space(actor, requested_shared=shared)
         if space not in actor.allowed_spaces:
             raise PermissionError("requested memory space is not accessible")
         item_id = str(uuid.uuid4())
@@ -1042,6 +1056,53 @@ def remove_saved_item(actor: ActorContext, item_id: str) -> dict:
         conn.close()
 
 
+
+def latest_single_selection_context(actor: ActorContext,
+                                    created_after_utc: str | None = None) -> dict | None:
+    """Return one exact persisted selection only when the newest set has one item."""
+    conn = connect()
+    try:
+        where_after = " AND datetime(created_at_utc)>=datetime(?)" if created_after_utc else ""
+        args_a = [actor.user_id, actor.conversation_id, utc_now()]
+        args_b = [actor.user_id, actor.conversation_id, utc_now()]
+        if created_after_utc:
+            args_a.append(created_after_utc)
+            args_b.append(created_after_utc)
+        rows = conn.execute(
+            f"""SELECT selection_kind,items_json,created_at_utc
+                  FROM selection_sets
+                 WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
+                       {where_after}
+                UNION ALL
+                SELECT 'MEDIA' AS selection_kind,items_json,created_at_utc
+                  FROM media_selection_sets
+                 WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
+                       {where_after}
+                ORDER BY created_at_utc DESC LIMIT 1""",
+            args_a + args_b,
+        ).fetchall()
+        if not rows:
+            return None
+        ids = json.loads(rows[0]["items_json"])
+        if len(ids) != 1:
+            return None
+        return {"kind": rows[0]["selection_kind"], "id": str(ids[0])}
+    finally:
+        conn.close()
+
+
+def get_selection_target(actor: ActorContext, kind: str, target_id: str) -> dict:
+    """Retrieve an exact trusted SELECTION context without model re-search."""
+    normalized = str(kind or "").upper()
+    if normalized == "SAVED_ITEM":
+        return get_saved_item(actor, target_id)
+    if normalized == "RECEIPT":
+        return get_receipt(actor, target_id)
+    if normalized == "MEDIA":
+        return get_media_original(actor, target_id)
+    raise ValueError("unsupported selection context")
+
+
 def resolve_numbered_choice(actor: ActorContext, choice: int) -> dict:
     """Resolve the newest unexpired receipt/saved-memory/original-media list."""
     index = int(choice)
@@ -1149,6 +1210,11 @@ def create_reminder(actor: ActorContext, task: str, due_local: str,
     destination = (destination or "dm").strip().lower()
     if destination not in {"dm", "group"}:
         raise ValueError("destination must be dm or group")
+    # Family Shared one-shot reminders are claimable by design. Recurring
+    # reminders keep the existing non-claimable restriction until each
+    # occurrence has its own claim identity.
+    if destination == "group" and not recurrence_rule:
+        claimable = True
     if claimable and destination != "group":
         raise ValueError("claimable reminders must use destination=group")
     if claimable and recurrence_rule:
@@ -1175,10 +1241,12 @@ def create_reminder(actor: ActorContext, task: str, due_local: str,
                     raise ValueError("target household member has no configured WhatsApp number")
                 conversation_id = phone.replace("+", "") + "@s.whatsapp.net"
 
-            space = "FAMILY_SHARED" if (
-                destination == "group" or shared or actor.conversation_type == "GROUP"
-                or target_user != actor.user_id or len(targets) > 1
-            ) else actor.private_space
+            if destination == "group" or target_user != actor.user_id or len(targets) > 1:
+                space = "FAMILY_SHARED"
+            else:
+                space = scope_policy.resolve_new_write_space(
+                    actor, requested_shared=shared
+                )
             if space not in actor.allowed_spaces:
                 raise PermissionError("requested reminder space is not accessible")
 
@@ -1237,6 +1305,16 @@ def list_reminders(actor: ActorContext, include_completed: bool = False, limit: 
                 item["due_local"] = due.astimezone(tz).isoformat()
             except Exception:
                 item["due_local"] = None
+            pending = conn.execute(
+                """SELECT h.to_user_id,u.display_name
+                   FROM reminder_handoffs h
+                   LEFT JOIN users u ON u.user_id=h.to_user_id
+                   WHERE h.reminder_id=? AND h.status='PENDING'
+                   ORDER BY h.created_at_utc DESC LIMIT 1""",
+                (row["reminder_id"],),
+            ).fetchone()
+            item["handoff_pending_to_user_id"] = pending["to_user_id"] if pending else None
+            item["handoff_pending_to"] = pending["display_name"] if pending else None
             reminders.append(item)
         return {"reminders": reminders}
     finally:
@@ -1315,6 +1393,13 @@ def update_reminder(actor: ActorContext, reminder_id: str, status: str = "open",
                    defer_reason=NULL WHERE reminder_id=?""",
                 (resolved, new_due, reminder_id),
             )
+        if resolved in {"COMP", "CANC"}:
+            conn.execute(
+                """UPDATE reminder_handoffs
+                   SET status='CANCELLED',cancelled_at_utc=?
+                   WHERE reminder_id=? AND status='PENDING'""",
+                (utc_now(), reminder_id),
+            )
         if claim_clear_event:
             conn.execute(
                 """INSERT INTO reminder_claim_events(
@@ -1338,14 +1423,43 @@ def update_reminder(actor: ActorContext, reminder_id: str, status: str = "open",
 
 
 def reminder_history(actor: ActorContext, reminder_id: str | None = None,
-                     limit: int = 50) -> dict:
+                      limit: int = 50) -> dict:
     marks, spaces = _spaces_sql(actor)
     bounded = max(1, min(200, int(limit)))
+    tz = ZoneInfo(actor.timezone)
+
+    def local_iso(value):
+        if not value:
+            return None
+        try:
+            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed.astimezone(tz).isoformat()
+        except Exception:
+            return None
+
+    def event_view(row, include_task=False):
+        out = {
+            "event_type": row["event_type"],
+            "previous_state": row["previous_state"],
+            "new_state": row["new_state"],
+            "previous_due_local": local_iso(row["previous_due_at_utc"]),
+            "new_due_local": local_iso(row["new_due_at_utc"]),
+            "note": row["note"],
+            "created_local": local_iso(row["created_at_utc"]),
+        }
+        if "reminder_id" in row.keys():
+            out["reminder_id"] = row["reminder_id"]
+        if include_task:
+            out["task"] = row["task_text"]
+        return out
+
     conn = connect()
     try:
         if reminder_id:
             owned = conn.execute(
-                f"SELECT 1 FROM reminders WHERE reminder_id=? AND space_id IN ({marks})",
+                f"SELECT task_text FROM reminders WHERE reminder_id=? AND space_id IN ({marks})",
                 [reminder_id] + spaces,
             ).fetchone()
             if not owned:
@@ -1363,10 +1477,38 @@ def reminder_history(actor: ActorContext, reminder_id: str | None = None,
                    WHERE reminder_id=? ORDER BY created_at_utc""",
                 (reminder_id,),
             ).fetchall()
+            history = [event_view(r) for r in rows]
+            claim_history = [
+                {
+                    "actor_user_id": r["actor_user_id"],
+                    "event_type": r["event_type"],
+                    "reaction_text": r["reaction_text"],
+                    "note": r["note"],
+                    "created_local": local_iso(r["created_at_utc"]),
+                }
+                for r in claim_rows
+            ]
+            status_flow = " → ".join(
+                r["event_type"].replace("_", " ").title() for r in rows
+                if r["event_type"] not in {"CREATED"}
+            ) or "Created"
+            latest_due = next(
+                (item["new_due_local"] for item in reversed(history) if item["new_due_local"]),
+                None,
+            )
+            display = {
+                "title": "Reminder History",
+                "items": [{
+                    "number": 1,
+                    "task": owned["task_text"],
+                    "status": status_flow,
+                    "due_local": latest_due,
+                }],
+            }
             return {
-                "reminder_id": reminder_id,
-                "history": [dict(r) for r in rows],
-                "claim_history": [dict(r) for r in claim_rows],
+                "history": history,
+                "claim_history": claim_history,
+                "display": display,
             }
 
         rows = conn.execute(
@@ -1378,35 +1520,248 @@ def reminder_history(actor: ActorContext, reminder_id: str | None = None,
                 ORDER BY e.created_at_utc DESC LIMIT ?""",
             spaces + [bounded],
         ).fetchall()
-        return {"history": [dict(r) for r in rows], "aggregate": True}
+        history = [event_view(r, include_task=True) for r in rows]
+        grouped = []
+        seen = set()
+        for row in rows:
+            rid = row["reminder_id"]
+            if rid in seen:
+                continue
+            seen.add(rid)
+            events = [x for x in rows if x["reminder_id"] == rid]
+            flow = " → ".join(
+                x["event_type"].replace("_", " ").title()
+                for x in reversed(events)
+                if x["event_type"] != "CREATED"
+            ) or "Created"
+            latest_due = next(
+                (local_iso(x["new_due_at_utc"]) for x in events if x["new_due_at_utc"]),
+                None,
+            )
+            grouped.append({
+                "number": len(grouped) + 1,
+                "task": row["task_text"],
+                "status": flow,
+                "due_local": latest_due,
+            })
+        return {
+            "history": history,
+            "aggregate": True,
+            "display": {"title": "Reminder History", "items": grouped},
+        }
     finally:
         conn.close()
+
+def _handoff_recipient_user(actor: ActorContext, recipient: str) -> str:
+    value = str(recipient or "").strip().casefold()
+    if value in {"wife", "priya", "her"}:
+        return "USR_WIFE"
+    if value in {"husband", "him"}:
+        return "USR_HUSBAND"
+    if value in {"spouse", "partner"}:
+        return "USR_WIFE" if actor.user_id == "USR_HUSBAND" else "USR_HUSBAND"
+    if value in {"me", "self", "myself"}:
+        return actor.user_id
+    raise ValueError("recipient must be spouse, wife, husband, Priya, or me")
+
+
+def request_reminder_handoff(actor: ActorContext, reminder_id: str,
+                             recipient: str) -> dict:
+    """Ask another household member to accept a claimed Family Shared reminder.
+
+    The current claimant remains responsible until the recipient reacts to the
+    DM handoff request. A missing recipient phone never changes ownership.
+    """
+    target_user = _handoff_recipient_user(actor, recipient)
+    if target_user == actor.user_id:
+        return {"status": "already_claimant", "reminder_id": reminder_id}
+
+    conn = connect()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            """SELECT reminder_id,task_text,status,space_id,claimable,
+                      claimed_by_user_id
+               FROM reminders WHERE reminder_id=?""",
+            (reminder_id,),
+        ).fetchone()
+        if not row or row["space_id"] != "FAMILY_SHARED":
+            conn.rollback()
+            raise PermissionError("handoff applies only to an accessible Family Shared reminder")
+        if row["status"] in {"COMP", "CANC"}:
+            conn.rollback()
+            return {"status": "closed", "reminder_id": reminder_id}
+        if row["claimed_by_user_id"] != actor.user_id:
+            conn.rollback()
+            raise PermissionError("only the current claimant can hand off this reminder")
+
+        existing = conn.execute(
+            """SELECT handoff_id,to_user_id FROM reminder_handoffs
+               WHERE reminder_id=? AND status='PENDING'
+               ORDER BY created_at_utc DESC LIMIT 1""",
+            (reminder_id,),
+        ).fetchone()
+        if existing:
+            conn.rollback()
+            return {
+                "status": "handoff_pending",
+                "reminder_id": reminder_id,
+                "handoff_id": existing["handoff_id"],
+                "to_user_id": existing["to_user_id"],
+                "claimant_unchanged": True,
+            }
+
+        phone = _active_user_phone(conn, target_user)
+        if not phone:
+            conn.rollback()
+            return {
+                "status": "recipient_not_configured",
+                "reminder_id": reminder_id,
+                "to_user_id": target_user,
+                "claimant_unchanged": True,
+            }
+
+        handoff_id = str(uuid.uuid4())
+        dm_conversation = phone.replace("+", "") + "@s.whatsapp.net"
+        conn.execute(
+            """INSERT INTO reminder_handoffs(
+                   handoff_id,reminder_id,from_user_id,to_user_id,conversation_id,status
+               ) VALUES(?,?,?,?,?,'PENDING')""",
+            (handoff_id, reminder_id, actor.user_id, target_user, dm_conversation),
+        )
+        conn.execute(
+            """INSERT INTO outbound_messages(
+                   outbound_id,conversation_id,kind,text_body,context_kind,context_id
+               ) VALUES(?,?,'TEXT',?,'REMINDER_HANDOFF',?)""",
+            (
+                str(uuid.uuid4()), dm_conversation,
+                f"Your spouse asked you to take over this reminder: {row['task_text']}\nReact with any emoji to accept it.",
+                handoff_id,
+            ),
+        )
+        conn.commit()
+        return {
+            "status": "handoff_requested",
+            "reminder_id": reminder_id,
+            "handoff_id": handoff_id,
+            "to_user_id": target_user,
+            "claimant_unchanged": True,
+        }
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
 
 def claim_reminder_from_reaction(
     actor: ActorContext, provider_message_id: str, reaction_text: str | None
 ) -> dict:
-    """Atomically claim a Family Shared reminder from any non-empty reaction."""
+    """Process reminder-claim and handoff-acceptance reactions atomically."""
     reaction = str(reaction_text or "")
     if not reaction.strip():
         return {"status": "ignored_reaction_removal"}
-    if actor.conversation_type != "GROUP":
-        raise PermissionError("reminder reactions are accepted only in the family group")
     conn = connect()
     try:
         conn.execute("BEGIN IMMEDIATE")
         outbound = conn.execute(
-            """SELECT context_id FROM outbound_messages
+            """SELECT context_kind,context_id FROM outbound_messages
                WHERE conversation_id=? AND provider_message_id=?
                  AND context_kind IN (
                      'REMINDER_INITIAL','REMINDER_FOLLOWUP',
-                     'REMINDER_CLAIMANT_FOLLOWUP','REMINDER_FAMILY_RESURFACE'
+                     'REMINDER_CLAIMANT_FOLLOWUP','REMINDER_FAMILY_RESURFACE',
+                     'REMINDER_HANDOFF'
                  )
-               ORDER BY delivered_at_utc DESC LIMIT 1""",
+               ORDER BY delivered_at_utc DESC,created_at_utc DESC LIMIT 1""",
             (actor.conversation_id, provider_message_id),
         ).fetchone()
         if not outbound or not outbound["context_id"]:
             conn.rollback()
             return {"status": "not_a_reminder_message"}
+
+        if outbound["context_kind"] == "REMINDER_HANDOFF":
+            if actor.conversation_type == "GROUP":
+                conn.rollback()
+                return {"status": "not_a_reminder_message"}
+            handoff = conn.execute(
+                """SELECT * FROM reminder_handoffs
+                   WHERE handoff_id=?""",
+                (outbound["context_id"],),
+            ).fetchone()
+            if not handoff or handoff["status"] != "PENDING":
+                conn.rollback()
+                return {"status": "handoff_not_pending"}
+            if handoff["to_user_id"] != actor.user_id:
+                conn.rollback()
+                raise PermissionError("this reminder handoff was not addressed to you")
+            reminder = conn.execute(
+                """SELECT reminder_id,status,claimed_by_user_id,follow_up_after_hours
+                   FROM reminders WHERE reminder_id=?""",
+                (handoff["reminder_id"],),
+            ).fetchone()
+            if not reminder or reminder["status"] in {"COMP", "CANC"}:
+                conn.execute(
+                    """UPDATE reminder_handoffs SET status='CANCELLED',cancelled_at_utc=?
+                       WHERE handoff_id=? AND status='PENDING'""",
+                    (utc_now(), handoff["handoff_id"]),
+                )
+                conn.commit()
+                return {"status": "closed", "reminder_id": handoff["reminder_id"]}
+            if reminder["claimed_by_user_id"] != handoff["from_user_id"]:
+                conn.rollback()
+                return {
+                    "status": "claimant_changed",
+                    "reminder_id": handoff["reminder_id"],
+                    "claimant_unchanged": True,
+                }
+
+            now = runtime_clock.now_utc()
+            next_delivery = (
+                now + timedelta(hours=max(1, int(reminder["follow_up_after_hours"] or 24)))
+            ).isoformat()
+            updated = conn.execute(
+                """UPDATE reminders
+                   SET claimed_by_user_id=?,claimed_at_utc=?,
+                       claimant_follow_up_at_utc=NULL,family_resurfaced_at_utc=NULL,
+                       next_delivery_at_utc=?
+                   WHERE reminder_id=? AND claimed_by_user_id=?
+                     AND status NOT IN ('COMP','CANC')""",
+                (
+                    actor.user_id, now.isoformat(), next_delivery,
+                    reminder["reminder_id"], handoff["from_user_id"],
+                ),
+            )
+            if updated.rowcount != 1:
+                conn.rollback()
+                return {"status": "claimant_changed", "reminder_id": reminder["reminder_id"]}
+            conn.execute(
+                """UPDATE reminder_handoffs
+                   SET status='ACCEPTED',accepted_at_utc=?
+                   WHERE handoff_id=? AND status='PENDING'""",
+                (now.isoformat(), handoff["handoff_id"]),
+            )
+            conn.execute(
+                """INSERT INTO reminder_claim_events(
+                       claim_event_id,reminder_id,actor_user_id,event_type,
+                       provider_message_id,reaction_text,note
+                   ) VALUES(?,?,?,?,?,?,?)""",
+                (
+                    str(uuid.uuid4()), reminder["reminder_id"], actor.user_id, "CLAIMED",
+                    provider_message_id, reaction[:32],
+                    f"handoff accepted from {handoff['from_user_id']}",
+                ),
+            )
+            conn.commit()
+            return {
+                "status": "handoff_accepted",
+                "reminder_id": reminder["reminder_id"],
+                "claimed_by_user_id": actor.user_id,
+                "from_user_id": handoff["from_user_id"],
+            }
+
+        if actor.conversation_type != "GROUP":
+            conn.rollback()
+            raise PermissionError("family reminder claims are accepted only in the family group")
         reminder_id = outbound["context_id"]
         row = conn.execute(
             """SELECT reminder_id,task_text,status,space_id,claimable,
@@ -1474,7 +1829,6 @@ def claim_reminder_from_reaction(
     finally:
         conn.close()
 
-
 def release_reminder_claim(actor: ActorContext, reminder_id: str) -> dict:
     """Release a claim explicitly; deleting the reaction never releases it."""
     marks, spaces = _spaces_sql(actor)
@@ -1501,6 +1855,12 @@ def release_reminder_claim(actor: ActorContext, reminder_id: str) -> dict:
             runtime_clock.now_utc()
             + timedelta(hours=max(1, int(row["follow_up_after_hours"] or 24)))
         ).isoformat()
+        conn.execute(
+            """UPDATE reminder_handoffs
+               SET status='CANCELLED',cancelled_at_utc=?
+               WHERE reminder_id=? AND status='PENDING'""",
+            (utc_now(), reminder_id),
+        )
         conn.execute(
             """UPDATE reminders
                SET claimed_by_user_id=NULL,claimed_at_utc=NULL,
@@ -1532,11 +1892,29 @@ def set_goal(actor: ActorContext, name: str, target_amount: float | None = None,
              current_amount: float | None = None, currency: str = "MYR",
              target_date: str | None = None, notes: str | None = None,
              shared: bool = False) -> dict:
-    space = "FAMILY_SHARED" if shared or actor.conversation_type == "GROUP" else actor.private_space
+    marks, spaces = _spaces_sql(actor)
     conn = connect()
     try:
-        row = conn.execute("SELECT * FROM savings_goals WHERE space_id=? AND LOWER(goal_name)=LOWER(?)",
-                           (space, name)).fetchone()
+        existing = conn.execute(
+            f"""SELECT * FROM savings_goals
+                WHERE LOWER(goal_name)=LOWER(?) AND space_id IN ({marks})
+                ORDER BY updated_at_utc DESC""",
+            [name] + spaces,
+        ).fetchall()
+        if len(existing) == 1:
+            row = existing[0]
+            space = row["space_id"]
+        elif len(existing) > 1:
+            intended = scope_policy.resolve_new_write_space(actor, requested_shared=shared)
+            matches = [row for row in existing if row["space_id"] == intended]
+            if len(matches) != 1:
+                raise ValueError("goal name exists in more than one scope; specify which one")
+            row = matches[0]
+            space = row["space_id"]
+        else:
+            row = None
+            space = scope_policy.resolve_new_write_space(actor, requested_shared=shared)
+
         target_minor = _minor(target_amount) if target_amount is not None else (row["target_amount_minor"] if row else None)
         current_minor = _minor(current_amount) if current_amount is not None and current_amount > 0 else (
             0 if current_amount == 0 else (row["current_amount_minor"] if row else 0)
@@ -1544,9 +1922,9 @@ def set_goal(actor: ActorContext, name: str, target_amount: float | None = None,
         if row:
             conn.execute(
                 """UPDATE savings_goals SET target_amount_minor=?,current_amount_minor=?,currency=?,
-                   target_date=?,notes=?,space_id=?,action_key=?,updated_at_utc=? WHERE goal_id=?""",
+                   target_date=?,notes=?,action_key=?,updated_at_utc=? WHERE goal_id=?""",
                 (target_minor, current_minor, currency.upper(), target_date or row["target_date"],
-                 notes if notes is not None else row["notes"], space, actor.action_key or row["action_key"],
+                 notes if notes is not None else row["notes"], actor.action_key or row["action_key"],
                  utc_now(), row["goal_id"]),
             )
             gid = row["goal_id"]
@@ -1563,10 +1941,10 @@ def set_goal(actor: ActorContext, name: str, target_amount: float | None = None,
         conn.commit()
         return {"status": "saved", "goal_id": gid, "name": name,
                 "target_amount": target_minor/100 if target_minor else None,
-                "current_amount": current_minor/100, "currency": currency.upper()}
+                "current_amount": current_minor/100, "currency": currency.upper(),
+                "space": space}
     finally:
         conn.close()
-
 
 def list_goals(actor: ActorContext) -> dict:
     marks, spaces = _spaces_sql(actor)
@@ -1646,7 +2024,7 @@ def add_shopping_item(actor: ActorContext, item: str, quantity: str | None = Non
     clean_item = (item or "").strip()
     if not clean_item:
         raise ValueError("shopping item is required")
-    space = "FAMILY_SHARED" if shared else actor.private_space
+    space = scope_policy.resolve_new_write_space(actor, requested_shared=shared)
     if space not in actor.allowed_spaces:
         raise PermissionError("requested shopping space is not accessible")
     conn = connect()
@@ -1777,25 +2155,38 @@ def list_pending_expenses(actor: ActorContext, limit: int = 10) -> dict:
 def set_money_bucket(actor: ActorContext, name: str, amount: float,
                      currency: str = "MYR", notes: str | None = None,
                      shared: bool = False) -> dict:
-    """Set an allocation/budget/stash bucket to an explicit amount supplied by the user."""
+    """Set an explicit bucket. Existing records keep their stored scope."""
     if amount < 0:
         raise ValueError("bucket amount cannot be negative")
-    space = "FAMILY_SHARED" if shared or actor.conversation_type == "GROUP" else actor.private_space
-    if space not in actor.allowed_spaces:
-        raise PermissionError("requested bucket space is not accessible")
     amount_minor = int((Decimal(str(amount)) * Decimal("100")).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    marks, spaces = _spaces_sql(actor)
     conn = connect()
     try:
-        row = conn.execute(
-            "SELECT bucket_id FROM money_buckets WHERE space_id=? AND LOWER(bucket_name)=LOWER(?)",
-            (space, name),
-        ).fetchone()
+        rows = conn.execute(
+            f"""SELECT * FROM money_buckets
+                WHERE LOWER(bucket_name)=LOWER(?) AND space_id IN ({marks})
+                ORDER BY updated_at_utc DESC""",
+            [name] + spaces,
+        ).fetchall()
+        if len(rows) == 1:
+            row = rows[0]
+            space = row["space_id"]
+        elif len(rows) > 1:
+            intended = scope_policy.resolve_new_write_space(actor, requested_shared=shared)
+            matches = [row for row in rows if row["space_id"] == intended]
+            if len(matches) != 1:
+                raise ValueError("bucket name exists in more than one scope; specify which one")
+            row = matches[0]
+            space = row["space_id"]
+        else:
+            row = None
+            space = scope_policy.resolve_new_write_space(actor, requested_shared=shared)
         if row:
             bucket_id = row["bucket_id"]
             conn.execute(
-                """UPDATE money_buckets SET amount_minor=?,currency=?,notes=?,space_id=?,updated_at_utc=?
+                """UPDATE money_buckets SET amount_minor=?,currency=?,notes=?,updated_at_utc=?
                    WHERE bucket_id=?""",
-                (amount_minor, currency.upper(), notes, space, utc_now(), bucket_id),
+                (amount_minor, currency.upper(), notes, utc_now(), bucket_id),
             )
         else:
             bucket_id = str(uuid.uuid4())
@@ -1812,7 +2203,6 @@ def set_money_bucket(actor: ActorContext, name: str, amount: float,
         }
     finally:
         conn.close()
-
 
 def list_money_buckets(actor: ActorContext) -> dict:
     marks, spaces = _spaces_sql(actor)

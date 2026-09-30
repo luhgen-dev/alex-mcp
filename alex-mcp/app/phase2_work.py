@@ -593,14 +593,18 @@ def leave_balance(leave_id, sender_phone, conversation_type="DIRECT_DM",
     ensure_schema()
     conn = tools.get_db()
     try:
-        user_id, private_space, _ = _ctx(conn, sender_phone, conversation_type)
-        row = conn.execute("""
+        user_id, private_space, shared = _ctx(conn, sender_phone, conversation_type)
+        spaces = [private_space]
+        if shared:
+            spaces.append("FAMILY_SHARED")
+        placeholders = ",".join("?" for _ in spaces)
+        row = conn.execute(f"""
             SELECT COALESCE(SUM(COALESCE(units_days,1)),0) AS used
             FROM alex_phase2_work_events
-            WHERE owner_user_id=? AND space_id=? AND event_type=?
+            WHERE owner_user_id=? AND space_id IN ({placeholders}) AND event_type=?
               AND event_date>? AND event_date<=?
         """, (
-            user_id, private_space, event_type,
+            user_id, *spaces, event_type,
             snapshot_date.isoformat(), end.isoformat(),
         )).fetchone()
         used = float(row["used"] or 0)
@@ -794,11 +798,21 @@ def work_summary(start_date, end_date, sender_phone,
     d = start
     while d <= end:
         shift = effective_shift(d, sender_phone, conversation_type)
-        ot = effective_ot_for_date(d, sender_phone, conversation_type)
+        try:
+            ot = effective_ot_for_date(d, sender_phone, conversation_type)
+            ot_available = True
+        except ValueError as exc:
+            # A roster-only question must not fail because optional OT policy
+            # has not been configured yet.
+            if "overtime_rule profile configured" not in str(exc):
+                raise
+            ot = None
+            ot_available = False
         days.append({
             "date": d.isoformat(),
             "shift": shift["shift"],
             "effective_ot": ot,
+            "ot_available": ot_available,
         })
         d += timedelta(days=1)
     return {"start": start.isoformat(), "end": end.isoformat(), "days": days}

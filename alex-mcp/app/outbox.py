@@ -6,13 +6,14 @@ import json
 import os
 import time
 import urllib.request
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 
 import runtime_clock
 
 from db import connect
 
 EGRESS_URL = "http://127.0.0.1:5002/send"
+DOCUMENT_NOTICE_ATTEMPTS = 3
 
 
 def _now():
@@ -48,6 +49,13 @@ def _whatsapp_message_id(outbound_id: str) -> str:
     return "ALEX" + digest[:28]
 
 
+def _row_value(row, key, default=None):
+    try:
+        return row[key]
+    except (KeyError, IndexError):
+        return default
+
+
 def _payload(row) -> dict:
     kind = row["kind"]
     message_id = _whatsapp_message_id(row["outbound_id"])
@@ -56,49 +64,185 @@ def _payload(row) -> dict:
         if row["source_message_id"] and not row["context_kind"]
         else None
     )
+    common = {
+        "to": row["conversation_id"],
+        "message_id": message_id,
+        "reply_to_message_id": reply_to,
+        "reply_to_participant_jid": (
+            _row_value(row, "source_sender_provider_jid")
+            if reply_to and str(row["conversation_id"]).endswith("@g.us")
+            else None
+        ),
+        "reply_to_text": _row_value(row, "source_raw_text") if reply_to else None,
+    }
     if kind == "TEXT":
-        return {
-            "to": row["conversation_id"], "kind": "text",
-            "text": row["text_body"] or "", "message_id": message_id,
-            "reply_to_message_id": reply_to,
-        }
+        return {**common, "kind": "text", "text": row["text_body"] or ""}
+
     path = row["local_path"]
     if not path or not os.path.isfile(path):
         raise FileNotFoundError(path or "missing attachment path")
-    with open(path, "rb") as f:
-        data = base64.b64encode(f.read()).decode("ascii")
-    mime = row["mime_type"] or ("image/jpeg" if kind == "IMAGE" else "application/octet-stream")
+    with open(path, "rb") as handle:
+        data = base64.b64encode(handle.read()).decode("ascii")
+    mime = row["mime_type"] or (
+        "image/jpeg" if kind == "IMAGE" else "application/octet-stream"
+    )
     outbound_kind = (
         "image" if kind == "IMAGE"
         else ("audio" if str(mime).lower().startswith("audio/") else "document")
     )
     return {
-        "to": row["conversation_id"],
+        **common,
         "kind": outbound_kind,
         "file_b64": data,
         "mimetype": mime,
         "filename": os.path.basename(path),
         "caption": row["text_body"] or "",
-        "message_id": message_id,
-        "reply_to_message_id": reply_to,
     }
+
+
+def _joined_row(conn, outbound_id: str):
+    return conn.execute(
+        """SELECT o.*,i.sender_provider_jid AS source_sender_provider_jid,
+                  i.raw_text AS source_raw_text
+           FROM outbound_messages o
+           LEFT JOIN inbound_messages i ON i.message_id=o.source_message_id
+           WHERE o.outbound_id=?""",
+        (outbound_id,),
+    ).fetchone()
+
+
+def _control(row, kind: str, emoji: str | None = None) -> bool:
+    if not row["source_message_id"]:
+        return False
+    payload = {
+        "to": row["conversation_id"],
+        "kind": kind,
+        "target_message_id": row["source_message_id"],
+    }
+    if str(row["conversation_id"]).endswith("@g.us") and row["source_sender_provider_jid"]:
+        payload["target_participant_jid"] = row["source_sender_provider_jid"]
+    if kind == "reaction":
+        payload["emoji"] = emoji or ""
+    ok, _detail = _send(payload)
+    return ok
+
+
+def _ensure_unresolved_markers(conn, row) -> None:
+    """A deferred document job is visibly unresolved until provider delivery."""
+    if row["kind"] != "DOCUMENT" or not row["source_message_id"]:
+        return
+    now = _now()
+    if not row["job_reacted_at_utc"]:
+        if _control(row, "reaction", "⏳"):
+            conn.execute(
+                "UPDATE outbound_messages SET job_reacted_at_utc=? WHERE outbound_id=?",
+                (now, row["outbound_id"]),
+            )
+            conn.commit()
+            row = _joined_row(conn, row["outbound_id"])
+    if not row["job_pinned_at_utc"]:
+        if _control(row, "pin"):
+            conn.execute(
+                "UPDATE outbound_messages SET job_pinned_at_utc=? WHERE outbound_id=?",
+                (now, row["outbound_id"]),
+            )
+            conn.commit()
+
+
+def _cleanup_resolved_markers(conn, row) -> None:
+    """Remove managed ⏳/pin only after the document row is confirmed SENT."""
+    if row["kind"] != "DOCUMENT" or not row["source_message_id"]:
+        return
+    now = _now()
+    if row["job_reacted_at_utc"] and not row["job_reaction_cleared_at_utc"]:
+        if _control(row, "reaction", ""):
+            conn.execute(
+                "UPDATE outbound_messages SET job_reaction_cleared_at_utc=? WHERE outbound_id=?",
+                (now, row["outbound_id"]),
+            )
+            conn.commit()
+            row = _joined_row(conn, row["outbound_id"])
+    if row["job_pinned_at_utc"] and not row["job_unpinned_at_utc"]:
+        if _control(row, "unpin"):
+            conn.execute(
+                "UPDATE outbound_messages SET job_unpinned_at_utc=? WHERE outbound_id=?",
+                (now, row["outbound_id"]),
+            )
+            conn.commit()
+
+
+def _queue_document_notice(conn, row, permanent: bool = False) -> None:
+    if row["job_failure_notice_at_utc"]:
+        return
+    attempts = int(row["attempt_count"] or 0)
+    if not permanent and attempts < DOCUMENT_NOTICE_ATTEMPTS:
+        return
+    text = (
+        "I couldn't deliver that document because the generated file is unavailable. "
+        "The request is still unresolved."
+        if permanent
+        else "That document has not delivered yet. The original request remains marked as unresolved while delivery retries continue."
+    )
+    import uuid
+    conn.execute(
+        """INSERT INTO outbound_messages(
+               outbound_id,source_message_id,conversation_id,kind,text_body
+           ) VALUES(?,?,?,'TEXT',?)""",
+        (str(uuid.uuid4()), row["source_message_id"], row["conversation_id"], text),
+    )
+    conn.execute(
+        "UPDATE outbound_messages SET job_failure_notice_at_utc=? WHERE outbound_id=?",
+        (_now(), row["outbound_id"]),
+    )
+    conn.commit()
+
+
+def _reconcile_managed_jobs(conn) -> None:
+    """Restore invariant after restart: unresolved marked; SENT cleaned up."""
+    rows = conn.execute(
+        """SELECT o.*,i.sender_provider_jid AS source_sender_provider_jid,
+                  i.raw_text AS source_raw_text
+           FROM outbound_messages o
+           LEFT JOIN inbound_messages i ON i.message_id=o.source_message_id
+           WHERE o.kind='DOCUMENT' AND o.source_message_id IS NOT NULL
+             AND (
+                (o.delivery_status IN ('PENDING','FAILED') AND o.attempt_count>0)
+                OR (o.delivery_status='SENT' AND (
+                    (o.job_reacted_at_utc IS NOT NULL AND o.job_reaction_cleared_at_utc IS NULL)
+                    OR (o.job_pinned_at_utc IS NOT NULL AND o.job_unpinned_at_utc IS NULL)
+                ))
+             )
+           ORDER BY o.created_at_utc"""
+    ).fetchall()
+    for row in rows:
+        if row["delivery_status"] == "SENT":
+            _cleanup_resolved_markers(conn, row)
+        else:
+            _ensure_unresolved_markers(conn, row)
+            _queue_document_notice(
+                conn, _joined_row(conn, row["outbound_id"]),
+                permanent=row["delivery_status"] == "FAILED",
+            )
 
 
 def sweep():
     conn = connect()
     try:
+        _reconcile_managed_jobs(conn)
         now_iso = _now()
         rows = conn.execute(
-            """SELECT * FROM outbound_messages
-               WHERE delivery_status='PENDING'
-                 AND (next_attempt_at_utc IS NULL OR next_attempt_at_utc<=?)
-               ORDER BY created_at_utc,rowid LIMIT 10""",
+            """SELECT o.*,i.sender_provider_jid AS source_sender_provider_jid,
+                      i.raw_text AS source_raw_text
+               FROM outbound_messages o
+               LEFT JOIN inbound_messages i ON i.message_id=o.source_message_id
+               WHERE o.delivery_status='PENDING'
+                 AND (o.next_attempt_at_utc IS NULL OR o.next_attempt_at_utc<=?)
+               ORDER BY o.created_at_utc,o.rowid LIMIT 10""",
             (now_iso,),
         ).fetchall()
+
         for row in rows:
             permanent_error = False
-            # Reminder rows are cancellable while still queued. Never deliver a
-            # stale reminder after the user completed/cancelled it.
             if row["context_kind"] in (
                 "REMINDER_INITIAL", "REMINDER_FOLLOWUP",
                 "REMINDER_CLAIMANT_FOLLOWUP", "REMINDER_FAMILY_RESURFACE",
@@ -116,6 +260,7 @@ def sweep():
                     )
                     conn.commit()
                     continue
+
             try:
                 payload = _payload(row)
                 ok, detail = _send(payload)
@@ -123,6 +268,7 @@ def sweep():
                 ok, detail, permanent_error = False, str(exc), True
             except Exception as exc:
                 ok, detail = False, str(exc)
+
             attempts = int(row["attempt_count"] or 0) + 1
             if ok:
                 delivered = _now()
@@ -130,7 +276,10 @@ def sweep():
                     """UPDATE outbound_messages SET delivery_status='SENT',attempt_count=?,
                        delivered_at_utc=?,last_error=NULL,next_attempt_at_utc=NULL,
                        provider_message_id=? WHERE outbound_id=?""",
-                    (attempts, delivered, _provider_message_id(detail), row["outbound_id"]),
+                    (
+                        attempts, delivered, _provider_message_id(detail),
+                        row["outbound_id"],
+                    ),
                 )
                 if row["context_kind"] in (
                     "REMINDER_INITIAL", "REMINDER_FOLLOWUP",
@@ -154,7 +303,7 @@ def sweep():
                         event_type = "FAMILY_RESURFACED_DELIVERED"
                     conn.execute(
                         """INSERT INTO reminder_events(
-                            event_id,reminder_id,event_type,note
+                               event_id,reminder_id,event_type,note
                            ) VALUES(lower(hex(randomblob(16))),?,?,?)""",
                         (row["context_id"], event_type, "confirmed by WhatsApp egress"),
                     )
@@ -163,26 +312,41 @@ def sweep():
                         "UPDATE monitor_notifications SET delivered_at_utc=? WHERE candidate_key=?",
                         (delivered, row["context_id"]),
                     )
+                conn.commit()
+                refreshed = _joined_row(conn, row["outbound_id"])
+                if refreshed and refreshed["kind"] == "DOCUMENT":
+                    _cleanup_resolved_markers(conn, refreshed)
+
             elif permanent_error:
                 conn.execute(
                     """UPDATE outbound_messages SET delivery_status='FAILED',attempt_count=?,
                        last_error=?,next_attempt_at_utc=NULL WHERE outbound_id=?""",
                     (attempts, detail[:1000], row["outbound_id"]),
                 )
+                conn.commit()
+                refreshed = _joined_row(conn, row["outbound_id"])
+                if refreshed and refreshed["kind"] == "DOCUMENT":
+                    _ensure_unresolved_markers(conn, refreshed)
+                    _queue_document_notice(
+                        conn, _joined_row(conn, row["outbound_id"]), permanent=True
+                    )
             else:
-                # Transport/network outages must not silently consume a reminder.
-                # Keep the durable row pending and back off locally without AI/token use.
                 delay = min(300, 2 ** min(attempts, 8))
-                next_try = (runtime_clock.now_utc() + timedelta(seconds=delay)).isoformat()
+                next_try = (
+                    runtime_clock.now_utc() + timedelta(seconds=delay)
+                ).isoformat()
                 conn.execute(
                     """UPDATE outbound_messages SET delivery_status='PENDING',attempt_count=?,
                        last_error=?,next_attempt_at_utc=? WHERE outbound_id=?""",
                     (attempts, detail[:1000], next_try, row["outbound_id"]),
                 )
-            # Release SQLite's write lock before the next row performs a
-            # potentially slow network send. State + reminder-event updates for
-            # one row remain atomic, but WhatsApp latency cannot stall ingress.
-            conn.commit()
+                conn.commit()
+                refreshed = _joined_row(conn, row["outbound_id"])
+                if refreshed and refreshed["kind"] == "DOCUMENT":
+                    _ensure_unresolved_markers(conn, refreshed)
+                    _queue_document_notice(
+                        conn, _joined_row(conn, row["outbound_id"]), permanent=False
+                    )
         conn.commit()
     finally:
         conn.close()

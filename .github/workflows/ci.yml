@@ -18,7 +18,23 @@ jobs:
           python-version: "3.12"
 
       - name: Install Python dependencies
-        run: pip install -r alex-mcp/app/requirements.txt
+        run: |
+          pip install -r alex-mcp/app/requirements.txt
+          pip install pyflakes
+
+      - name: Reject undefined Python names
+        run: |
+          set +e
+          OUTPUT="$(pyflakes alex-mcp/app 2>&1)"
+          STATUS=$?
+          set -e
+          if [ "$STATUS" -ne 0 ]; then
+            printf '%s\n' "$OUTPUT"
+          fi
+          if printf '%s\n' "$OUTPUT" | grep -q "undefined name"; then
+            echo "Undefined Python name detected."
+            exit 1
+          fi
 
       - name: Compile Python
         run: python -m compileall -q alex-mcp/app tests

@@ -293,9 +293,12 @@ async function forwardToPython(payload) {
 
 async function forwardReactionEvent(targetKey, reaction) {
   const remoteJid = (targetKey && targetKey.remoteJid) || '';
-  if (!remoteJid || !remoteJid.endsWith('@g.us')) return;
-  const familyGroup = getFamilyGroupJid();
-  if (!familyGroup || familyGroup !== remoteJid) return;
+  if (!remoteJid) return;
+  const isGroup = remoteJid.endsWith('@g.us');
+  if (isGroup) {
+    const familyGroup = getFamilyGroupJid();
+    if (!familyGroup || familyGroup !== remoteJid) return;
+  }
 
   const reactionKey = reaction && reaction.key ? reaction.key : {};
   let rawSenderJid = reactionKey.participant || reactionKey.remoteJid || '';
@@ -318,8 +321,9 @@ async function forwardReactionEvent(targetKey, reaction) {
     message_id: eventId,
     provider: 'WHATSAPP',
     conversation_id: remoteJid,
-    conversation_type: 'GROUP',
+    conversation_type: isGroup ? 'GROUP' : 'DIRECT_DM',
     sender_phone: '+' + senderPhone,
+    sender_provider_jid: rawSenderJid,
     text: '',
     reaction_target_message_id: targetMessageId,
     reaction_text: reactionText,
@@ -385,6 +389,9 @@ async function handleIncoming(message) {
     conversation_id: remoteJid,
     conversation_type: isGroup ? 'GROUP' : 'DIRECT_DM',
     sender_phone: '+' + senderPhone,
+    // Preserve the provider participant key for durable react/pin cleanup after
+    // a Python or Node restart. This is transport metadata, never identity/ACL.
+    sender_provider_jid: isGroup ? (message.key.participant || rawSenderJid) : remoteJid,
     text: rawText,
     quoted_message_id: extractQuotedId(message),
     sent_at_ms: messageTimestampMs(message),
@@ -760,12 +767,51 @@ function startEgress() {
         if (!to) throw new Error('Missing target conversation');
 
         let sent;
-        const quoted = rememberedInboundForReply(to, payload.reply_to_message_id);
+        let quoted = rememberedInboundForReply(to, payload.reply_to_message_id);
+        // Durable fallback after a Node/add-on restart: the in-memory quote
+        // cache may be gone, but Python persisted the original provider id,
+        // sender participant and trusted user text. Reconstruct only the
+        // minimum quoted WAMessage needed for a real anchored reply.
+        if (!quoted && payload.reply_to_message_id) {
+          const quotedKey = {
+            remoteJid: to,
+            id: String(payload.reply_to_message_id),
+            fromMe: false,
+          };
+          if (payload.reply_to_participant_jid) {
+            quotedKey.participant = String(payload.reply_to_participant_jid);
+          }
+          quoted = {
+            key: quotedKey,
+            message: { conversation: String(payload.reply_to_text || '') },
+          };
+        }
         const sendOptions = {};
         if (payload.message_id) sendOptions.messageId = String(payload.message_id);
         if (quoted) sendOptions.quoted = quoted;
         if (payload.kind === 'text') {
           sent = await currentSock.sendMessage(to, { text: payload.text || '' }, sendOptions);
+        } else if (payload.kind === 'reaction' || payload.kind === 'pin' || payload.kind === 'unpin') {
+          const targetKey = {
+            remoteJid: to,
+            id: String(payload.target_message_id || ''),
+            fromMe: false,
+          };
+          if (!targetKey.id) throw new Error('Missing target message id');
+          if (payload.target_participant_jid) targetKey.participant = String(payload.target_participant_jid);
+          if (payload.kind === 'reaction') {
+            sent = await currentSock.sendMessage(to, {
+              react: { text: String(payload.emoji || ''), key: targetKey },
+            });
+          } else {
+            sent = await currentSock.sendMessage(to, {
+              pin: {
+                type: payload.kind === 'pin' ? 1 : 0,
+                time: payload.kind === 'pin' ? 2592000 : undefined,
+                key: targetKey,
+              },
+            });
+          }
         } else if (payload.kind === 'image') {
           const buf = Buffer.from(payload.file_b64 || '', 'base64');
           sent = await currentSock.sendMessage(to, { image: buf, mimetype: payload.mimetype || 'image/jpeg', caption: payload.caption || undefined }, sendOptions);

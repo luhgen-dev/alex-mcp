@@ -35,6 +35,7 @@ CAPABILITY_TO_TOOLS: dict[str, frozenset[str]] = {
     "reminder.update": frozenset({"update_reminder"}),
     "reminder.history": frozenset({"reminder_history"}),
     "reminder.claim.release": frozenset({"release_reminder_claim"}),
+    "reminder.claim.handoff": frozenset({"handoff_reminder_claim"}),
     "shopping.add": frozenset({"add_shopping_item"}),
     "shopping.read": frozenset({"list_shopping_items"}),
     "shopping.update": frozenset({"update_shopping_item"}),
@@ -129,6 +130,7 @@ CAPABILITY_TO_TOOLS: dict[str, frozenset[str]] = {
     "home.control": frozenset({"ha_control"}),
 
     # Reports / diagnostics / utility
+    "report.finance.monthly": frozenset({"finance_report"}),
     "report.snapshot": frozenset({"report_snapshot"}),
     "report.export": frozenset({"report_export"}),
     "report.payload": frozenset({"report_payload"}),

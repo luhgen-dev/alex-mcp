@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS inbound_messages (
     conversation_id TEXT NOT NULL,
     conversation_type TEXT NOT NULL DEFAULT 'DIRECT_DM',
     sender_phone TEXT NOT NULL,
+    sender_provider_jid TEXT,
     raw_text TEXT NOT NULL DEFAULT '',
     quoted_message_id TEXT,
     processing_state TEXT NOT NULL CHECK(processing_state IN ('RECEIVED','PROCESSING','COMPLETED','FAILED')) DEFAULT 'RECEIVED',
@@ -267,6 +268,23 @@ CREATE TABLE IF NOT EXISTS reminder_claim_events (
 CREATE INDEX IF NOT EXISTS idx_reminder_claim_events
 ON reminder_claim_events(reminder_id,created_at_utc);
 
+CREATE TABLE IF NOT EXISTS reminder_handoffs (
+    handoff_id TEXT PRIMARY KEY,
+    reminder_id TEXT NOT NULL,
+    from_user_id TEXT NOT NULL,
+    to_user_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('PENDING','ACCEPTED','CANCELLED')) DEFAULT 'PENDING',
+    created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    accepted_at_utc TEXT,
+    cancelled_at_utc TEXT,
+    FOREIGN KEY(reminder_id) REFERENCES reminders(reminder_id),
+    FOREIGN KEY(from_user_id) REFERENCES users(user_id),
+    FOREIGN KEY(to_user_id) REFERENCES users(user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_reminder_handoffs_pending
+ON reminder_handoffs(reminder_id,status,created_at_utc);
+
 CREATE TABLE IF NOT EXISTS savings_goals (
     goal_id TEXT PRIMARY KEY,
     action_key TEXT NOT NULL UNIQUE,
@@ -331,6 +349,7 @@ CREATE TABLE IF NOT EXISTS leave_records (
     leave_id TEXT PRIMARY KEY,
     action_key TEXT NOT NULL UNIQUE,
     owner_id TEXT NOT NULL,
+    space_id TEXT NOT NULL,
     leave_date TEXT NOT NULL,
     end_date TEXT,
     leave_type TEXT NOT NULL DEFAULT 'ANNUAL_LEAVE'
@@ -341,9 +360,11 @@ CREATE TABLE IF NOT EXISTS leave_records (
     created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(owner_id,leave_date,portion),
-    FOREIGN KEY(owner_id) REFERENCES users(user_id)
+    FOREIGN KEY(owner_id) REFERENCES users(user_id),
+    FOREIGN KEY(space_id) REFERENCES spaces(space_id)
 );
 CREATE INDEX IF NOT EXISTS idx_leave_owner_date ON leave_records(owner_id,leave_date,status);
+CREATE INDEX IF NOT EXISTS idx_leave_owner_space_date ON leave_records(owner_id,space_id,leave_date,status);
 
 CREATE TABLE IF NOT EXISTS diary_events (
     diary_id TEXT PRIMARY KEY,
@@ -524,6 +545,11 @@ CREATE TABLE IF NOT EXISTS outbound_messages (
     next_attempt_at_utc TEXT,
     created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     delivered_at_utc TEXT,
+    job_reacted_at_utc TEXT,
+    job_pinned_at_utc TEXT,
+    job_reaction_cleared_at_utc TEXT,
+    job_unpinned_at_utc TEXT,
+    job_failure_notice_at_utc TEXT,
     FOREIGN KEY(source_message_id) REFERENCES inbound_messages(message_id)
 );
 

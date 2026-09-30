@@ -617,7 +617,12 @@ def recent_failures(actor, hours: int = 24, limit: int = 20) -> dict:
             "inbound_failures": inbound,
             "outbound_failures": outbound,
             "tool_failures": tool_rows,
-            "interpretation_rule": "Report recorded errors as observed facts. Label any inferred cause as a hypothesis.",
+            "common_cause_established": False,
+            "interpretation_rule": (
+                "Report recorded errors as observed facts. Do not claim broader instability "
+                "or one shared root cause unless this payload explicitly establishes it. "
+                "Any possible cause must be labelled as a hypothesis."
+            ),
         }
     finally:
         conn.close()

@@ -108,7 +108,13 @@ def initialize() -> None:
         # Small additive migrations keep persistent /data safe across app updates.
         _ensure_column(conn, "inbound_messages", "attempt_count", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(conn, "inbound_messages", "processing_started_at_utc", "TEXT")
+        _ensure_column(conn, "inbound_messages", "sender_provider_jid", "TEXT")
         _ensure_column(conn, "outbound_messages", "next_attempt_at_utc", "TEXT")
+        _ensure_column(conn, "outbound_messages", "job_reacted_at_utc", "TEXT")
+        _ensure_column(conn, "outbound_messages", "job_pinned_at_utc", "TEXT")
+        _ensure_column(conn, "outbound_messages", "job_reaction_cleared_at_utc", "TEXT")
+        _ensure_column(conn, "outbound_messages", "job_unpinned_at_utc", "TEXT")
+        _ensure_column(conn, "outbound_messages", "job_failure_notice_at_utc", "TEXT")
         _ensure_column(conn, "reminders", "presence_aware", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(conn, "reminders", "delivery_class", "TEXT NOT NULL DEFAULT 'routine'")
         _ensure_column(conn, "reminders", "follow_up_after_hours", "INTEGER NOT NULL DEFAULT 24")
@@ -130,6 +136,16 @@ def initialize() -> None:
         _ensure_column(conn, "ai_usage", "reasoning_tokens", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(conn, "ai_usage", "model_calls", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(conn, "media_objects", "transcript_meta_json", "TEXT")
+        # Privacy is a scope, never an expense category. Clean historical rows
+        # created by the old presenter bug without changing amount/date/scope.
+        conn.execute(
+            """UPDATE financial_events SET category=NULL
+               WHERE category IS NOT NULL
+                 AND LOWER(REPLACE(category,'-','_')) IN (
+                   'private','privately','personal','family','shared',
+                   'family_shared','just_for_me','only_for_me','my_private'
+                 )"""
+        )
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_outbound_provider_message "
             "ON outbound_messages(conversation_id,provider_message_id)"
@@ -139,6 +155,15 @@ def initialize() -> None:
         _ensure_column(conn, "schedule_conflicts", "expires_at_utc", "TEXT")
         _ensure_column(conn, "leave_records", "end_date", "TEXT")
         _ensure_column(conn, "leave_records", "leave_type", "TEXT NOT NULL DEFAULT 'ANNUAL_LEAVE'")
+        _ensure_column(conn, "leave_records", "space_id", "TEXT")
+        conn.execute(
+            """UPDATE leave_records
+               SET space_id=CASE owner_id
+                   WHEN 'USR_HUSBAND' THEN 'HUSBAND_PVT'
+                   WHEN 'USR_WIFE' THEN 'WIFE_PVT'
+                   ELSE space_id END
+               WHERE space_id IS NULL OR TRIM(space_id)=''"""
+        )
         _ensure_column(conn, "diary_events", "time_known", "INTEGER NOT NULL DEFAULT 1")
         _ensure_column(conn, "plans", "time_known", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(conn, "schedule_conflicts", "source_plan_id", "TEXT")
@@ -308,15 +333,17 @@ def claim_inbound(payload: dict) -> str:
             return "CLAIMED"
         conn.execute(
             """INSERT INTO inbound_messages(
-                message_id,provider_name,conversation_id,conversation_type,sender_phone,raw_text,
-                quoted_message_id,processing_state,attempt_count,processing_started_at_utc
-               ) VALUES(?,?,?,?,?,?,?, 'PROCESSING',1,?)""",
+                message_id,provider_name,conversation_id,conversation_type,sender_phone,
+                sender_provider_jid,raw_text,quoted_message_id,
+                processing_state,attempt_count,processing_started_at_utc
+               ) VALUES(?,?,?,?,?,?,?,?, 'PROCESSING',1,?)""",
             (
                 payload["message_id"],
                 payload.get("provider","WHATSAPP"),
                 payload["conversation_id"],
                 payload.get("conversation_type","DIRECT_DM"),
                 normalize_phone(payload["sender_phone"]),
+                payload.get("sender_provider_jid") or None,
                 payload.get("text","") or "",
                 payload.get("quoted_message_id") or None,
                 now.isoformat(),
@@ -502,6 +529,29 @@ def resolve_quoted_context(conversation_id: str, quoted_message_id: str | None,
                     "source_message_id": user_row["message_id"],
                 }
         return None
+    finally:
+        conn.close()
+
+
+
+def resolve_recent_outbound_context(conversation_id: str, context_kind: str,
+                                    max_age_seconds: int = 600) -> dict | None:
+    """Resolve the latest delivered/queued Alex context in this conversation."""
+    bounded = max(15, min(3600, int(max_age_seconds)))
+    conn = connect()
+    try:
+        row = conn.execute(
+            """SELECT outbound_id,source_message_id,text_body,context_kind,context_id,
+                      provider_message_id,created_at_utc
+               FROM outbound_messages
+               WHERE conversation_id=?
+                 AND datetime(created_at_utc)>=datetime('now', ?)
+               ORDER BY created_at_utc DESC,rowid DESC LIMIT 1""",
+            (conversation_id, f"-{bounded} seconds"),
+        ).fetchone()
+        if not row or row["context_kind"] != context_kind:
+            return None
+        return dict(row)
     finally:
         conn.close()
 
