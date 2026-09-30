@@ -2073,7 +2073,7 @@ class AlexCoreTests(unittest.TestCase):
         try:
             conn.execute(
                 """UPDATE outbound_messages
-                   SET provider_message_id='wa-reminder-1',delivery_state='DELIVERED',
+                   SET provider_message_id='wa-reminder-1',delivery_status='SENT',
                        delivered_at_utc=CURRENT_TIMESTAMP
                    WHERE outbound_id=?""",
                 (outbound_id,),
@@ -2126,6 +2126,108 @@ class AlexCoreTests(unittest.TestCase):
         self.assertEqual(
             [x["event_type"] for x in history], ["CLAIMED", "RELEASED"]
         )
+
+    def test_claimed_reminder_follows_claimant_then_resurfaces_family(self):
+        group_id = "120363888888@g.us"
+        with open(os.path.join(TEST_DIR, "family_group.json"), "w", encoding="utf-8") as handle:
+            handle.write('{"group_jid":"%s"}' % group_id)
+
+        self.claim("claim-schedule-create", "+60111111111", "group reminder")
+        creator = with_action_key(
+            self.actor("claim-schedule-create", "+60111111111"),
+            "claim-schedule-create-action",
+        )
+        reminder = services.create_reminder(
+            creator, "collect parcel", "2026-09-30T18:00:00+08:00",
+            destination="group", claimable=True, follow_up_after_hours=1,
+        )
+
+        # Simulate initial group delivery, then claim it by wife.
+        out_id = db.queue_outbound(
+            group_id, "TEXT", text="⏰ Reminder: collect parcel",
+            context_kind="REMINDER_INITIAL", context_id=reminder["reminder_id"],
+        )
+        conn = db.connect()
+        try:
+            conn.execute(
+                """UPDATE outbound_messages
+                   SET provider_message_id='wa-claim-due',delivery_status='SENT',
+                       delivered_at_utc='2026-09-30T10:00:00+00:00'
+                   WHERE outbound_id=?""",
+                (out_id,),
+            )
+            conn.execute(
+                """UPDATE reminders
+                   SET status='DUE',due_at_utc='2026-09-30T10:00:00+00:00'
+                   WHERE reminder_id=?""",
+                (reminder["reminder_id"],),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        db.claim_inbound({
+            "message_id": "wife-claim-schedule",
+            "provider": "WHATSAPP",
+            "conversation_id": group_id,
+            "conversation_type": "GROUP",
+            "sender_phone": "+60222222222",
+            "text": "",
+        })
+        wife = db.resolve_actor(
+            "+60222222222", group_id, "GROUP", "wife-claim-schedule", []
+        )
+        with patch.object(
+            runtime_clock, "now_utc",
+            return_value=datetime(2026, 9, 30, 10, 5, tzinfo=timezone.utc),
+        ):
+            claimed = services.claim_reminder_from_reaction(
+                wife, "wa-claim-due", "✅"
+            )
+        self.assertEqual(claimed["status"], "claimed")
+
+        with patch.object(
+            runtime_clock, "now_utc",
+            return_value=datetime(2026, 9, 30, 11, 6, tzinfo=timezone.utc),
+        ):
+            scheduler.fire_due()
+
+        conn = db.connect()
+        try:
+            private_follow = conn.execute(
+                """SELECT conversation_id,context_kind,text_body
+                   FROM outbound_messages
+                   WHERE context_id=? AND context_kind='REMINDER_CLAIMANT_FOLLOWUP'
+                   ORDER BY rowid DESC LIMIT 1""",
+                (reminder["reminder_id"],),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertIsNotNone(private_follow)
+        self.assertEqual(
+            private_follow["conversation_id"], "60222222222@s.whatsapp.net"
+        )
+
+        with patch.object(
+            runtime_clock, "now_utc",
+            return_value=datetime(2026, 9, 30, 12, 7, tzinfo=timezone.utc),
+        ):
+            scheduler.fire_due()
+
+        conn = db.connect()
+        try:
+            resurfaced = conn.execute(
+                """SELECT conversation_id,context_kind,text_body
+                   FROM outbound_messages
+                   WHERE context_id=? AND context_kind='REMINDER_FAMILY_RESURFACE'
+                   ORDER BY rowid DESC LIMIT 1""",
+                (reminder["reminder_id"],),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertIsNotNone(resurfaced)
+        self.assertEqual(resurfaced["conversation_id"], group_id)
+        self.assertIn("Still outstanding", resurfaced["text_body"])
 
     def test_declared_stash_balance_and_spend_do_not_require_cash_event(self):
         pool = phase2_finance.create_cash_pool(
