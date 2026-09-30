@@ -1432,6 +1432,8 @@ def reminder_history(actor: ActorContext, reminder_id: str | None = None,
             "note": row["note"],
             "created_local": local_iso(row["created_at_utc"]),
         }
+        if "reminder_id" in row.keys():
+            out["reminder_id"] = row["reminder_id"]
         if include_task:
             out["task"] = row["task_text"]
         return out
