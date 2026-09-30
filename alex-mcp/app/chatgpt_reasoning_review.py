@@ -193,11 +193,20 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
             or _one(tools, "release_reminder_claim"),
         )
 
+    if re.search(r"\b(?:took|had)\s+(?:annual leave|medical leave|mc)\b", text):
+        return result("tools", _one(tools, "work_record_event"))
     if re.search(r"\b(?:annual leave|medical leave|\bmc\b)\b", text) and (
-        re.search(r"\b(?:today|tomorrow|yesterday)\b", text)
-        or re.search(r"\b(?:record|save|mark)\b", text)
+        re.search(r"\b(?:tomorrow|next|planned|planning)\b", text)
+        or re.search(r"\b(?:i'?m|i am|will be)\s+(?:on\s+)?(?:annual leave|medical leave|mc)\b", text)
     ):
         return result("tools", _one(tools, "set_leave_record", "work_record_event"))
+
+    if re.search(
+        r"\b(?:this month|just for this month)\b.*\btarget\b"
+        r"|\btarget\b.*\b(?:this month|just for this month)\b",
+        text,
+    ) and "planning_set_period_target" in tools:
+        return result("tools", ["planning_set_period_target"])
 
     if re.search(
         r"\b(?:change|update|edit|raise|lower)\b.*\b(?:goal|savings?)\b.*\btarget\b"
