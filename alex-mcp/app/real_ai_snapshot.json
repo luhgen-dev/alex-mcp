@@ -1,36 +1,36 @@
 {
   "snapshot_version": 3,
-  "corpus_fingerprint": "c9710998dc597b5038e71de661be26bc53b2d4bd9e85d209442e852c3a323eb1",
+  "corpus_fingerprint": "a71c3d1887bb02a4a6015df2795fe9759b7093f9aa8de0b9afae3c12bea27bf7",
   "reviewer": "GPT-5.6 Sol",
   "review_date": "2026-09-30",
-  "method": "Delta-preserving model review: 341 prior independent-model decisions were carried forward only after byte-identical public-packet comparison; 16 changed/new packets were re-evaluated by GPT-5.6 Sol from their public prompt/history/exposed-tool surface. The 16-packet delta is engineering review, not claimed as a blind first pass.",
-  "decision_count": 357,
+  "method": "Delta-preserving model review: 341 prior independent-model decisions and 16 previously disclosed engineering-delta decisions were carried forward only for unchanged packet IDs; 15 newly-added public packets were re-evaluated by GPT-5.6 Sol from prompt, visible history, and exposed tool descriptions only. The 15-packet delta is explicitly engineering review, not claimed as a blind first pass.",
+  "decision_count": 372,
   "parent_review": {
-    "corpus_fingerprint": "b18c7ad37ebf9473e8b172451b5a4c8697df4b618e996b576e5ddea16c2b253e",
-    "decision_count": 343,
-    "independent_model_pass": true,
-    "carried_forward_unchanged": 341
+    "corpus_fingerprint": "c9710998dc597b5038e71de661be26bc53b2d4bd9e85d209442e852c3a323eb1",
+    "decision_count": 357,
+    "independent_model_pass": false,
+    "carried_forward_unchanged": 341,
+    "ancestor_engineering_review_carried": 16
   },
   "delta_review": {
-    "changed_existing": 2,
-    "newly_added": 14,
+    "changed_existing": 0,
+    "newly_added": 15,
     "reviewed_packet_ids": [
-      "hai-e73b10724da86ed4f0",
-      "hai-d8733153ef7389c192",
-      "hai-eabd98a5ea575ff841",
-      "hai-e5ad31cc185681924b",
-      "hai-f47c7e08de24cc532f",
-      "hai-8665ac290f17712270",
-      "hai-e1668ef5363fae6f8d",
-      "hai-47e771ca5b6d2f5bd4",
-      "hai-7a1b0de8c5bc673282",
-      "hai-0993135dba7af09a6f",
-      "hai-17ce24e873619d6d16",
-      "hai-c07d4ded221e3c31a4",
-      "hai-8c29e2e55f8172c15a",
-      "hai-ebdff19df4ccd622fa",
-      "hai-3f705f38ea60cc3372",
-      "hai-45aea85483877f2c47"
+      "hai-add791cb98e82db731",
+      "hai-5181f8231a680f05f5",
+      "hai-de45a92c577d0be6c1",
+      "hai-4604d3cc3a95f30356",
+      "hai-ce230ba69cd5dc9c5c",
+      "hai-dcda7dfd39887f88fe",
+      "hai-b123943efd7a7bc11f",
+      "hai-ec6b5db925ed4a4f3f",
+      "hai-14ca448f667ee22421",
+      "hai-053b55dcc4221286c7",
+      "hai-0fd25c3705c6a5eb96",
+      "hai-ce9b18306fdef204c5",
+      "hai-79011a0ba4e7c60c8a",
+      "hai-75ba5f473edde282e1",
+      "hai-12648157e0796de6a2"
     ]
   },
   "decisions_by_packet_id": {
@@ -2274,7 +2274,7 @@
         "work_departure_plan"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-2f821538a16e6150e0": {
       "decision": "tools",
@@ -2386,7 +2386,7 @@
         "ha_draft_automation"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-516675a3b47fc7d334": {
       "decision": "tools",
@@ -2828,7 +2828,7 @@
         "search_saved_items"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-e5ad31cc185681924b": {
       "decision": "tools",
@@ -2836,7 +2836,7 @@
         "search_saved_items"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-f47c7e08de24cc532f": {
       "decision": "tools",
@@ -2844,7 +2844,7 @@
         "list_reminders"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-8665ac290f17712270": {
       "decision": "tools",
@@ -2852,7 +2852,7 @@
         "list_reminders"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-e1668ef5363fae6f8d": {
       "decision": "tools",
@@ -2860,7 +2860,7 @@
         "add_shopping_item"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-47e771ca5b6d2f5bd4": {
       "decision": "tools",
@@ -2868,7 +2868,7 @@
         "add_shopping_item"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-7a1b0de8c5bc673282": {
       "decision": "tools",
@@ -2876,7 +2876,7 @@
         "ha_draft_automation"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-0993135dba7af09a6f": {
       "decision": "tools",
@@ -2884,7 +2884,7 @@
         "ha_draft_automation"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-17ce24e873619d6d16": {
       "decision": "tools",
@@ -2893,7 +2893,7 @@
         "ha_control"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-c07d4ded221e3c31a4": {
       "decision": "tools",
@@ -2902,7 +2902,7 @@
         "ha_control"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-8c29e2e55f8172c15a": {
       "decision": "tools",
@@ -2911,7 +2911,7 @@
         "work_departure_plan"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-ebdff19df4ccd622fa": {
       "decision": "tools",
@@ -2920,7 +2920,7 @@
         "work_departure_plan"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-3f705f38ea60cc3372": {
       "decision": "tools",
@@ -2929,13 +2929,139 @@
         "ha_get_state"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-45aea85483877f2c47": {
       "decision": "tools",
       "tools": [
         "ha_find_entities",
         "ha_control"
+      ],
+      "reply_language": "en",
+      "provenance": "ancestor_engineering_review"
+    },
+    "hai-add791cb98e82db731": {
+      "decision": "tools",
+      "tools": [
+        "list_reminders",
+        "release_reminder_claim"
+      ],
+      "reply_language": "en",
+      "provenance": "delta_engineering_review"
+    },
+    "hai-5181f8231a680f05f5": {
+      "decision": "tools",
+      "tools": [
+        "list_reminders",
+        "release_reminder_claim"
+      ],
+      "reply_language": "en",
+      "provenance": "delta_engineering_review"
+    },
+    "hai-de45a92c577d0be6c1": {
+      "decision": "tools",
+      "tools": [
+        "set_leave_record"
+      ],
+      "reply_language": "en",
+      "provenance": "delta_engineering_review"
+    },
+    "hai-4604d3cc3a95f30356": {
+      "decision": "tools",
+      "tools": [
+        "planning_update_goal_target"
+      ],
+      "reply_language": "en",
+      "provenance": "delta_engineering_review"
+    },
+    "hai-ce230ba69cd5dc9c5c": {
+      "decision": "tools",
+      "tools": [
+        "planning_update_goal_target"
+      ],
+      "reply_language": "en",
+      "provenance": "delta_engineering_review"
+    },
+    "hai-dcda7dfd39887f88fe": {
+      "decision": "tools",
+      "tools": [
+        "planning_declare_cash_pool_balance"
+      ],
+      "reply_language": "en",
+      "provenance": "delta_engineering_review"
+    },
+    "hai-b123943efd7a7bc11f": {
+      "decision": "tools",
+      "tools": [
+        "planning_declare_cash_pool_balance"
+      ],
+      "reply_language": "en",
+      "provenance": "delta_engineering_review"
+    },
+    "hai-ec6b5db925ed4a4f3f": {
+      "decision": "tools",
+      "tools": [
+        "planning_record_cash_pool_spend"
+      ],
+      "reply_language": "en",
+      "provenance": "delta_engineering_review"
+    },
+    "hai-14ca448f667ee22421": {
+      "decision": "tools",
+      "tools": [
+        "planning_record_cash_pool_spend"
+      ],
+      "reply_language": "en",
+      "provenance": "delta_engineering_review"
+    },
+    "hai-053b55dcc4221286c7": {
+      "decision": "tools",
+      "tools": [
+        "planning_cash_outflow"
+      ],
+      "reply_language": "en",
+      "provenance": "delta_engineering_review"
+    },
+    "hai-0fd25c3705c6a5eb96": {
+      "decision": "tools",
+      "tools": [
+        "planning_cash_outflow"
+      ],
+      "reply_language": "en",
+      "provenance": "delta_engineering_review"
+    },
+    "hai-ce9b18306fdef204c5": {
+      "decision": "tools",
+      "tools": [
+        "asset_update"
+      ],
+      "reply_language": "en",
+      "provenance": "delta_engineering_review"
+    },
+    "hai-79011a0ba4e7c60c8a": {
+      "decision": "tools",
+      "tools": [
+        "asset_update"
+      ],
+      "reply_language": "en",
+      "provenance": "delta_engineering_review"
+    },
+    "hai-75ba5f473edde282e1": {
+      "decision": "tools",
+      "tools": [
+        "ha_find_entities",
+        "ha_get_state",
+        "monitor_home_state"
+      ],
+      "reply_language": "en",
+      "provenance": "delta_engineering_review"
+    },
+    "hai-12648157e0796de6a2": {
+      "decision": "tools",
+      "tools": [
+        "ha_find_entities",
+        "ha_get_state",
+        "monitor_home_state"
       ],
       "reply_language": "en",
       "provenance": "delta_engineering_review"
