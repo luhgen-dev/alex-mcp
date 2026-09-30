@@ -111,6 +111,7 @@ def sweep():
                            next_attempt_at_utc=NULL WHERE outbound_id=?""",
                         (row["outbound_id"],),
                     )
+                    conn.commit()
                     continue
             try:
                 payload = _payload(row)
@@ -168,6 +169,10 @@ def sweep():
                        last_error=?,next_attempt_at_utc=? WHERE outbound_id=?""",
                     (attempts, detail[:1000], next_try, row["outbound_id"]),
                 )
+            # Release SQLite's write lock before the next row performs a
+            # potentially slow network send. State + reminder-event updates for
+            # one row remain atomic, but WhatsApp latency cannot stall ingress.
+            conn.commit()
         conn.commit()
     finally:
         conn.close()
