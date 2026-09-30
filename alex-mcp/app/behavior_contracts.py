@@ -481,6 +481,15 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         _fs("reminder_history"), seed="core", live=False,
     ),
     PromptContract(
+        "p1.reminder.claim.release", "phase1", "reminders",
+        "A claimant must be able to explicitly release a claimable family reminder; deleting the reaction alone must never release it.",
+        (
+            "Release this reminder, I can't handle it.",
+            "I can't do it anymore; release this family reminder.",
+        ),
+        _fs("release_reminder_claim"), seed="core", live=False,
+    ),
+    PromptContract(
         "p1.shopping.update", "phase1", "shopping",
         "Remove/bought wording must expose shopping mutation rather than creating a second item.",
         (
@@ -950,6 +959,17 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         _fs("check_spouse_availability"), seed="core",
     ),
     PromptContract(
+        "p2.goals.target.update", "phase2", "goals",
+        "Changing a goal target must mutate only the explicit target and must not invent a deadline or recurring contribution.",
+        (
+            "Change my Family Holiday Savings target to RM6,000.",
+            "Update the holiday goal target to RM6,000, nothing else.",
+        ),
+        _fs("planning_update_goal_target"),
+        forbidden=_fs("planning_change_goal_baseline", "planning_set_period_target"),
+        seed="core", live=False,
+    ),
+    PromptContract(
         "p2.goals.lock", "phase2", "goals",
         "Explicit owner approval must expose goal activation/locking.",
         (
@@ -1003,6 +1023,37 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
             "Compare this month's holiday contribution with the target.",
         ),
         _fs("planning_goal_deviation"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p2.cash.pool.balance.declare", "phase2", "cash_planning",
+        "A user-declared stash balance is an authoritative balance fact, not invented income and not an automatic goal allocation.",
+        (
+            "My stash is RM300.",
+            "Set my stash balance to RM300.",
+        ),
+        _fs("planning_declare_cash_pool_balance"),
+        forbidden=_fs("planning_record_cash", "planning_allocate_cash_to_goal"),
+        seed="core", live=False,
+    ),
+    PromptContract(
+        "p2.cash.pool.spend", "phase2", "cash_planning",
+        "Spending from stash must reduce the stash and preserve category/source metadata without inventing a second income event.",
+        (
+            "I spent RM40 from my stash on lunch.",
+            "Record RM40 spent from stash for lunch.",
+        ),
+        _fs("planning_record_cash_pool_spend"),
+        forbidden=_fs("planning_record_cash"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p2.cash.outflow", "phase2", "cash_planning",
+        "Broad cash-outflow questions must separate spending, goal savings and internal transfers without double counting.",
+        (
+            "Show my cash outflow this month.",
+            "How much money went out this month including savings contributions?",
+        ),
+        _fs("planning_cash_outflow"), forbidden=_fs("query_finances"),
+        seed="core", live=False,
     ),
     PromptContract(
         "p2.salary.compare", "phase2", "cash_planning",
@@ -1184,6 +1235,15 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
             "Add the water dispenser to my appliance records.",
         ),
         _fs("asset_create"), seed="empty",
+    ),
+    PromptContract(
+        "p2.asset.update", "phase2", "assets",
+        "Asset metadata and warranty expiry must be editable in place without recreating the asset or losing linked evidence.",
+        (
+            "Change the water dispenser warranty expiry to 1 December 2027.",
+            "Update the water dispenser warranty end date to 1 December 2027.",
+        ),
+        _fs("asset_update"), forbidden=_fs("asset_create"), seed="core", live=False,
     ),
     PromptContract(
         "p2.asset.document", "phase2", "assets",
