@@ -364,6 +364,71 @@ def _error_report_command(text: str) -> tuple[bool, str]:
     return True, explanation
 
 
+
+def _is_selection_followup(text: str) -> bool:
+    return bool(re.fullmatch(
+        r"\s*(?:yes|yep|yeah|sure|ok|okay|please\s+do|show\s+it|send\s+it|open\s+it|get\s+it)\s*[.!]?\s*",
+        str(text or ""),
+        re.IGNORECASE,
+    ))
+
+
+def _selection_context_for_offer(actor, reply: str, attachments: list[dict]) -> dict | None:
+    if attachments:
+        return None
+    if not re.search(
+        r"\b(?:would\s+you\s+like\s+me\s+to|want\s+me\s+to|shall\s+i|should\s+i)\s+"
+        r"(?:show|send|open|get)\b",
+        str(reply or ""),
+        re.IGNORECASE,
+    ):
+        return None
+    return services.latest_single_selection_context(
+        actor, created_after_utc=actor.received_at_utc
+    )
+
+
+def _selection_context_parts(context: dict | None) -> tuple[str, str] | None:
+    if not context or context.get("context_kind") != "SELECTION":
+        return None
+    value = str(context.get("context_id") or "")
+    if ":" not in value:
+        return None
+    kind, target_id = value.split(":", 1)
+    if not kind or not target_id:
+        return None
+    return kind, target_id
+
+
+def _deliver_selection_followup(actor, context: dict) -> dict:
+    parts = _selection_context_parts(context)
+    if not parts:
+        raise ValueError("invalid selection continuation context")
+    result = services.get_selection_target(actor, parts[0], parts[1])
+    attachments = list(result.get("_attachments") or [])
+    reply = "Here it is." if attachments else str(result.get("content") or result.get("title") or "Here it is.")
+    db.queue_outbound(
+        actor.conversation_id, "TEXT", text=reply,
+        source_message_id=actor.source_message_id,
+    )
+    sent_paths = set()
+    for item in attachments:
+        local_path = item.get("path")
+        if not local_path or local_path in sent_paths:
+            continue
+        sent_paths.add(local_path)
+        kind = item.get("kind", "DOCUMENT")
+        db.queue_outbound(
+            actor.conversation_id,
+            "IMAGE" if kind == "IMAGE" else "DOCUMENT",
+            local_path=local_path,
+            mime_type=item.get("mime_type"),
+            source_message_id=actor.source_message_id,
+        )
+    db.finish_inbound(actor.source_message_id, reply)
+    return {"ok": True, "selection_followup": True}
+
+
 def _finish_simple_turn(actor, reply: str, **extra) -> dict:
     db.queue_outbound(
         actor.conversation_id, "TEXT", text=reply,
@@ -488,6 +553,15 @@ def process(payload: dict) -> dict:
                 error_report=True,
             )
 
+        if _is_selection_followup(turn["trusted_text"]):
+            selection_context = quoted_context
+            if not _selection_context_parts(selection_context):
+                selection_context = db.resolve_recent_outbound_context(
+                    actor.conversation_id, "SELECTION", max_age_seconds=600
+                )
+            if _selection_context_parts(selection_context):
+                return _deliver_selection_followup(actor, selection_context)
+
         # Private reads asked from Family Shared are handed to the authenticated
         # owner's DM without ever widening the group actor's ACL. This is one
         # model/tool turn, not a group answer followed by a second private retry.
@@ -512,9 +586,17 @@ def process(payload: dict) -> dict:
                     vision_parts, quoted_context=None,
                 )
             )
+            private_selection = _selection_context_for_offer(
+                dm_actor, private_reply, private_attachments
+            )
             db.queue_outbound(
                 dm_conversation, "TEXT", text=private_reply,
                 source_message_id=actor.source_message_id,
+                context_kind="SELECTION" if private_selection else None,
+                context_id=(
+                    f"{private_selection['kind']}:{private_selection['id']}"
+                    if private_selection else None
+                ),
             )
             sent_paths: set[str] = set()
             for item in private_attachments:
@@ -544,9 +626,17 @@ def process(payload: dict) -> dict:
             )
         )
         db.touch_inbound_processing(payload["message_id"])
+        selection_context = _selection_context_for_offer(
+            actor, reply, attachments
+        )
         db.queue_outbound(
             actor.conversation_id, "TEXT", text=reply,
             source_message_id=actor.source_message_id,
+            context_kind="SELECTION" if selection_context else None,
+            context_id=(
+                f"{selection_context['kind']}:{selection_context['id']}"
+                if selection_context else None
+            ),
         )
         sent_paths: set[str] = set()
         for item in attachments:
