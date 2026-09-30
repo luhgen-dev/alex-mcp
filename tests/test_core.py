@@ -44,6 +44,7 @@ import phase2_reports
 import brain
 import mcp_server
 import runtime_clock
+import scheduler
 from context import use_actor, with_action_key
 from config import Settings
 from mcp import Client
