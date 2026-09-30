@@ -1149,6 +1149,11 @@ def create_reminder(actor: ActorContext, task: str, due_local: str,
     destination = (destination or "dm").strip().lower()
     if destination not in {"dm", "group"}:
         raise ValueError("destination must be dm or group")
+    # Family Shared one-shot reminders are claimable by design. Recurring
+    # reminders keep the existing non-claimable restriction until each
+    # occurrence has its own claim identity.
+    if destination == "group" and not recurrence_rule:
+        claimable = True
     if claimable and destination != "group":
         raise ValueError("claimable reminders must use destination=group")
     if claimable and recurrence_rule:
