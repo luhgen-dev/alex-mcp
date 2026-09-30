@@ -181,6 +181,11 @@ CREATE TABLE IF NOT EXISTS reminders (
     last_follow_up_at_utc TEXT,
     next_delivery_at_utc TEXT,
     defer_reason TEXT,
+    claimable INTEGER NOT NULL DEFAULT 0 CHECK(claimable IN (0,1)),
+    claimed_by_user_id TEXT,
+    claimed_at_utc TEXT,
+    claimant_follow_up_at_utc TEXT,
+    family_resurfaced_at_utc TEXT,
     created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(source_message_id) REFERENCES inbound_messages(message_id),
     FOREIGN KEY(owner_id) REFERENCES users(user_id),
@@ -244,6 +249,23 @@ CREATE TABLE IF NOT EXISTS reminder_events (
     FOREIGN KEY(reminder_id) REFERENCES reminders(reminder_id)
 );
 CREATE INDEX IF NOT EXISTS idx_reminder_events ON reminder_events(reminder_id,created_at_utc);
+
+CREATE TABLE IF NOT EXISTS reminder_claim_events (
+    claim_event_id TEXT PRIMARY KEY,
+    reminder_id TEXT NOT NULL,
+    actor_user_id TEXT,
+    event_type TEXT NOT NULL CHECK(event_type IN (
+        'CLAIMED','RELEASED','CLEARED_COMPLETED','CLEARED_CANCELLED'
+    )),
+    provider_message_id TEXT,
+    reaction_text TEXT,
+    note TEXT,
+    created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(reminder_id) REFERENCES reminders(reminder_id),
+    FOREIGN KEY(actor_user_id) REFERENCES users(user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_reminder_claim_events
+ON reminder_claim_events(reminder_id,created_at_utc);
 
 CREATE TABLE IF NOT EXISTS savings_goals (
     goal_id TEXT PRIMARY KEY,
