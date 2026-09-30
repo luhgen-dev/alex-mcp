@@ -490,6 +490,16 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         _fs("release_reminder_claim"), seed="core", live=False,
     ),
     PromptContract(
+        "p1.reminder.claim.handoff", "phase1", "reminders",
+        "A current claimant may ask another household member to take responsibility, but ownership transfers only after the recipient accepts by reaction.",
+        (
+            "Push this reminder to Priya.",
+            "Ask Priya to take this.",
+            "Hand this reminder to my wife.",
+        ),
+        _fs("handoff_reminder_claim"), seed="core", live=False,
+    ),
+    PromptContract(
         "p1.shopping.update", "phase1", "shopping",
         "Remove/bought wording must expose shopping mutation rather than creating a second item.",
         (
@@ -1322,6 +1332,16 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
             HAExpectation("light.living_room", "off"),
             HAExpectation("climate.hall_ac", "on", unchanged=True),
         ),
+    ),
+    PromptContract(
+        "p2.report.finance.monthly", "phase2", "reports",
+        "A monthly finance report must use the canonical full-ledger finance-report capability rather than the broader household planning snapshot.",
+        (
+            "Show me my September 2026 finance report.",
+            "Give me the September 2026 financial report.",
+            "Show my monthly expense and payment report for September 2026.",
+        ),
+        _fs("finance_report"), seed="core", live=False,
     ),
     PromptContract(
         "p2.report.export", "phase2", "reports",
