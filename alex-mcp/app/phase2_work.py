@@ -794,11 +794,21 @@ def work_summary(start_date, end_date, sender_phone,
     d = start
     while d <= end:
         shift = effective_shift(d, sender_phone, conversation_type)
-        ot = effective_ot_for_date(d, sender_phone, conversation_type)
+        try:
+            ot = effective_ot_for_date(d, sender_phone, conversation_type)
+            ot_available = True
+        except ValueError as exc:
+            # A roster-only question must not fail because optional OT policy
+            # has not been configured yet.
+            if "overtime_rule profile configured" not in str(exc):
+                raise
+            ot = None
+            ot_available = False
         days.append({
             "date": d.isoformat(),
             "shift": shift["shift"],
             "effective_ot": ot,
+            "ot_available": ot_available,
         })
         d += timedelta(days=1)
     return {"start": start.isoformat(), "end": end.isoformat(), "days": days}
