@@ -517,12 +517,14 @@ def resolve_recent_outbound_context(conversation_id: str, context_kind: str,
             """SELECT outbound_id,source_message_id,text_body,context_kind,context_id,
                       provider_message_id,created_at_utc
                FROM outbound_messages
-               WHERE conversation_id=? AND context_kind=?
+               WHERE conversation_id=?
                  AND datetime(created_at_utc)>=datetime('now', ?)
                ORDER BY created_at_utc DESC,rowid DESC LIMIT 1""",
-            (conversation_id, context_kind, f"-{bounded} seconds"),
+            (conversation_id, f"-{bounded} seconds"),
         ).fetchone()
-        return dict(row) if row else None
+        if not row or row["context_kind"] != context_kind:
+            return None
+        return dict(row)
     finally:
         conn.close()
 
