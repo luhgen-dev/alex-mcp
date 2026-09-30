@@ -186,7 +186,7 @@ CORE_FINANCE = {
 }
 MEDIA_TOOLS = {"find_media","get_media_original","resolve_numbered_choice"}
 MEMORY_TOOLS = {"save_item","search_saved_items","get_saved_item","remove_saved_item","resolve_numbered_choice"}
-REMINDER_TOOLS = {"create_reminder","list_reminders","update_reminder","reminder_history"}
+REMINDER_TOOLS = {"create_reminder","list_reminders","update_reminder","reminder_history","release_reminder_claim"}
 SHOPPING_TOOLS = {"add_shopping_item","list_shopping_items","update_shopping_item"}
 DIARY_TOOLS = {
     "add_diary_event","resolve_diary_conflict","resolve_latest_diary_conflict",
@@ -263,6 +263,7 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
         "list_reminders": (r"list|what reminders|reminders", 95),
         "update_reminder": (r"cancel|complete|ack|snooze|defer|reschedule", 115),
         "reminder_history": (r"history|what happened|reminder history", 105),
+        "release_reminder_claim": (r"(?:release|unclaim).*reminder|(?:i can'?t|cannot|can not).*do it|release this", 145),
         "add_shopping_item": (r"add|buy|need|shopping", 105),
         "list_shopping_items": (r"list|shopping|grocery", 95),
         "update_shopping_item": (r"bought|purchased|remove|delete|rename|correct|not .* but|change .* shopping", 126),
@@ -834,6 +835,13 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
     if re.search(r"\bremind(?:er|ers)?\b", low) and re.search(r"\bdue\b", low):
         force |= {"list_reminders", "reminder_history"}
         block |= BILL_TOOLS
+    if re.search(
+        r"\b(?:release|unclaim)\b.*\breminder\b"
+        r"|\b(?:i can'?t|i cannot|i can not)\b.*\b(?:do|handle)\b.*\b(?:it|this)\b"
+        r"|\brelease this\b",
+        low,
+    ):
+        force |= {"release_reminder_claim", "list_reminders"}
 
     # Frequent phone-typing reminder misspellings still have a deterministic,
     # safe action path instead of being crowded out by bill tools.
