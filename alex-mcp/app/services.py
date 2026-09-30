@@ -499,8 +499,9 @@ def find_receipts(actor: ActorContext, query: str | None = None, amount: float |
     bounded = max(1, min(25, int(limit)))
     sql = f"""SELECT DISTINCT m.media_id,m.media_type,m.mime_type,m.created_at_utc,
                      f.event_id,f.amount_minor,f.currency,f.event_date_utc,f.description,
-                     f.reference_text,m.ocr_text
+                     f.reference_text,m.ocr_text,i.raw_text AS caption
               FROM media_objects m
+              JOIN inbound_messages i ON i.message_id=m.source_message_id
               JOIN event_media_links l ON l.media_id=m.media_id
               JOIN financial_events f ON f.event_id=l.event_id
               WHERE f.status IN ('ACTIVE','PENDING_HUMAN_REVIEW') AND f.space_id IN ({marks})
@@ -516,10 +517,22 @@ def find_receipts(actor: ActorContext, query: str | None = None, amount: float |
         sql += " AND f.event_date_utc<=?"
         params.append(_local_bound(end_date, actor.timezone, True))
     if query:
-        needle = f"%{query.lower()}%"
-        sql += """ AND (LOWER(f.description) LIKE ? OR LOWER(COALESCE(f.reference_text,'')) LIKE ?
-                      OR LOWER(COALESCE(m.ocr_text,'')) LIKE ?)"""
-        params.extend([needle, needle, needle])
+        # Human captions are the primary semantic label. Match meaningful
+        # query tokens across caption + ledger metadata + OCR instead of
+        # requiring one verbatim phrase.
+        stop = {"latest","recent","receipt","receipts","show","find","get","send",
+                "open","original","please","my","the","a","an"}
+        terms = [
+            token for token in re.findall(r"[a-z0-9]+", query.casefold())
+            if len(token) > 1 and token not in stop
+        ]
+        for token in terms or [query.casefold().strip()]:
+            needle = f"%{token}%"
+            sql += """ AND LOWER(
+                COALESCE(i.raw_text,'') || ' ' || COALESCE(f.description,'') || ' ' ||
+                COALESCE(f.reference_text,'') || ' ' || COALESCE(m.ocr_text,'')
+            ) LIKE ?"""
+            params.append(needle)
     sql += " ORDER BY f.event_date_utc DESC LIMIT ?"
     params.append(bounded)
 
@@ -530,6 +543,7 @@ def find_receipts(actor: ActorContext, query: str | None = None, amount: float |
             {"media_id": r["media_id"], "event_id": r["event_id"],
              "amount": (r["amount_minor"]/100 if r["amount_minor"] is not None else None),
              "currency": r["currency"], "description": r["description"],
+             "caption": r["caption"], "label": (r["caption"] or r["description"]),
              "event_date_utc": r["event_date_utc"], "reference": r["reference_text"],
              "linked": True}
             for r in linked
@@ -539,7 +553,7 @@ def find_receipts(actor: ActorContext, query: str | None = None, amount: float |
         # Unlinked media is private provenance from the sender's DM. A group
         # request must never surface that private material into Family Shared.
         if remaining > 0 and actor.conversation_type != "GROUP":
-            orphan_sql = """SELECT m.media_id,m.created_at_utc,m.ocr_text
+            orphan_sql = """SELECT m.media_id,m.created_at_utc,m.ocr_text,i.raw_text AS caption
                             FROM media_objects m
                             JOIN inbound_messages i ON i.message_id=m.source_message_id
                             WHERE i.sender_phone=? AND m.media_type IN ('IMAGE','PDF')
@@ -554,8 +568,17 @@ def find_receipts(actor: ActorContext, query: str | None = None, amount: float |
                 orphan_sql += " AND m.created_at_utc<=?"
                 orphan_params.append(_local_bound(end_date, actor.timezone, True))
             if query:
-                orphan_sql += " AND LOWER(COALESCE(m.ocr_text,'')) LIKE ?"
-                orphan_params.append(f"%{query.lower()}%")
+                stop = {"latest","recent","receipt","receipts","show","find","get","send",
+                        "open","original","please","my","the","a","an"}
+                terms = [
+                    token for token in re.findall(r"[a-z0-9]+", query.casefold())
+                    if len(token) > 1 and token not in stop
+                ]
+                for token in terms or [query.casefold().strip()]:
+                    orphan_sql += """ AND LOWER(
+                        COALESCE(i.raw_text,'') || ' ' || COALESCE(m.ocr_text,'')
+                    ) LIKE ?"""
+                    orphan_params.append(f"%{token}%")
             if amount is not None:
                 orphan_sql += " AND COALESCE(m.ocr_text,'') LIKE ?"
                 orphan_params.append(f"%{float(amount):.2f}%")
@@ -564,7 +587,10 @@ def find_receipts(actor: ActorContext, query: str | None = None, amount: float |
             for r in conn.execute(orphan_sql, orphan_params).fetchall():
                 matches.append({
                     "media_id": r["media_id"], "event_id": None, "amount": None,
-                    "currency": None, "description": "Saved receipt/media awaiting ledger linkage",
+                    "currency": None,
+                    "description": "Saved receipt/media awaiting ledger linkage",
+                    "caption": r["caption"],
+                    "label": (r["caption"] or "Saved receipt/media awaiting ledger linkage"),
                     "event_date_utc": r["created_at_utc"], "reference": None, "linked": False,
                 })
         if matches:
