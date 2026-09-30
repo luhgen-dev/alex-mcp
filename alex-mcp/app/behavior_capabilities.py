@@ -129,6 +129,7 @@ CAPABILITY_TO_TOOLS: dict[str, frozenset[str]] = {
     "home.control": frozenset({"ha_control"}),
 
     # Reports / diagnostics / utility
+    "report.finance.monthly": frozenset({"finance_report"}),
     "report.snapshot": frozenset({"report_snapshot"}),
     "report.export": frozenset({"report_export"}),
     "report.payload": frozenset({"report_payload"}),
