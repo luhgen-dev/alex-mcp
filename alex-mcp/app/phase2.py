@@ -314,6 +314,41 @@ def list_plans(actor: ActorContext, include_cancelled: bool = False, limit: int 
         conn.close()
 
 
+
+def resolve_plan_reference(actor: ActorContext, plan_id: str | None = None,
+                           plan_name: str | None = None) -> str:
+    """Resolve one accessible plan by exact id or natural title without model guessing."""
+    supplied_id = str(plan_id or "").strip()
+    supplied_name = str(plan_name or "").strip()
+    if not supplied_id and not supplied_name:
+        raise ValueError("provide plan_id or plan_name")
+    marks = ",".join("?" for _ in actor.allowed_spaces)
+    conn = connect()
+    try:
+        if supplied_id:
+            row = conn.execute(
+                f"SELECT plan_id FROM plans WHERE plan_id=? AND space_id IN ({marks})",
+                [supplied_id] + list(actor.allowed_spaces),
+            ).fetchone()
+            if not row:
+                raise PermissionError("plan not found in your accessible spaces")
+            return row["plan_id"]
+        rows = conn.execute(
+            f"""SELECT plan_id,title,status FROM plans
+                WHERE LOWER(title)=LOWER(?) AND space_id IN ({marks})
+                ORDER BY status='CANCELLED',updated_at_utc DESC""",
+            [supplied_name] + list(actor.allowed_spaces),
+        ).fetchall()
+        active = [row for row in rows if row["status"] != "CANCELLED"]
+        candidates = active or rows
+        if not candidates:
+            raise ValueError(f"no plan named {supplied_name!r} was found")
+        if len(candidates) > 1:
+            raise ValueError(f"more than one accessible plan is named {supplied_name!r}")
+        return candidates[0]["plan_id"]
+    finally:
+        conn.close()
+
 def update_plan(actor: ActorContext, plan_id: str, status: str | None = None,
                 title: str | None = None, start_local: str | None = None,
                 end_local: str | None = None, notes: str | None = None) -> dict:
