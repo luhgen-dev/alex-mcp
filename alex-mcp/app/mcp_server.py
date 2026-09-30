@@ -148,13 +148,14 @@ def resolve_numbered_choice(choice: int, actor: Actor) -> dict:
 def create_reminder(task: str, due_local: str, actor: Actor,
                     recurrence_rule: str | None = None, shared: bool = False,
                     recipient: str = "me", destination: str = "dm",
+                    claimable: bool = False,
                     presence_aware: bool = False,
                     delivery_class: str = "routine",
                     follow_up_after_hours: int = 24) -> dict:
-    """Create a durable reminder. recipient chooses me/spouse/husband/wife/both. destination=dm sends to the intended person's DM regardless of where the command was issued; destination=group sends one Family Shared group reminder."""
+    """Create a durable reminder. recipient chooses me/spouse/husband/wife/both. destination=dm sends to the intended person's DM regardless of command origin; destination=group sends one Family Shared group reminder. Set claimable=true only for a group reminder where any authorized household reaction should atomically claim responsibility."""
     return services.create_reminder(
         actor, task, due_local, recurrence_rule, shared, recipient, destination,
-        presence_aware, delivery_class, follow_up_after_hours,
+        claimable, presence_aware, delivery_class, follow_up_after_hours,
     )
 
 
@@ -178,8 +179,14 @@ def update_reminder(reminder_id: str, actor: Actor, status: str = "open",
 @mcp.tool()
 def reminder_history(actor: Actor, reminder_id: str | None = None,
                      limit: int = 50) -> dict:
-    """Read durable reminder lifecycle history. Omit reminder_id for recent aggregate history across authorized reminders."""
+    """Read durable reminder lifecycle history. Omit reminder_id for recent aggregate history across authorized reminders; per-reminder output also includes claim/release history."""
     return services.reminder_history(actor, reminder_id, limit)
+
+
+@mcp.tool()
+def release_reminder_claim(reminder_id: str, actor: Actor) -> dict:
+    """Explicitly release a claimable family reminder after the claimant says they cannot do it / release it. Removing a WhatsApp reaction never releases ownership."""
+    return services.release_reminder_claim(actor, reminder_id)
 
 
 @mcp.tool()
