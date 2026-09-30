@@ -5,6 +5,7 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 
 import runtime_clock
+import scope_policy
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from zoneinfo import ZoneInfo
 
@@ -59,7 +60,7 @@ def _local_iso_from_utc(value: str | None, tz_name: str) -> str | None:
 
 
 def _space(actor: ActorContext, shared: bool) -> str:
-    space = "FAMILY_SHARED" if shared or actor.conversation_type == "GROUP" else actor.private_space
+    space = scope_policy.resolve_new_write_space(actor, requested_shared=shared)
     if space not in actor.allowed_spaces:
         raise PermissionError("requested space is not accessible")
     return space
