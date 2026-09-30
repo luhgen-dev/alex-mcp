@@ -1255,6 +1255,16 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         _fs("asset_link_document"), seed="core", live=False,
     ),
     PromptContract(
+        "p2.monitor.home.state", "phase2", "monitoring",
+        "A one-shot Home Assistant state watch must require explicit delegation and exact entity resolution; it must not control the device.",
+        (
+            "Monitor the Hall AC and tell me when it turns on.",
+            "Let me know when the hall air conditioner becomes on.",
+        ),
+        _fs("monitor_home_state"),
+        forbidden=_fs("ha_control"), seed="empty", live=False,
+    ),
+    PromptContract(
         "p2.monitor.delegate", "phase2", "monitoring",
         "Proactive tracking must begin only after explicit delegation.",
         (
