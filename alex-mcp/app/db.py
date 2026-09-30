@@ -14,6 +14,7 @@ from context import ActorContext
 DB_PATH = os.path.join(DATA_DIR, "alex_mcp.db")
 SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "schema.sql")
 INBOUND_PROCESSING_LEASE_SECONDS = 900
+RESTART_INTERRUPTED_PREFIX = "restart_interrupted:"
 
 
 def utc_now() -> str:
@@ -61,6 +62,42 @@ def _ensure_column(conn: sqlite3.Connection, table: str, column: str, definition
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
 
+def _recover_interrupted_inbound(conn: sqlite3.Connection) -> int:
+    """Quarantine turns left PROCESSING by an add-on restart.
+
+    A previous mutation may already have committed, so these message ids are
+    never replayed automatically. Instead Alex sends one durable recovery note
+    asking the user to verify state before trying the action again.
+    """
+    rows = conn.execute(
+        """SELECT message_id,conversation_id FROM inbound_messages
+           WHERE processing_state='PROCESSING'"""
+    ).fetchall()
+    if not rows:
+        return 0
+    stamp = utc_now()
+    for row in rows:
+        message_id = row["message_id"]
+        conn.execute(
+            """UPDATE inbound_messages
+               SET processing_state='FAILED',last_error=?
+               WHERE message_id=? AND processing_state='PROCESSING'""",
+            (RESTART_INTERRUPTED_PREFIX + stamp, message_id),
+        )
+        conn.execute(
+            """INSERT INTO outbound_messages(
+                outbound_id,source_message_id,conversation_id,kind,text_body,
+                context_kind,context_id
+               ) VALUES(?,?,?,?,?,?,?)""",
+            (
+                str(uuid.uuid4()), message_id, row["conversation_id"], "TEXT",
+                "Alex restarted while I was processing that message. I won't repeat the action automatically because it may already have happened. Ask me to check it, or resend only if you want me to try again.",
+                "INBOUND_RECOVERY", message_id,
+            ),
+        )
+    return len(rows)
+
+
 def initialize() -> None:
     os.makedirs(DATA_DIR, exist_ok=True)
     with open(SCHEMA_PATH, "r", encoding="utf-8") as f:
@@ -100,6 +137,7 @@ def initialize() -> None:
         _ensure_column(conn, "diary_events", "time_known", "INTEGER NOT NULL DEFAULT 1")
         _ensure_column(conn, "plans", "time_known", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(conn, "schedule_conflicts", "source_plan_id", "TEXT")
+        _recover_interrupted_inbound(conn)
         # v0.4.4 Phase-0 trace retention: only the compact per-turn trace rows
         # are pruned. Real tool audit history is never deleted here.
         conn.execute(
@@ -222,7 +260,7 @@ def claim_inbound(payload: dict) -> str:
     conn = connect()
     try:
         existing = conn.execute(
-            """SELECT processing_state,cached_response,attempt_count,processing_started_at_utc
+            """SELECT processing_state,cached_response,attempt_count,processing_started_at_utc,last_error
                FROM inbound_messages WHERE message_id=?""",
             (payload["message_id"],),
         ).fetchone()
@@ -230,6 +268,14 @@ def claim_inbound(payload: dict) -> str:
         if existing:
             state = existing["processing_state"]
             if state == "COMPLETED":
+                return "DUPLICATE"
+            if (
+                state == "FAILED"
+                and str(existing["last_error"] or "").startswith(RESTART_INTERRUPTED_PREFIX)
+            ):
+                # A prior process died mid-turn. The associated mutation may
+                # already have completed, so transport redelivery must never
+                # re-run this exact WhatsApp message automatically.
                 return "DUPLICATE"
             if existing["processing_started_at_utc"]:
                 try:
