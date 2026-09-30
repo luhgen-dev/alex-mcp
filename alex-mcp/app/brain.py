@@ -199,7 +199,7 @@ WORK_TOOLS = {
     "work_leave_balance","work_departure_plan","list_work_roster",
 }
 PLANNING_TOOLS = {
-    "planning_create_goal","planning_lock_goal","planning_reopen_goal",
+    "planning_create_goal","planning_update_goal_target","planning_lock_goal","planning_reopen_goal",
     "planning_set_period_target","planning_change_goal_baseline",
     "planning_record_goal_contribution","planning_goal_progress",
     "planning_goal_deviation","planning_goal_projection",
@@ -218,7 +218,7 @@ PLAN_TOOLS = {"create_plan","list_plans","update_plan","confirm_plan","share_pla
 TASK_TOOLS = {"create_task","list_tasks","update_task","complete_task","reopen_task","cancel_task"}
 DIARY_EVENT_TOOLS = {"add_diary_event","update_diary_event","get_agenda","get_agenda_range","check_my_availability","check_spouse_availability","resolve_diary_conflict","resolve_latest_diary_conflict"}
 FINANCE_READ_TOOLS = {"query_finances","find_receipts","get_receipt","calculate"}
-ASSET_TOOLS = {"asset_create","asset_link_document","asset_list","warranty_expiring"}
+ASSET_TOOLS = {"asset_create","asset_update","asset_link_document","asset_list","warranty_expiring"}
 DIAGNOSTIC_TOOLS = {"system_health","recent_failures"}
 MONITOR_TOOLS = {"monitor_delegate","monitor_list","monitor_cancel"}
 REPORT_TOOLS = {"report_snapshot","report_export","report_payload"}
@@ -295,7 +295,8 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
         "list_leave_records": (r"leave entries|leave records|recorded leave|show.*leave", 124),
         "list_work_roster": (r"roster entries|roster records|show.*roster", 118),
         "work_departure_plan": (r"leave home|depart|departure|alarm|travel time", 126),
-        "planning_create_goal": (r"(?:create|start).*goal|new goal|save for|savings?\s+goal|goal.*target", 128),
+        "planning_create_goal": (r"(?:create|start).*goal|new goal|save for|savings?\s+goal", 128),
+        "planning_update_goal_target": (r"(?:change|update|edit|raise|lower).*goal.*target|goal.*target.*(?:to|=)", 142),
         "planning_lock_goal": (r"lock.*goal|activate.*goal|confirm.*goal", 122),
         "planning_reopen_goal": (r"reopen.*goal|resume.*goal", 120),
         "planning_set_period_target": (r"this month|this period|only this month|enough this month", 124),
@@ -330,6 +331,7 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
         "ha_home_report": (r"home.*report|house.*report|status.*image|status.*card", 120),
         "ha_draft_automation": (r"automation|automate|when .* then", 112),
         "asset_create": (r"(?:save|add|register|bought).*?(?:asset|appliance|device)|serial", 112),
+        "asset_update": (r"(?:change|update|edit).*?(?:asset|appliance|warranty)|warranty.*(?:expiry|expires|end).*(?:to|on)", 142),
         "asset_link_document": (r"warranty|manual|receipt.*asset|link.*document", 108),
         "asset_list": (r"assets|appliances|devices", 128),
         "warranty_expiring": (r"warranty.*expir|expiring.*warranty", 118),
@@ -582,6 +584,12 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
     # Dedicated read/diagnostic domains must survive the six-tool cap.
     if re.search(r"\b(?:appliances?|assets?|warrant(?:y|ies))\b", low):
         force |= {"asset_list", "warranty_expiring"}
+    if re.search(
+        r"\b(?:change|update|edit)\b.*\b(?:asset|appliance|warranty)\b"
+        r"|\bwarranty\b.*\b(?:expiry|expires|end)\b.*\b(?:to|on)\b",
+        low,
+    ):
+        force.add("asset_update")
     if re.search(r"\b(?:recent\s+(?:alex\s+)?(?:errors?|failures?)|alex\s+healthy|alex\s+health|why did alex fail)\b", low):
         force |= {"recent_failures", "system_health"}
 
@@ -679,6 +687,9 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         force.add("get_agenda_range")
         block.add("add_diary_event")
 
+    if re.search(r"\b(?:change|update|edit|raise|lower)\b.*\bgoal\b.*\btarget\b", low):
+        force.add("planning_update_goal_target")
+        block.add("planning_create_goal")
     if re.search(r"\b(?:put|allocate|channel)\b.*\b(?:stash|cash pool|buffer)\b", low):
         force.add("planning_allocate_cash_to_pool")
     if re.search(r"\b(?:create|make)\b.*\b(?:cash\s+pool|stash)\b", low):
