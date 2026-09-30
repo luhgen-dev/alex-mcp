@@ -1349,16 +1349,18 @@ def resolve_diary_conflict(actor: ActorContext, conflict_id: str, choice: int,
                          "leave_date": leave_date, "state": leave_state}
             else:
                 leave_id = str(uuid.uuid4())
+                leave_space = row["space_id"]
                 conn.execute(
                     """INSERT INTO leave_records(
-                        leave_id,action_key,owner_id,leave_date,portion,status,notes
-                       ) VALUES(?,?,?,?,?,'PLANNED',?)""",
+                        leave_id,action_key,owner_id,space_id,leave_date,portion,status,notes
+                       ) VALUES(?,?,?,?,?,?,'PLANNED',?)""",
                     (leave_id, f"{row['action_key']}:planned-leave", actor.user_id,
-                     leave_date, portion,
+                     leave_space, leave_date, portion,
                      f"Planned automatically from diary conflict: {row['title']}"),
                 )
                 leave = {"status": "saved", "leave_id": leave_id,
-                         "leave_date": leave_date, "state": "PLANNED"}
+                         "leave_date": leave_date, "state": "PLANNED",
+                         "space": leave_space}
 
         conn.execute(
             "UPDATE schedule_conflicts SET status='RESOLVED',choice=? WHERE conflict_id=?",
