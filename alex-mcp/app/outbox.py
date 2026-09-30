@@ -49,6 +49,13 @@ def _whatsapp_message_id(outbound_id: str) -> str:
     return "ALEX" + digest[:28]
 
 
+def _row_value(row, key, default=None):
+    try:
+        return row[key]
+    except (KeyError, IndexError):
+        return default
+
+
 def _payload(row) -> dict:
     kind = row["kind"]
     message_id = _whatsapp_message_id(row["outbound_id"])
@@ -62,11 +69,11 @@ def _payload(row) -> dict:
         "message_id": message_id,
         "reply_to_message_id": reply_to,
         "reply_to_participant_jid": (
-            row["source_sender_provider_jid"]
+            _row_value(row, "source_sender_provider_jid")
             if reply_to and str(row["conversation_id"]).endswith("@g.us")
             else None
         ),
-        "reply_to_text": row["source_raw_text"] if reply_to else None,
+        "reply_to_text": _row_value(row, "source_raw_text") if reply_to else None,
     }
     if kind == "TEXT":
         return {**common, "kind": "text", "text": row["text_body"] or ""}
