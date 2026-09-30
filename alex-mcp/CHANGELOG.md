@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.0
+Final pre-HA release candidate after independent audit closeout.
+- Broadened voice mutation detection for appointment/task/share/confirm flows while keeping normal clear speech frictionless.
+- Local STT consensus now rejects conflicting critical numeric values such as amounts, times and numbered choices instead of guessing.
+- Add-on restart recovery quarantines interrupted inbound message IDs and sends a durable verification notice rather than replaying a possibly completed mutation.
+- Outbox commits each row before the next network send so a slow WhatsApp transport cannot hold SQLite's write lock across later sends.
+- Expense confirmation now applies only to records genuinely awaiting human review.
+- Failed WhatsApp media downloads are surfaced immediately and never become silent text-only turns.
+- Audio replay uses push-to-talk only for OGG/Opus voice-note media; other audio formats remain normal audio attachments.
+- Added deterministic regressions for the closeout fixes.
+
 ## 0.4.4
 Repair release from the v0.4.3 live smoke test (Claude audit, cross-reviewed with GPT).
 - **Voice = text.** A voice-note transcript is now the message itself, so voice gets exactly the same routing and tools as typed text (reminders, shopping, Home Assistant, saved items, finance). Original audio stays linked; `source=voice` finance filtering is unchanged.
