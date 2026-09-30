@@ -19,6 +19,8 @@ CAPABILITY_TO_TOOLS: dict[str, frozenset[str]] = {
     "finance.correct": frozenset({"correct_expense"}),
     "receipt.find": frozenset({"find_receipts"}),
     "receipt.get": frozenset({"get_receipt"}),
+    "media.find": frozenset({"find_media"}),
+    "media.get": frozenset({"get_media_original"}),
 
     # Saved memory / selection
     "memory.save": frozenset({"save_item"}),
@@ -49,7 +51,7 @@ CAPABILITY_TO_TOOLS: dict[str, frozenset[str]] = {
     "availability.self": frozenset({"check_my_availability"}),
     "availability.spouse": frozenset({"check_spouse_availability"}),
 
-    # Tasks are intentionally owner-required but currently unimplemented.
+    # First-class task lifecycle. Legacy aliases remain classified for migration safety.
     "task.create": frozenset({"create_task", "add_task", "task_create"}),
     "task.read": frozenset({"list_tasks", "task_list"}),
     "task.update": frozenset({"update_task", "task_update", "task_change"}),

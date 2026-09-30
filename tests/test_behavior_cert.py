@@ -8,7 +8,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "alex-mcp", "app"))
 
@@ -305,6 +305,116 @@ class BehaviourRigJudgeMutationTests(unittest.TestCase):
         self.assertFalse(any(
             row[0].id == "p2.tasks.create" for row in plan["prompts"]
         ))
+
+    def test_offline_gate_certifies_conversation_steps(self):
+        report = behavior_cert.offline_certify(
+            "all", contract_ids={"conv.receipt.followup"}
+        )
+        self.assertEqual(report["status"], "PASS", report["failures"])
+        self.assertEqual(report["summary"]["conversation_contracts"], 1)
+        self.assertEqual(report["summary"]["conversation_step_checks"], 3)
+
+    def test_offline_gate_rejects_broken_conversation_router(self):
+        import brain
+        with patch.object(brain, "_tool_specs", new=AsyncMock(return_value=[])):
+            report = behavior_cert.offline_certify(
+                "all", contract_ids={"conv.receipt.followup"}
+            )
+        self.assertEqual(report["summary"]["conversation_step_checks"], 3)
+        self.assertGreater(report["summary"]["failures"], 0)
+        self.assertTrue(any(
+            row.get("contract") == "conv.receipt.followup"
+            for row in report["failures"]
+        ), report["failures"])
+
+    def test_human_ai_blind_reasoner_may_use_acl_protected_tool(self):
+        import human_ai_lab
+        packet = {
+            "packet_version": 1,
+            "packet_id": "hai-private-delete",
+            "_contract_id": "p2.privacy.wife.private_write",
+            "_phase": "phase2",
+            "_domain": "privacy",
+            "source": "text",
+            "conversation_type": "DIRECT_DM",
+            "actor": "wife",
+            "prompt": "Remove the saved cobalt note.",
+            "available_tools": [{
+                "name": "remove_saved_item",
+                "description": "Remove an authorized saved item.",
+                "parameters": {},
+            }],
+            "conversation_history": [],
+        }
+        decisions = [
+            {"_meta": {
+                "corpus_fingerprint": human_ai_lab._corpus_fingerprint([packet]),
+            }},
+            {
+                "packet_id": "hai-private-delete",
+                "decision": "tools",
+                "tools": ["remove_saved_item"],
+                "reply_language": "en",
+            },
+        ]
+        report = human_ai_lab.score_packets([packet], decisions, "all")
+        self.assertEqual(report["status"], "PASS", report["failures"])
+
+    def test_human_ai_score_rejects_stale_review_corpus(self):
+        import human_ai_lab
+        packet = {
+            "packet_version": 2,
+            "packet_id": "hai-stale",
+            "_contract_id": "p1.finance.write",
+            "_phase": "phase1",
+            "_domain": "finance",
+            "source": "text",
+            "conversation_type": "DIRECT_DM",
+            "actor": "husband",
+            "prompt": "I paid RM12.50 for parking.",
+            "available_tools": [{
+                "name": "log_expense",
+                "description": "log",
+                "parameters": {},
+            }],
+            "conversation_history": [],
+        }
+        decisions = [
+            {"_meta": {"corpus_fingerprint": "stale-fingerprint"}},
+            {
+                "packet_id": "hai-stale",
+                "decision": "tools",
+                "tools": ["log_expense"],
+                "reply_language": "en",
+            },
+        ]
+        report = human_ai_lab.score_packets([packet], decisions, "all")
+        self.assertEqual(report["status"], "FAIL")
+        self.assertFalse(report["summary"]["corpus_match"])
+        self.assertTrue(report["meta_failures"])
+
+    def test_human_ai_packet_audit_rejects_impossible_packet(self):
+        import human_ai_lab
+        packet = {
+            "packet_version": 1,
+            "packet_id": "hai-test-impossible",
+            "_contract_id": "p1.finance.write",
+            "_phase": "phase1",
+            "_domain": "finance",
+            "source": "text",
+            "conversation_type": "DIRECT_DM",
+            "actor": "husband",
+            "prompt": "I paid RM12.50 for parking.",
+            "available_tools": [{
+                "name": "list_reminders",
+                "description": "irrelevant",
+                "parameters": {},
+            }],
+            "conversation_history": [],
+        }
+        report = human_ai_lab.packet_audit([packet], "all")
+        self.assertEqual(report["status"], "FAIL")
+        self.assertEqual(report["summary"]["routing_gaps"], 1)
 
     def test_benchmark_live_plan_prioritizes_owner_smoke_regressions(self):
         fake_offline = {

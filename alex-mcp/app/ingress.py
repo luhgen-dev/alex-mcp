@@ -318,7 +318,23 @@ def process(payload: dict) -> dict:
         return {"ok": True, "duplicate": True}
 
     try:
+        if payload.get("media_failed"):
+            kind = str(payload.get("media_failed_type") or "attachment").strip().lower()
+            label = "document" if kind == "pdf" else kind
+            reply = (
+                f"I couldn't download that {label} from WhatsApp, so I didn't act on it. "
+                "Please resend the attachment."
+            )
+            db.queue_outbound(
+                payload["conversation_id"], "TEXT",
+                text=reply,
+                source_message_id=payload["message_id"],
+            )
+            db.finish_inbound(payload["message_id"], reply)
+            return {"ok": True, "media_failed": True}
+        db.touch_inbound_processing(payload["message_id"])
         media_ids, media_lines, vision_parts = media.process_payload_media(payload)
+        db.touch_inbound_processing(payload["message_id"])
         turn = build_turn(payload, media_lines)
         actor = db.resolve_actor(
             payload["sender_phone"],
@@ -349,12 +365,14 @@ def process(payload: dict) -> dict:
             quoted_context = db.resolve_recent_instruction_context(
                 actor.conversation_id, actor.phone, actor.source_message_id
             )
+        db.touch_inbound_processing(payload["message_id"])
         reply, attachments = asyncio.run(
             brain.respond(
                 actor, turn["trusted_text"], turn["document_lines"], vision_parts,
                 quoted_context=quoted_context,
             )
         )
+        db.touch_inbound_processing(payload["message_id"])
         db.queue_outbound(
             actor.conversation_id, "TEXT", text=reply,
             source_message_id=actor.source_message_id,
@@ -374,6 +392,24 @@ def process(payload: dict) -> dict:
                 )
         db.finish_inbound(actor.source_message_id, reply)
         return {"ok": True}
+    except media.VoiceTranscriptionUncertain as exc:
+        # Preserve the original audio but do not let Node retry a voice command
+        # whose decoders disagree. Asking again is safer than a wrong mutation.
+        reply = (
+            "I couldn't understand that voice command confidently enough to act. "
+            "Please resend the voice note or type the command."
+        )
+        try:
+            db.queue_outbound(
+                payload["conversation_id"], "TEXT",
+                text=reply,
+                source_message_id=payload["message_id"],
+            )
+            db.finish_inbound(payload["message_id"], reply)
+        except Exception:
+            db.fail_inbound(payload["message_id"], str(exc))
+            raise
+        return {"ok": True, "voice_uncertain": True}
     except PermissionError as exc:
         db.fail_inbound(payload["message_id"], str(exc))
         return {"ok": False, "unauthorized": True}

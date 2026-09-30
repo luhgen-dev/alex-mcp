@@ -41,7 +41,8 @@ For finance date queries, resolve today/tomorrow/yesterday from the runtime loca
 When the user explicitly asks for family/shared finances, use query_finances with scope="family". When they explicitly ask for private/personal finances, use scope="private". Never broaden an explicitly requested scope.
 When the user asks specifically for expenses logged from voice notes, use query_finances with source="voice"; receipt/document-only queries use source="receipt".
 If trusted WhatsApp reply context supplies an exact financial event id, use that exact event for a correction or clarification. A short reply such as "RM8.50" must bind to that trusted event or a persisted pending item; never guess an event id. If a quoted clarification and a stale numbered list both exist, the explicit quoted context wins.
-When the user says "show 10", "open 10", or gives a numbered choice after Alex displayed a numbered receipt/saved-item list, use resolve_numbered_choice for that exact latest list.
+When the user says "show 10", "open 10", or gives a numbered choice after Alex displayed a numbered receipt/saved-item/original-media list, use resolve_numbered_choice for that exact latest list.
+Original voice notes, images and documents are preserved for provenance. When the user asks to list or retrieve an earlier original voice note/media input, use find_media/get_media_original rather than pretending the media cannot be sent.
 
 For reminders, convert the user's intended local date/time into an ISO local datetime. Do not silently choose a materially different date. For normal conversational follow-ups, use context naturally.
 For Diary/Plans, never invent a clock time. If the user supplied a date but no actual time, use the date and set time_known=false. Date-only items may produce a non-blocking same-day heads-up; only proven time overlaps are hard conflicts.
@@ -183,6 +184,7 @@ CORE_FINANCE = {
     "log_expense","confirm_expense","query_finances","list_pending_expenses",
     "correct_expense","find_receipts","get_receipt","calculate",
 }
+MEDIA_TOOLS = {"find_media","get_media_original","resolve_numbered_choice"}
 MEMORY_TOOLS = {"save_item","search_saved_items","get_saved_item","remove_saved_item","resolve_numbered_choice"}
 REMINDER_TOOLS = {"create_reminder","list_reminders","update_reminder","reminder_history"}
 SHOPPING_TOOLS = {"add_shopping_item","list_shopping_items","update_shopping_item"}
@@ -230,11 +232,10 @@ LEGACY_SIMPLE_PLANNING = {
 TOOL_EXPOSURE_MAX = 6
 MAX_MODEL_CALLS = 4
 
-# v0.4.4 stopgap until the v0.5.0 facade: when the keyword gate recognises no
-# domain for a genuine (non-chat) request, the model previously received ZERO
-# data tools and answered "I don't have access" (e.g. plural "expenses",
-# "transactions", "what pictures did I save"). Read-only tools cannot change
-# data or devices, so exposing them is safe; writes still need the gate.
+# Safe read-only recovery surface. Deterministic routing and semantic discovery
+# are primary; this bounded fallback ensures unfamiliar read phrasing never
+# collapses into a false "I don't have access" answer. Mutators are never added
+# by this fallback.
 CORE_READ_FALLBACK = (
     "query_finances", "list_reminders", "list_shopping_items",
     "search_saved_items", "get_agenda_range",
@@ -251,7 +252,7 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
         "log_expense": (r"(?:log|record|add).*?(?:rm|myr|sgd|expense)|\b(?:i\s+)?(?:spent|paid|bought)\s+(?:rm|myr|sgd|\d)|receipt.*(?:log|record)", 136),
         "correct_expense": (r"correct|change|fix|wrong amount", 115),
         "list_pending_expenses": (r"pending|clarif|which expense|that expense", 105),
-        "find_receipts": (r"find|show|receipt|reference|ref", 110),
+        "find_receipts": (r"\b(?:find|show|receipt|reference|ref)\b", 110),
         "get_receipt": (r"receipt|original|show", 90),
         "resolve_numbered_choice": (r"^\s*\d+\s*$|\b(?:show|open|send|get|view)\s+(?:number\s+)?\d+\b", 140),
         "create_reminder": (r"remind|reminder|notify", 110),
@@ -285,8 +286,8 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
         "check_spouse_availability": (r"wife.*free|husband.*free|spouse.*free|partner.*free", 110),
         "work_schedule": (r"roster|shift|work schedule|working", 110),
         "work_day": (r"work.*today|work.*tomorrow|shift.*today|shift.*tomorrow", 112),
-        "work_record_event": (r"leave|mc|shift swap|ot worked|ot planned|overtime", 102),
-        "work_ot_status": (r"ot|overtime", 108),
+        "work_record_event": (r"\b(?:leave|mc|overtime)\b|shift swap|\bot\b worked|\bot\b planned", 102),
+        "work_ot_status": (r"\b(?:ot|overtime)\b", 108),
         "work_leave_balance": (r"leave balance|annual leave|medical leave|leave.*left", 125),
         "list_leave_records": (r"leave entries|leave records|recorded leave|show.*leave", 124),
         "list_work_roster": (r"roster entries|roster records|show.*roster", 118),
@@ -299,7 +300,7 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
         "planning_record_goal_contribution": (r"contributed|deposit.*goal|put.*goal", 112),
         "planning_goal_progress": (r"goal.*progress|how much.*goal|remaining.*goal|monthly contribution|show.*savings", 124),
         "planning_goal_deviation": (r"below plan|above plan|this month", 95),
-        "planning_record_cash": (r"bonus|refund|extra cash|ot.*paid|got.*\bot\b|received.*\bot\b|\bot\b.*(?:came in|credited|received)|salary.*received", 128),
+        "planning_record_cash": (r"bonus|refund|extra cash|\bot\b.*paid|got.*\bot\b|received.*\bot\b|\bot\b.*(?:came in|credited|received)|salary.*received", 128),
         "planning_cash_status": (r"unallocated|extra cash|cash.*left", 105),
         "planning_allocate_cash_to_goal": (r"allocate|put.*goal|channel.*goal", 118),
         "planning_create_cash_pool": (r"create.*(?:stash|pool)|new.*(?:stash|pool)|stash called", 130),
@@ -380,6 +381,64 @@ def _cap_tool_names(selected: set[str], user_text: str,
     return set((required_ranked + remaining)[:TOOL_EXPOSURE_MAX])
 
 
+_HA_DEVICE = r"(?:light|fan|switch|ac|air conditioner|thermostat|climate)"
+
+
+def _ha_action_requested(text: str) -> bool:
+    """Recognize an explicit device action regardless of verb/device word order."""
+    low = (text or "").casefold()
+    return bool(
+        re.search(
+            rf"\b(?:turn|switch)\s+(?:on|off)\b.{{0,60}}\b{_HA_DEVICE}\b"
+            rf"|\b(?:turn|switch)\b.{{0,60}}\b{_HA_DEVICE}\b.{{0,30}}\b(?:on|off)\b"
+            rf"|\btoggle\b.{{0,60}}\b{_HA_DEVICE}\b"
+            rf"|\bset\b.{{0,60}}\b{_HA_DEVICE}\b.*(?:%|degrees?|temperature)"
+            rf"|\b(?:play|pause)\b.*\b(?:media player|speaker|tv)\b",
+            low,
+        )
+    )
+
+
+def _ha_draft_request(text: str) -> bool:
+    low = (text or "").casefold()
+    return bool(re.search(
+        r"\b(?:draft|prepare|write|create|make)\b.*\b(?:home assistant\s+)?automation\b"
+        r"|\bautomation\b.*\b(?:draft|prepare|write)\b",
+        low,
+    ))
+
+
+def _ha_negated_or_hypothetical(text: str) -> bool:
+    low = (text or "").casefold()
+    return bool(re.search(
+        r"\b(?:do not|don't|dont|not asking(?: you)? to|not actually|"
+        r"without actually|hypothetical(?:ly)?|what would|how would|how you'd|"
+        r"just explain)\b",
+        low,
+    ))
+
+
+def _departure_query(text: str) -> bool:
+    low = (text or "").casefold()
+    return bool(re.search(
+        r"\b(?:what time|when)\s+(?:should|do)\s+i\s+leave\b"
+        r"|\bplan\s+my\s+departure\b"
+        r"|\bdeparture\s+(?:plan|time)\b"
+        r"|\bwhat time\b.*\bleave\s+home\b",
+        low,
+    ))
+
+
+_NEGATED_ACTION_PHRASE_RE = re.compile(
+    r"\b(?:do\s+not|don't|dont|not\s+asking(?:\s+you)?\s+to)\s+"
+    r"(?:actually\s+)?(?:add|create|record|log|save|remember|remove|delete|mark|"
+    r"complete|finish|reopen|cancel|update|change|edit|correct|fix|move|"
+    r"reschedule|allocate|channel|lock|activate|defer|turn|switch|set|link|"
+    r"share|publish|confirm|approve)\b",
+    re.IGNORECASE,
+)
+
+
 def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str], set[str]]:
     """Return deterministic force/block hints for unambiguous natural language.
 
@@ -445,6 +504,41 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         or (has_media and re.search(r"\b(?:add|log|record)\b.*\b(?:payment|receipt)\b", low))
     ):
         force.add("log_expense")
+
+    # Receipt retrieval is a distinct evidence domain from explicit saved memory.
+    # Natural wording such as "what receipts have I saved recently?" refers to
+    # automatically retained financial evidence, not save_item/search_saved_items.
+    explicit_saved_receipt_memory = bool(re.search(
+        r"\b(?:asked|told)\s+(?:you|alex)\s+to\s+(?:save|remember)\b"
+        r"|\b(?:saved|remembered)\s+(?:this|that|the)?\s*receipt\b"
+        r"|\breceipt\b.*\b(?:saved memory|memory note)\b",
+        low,
+    ))
+    receipt_read = bool(
+        re.search(r"\breceipts?\b", low)
+        and re.search(r"\b(?:find|show|send|open|get|have|saved|recent|recently|still)\b", low)
+        and not re.search(r"\b(?:save|remember)\s+this\b", low)
+    )
+    if receipt_read:
+        force |= {"find_receipts", "get_receipt"}
+        if explicit_saved_receipt_memory:
+            # "Show the receipt photo I asked you to save" explicitly targets
+            # the saved-memory index even though the subject is a receipt.
+            force |= {"search_saved_items", "get_saved_item"}
+        else:
+            block |= {"save_item", "search_saved_items", "get_saved_item", "remove_saved_item"}
+
+    # Explicit saved-picture/document retrieval is a two-stage operation:
+    # search the owner's saved-memory index, then fetch the exact attachment.
+    # Both reads must survive the six-tool exposure cap in the same turn.
+    if re.search(
+        r"\b(?:find|show|open|send|get|where(?:'s| is))\b.*"
+        r"\b(?:saved\s+)?(?:photo|picture|image|document|file)\b"
+        r"|\b(?:photo|picture|image|document|file)\b.*"
+        r"\b(?:i\s+(?:asked|told)\s+you\s+to\s+(?:save|keep)|saved)\b",
+        low,
+    ):
+        force |= {"search_saved_items", "get_saved_item"}
 
     # Explicit saved-memory creation/removal phrasing that does not necessarily
     # contain the historical "save this" / "remember" keywords.
@@ -624,17 +718,59 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
     ):
         force |= {"list_leave_records", "work_leave_balance"}
 
-    # Explicit low-risk HA action synonyms. Negated/hypothetical wording
-    # gets only entity/state reads and can never expose the mutator.
-    ha_switch = bool(re.search(
-        r"\b(?:switch|turn)\b.*\b(?:light|fan|switch|ac|air conditioner)\b.*\b(?:on|off)\b",
+    # A departure question is a read/planning request, not annual leave or a
+    # work-event write. Reserve both sides of a compound shift+departure ask.
+    if _departure_query(low):
+        force.add("work_departure_plan")
+        block |= {"work_record_event", "set_leave_record"}
+        if re.search(r"\b(?:shift|work)\b", low):
+            force.add("work_schedule")
+
+    # General non-HA negation: don't expose the exact mutation the user denied.
+    # Read tools remain available so Alex can still explain/show safely.
+    if re.search(
+        r"\b(?:do not|don't|dont|not asking(?: you)? to)\s+(?:actually\s+)?(?:save|remember)\b",
         low,
-    ))
-    ha_negated = bool(re.search(
-        r"\b(?:do not|don't|dont|not asking|not actually|without actually|hypothetical|what would)\b",
+    ):
+        block |= {"save_item", "remove_saved_item"}
+    if re.search(
+        r"\b(?:do not|don't|dont|not asking(?: you)? to)\s+(?:actually\s+)?"
+        r"(?:delete|remove|cancel|complete|reschedule|change|update)\b.*"
+        r"\b(?:reminder|reminders|remnder|remidn|remindn|remidr)\b",
         low,
-    ))
-    if ha_switch and ha_negated:
+    ):
+        block |= {"create_reminder", "update_reminder"}
+        if re.search(r"\b(?:show|list|tell|what)\b", low):
+            force.add("list_reminders")
+    if re.search(
+        r"\b(?:do not|don't|dont|not asking(?: you)? to)\s+(?:actually\s+)?"
+        r"(?:delete|remove)\b.*\b(?:saved|memory|note|remembered)\b",
+        low,
+    ):
+        block |= {"save_item", "remove_saved_item"}
+        force.add("search_saved_items")
+    if re.search(
+        r"\b(?:do not|don't|dont|not asking(?: you)? to)\s+(?:actually\s+)?"
+        r"(?:add|put)\b.*\b(?:shopping|grocery|list|milk|bread|bananas?|diapers?)\b",
+        low,
+    ):
+        block.add("add_shopping_item")
+    if re.search(
+        r"\b(?:do not|don't|dont|not asking(?: you)? to)\s+(?:actually\s+)?"
+        r"(?:delete|remove|mark)\b.*\b(?:shopping|grocery|list|milk|bread|bananas?|diapers?)\b",
+        low,
+    ):
+        block.add("update_shopping_item")
+
+    # Drafting an automation is not permission to operate the real device.
+    # Explicit device actions support both "turn the AC off" and "switch off the AC".
+    ha_draft = _ha_draft_request(low)
+    ha_switch = _ha_action_requested(low)
+    ha_negated = _ha_negated_or_hypothetical(low)
+    if ha_draft:
+        force.add("ha_draft_automation")
+        block.add("ha_control")
+    elif ha_switch and ha_negated:
         force |= {"ha_find_entities", "ha_get_state"}
         block.add("ha_control")
     elif ha_switch:
@@ -746,22 +882,27 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
             selected.add("add_shopping_item")
         if re.search(r"\b(?:remove|delete|bought|purchased|mark .*done|mark .*bought)\b", low):
             selected.add("update_shopping_item")
+    if re.search(
+        r"\b(?:voice\s*notes?|audio\s*notes?|recordings?|original\s+audio)\b",
+        low,
+    ):
+        selected |= MEDIA_TOOLS
+    if re.search(
+        r"\b(?:show|send|open|play|get)\b.*\b(?:voice\s*note|audio\s*note|recording)\b.*\b\d+\b",
+        low,
+    ):
+        selected |= {"resolve_numbered_choice", "get_media_original"}
     if re.search(r"\b(?:remember|saved|save this|find .*photo|find .*image|show .*document|keys photo|invitation)\b", low):
         selected |= MEMORY_TOOLS
     if re.search(r"\b(?:warranty|warranties|manual|serial number|appliance|asset)\b", low):
         selected |= ASSET_TOOLS | MEMORY_TOOLS
-    if re.search(r"\b(?:light|switch|fan|thermostat|climate|media player|home assistant|ac|air conditioner|home status|at home|turn on|turn off|state of)\b", low):
+    if re.search(r"\b(?:light|switch|fan|thermostat|climate|media player|home assistant|ac|air conditioner|home status|at home|turn on|turn off|switch on|switch off|state of)\b", low):
         selected |= HOME_READ_TOOLS
-        action_requested = bool(re.search(
-            r"\b(?:turn on|turn off|toggle|set .*%|set temperature|play|pause)\b",
-            low,
-        ))
-        negated = bool(re.search(
-            r"\b(?:do not|don't|dont|not actually|without actually|how would|"
-            r"what would|hypothetical|hypothetically|just explain)\b",
-            low,
-        ))
-        if action_requested and not negated:
+        if (
+            _ha_action_requested(low)
+            and not _ha_negated_or_hypothetical(low)
+            and not _ha_draft_request(low)
+        ):
             selected.add("ha_control")
     if re.search(r"\b(?:why didn't|why did not|health|diagnostic|fail|failed|failure|failing|error|offline|didn't reply|did not reply)\b", low):
         selected |= DIAGNOSTIC_TOOLS
@@ -812,6 +953,178 @@ async def _tool_specs_for_names(wanted: set[str]) -> list[dict]:
     async with Client(mcp) as client:
         result = await client.list_tools()
         return [_tool_to_openai(t) for t in result.tools if t.name in wanted]
+
+
+_SEMANTIC_STOPWORDS = {
+    "a", "an", "and", "the", "to", "for", "of", "my", "our", "me", "i", "we",
+    "please", "alex", "can", "could", "would", "you", "this", "that", "it", "some",
+    "something", "with", "from", "on", "in", "at", "is", "are", "be", "do", "did",
+}
+
+_SEMANTIC_EXPANSIONS = {
+    "shopping": {"grocery", "groceries", "buy", "bought", "purchase", "purchased", "list"},
+    "reminder": {"remind", "notify", "notification", "alarm"},
+    "finance": {"expense", "expenses", "spent", "paid", "payment", "transaction", "money", "ledger"},
+    "receipt": {"invoice", "payment", "reference", "document"},
+    "memory": {"save", "saved", "remember", "note", "recall"},
+    "task": {"todo", "to-do", "done", "complete", "finish"},
+    "diary": {"calendar", "appointment", "meeting", "event", "agenda"},
+    "plan": {"trip", "holiday", "vacation", "draft", "brainstorm"},
+    "goal": {"saving", "savings", "target", "contribution"},
+    "cash": {"stash", "pool", "bonus", "salary", "overtime", "ot", "allocate"},
+    "bill": {"electricity", "tnb", "obligation", "due", "unpaid"},
+    "work": {"shift", "roster", "leave", "mc", "overtime", "departure"},
+    "asset": {"warranty", "appliance", "manual", "serial", "device"},
+    "home": {"light", "fan", "switch", "climate", "ac", "thermostat", "entity"},
+    "monitor": {"track", "watch", "follow"},
+    "report": {"summary", "snapshot", "export", "dashboard", "pdf"},
+}
+
+_SEMANTIC_MUTATION_WORDS = {
+    "add", "create", "record", "log", "change", "update", "remove", "delete",
+    "mark", "complete", "finish", "reopen", "cancel", "move", "reschedule",
+    "allocate", "lock", "activate", "defer", "turn", "switch", "set", "save",
+    "remember", "share", "confirm", "approve",
+}
+
+
+def _semantic_terms(value: str) -> set[str]:
+    raw = set(re.findall(r"[a-z0-9]+", (value or "").casefold()))
+    terms = {word for word in raw if word not in _SEMANTIC_STOPWORDS and len(word) > 1}
+    expanded = set(terms)
+    for key, synonyms in _SEMANTIC_EXPANSIONS.items():
+        if key in terms or terms & synonyms:
+            expanded.add(key)
+            expanded |= synonyms
+    return expanded
+
+
+def _semantic_mutation_requested(intent: str) -> bool:
+    return bool(_semantic_terms(intent) & _SEMANTIC_MUTATION_WORDS)
+
+
+_TRUSTED_MUTATION_RE = re.compile(
+    r"\b(?:add|create|record|log|save|remember|remove|delete|mark|complete|finish|"
+    r"reopen|cancel|update|change|edit|correct|fix|move|reschedule|allocate|channel|"
+    r"lock|activate|defer|turn|switch|set|link|share|publish|confirm|approve|"
+    r"spent|paid|bought|received|credited|came\s+in)\b",
+    re.IGNORECASE,
+)
+def _trusted_mutation_requested(text: str) -> bool:
+    """Conservative mutation gate based only on trusted user-authored context.
+
+    A model-written normalization can suggest *which* capability is relevant,
+    but it cannot create write permission. Scoped negative imperatives are
+    removed before looking for a remaining positive action, so:
+      "don't delete the reminder, add milk" may expose shopping mutation but
+      not reminder deletion, while "don't worry, add milk" still works.
+    Hypothetical/explanatory requests never grant discovery write permission.
+    """
+    value = (text or "").strip()
+    if not value:
+        return False
+    if re.search(
+        r"\b(?:hypothetical(?:ly)?|what\s+would|how\s+would|how\s+you'd|"
+        r"without\s+actually|just\s+explain)\b",
+        value,
+        re.IGNORECASE,
+    ):
+        return False
+    probe = _NEGATED_ACTION_PHRASE_RE.sub(" ", value)
+    return bool(_TRUSTED_MUTATION_RE.search(probe))
+
+
+async def _discover_tool_specs(
+    intent: str,
+    media_context: list[str] | None = None,
+    *,
+    original_user_text: str | None = None,
+    trusted_context_text: str | None = None,
+) -> list[dict]:
+    """v0.5 semantic rescue for the model-facing discovery façade.
+
+    Direct deterministic routing remains first because it encodes owner safety
+    policy.  When novel wording survives that gate, the normalized intent from
+    the reasoning model is compared with the real MCP tool names/descriptions.
+    Read-only candidates may be added freely. Mutators may be considered only
+    when trusted user-authored context still contains a positive action after
+    scoped negations/hypotheticals are removed.
+    """
+    trusted_basis = " ".join(
+        part.strip()
+        for part in (original_user_text or "", trusted_context_text or "")
+        if str(part or "").strip()
+    ).strip() or (original_user_text or "")
+    allow_mutation = _trusted_mutation_requested(trusted_basis)
+
+    # Re-apply the owner-authored block rules from the ORIGINAL trusted text.
+    # A model-produced normalized intent must never resurrect a mutation that
+    # the user's wording explicitly negated or routed to a read-only domain.
+    _, original_blocked = _routing_refinements(
+        trusted_basis,
+        has_media=bool(media_context),
+    )
+
+    direct = _select_tool_names(intent, media_context)
+    direct = {
+        name for name in direct
+        if name not in original_blocked
+        and (not _is_mutating_tool(name) or allow_mutation)
+    }
+    direct_specs = await _tool_specs_for_names(direct)
+    by_name = {
+        spec["function"]["name"]: spec
+        for spec in direct_specs
+        if spec.get("function", {}).get("name")
+    }
+    if len(by_name) >= TOOL_EXPOSURE_MAX - 1:
+        ranked = sorted(
+            by_name.values(),
+            key=lambda spec: -_tool_priority(
+                spec["function"]["name"], intent, bool(media_context)
+            ),
+        )
+        return ranked[:TOOL_EXPOSURE_MAX - 1]
+
+    terms = _semantic_terms(intent)
+    if not terms:
+        return list(by_name.values())[:TOOL_EXPOSURE_MAX - 1]
+    # Semantic action words in a model-written normalization are insufficient
+    # to authorize writes; only the trusted user/quoted context can do that.
+    async with Client(mcp) as client:
+        result = await client.list_tools()
+
+    scored: list[tuple[int, str, dict]] = []
+    for tool in result.tools:
+        name = str(tool.name)
+        if name in by_name or name in LEGACY_SIMPLE_PLANNING:
+            continue
+        if name in original_blocked:
+            continue
+        if _is_mutating_tool(name) and not allow_mutation:
+            continue
+        hay = _semantic_terms(name.replace("_", " ") + " " + (tool.description or ""))
+        overlap = terms & hay
+        if not overlap:
+            continue
+        # Name matches are stronger than prose-description matches.
+        name_terms = _semantic_terms(name.replace("_", " "))
+        score = len(overlap) + 2 * len(terms & name_terms)
+        if score > 0:
+            scored.append((score, name, _tool_to_openai(tool)))
+
+    for _, name, spec in sorted(scored, key=lambda row: (-row[0], row[1])):
+        by_name[name] = spec
+        if len(by_name) >= TOOL_EXPOSURE_MAX - 1:
+            break
+
+    ranked = sorted(
+        by_name.values(),
+        key=lambda spec: -_tool_priority(
+            spec["function"]["name"], intent, bool(media_context)
+        ),
+    )
+    return ranked[:TOOL_EXPOSURE_MAX - 1]
 
 
 def _pure_chat(user_text: str, media_context: list[str] | None = None) -> bool:
@@ -868,13 +1181,96 @@ def _money_only_reply(user_text: str) -> bool:
     )) and not bool(re.fullmatch(r"\s*[123]\s*", text))
 
 
+def _is_contextual_followup(user_text: str) -> bool:
+    """Whether a turn is unsafe to route without the preceding user intent."""
+    text = (user_text or "").strip()
+    low = text.casefold()
+    if not text:
+        return False
+    if len(text) <= 80 and re.search(
+        r"^(?:actually|yes|no|yep|nope|okay|ok|same|instead|then|also)\b",
+        low,
+    ):
+        return True
+    return bool(re.search(
+        r"\b(?:that|it|this|those|them|same one|again|previous|earlier)\b",
+        low,
+    )) and len(text) <= 140
+
+
+def _contextual_tool_hints(user_text: str, prior_user_text: str | None) -> tuple[set[str], set[str]]:
+    """Recover the *domain* of a short follow-up without replaying old writes.
+
+    Conversation history is useful for intent focus, but the previous mutator
+    must never be blindly replayed. The returned pair is (add, block).
+    """
+    if not prior_user_text or not _is_contextual_followup(user_text):
+        return set(), set()
+
+    current = (user_text or "").casefold()
+    previous = (prior_user_text or "").casefold()
+    prior_tools = _select_tool_names(prior_user_text)
+    add: set[str] = set()
+    block: set[str] = set()
+
+    # Carry read/retrieval context freely; these cannot duplicate a write.
+    add |= {name for name in prior_tools if name in READ_ONLY_TOOLS}
+
+    # "Actually it was RM12.80" after a financial write is a correction, not a
+    # second expense. This is the exact multi-turn failure family from smoke.
+    if (
+        (prior_tools & {"log_expense", "query_finances", "correct_expense"})
+        and (
+            re.search(r"\b(?:actually|correction|wrong|instead)\b", current)
+            or _money_only_reply(user_text)
+        )
+    ):
+        add |= {"query_finances", "correct_expense"}
+        block |= {"log_expense", "confirm_expense"}
+
+    # Attachment/record retrieval follow-ups such as "send me that again".
+    if prior_tools & {"find_receipts", "get_receipt"}:
+        add |= {"find_receipts", "get_receipt"}
+    if prior_tools & {"search_saved_items", "get_saved_item"}:
+        add |= {"search_saved_items", "get_saved_item"}
+
+    # Pronoun HA continuation is allowed only when the preceding user turn
+    # established an HA domain and the CURRENT turn explicitly asks for an
+    # action. The prior turn supplies object focus, never write authorization.
+    if (
+        prior_tools & HOME_TOOLS
+        and re.search(
+            r"\b(?:turn|switch)\s+(?:it|that)\s+(?:on|off)\b"
+            r"|\b(?:turn|switch)\s+(?:on|off)\s+(?:it|that)\b",
+            current,
+        )
+        and not _ha_negated_or_hypothetical(current)
+    ):
+        add |= {"ha_find_entities", "ha_get_state", "ha_control"}
+
+    # Keep object lifecycle context, but do not repeat the previous mutation.
+    lifecycle_reads = {
+        "list_reminders", "list_shopping_items", "list_tasks", "list_plans",
+        "get_agenda", "get_agenda_range", "planning_list_goals",
+        "planning_goal_progress", "bills_list",
+    }
+    add |= prior_tools & lifecycle_reads
+    return add, block
+
+
 async def _tool_specs(user_text: str, media_context: list[str] | None = None,
-                      quoted_context: dict | None = None) -> list[dict]:
+                      quoted_context: dict | None = None,
+                      prior_user_text: str | None = None) -> list[dict]:
     # Casual conversation stays model-only unless a trusted WhatsApp reply
     # carries a persisted object that the user is explicitly continuing.
     if _pure_chat(user_text, media_context) and not quoted_context:
         return []
     wanted = _select_tool_names(user_text, media_context)
+    contextual_add, contextual_block = _contextual_tool_hints(
+        user_text, prior_user_text
+    )
+    wanted |= contextual_add
+    wanted -= contextual_block
     if quoted_context:
         carried_intent = (
             quoted_context.get("quoted_user_text")
@@ -895,7 +1291,9 @@ async def _tool_specs(user_text: str, media_context: list[str] | None = None,
         wanted |= {"list_pending_expenses", "confirm_expense", "log_expense", "query_finances"}
     if not wanted and not _casual_chat(user_text):
         wanted = set(CORE_READ_FALLBACK)
-    wanted = _cap_tool_names(wanted, user_text, media_context)
+    wanted = _cap_tool_names(
+        wanted, user_text, media_context, required=contextual_add
+    )
     specs = await _tool_specs_for_names(wanted)
     # The discovery tool is a tiny safety valve for typo-heavy, incomplete,
     # Tanglish or otherwise novel phrasing. It lets the LLM normalize intent
@@ -1376,14 +1774,22 @@ def _strip_internal(data: dict) -> tuple[dict, list[dict]]:
     return clean, attachments if isinstance(attachments, list) else []
 
 
-def _action_key(actor: ActorContext, tool_name: str, args: dict, occurrence: int) -> str:
+def _action_key(actor: ActorContext, tool_name: str, args: dict, occurrence: int = 1) -> str:
+    """Stable per-message/tool/arguments idempotency key.
+
+    The model may accidentally emit the exact same tool call twice in one turn
+    or repeat it after a tool round. Including an occurrence counter would turn
+    those retries into different mutations. Exact duplicate calls from one
+    inbound WhatsApp message therefore share one key and collapse safely.
+    """
     canonical = json.dumps(args, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    raw = f"{actor.source_message_id}|{tool_name}|{canonical}|{occurrence}"
+    raw = f"{actor.source_message_id}|{tool_name}|{canonical}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 READ_ONLY_TOOLS = {
     "query_finances","list_pending_expenses","find_receipts","get_receipt",
+    "find_media","get_media_original",
     "search_saved_items","get_saved_item","resolve_numbered_choice","list_reminders","reminder_history",
     "list_shopping_items","ha_find_entities","ha_get_state","ha_home_summary",
     "ha_home_report","ha_draft_automation","list_work_roster","list_leave_records",
@@ -1538,7 +1944,7 @@ def _history_user_text(actor: ActorContext, user_text: str,
                        vision_parts: list[dict] | None) -> str:
     """What gets remembered as the user's turn.
 
-    v0.4.4: never persist OCR/PDF/transcript blobs into conversation history;
+    Privacy invariant: never persist OCR/PDF/transcript blobs into conversation history;
     replaying them later leaked unrelated content into new turns. Store only
     the user's own words plus compact markers.
     """
@@ -1590,8 +1996,8 @@ def _trace_turn(actor: ActorContext, trace: dict) -> None:
 
 
 _ATTACHMENT_RETRIEVAL_TOOLS = {
-    "find_receipts", "get_receipt", "search_saved_items",
-    "get_saved_item", "resolve_numbered_choice",
+    "find_receipts", "get_receipt", "find_media", "get_media_original",
+    "search_saved_items", "get_saved_item", "resolve_numbered_choice",
 }
 
 
@@ -1617,6 +2023,61 @@ def _attachment_request_finished(trace: dict) -> bool:
         return False
     meaningful = [x for x in called if x != DISCOVERY_TOOL_NAME]
     return bool(meaningful) and all(x in _ATTACHMENT_RETRIEVAL_TOOLS for x in meaningful)
+
+
+_CAPABILITY_DENIAL_RE = re.compile(
+    r"\b(?:i\s+)?(?:do\s+not|don't|dont)\s+have\s+(?:the\s+)?(?:ability|capability|access)\b"
+    r"|\b(?:i\s+)?(?:cannot|can't|cant|am\s+unable\s+to|am\s+not\s+able\s+to)\s+"
+    r"(?:access|update|change|mark|add|remove|retrieve|check|manage|do)\b",
+    re.IGNORECASE,
+)
+
+
+def _looks_like_false_capability_denial(text: str) -> bool:
+    """Detect an unsupported capability claim, not a privacy/ACL refusal."""
+    value = text or ""
+    low = value.casefold()
+    if re.search(
+        r"\b(?:private|privacy|permission|authorized|authorised|"
+        r"another person|someone else|spouse|wife|husband)\b",
+        low,
+    ):
+        return False
+    return bool(_CAPABILITY_DENIAL_RE.search(value))
+
+
+def _requested_non_english_output(user_text: str) -> bool:
+    low = (user_text or "").casefold()
+    return bool(re.search(
+        r"\b(?:reply|answer|respond|translate|say|write)\b.{0,30}"
+        r"\b(?:tamil|malay|bahasa|indonesian|mandarin|chinese)\b",
+        low,
+    ))
+
+
+def _looks_like_wrong_language_reply(text: str, user_text: str = "") -> bool:
+    """Catch obvious Malay/Indonesian answer drift when English is required.
+
+    This is deliberately narrow: Malay remains valid input, and an explicit
+    request for another output language always wins.
+    """
+    if _requested_non_english_output(user_text):
+        return False
+    value = text or ""
+    low = value.casefold()
+    markers = (
+        "mohon maaf", "apakah anda", "silakan", "bermaksud",
+        "sebelumnya", "jika anda", "ingin saya", "perlu saya",
+    )
+    # Tamil is a supported *input* language, but Alex's owner-selected default
+    # output is English. A fully Tamil answer without an explicit language
+    # request is therefore the same drift class as the observed Indonesian
+    # response.
+    tamil_chars = len(re.findall(r"[\u0B80-\u0BFF]", value))
+    return (
+        sum(1 for marker in markers if marker in low) >= 2
+        or tamil_chars >= 4
+    )
 
 
 async def respond(actor: ActorContext, user_text: str, media_context: list[str] | None = None,
@@ -1657,7 +2118,19 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
             return local_reply, []
 
     settings = get_settings()
-    tools = await _tool_specs(user_text, media_context, quoted_context)
+    prior_turns = recent_turns(actor.conversation_id, 6)
+    prior_user_text = next(
+        (
+            str(turn["content"])
+            for turn in reversed(prior_turns)
+            if turn["role"] == "user"
+        ),
+        None,
+    )
+    tools = await _tool_specs(
+        user_text, media_context, quoted_context,
+        prior_user_text=prior_user_text,
+    )
     trace["exposed_tools"] = [x["function"]["name"] for x in tools] if tools else []
     routes = _provider_routes(
         settings, user_text=user_text, tools=tools,
@@ -1727,6 +2200,8 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
     route_index = 0
     active_route: dict | None = None
     provider_failures: list[dict] = []
+    capability_retry_used = False
+    language_retry_used = False
 
     for _ in range(MAX_MODEL_CALLS):
         # If the cheap model is genuinely looping through tools, escalate the
@@ -1794,7 +2269,59 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
         )
 
         if not calls:
-            final = _content_text(msg.content).strip() or ("Here it is." if attachments else "Done.")
+            candidate = _content_text(msg.content).strip() or ("Here it is." if attachments else "Done.")
+
+            # Real smoke tests exposed a dangerous model failure mode: the
+            # model sometimes claimed Alex "doesn't have the ability" even
+            # though the correct MCP mutator/read was already available. Give
+            # it one bounded self-correction turn instead of returning a false
+            # capability statement to the household.
+            if (
+                tools
+                and not capability_retry_used
+                and not any(
+                    str(name) != DISCOVERY_TOOL_NAME
+                    for name in (trace.get("tools_called") or [])
+                )
+                and _looks_like_false_capability_denial(candidate)
+            ):
+                capability_retry_used = True
+                messages.append({"role": "assistant", "content": candidate})
+                messages.append({
+                    "role": "system",
+                    "content": (
+                        "Re-evaluate that answer. Alex has the MCP tools currently supplied to you. "
+                        "Do not claim a capability is unavailable before trying the relevant tool. "
+                        "Use the appropriate supplied tool, use discover_alex_tools if needed, or ask "
+                        "one focused clarification when the user's intent is genuinely ambiguous. "
+                        "Reply in English."
+                    ),
+                })
+                trace["routes"].append("self_repair:capability_denial")
+                continue
+
+            # The system contract requires English unless the user explicitly
+            # asks otherwise. A narrow post-answer guard repairs the exact
+            # Malay/Indonesian drift seen in live voice testing. No tools are
+            # exposed during this rewrite, so committed actions cannot repeat.
+            if (
+                not language_retry_used
+                and _looks_like_wrong_language_reply(candidate, user_text)
+            ):
+                language_retry_used = True
+                messages.append({"role": "assistant", "content": candidate})
+                messages.append({
+                    "role": "system",
+                    "content": (
+                        "Rewrite only your immediately previous answer in concise English. "
+                        "Preserve its factual meaning. Do not perform or repeat any household action."
+                    ),
+                })
+                tools = []
+                trace["routes"].append("self_repair:reply_language")
+                continue
+
+            final = candidate
             _record_usage_buckets(actor.source_message_id, usage_by_route)
             add_turn(actor.user_id, actor.conversation_id, "user", history_user)
             add_turn(actor.user_id, actor.conversation_id, "assistant", final)
@@ -1818,8 +2345,19 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
             if name == DISCOVERY_TOOL_NAME:
                 trace["tools_called"].append(name)
                 normalized = str(args.get("intent") or "").strip()
-                discovered = _select_tool_names(normalized, media_context)
-                discovered_specs = await _tool_specs_for_names(discovered)
+                trusted_context_text = ""
+                if quoted_context:
+                    trusted_context_text = str(
+                        quoted_context.get("quoted_user_text")
+                        or quoted_context.get("recent_user_instruction")
+                        or ""
+                    )
+                discovered_specs = await _discover_tool_specs(
+                    normalized,
+                    media_context,
+                    original_user_text=user_text,
+                    trusted_context_text=trusted_context_text,
+                )
                 tools = discovered_specs[:TOOL_EXPOSURE_MAX - 1] + [DISCOVERY_TOOL]
                 trace["exposed_tools"] = sorted(set(trace["exposed_tools"]) | {
                     x["function"]["name"] for x in tools
@@ -1834,6 +2372,7 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                             x["function"]["name"]
                             for x in discovered_specs[:TOOL_EXPOSURE_MAX - 1]
                         ],
+                        "semantic_rescue": True,
                     }, ensure_ascii=False, separators=(",", ":")),
                 })
                 continue

@@ -26,11 +26,51 @@ const CERT_RUN_URL = 'http://127.0.0.1:5001/certification-live';
 const CERT_REPORT_URL = 'http://127.0.0.1:5001/certification-report';
 const EGRESS_PORT = 5002;
 const UI_PORT = 8099;
+// If a private-DM turn is genuinely slow (voice transcription, OCR, provider
+// recovery, etc.), acknowledge it without interrupting the durable final reply.
+// Group messages are excluded because an untracked interim reply would weaken
+// quoted-message context binding there.
+const SLOW_ACK_MS = 6000;
+const SLOW_ACK_TEXT = 'Sure, I’m working on that and will get it to you shortly…';
 const logger = pino({ level: process.env.ALEX_LOG_LEVEL || 'silent' });
 
 let currentSock = null;
 let cachedVersion = null;
 let starting = false;
+const recentInboundMessages = new Map();
+const INBOUND_QUOTE_TTL_MS = 2 * 60 * 60 * 1000;
+const INBOUND_QUOTE_MAX = 500;
+
+function inboundQuoteKey(jid, messageId) {
+  return String(jid || '') + '|' + String(messageId || '');
+}
+
+function rememberInboundForReply(message) {
+  const jid = message && message.key ? message.key.remoteJid : null;
+  const id = message && message.key ? message.key.id : null;
+  if (!jid || !id) return;
+  const now = Date.now();
+  recentInboundMessages.set(inboundQuoteKey(jid, id), { message, storedAt: now });
+  for (const [key, entry] of recentInboundMessages) {
+    if (now - entry.storedAt > INBOUND_QUOTE_TTL_MS) recentInboundMessages.delete(key);
+  }
+  while (recentInboundMessages.size > INBOUND_QUOTE_MAX) {
+    const first = recentInboundMessages.keys().next().value;
+    recentInboundMessages.delete(first);
+  }
+}
+
+function rememberedInboundForReply(jid, messageId) {
+  if (!jid || !messageId) return undefined;
+  const key = inboundQuoteKey(jid, messageId);
+  const entry = recentInboundMessages.get(key);
+  if (!entry) return undefined;
+  if (Date.now() - entry.storedAt > INBOUND_QUOTE_TTL_MS) {
+    recentInboundMessages.delete(key);
+    return undefined;
+  }
+  return entry.message;
+}
 let manualReset = false;
 let pairing = {
   status: 'starting',
@@ -286,6 +326,12 @@ async function handleIncoming(message) {
   const media = detectMedia(message);
   if (!rawText && !media.type) return;
 
+  // Keep the exact inbound WAMessage briefly so the durable final response can
+  // render as a real WhatsApp reply to the user's original message. If Alex is
+  // restarted before delivery, the response still sends normally without the
+  // quote rather than fabricating a partial WAMessage.
+  rememberInboundForReply(message);
+
   try {
     if (currentSock) await currentSock.sendPresenceUpdate('composing', remoteJid);
   } catch (_err) {}
@@ -307,7 +353,28 @@ async function handleIncoming(message) {
     audio_data: media.type === 'audio' && mediaData ? mediaData.data : null,
     audio_mime_type: media.type === 'audio' && mediaData ? mediaData.mimeType : null,
     pdf_data: media.type === 'pdf' && mediaData ? mediaData.data : null,
+    media_failed: Boolean(media.type && !mediaData),
+    media_failed_type: media.type || null,
   };
+
+  let slowAckTimer = null;
+  if (!isGroup) {
+    slowAckTimer = setTimeout(async function() {
+      try {
+        if (currentSock) {
+          await currentSock.sendMessage(
+            remoteJid,
+            { text: SLOW_ACK_TEXT },
+            { quoted: message }
+          );
+          // Keep the visible working state after the interim acknowledgement.
+          try { await currentSock.sendPresenceUpdate('composing', remoteJid); } catch (_err) {}
+        }
+      } catch (err) {
+        console.error('[Alex MCP] Slow acknowledgement failed:', err.message);
+      }
+    }, SLOW_ACK_MS);
+  }
 
   try {
     await forwardToPython(payload);
@@ -318,6 +385,8 @@ async function handleIncoming(message) {
         await currentSock.sendMessage(remoteJid, { text: 'Alex is temporarily unavailable. Please try that message once more.' });
       }
     } catch (_err) {}
+  } finally {
+    if (slowAckTimer) clearTimeout(slowAckTimer);
   }
 }
 
@@ -637,14 +706,23 @@ function startEgress() {
         if (!to) throw new Error('Missing target conversation');
 
         let sent;
+        const quoted = rememberedInboundForReply(to, payload.reply_to_message_id);
+        const sendOptions = {};
+        if (payload.message_id) sendOptions.messageId = String(payload.message_id);
+        if (quoted) sendOptions.quoted = quoted;
         if (payload.kind === 'text') {
-          sent = await currentSock.sendMessage(to, { text: payload.text || '' });
+          sent = await currentSock.sendMessage(to, { text: payload.text || '' }, sendOptions);
         } else if (payload.kind === 'image') {
           const buf = Buffer.from(payload.file_b64 || '', 'base64');
-          sent = await currentSock.sendMessage(to, { image: buf, mimetype: payload.mimetype || 'image/jpeg', caption: payload.caption || undefined });
+          sent = await currentSock.sendMessage(to, { image: buf, mimetype: payload.mimetype || 'image/jpeg', caption: payload.caption || undefined }, sendOptions);
         } else if (payload.kind === 'document') {
           const buf = Buffer.from(payload.file_b64 || '', 'base64');
-          sent = await currentSock.sendMessage(to, { document: buf, mimetype: payload.mimetype || 'application/octet-stream', fileName: payload.filename || 'file', caption: payload.caption || undefined });
+          sent = await currentSock.sendMessage(to, { document: buf, mimetype: payload.mimetype || 'application/octet-stream', fileName: payload.filename || 'file', caption: payload.caption || undefined }, sendOptions);
+        } else if (payload.kind === 'audio') {
+          const buf = Buffer.from(payload.file_b64 || '', 'base64');
+          const mime = String(payload.mimetype || 'audio/ogg').toLowerCase();
+          const ptt = mime.includes('audio/ogg') || mime.includes('audio/opus');
+          sent = await currentSock.sendMessage(to, { audio: buf, mimetype: payload.mimetype || 'audio/ogg', ptt }, sendOptions);
         } else {
           throw new Error('Unsupported outbound kind');
         }

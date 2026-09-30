@@ -6,6 +6,7 @@ media/archive layer; this module never duplicates document contents.
 from __future__ import annotations
 
 import uuid
+import re
 from datetime import date, timedelta
 
 import compat_tools as tools
@@ -137,6 +138,47 @@ def create_asset(name, sender_phone, conversation_type="DIRECT_DM",
         return {"asset_id": ident, "name": str(name).strip(), "space": space_id}
     finally:
         conn.close()
+
+
+def resolve_asset_reference(asset_id, asset_name, sender_phone,
+                            conversation_type="DIRECT_DM"):
+    """Resolve one authorized asset by id or a unique natural name."""
+    ensure_schema()
+    if asset_id:
+        conn = tools.get_db()
+        try:
+            return _authorized_asset(
+                conn, asset_id, sender_phone, conversation_type
+            )["asset_id"]
+        finally:
+            conn.close()
+
+    wanted = " ".join(re.findall(
+        r"[a-z0-9]+", str(asset_name or "").casefold()
+    ))
+    if not wanted:
+        raise ValueError("Provide asset_id or asset_name.")
+    rows = list_assets(
+        sender_phone, conversation_type, requested_scope="all",
+        include_documents=False,
+    )
+    def norm(value):
+        return " ".join(re.findall(
+            r"[a-z0-9]+", str(value or "").casefold()
+        ))
+    exact = [row for row in rows if norm(row.get("name")) == wanted]
+    candidates = exact or [
+        row for row in rows
+        if wanted in norm(row.get("name")) or norm(row.get("name")) in wanted
+    ]
+    if len(candidates) == 1:
+        return candidates[0]["asset_id"]
+    if not candidates:
+        raise ValueError(
+            f"No authorized asset uniquely matches {asset_name!r}."
+        )
+    names = ", ".join(str(row.get("name")) for row in candidates[:5])
+    raise ValueError("Asset name is ambiguous; ask which one: " + names)
 
 
 def link_document(asset_id, document_type, evidence_ref, sender_phone,

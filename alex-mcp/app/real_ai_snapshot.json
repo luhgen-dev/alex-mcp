@@ -1,0 +1,2944 @@
+{
+  "snapshot_version": 3,
+  "corpus_fingerprint": "c9710998dc597b5038e71de661be26bc53b2d4bd9e85d209442e852c3a323eb1",
+  "reviewer": "GPT-5.6 Sol",
+  "review_date": "2026-09-30",
+  "method": "Delta-preserving model review: 341 prior independent-model decisions were carried forward only after byte-identical public-packet comparison; 16 changed/new packets were re-evaluated by GPT-5.6 Sol from their public prompt/history/exposed-tool surface. The 16-packet delta is engineering review, not claimed as a blind first pass.",
+  "decision_count": 357,
+  "parent_review": {
+    "corpus_fingerprint": "b18c7ad37ebf9473e8b172451b5a4c8697df4b618e996b576e5ddea16c2b253e",
+    "decision_count": 343,
+    "independent_model_pass": true,
+    "carried_forward_unchanged": 341
+  },
+  "delta_review": {
+    "changed_existing": 2,
+    "newly_added": 14,
+    "reviewed_packet_ids": [
+      "hai-e73b10724da86ed4f0",
+      "hai-d8733153ef7389c192",
+      "hai-eabd98a5ea575ff841",
+      "hai-e5ad31cc185681924b",
+      "hai-f47c7e08de24cc532f",
+      "hai-8665ac290f17712270",
+      "hai-e1668ef5363fae6f8d",
+      "hai-47e771ca5b6d2f5bd4",
+      "hai-7a1b0de8c5bc673282",
+      "hai-0993135dba7af09a6f",
+      "hai-17ce24e873619d6d16",
+      "hai-c07d4ded221e3c31a4",
+      "hai-8c29e2e55f8172c15a",
+      "hai-ebdff19df4ccd622fa",
+      "hai-3f705f38ea60cc3372",
+      "hai-45aea85483877f2c47"
+    ]
+  },
+  "decisions_by_packet_id": {
+    "hai-67cc9abde97b9547d4": {
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-4f41a4cffdac231060": {
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-5beaa49621c6fae2c8": {
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-66725bcb9186436190": {
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-bfeafbeb735ca95ca3": {
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-413641312a5af7e5a3": {
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-c410da727c4f327dae": {
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-c1f9ff29f665bf2ad4": {
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-68205abb6105a3d389": {
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-8b2b4bcf465e7fa8a6": {
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-c0d46574b54d91b256": {
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-c800b489c3360d5d3b": {
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-23dda30b7ebc3db1da": {
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-db91940f8199e9d8a2": {
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-d9bb4b14d0a865274e": {
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-825956a34ae53e9e9c": {
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-95cb48754b56c477f3": {
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-77baf1c2b3559900a2": {
+      "decision": "tools",
+      "tools": [
+        "log_expense"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-068f6ff4b0ea286f7a": {
+      "decision": "tools",
+      "tools": [
+        "log_expense"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-47cec5bafd96ee474e": {
+      "decision": "tools",
+      "tools": [
+        "log_expense"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-7715b86564feaf97f7": {
+      "decision": "tools",
+      "tools": [
+        "log_expense"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-1375f80d7af0b9291f": {
+      "decision": "tools",
+      "tools": [
+        "find_receipts",
+        "get_receipt"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-72b7c5ac49574f6483": {
+      "decision": "tools",
+      "tools": [
+        "find_receipts",
+        "get_receipt"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-d95d202a99cc4e073f": {
+      "decision": "tools",
+      "tools": [
+        "find_receipts",
+        "get_receipt"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-515b0a7f466902ccd9": {
+      "decision": "tools",
+      "tools": [
+        "find_receipts",
+        "get_receipt"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-2e024a0333594b5c24": {
+      "decision": "tools",
+      "tools": [
+        "log_expense"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-2c50b93718fb4e3ad4": {
+      "decision": "tools",
+      "tools": [
+        "log_expense"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-de6782d2f5a42eda80": {
+      "decision": "tools",
+      "tools": [
+        "log_expense"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-6b45d73b224044c2cb": {
+      "decision": "tools",
+      "tools": [
+        "log_expense"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-a2ba9a16fcc6b2394d": {
+      "decision": "tools",
+      "tools": [
+        "save_item"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-519d8088711a7a02c0": {
+      "decision": "tools",
+      "tools": [
+        "save_item"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-01dc5ea60526c48f7f": {
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-afdcc56d9769d6c05f": {
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-71300323a628d49dc9": {
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-bbb49eada66faa8445": {
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-bbcfe0b3f2d3fb0069": {
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-c9fb693dc08b2e3321": {
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-8537f11b2cc3e51f79": {
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-baa5b89a05dff33367": {
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-915b5b3c81616a372d": {
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-5d6b462a37e1c1e8ff": {
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-2b85619c767e746ce3": {
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-1a805369128ccc85b6": {
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-4c347ea90cd43c041c": {
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-222a12b77ea428a4f6": {
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-39b4c31b87510a2745": {
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-9fc0bbe70ba951e90b": {
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-532b6ed042bbbbef33": {
+      "decision": "tools",
+      "tools": [
+        "create_reminder"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-646475a2377de6afab": {
+      "decision": "tools",
+      "tools": [
+        "create_reminder"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-f995683065b81ebd91": {
+      "decision": "tools",
+      "tools": [
+        "create_reminder"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-8f6f39c657135f731c": {
+      "decision": "tools",
+      "tools": [
+        "create_reminder"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-2d92764e39a9411fae": {
+      "decision": "tools",
+      "tools": [
+        "list_shopping_items"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-065d34499482cef514": {
+      "decision": "tools",
+      "tools": [
+        "list_shopping_items"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-ff41ed8c1ae1892f93": {
+      "decision": "tools",
+      "tools": [
+        "list_shopping_items"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-e9618918b31c54eba3": {
+      "decision": "tools",
+      "tools": [
+        "list_shopping_items"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-804cad3102ea0011a2": {
+      "decision": "tools",
+      "tools": [
+        "add_shopping_item"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-5b7f03b377bbea3aad": {
+      "decision": "tools",
+      "tools": [
+        "add_shopping_item"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-9117b1118d4a3ee713": {
+      "decision": "tools",
+      "tools": [
+        "add_shopping_item"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-39e0170b247dbebe6b": {
+      "decision": "tools",
+      "tools": [
+        "add_shopping_item"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-992d78ca03cb69820e": {
+      "decision": "clarify",
+      "tools": [],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-e458c67cbac253ee56": {
+      "decision": "clarify",
+      "tools": [],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-42b7efeabb596934a4": {
+      "decision": "clarify",
+      "tools": [],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-7d9224e88eb777ee9b": {
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-7515e2de2adc37d1d9": {
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-ade8bd1e666be5c89a": {
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-88fa338cfcae45ebfa": {
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-65ebbaccfa693ba1e9": {
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-5c967f0578f52b606d": {
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-7726067e8951a01760": {
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-12cd972c2b9873c70b": {
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-83495dce29ef1ab112": {
+      "decision": "tools",
+      "tools": [
+        "get_saved_item",
+        "search_saved_items"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-8123b2ef112231b239": {
+      "decision": "tools",
+      "tools": [
+        "get_saved_item",
+        "search_saved_items"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-d221c01b25630182a0": {
+      "decision": "tools",
+      "tools": [
+        "get_saved_item",
+        "search_saved_items"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-cd62148557c022035a": {
+      "decision": "tools",
+      "tools": [
+        "get_saved_item",
+        "search_saved_items"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-389519a2bb9eaec13d": {
+      "decision": "tools",
+      "tools": [
+        "find_media"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-d1d4dca51abce2a4f6": {
+      "decision": "tools",
+      "tools": [
+        "find_media"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-0f02d502d674ce54b6": {
+      "decision": "tools",
+      "tools": [
+        "find_media"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-fc28b3129c3a18f70b": {
+      "decision": "tools",
+      "tools": [
+        "find_media"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-49b2c5c26787c1867d": {
+      "decision": "tools",
+      "tools": [
+        "find_media",
+        "get_media_original"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-30874a621970b535d5": {
+      "decision": "tools",
+      "tools": [
+        "find_media",
+        "get_media_original"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-9cd32304be0dbf6ea0": {
+      "decision": "tools",
+      "tools": [
+        "find_media",
+        "get_media_original"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-428edb3f541a98b92f": {
+      "decision": "tools",
+      "tools": [
+        "list_pending_expenses"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-cd755ccde0d0354da6": {
+      "decision": "tools",
+      "tools": [
+        "list_pending_expenses"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-d8473ffe253c77a4d6": {
+      "decision": "tools",
+      "tools": [
+        "list_pending_expenses"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-00f79cab41e54e4aa7": {
+      "decision": "tools",
+      "tools": [
+        "confirm_expense",
+        "list_pending_expenses"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-40c7f64a096772f05e": {
+      "decision": "tools",
+      "tools": [
+        "confirm_expense",
+        "list_pending_expenses"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-18f010bcbbc11593dd": {
+      "decision": "tools",
+      "tools": [
+        "correct_expense",
+        "query_finances"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-5b0e5bf343e30e577c": {
+      "decision": "tools",
+      "tools": [
+        "correct_expense",
+        "query_finances"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-7c0dcf3b8372d9e394": {
+      "decision": "tools",
+      "tools": [
+        "correct_expense",
+        "query_finances"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-da3e878b595310e8bc": {
+      "decision": "tools",
+      "tools": [
+        "save_item"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-a39bb6bfbb0b569712": {
+      "decision": "tools",
+      "tools": [
+        "save_item"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-b5b6ace761258d2345": {
+      "decision": "tools",
+      "tools": [
+        "save_item"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-71593f0f59499bb387": {
+      "decision": "tools",
+      "tools": [
+        "remove_saved_item",
+        "search_saved_items"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-e4915630ac4988373d": {
+      "decision": "tools",
+      "tools": [
+        "remove_saved_item",
+        "search_saved_items"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-f0a066252299f1b0ce": {
+      "decision": "tools",
+      "tools": [
+        "list_reminders",
+        "update_reminder"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-2e2308e72026d9bd1e": {
+      "decision": "tools",
+      "tools": [
+        "list_reminders",
+        "update_reminder"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-0dcdc53282c60dab2f": {
+      "decision": "tools",
+      "tools": [
+        "list_reminders",
+        "update_reminder"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-6427578009fc2fe33b": {
+      "decision": "tools",
+      "tools": [
+        "reminder_history"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-c46b0a80a4aa17041b": {
+      "decision": "tools",
+      "tools": [
+        "reminder_history"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-295116734f0d628ee5": {
+      "decision": "tools",
+      "tools": [
+        "list_shopping_items",
+        "update_shopping_item"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-c22475e2c2f69bb82e": {
+      "decision": "tools",
+      "tools": [
+        "list_shopping_items",
+        "update_shopping_item"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-d3fd99516afa37563e": {
+      "decision": "tools",
+      "tools": [
+        "list_shopping_items",
+        "update_shopping_item"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-a50c4a7d1afcf85e67": {
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-491b331f2127be9eef": {
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-ead99321063a898111": {
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-70140b09643699445e": {
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-b90ae6e89212b788da": {
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-bb8611442a5bf087de": {
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-7c3a765ccc03bf5df8": {
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-aab469859e8092a312": {
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-5ba80c547d49c1064c": {
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-4c1e8a25abf986ccee": {
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-d5099ae65ee8a96db5": {
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-dd54f5779521111d53": {
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-c73759a4117de5af8a": {
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-ee6554d8d4b188bd37": {
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-b850206d4a270a39de": {
+      "decision": "tools",
+      "tools": [
+        "list_plans"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-14785314aff35ed3d0": {
+      "decision": "tools",
+      "tools": [
+        "list_plans"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-149a4c1e70f7bc0715": {
+      "decision": "tools",
+      "tools": [
+        "list_plans"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-1b06a12419e608b9bd": {
+      "decision": "tools",
+      "tools": [
+        "list_plans"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-d2fcdc910de19290e3": {
+      "decision": "tools",
+      "tools": [
+        "list_plans",
+        "update_plan"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-16ca3079b99fa9b08f": {
+      "decision": "tools",
+      "tools": [
+        "list_plans",
+        "update_plan"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-0dcf45f0f5b0e367c6": {
+      "decision": "tools",
+      "tools": [
+        "list_plans",
+        "update_plan"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-f0fc36c4d94407ab24": {
+      "decision": "tools",
+      "tools": [
+        "list_plans",
+        "update_plan"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-a84c9f02253defc7cc": {
+      "decision": "tools",
+      "tools": [
+        "list_plans",
+        "update_plan"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-748fd39ac3a6f126df": {
+      "decision": "tools",
+      "tools": [
+        "list_plans",
+        "update_plan"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-b353659dc585233bac": {
+      "decision": "tools",
+      "tools": [
+        "planning_list_goals"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-5b5fa6f68c7207524b": {
+      "decision": "tools",
+      "tools": [
+        "planning_list_goals"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-493083bd84e2947e7f": {
+      "decision": "tools",
+      "tools": [
+        "planning_list_goals"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-615b207688045949f1": {
+      "decision": "tools",
+      "tools": [
+        "planning_list_goals"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-3fc312a5cc63f6e71c": {
+      "decision": "tools",
+      "tools": [
+        "planning_goal_progress"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-d61ca2d952bc858183": {
+      "decision": "tools",
+      "tools": [
+        "planning_create_goal"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-f3f84ad412b76d77df": {
+      "decision": "tools",
+      "tools": [
+        "planning_create_goal"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-4d4d93f321fe804080": {
+      "decision": "tools",
+      "tools": [
+        "planning_create_goal"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-0475ca0c435d157048": {
+      "decision": "tools",
+      "tools": [
+        "planning_create_goal"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-496fadd043a620205b": {
+      "decision": "tools",
+      "tools": [
+        "planning_create_goal"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-8503799cd1ef51a7f5": {
+      "decision": "tools",
+      "tools": [
+        "work_schedule"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-293bb16b05def223ae": {
+      "decision": "tools",
+      "tools": [
+        "work_schedule"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-7d74ae1b8bad9b680e": {
+      "decision": "tools",
+      "tools": [
+        "work_schedule"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-1b95502078e3692c49": {
+      "decision": "tools",
+      "tools": [
+        "work_schedule"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-8ab0d8296df60b3cae": {
+      "decision": "tools",
+      "tools": [
+        "bills_list"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-3a7427492f609c59b4": {
+      "decision": "tools",
+      "tools": [
+        "bills_list"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-33b6478c3dd76605bf": {
+      "decision": "tools",
+      "tools": [
+        "bills_list"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-bee52ef2eb5398c873": {
+      "decision": "tools",
+      "tools": [
+        "bills_list"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-45c2bb0295b7dd43f8": {
+      "decision": "tools",
+      "tools": [
+        "create_task"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-990d2f1dff136f5844": {
+      "decision": "tools",
+      "tools": [
+        "create_task"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-83d00549b325a20789": {
+      "decision": "tools",
+      "tools": [
+        "create_task"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-eda5f0b838b39fa335": {
+      "decision": "tools",
+      "tools": [
+        "list_tasks"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-ee251bf8fe7ae209d9": {
+      "decision": "tools",
+      "tools": [
+        "list_tasks"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-d15dbaeed1aefdb961": {
+      "decision": "tools",
+      "tools": [
+        "list_tasks"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-eb96e65529b8a2c2f1": {
+      "decision": "tools",
+      "tools": [
+        "list_tasks",
+        "update_task"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-ef3c5b3f2717d7c381": {
+      "decision": "tools",
+      "tools": [
+        "list_tasks",
+        "update_task"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-51728261ab0e3adfde": {
+      "decision": "tools",
+      "tools": [
+        "complete_task",
+        "list_tasks"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-2c9dc9deba477e3550": {
+      "decision": "tools",
+      "tools": [
+        "complete_task",
+        "list_tasks"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-cc734d594f80f82add": {
+      "decision": "tools",
+      "tools": [
+        "list_tasks",
+        "reopen_task"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-2f992c81334843b9be": {
+      "decision": "tools",
+      "tools": [
+        "list_tasks",
+        "reopen_task"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-77ce71a612d3c1eb6f": {
+      "decision": "tools",
+      "tools": [
+        "cancel_task",
+        "list_tasks"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-b2a0a662e49dd005f0": {
+      "decision": "tools",
+      "tools": [
+        "cancel_task",
+        "list_tasks"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-001ea3e2366ac38c2e": {
+      "decision": "tools",
+      "tools": [
+        "planning_record_cash"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-905726eec358f242b7": {
+      "decision": "tools",
+      "tools": [
+        "planning_record_cash"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-d67521b3727125bdbb": {
+      "decision": "tools",
+      "tools": [
+        "planning_record_cash"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-6fceaac5e051a50de5": {
+      "decision": "tools",
+      "tools": [
+        "planning_allocate_cash_to_goal"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-fff961b52147355b38": {
+      "decision": "tools",
+      "tools": [
+        "planning_allocate_cash_to_goal"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-f6326bd872d6d5098c": {
+      "decision": "tools",
+      "tools": [
+        "planning_allocate_cash_to_goal"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-d2de5093009f02457c": {
+      "decision": "tools",
+      "tools": [
+        "planning_list_reserves"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-bb2f855a479f3e856f": {
+      "decision": "tools",
+      "tools": [
+        "planning_list_reserves"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-50103ec2e5b0f2da05": {
+      "decision": "tools",
+      "tools": [
+        "planning_list_reserves"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-c70ec891626599fc81": {
+      "decision": "tools",
+      "tools": [
+        "set_leave_record"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-8e262b7f518890fa6e": {
+      "decision": "tools",
+      "tools": [
+        "set_leave_record"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-38020599287cc10513": {
+      "decision": "tools",
+      "tools": [
+        "set_leave_record"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-9eb3c37121a2f6b5d4": {
+      "decision": "tools",
+      "tools": [
+        "list_leave_records"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-e2d0b28d787481c134": {
+      "decision": "tools",
+      "tools": [
+        "list_leave_records"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-9bf172edbe01ccb7d7": {
+      "decision": "tools",
+      "tools": [
+        "work_leave_balance"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-68f6bafb9598b125a7": {
+      "decision": "tools",
+      "tools": [
+        "work_leave_balance"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-2e2dbff7fe4c930aa7": {
+      "decision": "tools",
+      "tools": [
+        "list_leave_records"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-76cecdb340edf130a8": {
+      "decision": "tools",
+      "tools": [
+        "work_ot_status"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-e8a5d5bd30b9706bd0": {
+      "decision": "tools",
+      "tools": [
+        "work_ot_status"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-87ac618f26946e8a00": {
+      "decision": "tools",
+      "tools": [
+        "work_ot_status"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-cf193d7a96a50ceab6": {
+      "decision": "tools",
+      "tools": [
+        "asset_list"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-56a2df0a8ac28a2f45": {
+      "decision": "tools",
+      "tools": [
+        "asset_list"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-063bdd60109e54165c": {
+      "decision": "tools",
+      "tools": [
+        "warranty_expiring"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-3411810c151f6888c0": {
+      "decision": "tools",
+      "tools": [
+        "monitor_list"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-d396009ee891ced47f": {
+      "decision": "tools",
+      "tools": [
+        "monitor_list"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-d63bac1097544e719d": {
+      "decision": "tools",
+      "tools": [
+        "monitor_list"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-fa6fcc6b184de1c822": {
+      "decision": "tools",
+      "tools": [
+        "recent_failures"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-1132626487d11af553": {
+      "decision": "tools",
+      "tools": [
+        "recent_failures"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-b57a289dec8dd3f028": {
+      "decision": "tools",
+      "tools": [
+        "system_health"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-e9184355da62603e46": {
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-00c5b18f9a9e4645a3": {
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-4eb1a64365afe1b7da": {
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-8f35203c5b9aed3f7c": {
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-cc94ee82354304ec86": {
+      "decision": "tools",
+      "tools": [
+        "list_shopping_items"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-0c7da7a7e9b751030c": {
+      "decision": "tools",
+      "tools": [
+        "list_shopping_items"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-39a569a760a9628211": {
+      "decision": "tools",
+      "tools": [
+        "remove_saved_item",
+        "search_saved_items"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-194288046912b5ead8": {
+      "decision": "tools",
+      "tools": [
+        "remove_saved_item"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-aea343389307a4ef3e": {
+      "decision": "tools",
+      "tools": [
+        "add_shopping_item"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-0d2d8d761cdc68c5de": {
+      "decision": "tools",
+      "tools": [
+        "add_shopping_item"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-e2093bf633163341ac": {
+      "decision": "tools",
+      "tools": [
+        "ha_find_entities",
+        "ha_get_state"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-a91e7c58d04a9ee3e7": {
+      "decision": "tools",
+      "tools": [
+        "ha_find_entities",
+        "ha_get_state"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-8e52acad789e911d93": {
+      "decision": "tools",
+      "tools": [
+        "ha_find_entities",
+        "ha_get_state"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-eddde468fad579dbe6": {
+      "decision": "tools",
+      "tools": [
+        "ha_find_entities",
+        "ha_get_state"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-08cfda3e46fd46067a": {
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-8f0d8dff8890aa2cfc": {
+      "decision": "tools",
+      "tools": [
+        "report_snapshot"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-d9e8da88bb600558d9": {
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-759702976ce16bcc11": {
+      "decision": "tools",
+      "tools": [
+        "add_diary_event"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-e7c20d5be03e258156": {
+      "decision": "tools",
+      "tools": [
+        "add_diary_event"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-d204bea62d6232d086": {
+      "decision": "tools",
+      "tools": [
+        "add_diary_event"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-67a2b8dce77be5c08d": {
+      "decision": "tools",
+      "tools": [
+        "get_agenda",
+        "update_diary_event"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-6948db7681f59a3a66": {
+      "decision": "tools",
+      "tools": [
+        "get_agenda",
+        "update_diary_event"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-c52f710cd2861e8b68": {
+      "decision": "tools",
+      "tools": [
+        "get_agenda",
+        "update_diary_event"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-49133f866c9d2cf56a": {
+      "decision": "tools",
+      "tools": [
+        "resolve_numbered_choice"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-ee3b36aadc83c94440": {
+      "decision": "tools",
+      "tools": [
+        "resolve_numbered_choice"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-995590989559eb0d09": {
+      "decision": "tools",
+      "tools": [
+        "resolve_numbered_choice"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-faa7b1f70646474099": {
+      "decision": "tools",
+      "tools": [
+        "create_plan"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-91808059bc0f262314": {
+      "decision": "tools",
+      "tools": [
+        "create_plan"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-699382030fc1811ac5": {
+      "decision": "tools",
+      "tools": [
+        "create_plan"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-2cbc878d271a74b1f5": {
+      "decision": "tools",
+      "tools": [
+        "confirm_plan"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-f8ce1e4f28917e6d12": {
+      "decision": "tools",
+      "tools": [
+        "confirm_plan"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-fd0680f2fd46225ad4": {
+      "decision": "tools",
+      "tools": [
+        "confirm_plan"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-7daaeaee1101ac14b7": {
+      "decision": "tools",
+      "tools": [
+        "share_plan"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-1f29753636c5569085": {
+      "decision": "tools",
+      "tools": [
+        "share_plan"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-1868fb2bd375bad072": {
+      "decision": "tools",
+      "tools": [
+        "check_my_availability"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-8bbe90967fefad216a": {
+      "decision": "tools",
+      "tools": [
+        "check_my_availability"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-676afa7a6b18105bbc": {
+      "decision": "tools",
+      "tools": [
+        "check_spouse_availability"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-a53da11c1777bd2f07": {
+      "decision": "tools",
+      "tools": [
+        "check_spouse_availability"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-4ac81c96baa58fb66c": {
+      "decision": "tools",
+      "tools": [
+        "planning_lock_goal"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-b5b945e6e3dd36268a": {
+      "decision": "tools",
+      "tools": [
+        "planning_lock_goal"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-e25990319fd2bef626": {
+      "decision": "tools",
+      "tools": [
+        "planning_reopen_goal"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-1a6a75497923009617": {
+      "decision": "tools",
+      "tools": [
+        "planning_reopen_goal"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-d9a3fc1da45144d898": {
+      "decision": "tools",
+      "tools": [
+        "planning_change_goal_baseline"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-7894a4a87345ae4e9d": {
+      "decision": "tools",
+      "tools": [
+        "planning_change_goal_baseline"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-889e3893bc872094c6": {
+      "decision": "tools",
+      "tools": [
+        "planning_set_period_target"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-6c165c6be81822a6f1": {
+      "decision": "tools",
+      "tools": [
+        "planning_set_period_target"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-2f2340f4d5081aa71d": {
+      "decision": "tools",
+      "tools": [
+        "planning_record_goal_contribution"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-d3140eb696eeec8b63": {
+      "decision": "tools",
+      "tools": [
+        "planning_record_goal_contribution"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-6f36efcd75e0a48bbf": {
+      "decision": "tools",
+      "tools": [
+        "planning_goal_deviation"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-5a8707d14e61f9392b": {
+      "decision": "tools",
+      "tools": [
+        "planning_goal_deviation"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-19abd2160436d1f839": {
+      "decision": "tools",
+      "tools": [
+        "planning_compare_salary"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-b2b48b5d49c6f14977": {
+      "decision": "tools",
+      "tools": [
+        "planning_compare_salary"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-8ed2daa6d2881737f4": {
+      "decision": "tools",
+      "tools": [
+        "planning_match_goal_alias"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-47207ee4b43145a1ab": {
+      "decision": "tools",
+      "tools": [
+        "planning_match_goal_alias"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-c146137b0e8e4e1764": {
+      "decision": "tools",
+      "tools": [
+        "planning_goal_projection"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-c8b1201104666e78ac": {
+      "decision": "tools",
+      "tools": [
+        "planning_goal_projection"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-47ebc23cb8383d178c": {
+      "decision": "tools",
+      "tools": [
+        "planning_cash_status"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-60113c99504263c704": {
+      "decision": "tools",
+      "tools": [
+        "planning_cash_status"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-6da98a13773c69bc4b": {
+      "decision": "tools",
+      "tools": [
+        "planning_create_cash_pool"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-f972e359daeebb5802": {
+      "decision": "tools",
+      "tools": [
+        "planning_create_cash_pool"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-408e5ad6eb090d9eb4": {
+      "decision": "tools",
+      "tools": [
+        "planning_cash_pool_balance"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-e66a2dac349618a775": {
+      "decision": "tools",
+      "tools": [
+        "planning_cash_pool_balance"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-7a2acc000068abd1a1": {
+      "decision": "tools",
+      "tools": [
+        "planning_allocate_cash_to_pool"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-501f999fda9b76d024": {
+      "decision": "tools",
+      "tools": [
+        "planning_allocate_cash_to_pool"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-7c8aa39746ec703068": {
+      "decision": "tools",
+      "tools": [
+        "planning_add_reserve"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-48f6a07beab81ff09e": {
+      "decision": "tools",
+      "tools": [
+        "planning_add_reserve"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-3ccb12135b45abc57b": {
+      "decision": "tools",
+      "tools": [
+        "planning_update_reserve"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-8feee71d2f85a1d8f9": {
+      "decision": "tools",
+      "tools": [
+        "planning_update_reserve"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-d974134598fbb10bfd": {
+      "decision": "tools",
+      "tools": [
+        "planning_baseline"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-22d5e99f90d4f39b00": {
+      "decision": "tools",
+      "tools": [
+        "planning_baseline"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-dea79fc7d7b8d443e9": {
+      "decision": "tools",
+      "tools": [
+        "planning_income_outlook"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-06379099fff5eaa24b": {
+      "decision": "tools",
+      "tools": [
+        "planning_income_outlook"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-009e1c0098432bf217": {
+      "decision": "tools",
+      "tools": [
+        "planning_cashflow"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-4debc55d8c4bb33cf5": {
+      "decision": "tools",
+      "tools": [
+        "planning_cashflow"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-d7940f85500fb08ea7": {
+      "decision": "tools",
+      "tools": [
+        "planning_brief"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-4da453669086deadfe": {
+      "decision": "tools",
+      "tools": [
+        "planning_brief"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-0a142a5304231bfe63": {
+      "decision": "tools",
+      "tools": [
+        "bills_match_payment"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-fd00304542de38c578": {
+      "decision": "tools",
+      "tools": [
+        "bills_match_payment"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-27651dd7861565b102": {
+      "decision": "tools",
+      "tools": [
+        "bills_match_payment",
+        "bills_record_payment"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-3d7a83b261f1784a8d": {
+      "decision": "tools",
+      "tools": [
+        "bills_match_payment",
+        "bills_record_payment"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-6cf6ab177330b2b7a2": {
+      "decision": "tools",
+      "tools": [
+        "bills_defer"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-d2068df48478c2e39e": {
+      "decision": "tools",
+      "tools": [
+        "bills_defer"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-d876fba6e5c73e48c2": {
+      "decision": "tools",
+      "tools": [
+        "bills_confirm_unpaid"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-320b6d6f3c56a590ae": {
+      "decision": "tools",
+      "tools": [
+        "bills_confirm_unpaid"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-cfb0373537a5a39bc3": {
+      "decision": "tools",
+      "tools": [
+        "work_record_event"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-50ee59015bebfb58f8": {
+      "decision": "tools",
+      "tools": [
+        "work_record_event"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-62461f1d2480b9018b": {
+      "decision": "tools",
+      "tools": [
+        "work_record_event"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-e73b10724da86ed4f0": {
+      "decision": "tools",
+      "tools": [
+        "work_departure_plan"
+      ],
+      "reply_language": "en",
+      "provenance": "delta_engineering_review"
+    },
+    "hai-2f821538a16e6150e0": {
+      "decision": "tools",
+      "tools": [
+        "work_departure_plan"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-fac028c71f3ff2ae28": {
+      "decision": "tools",
+      "tools": [
+        "asset_create"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-8ddb2877492ef20117": {
+      "decision": "tools",
+      "tools": [
+        "asset_create"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-c74ad364d254a3fe64": {
+      "decision": "tools",
+      "tools": [
+        "asset_link_document"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-808695ccfc07dfb4f6": {
+      "decision": "tools",
+      "tools": [
+        "asset_link_document"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-a81383f0057c119a5d": {
+      "decision": "tools",
+      "tools": [
+        "monitor_delegate"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-076a989534b13928b4": {
+      "decision": "tools",
+      "tools": [
+        "monitor_delegate"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-56cb2c064c5faad53d": {
+      "decision": "tools",
+      "tools": [
+        "monitor_cancel"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-f456b233cd8cc06657": {
+      "decision": "tools",
+      "tools": [
+        "monitor_cancel"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-7795f1ec87f6d6c346": {
+      "decision": "tools",
+      "tools": [
+        "ha_home_summary"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-37167af89af72e4576": {
+      "decision": "tools",
+      "tools": [
+        "ha_home_summary"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-0c7f7aa83d5f252741": {
+      "decision": "tools",
+      "tools": [
+        "ha_home_report"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-3ef0715014e6005243": {
+      "decision": "tools",
+      "tools": [
+        "ha_home_report"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-d8733153ef7389c192": {
+      "decision": "tools",
+      "tools": [
+        "ha_draft_automation"
+      ],
+      "reply_language": "en",
+      "provenance": "delta_engineering_review"
+    },
+    "hai-516675a3b47fc7d334": {
+      "decision": "tools",
+      "tools": [
+        "ha_draft_automation"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-4c65a8c0d151910897": {
+      "decision": "tools",
+      "tools": [
+        "ha_control",
+        "ha_find_entities"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-3e788744860d6c9f2d": {
+      "decision": "tools",
+      "tools": [
+        "ha_control",
+        "ha_find_entities"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-ff619bee0360f74e2a": {
+      "decision": "tools",
+      "tools": [
+        "report_export"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-af8c3b091c2b65e6b5": {
+      "decision": "tools",
+      "tools": [
+        "report_export"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-98faba17788a088e49": {
+      "decision": "tools",
+      "tools": [
+        "report_payload"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-dd7326b6e6c54b90bf": {
+      "decision": "tools",
+      "tools": [
+        "report_payload"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-c0309a3af3f4f8d852": {
+      "decision": "tools",
+      "tools": [
+        "calculate"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-01a449e2f0fbb4a638": {
+      "decision": "tools",
+      "tools": [
+        "calculate"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-54819fc757a786b0a9": {
+      "decision": "answer",
+      "tools": [],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-d2f0a2bbc4bc004cd3": {
+      "decision": "answer",
+      "tools": [],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-11c2ff3b830a9e3f06": {
+      "decision": "answer",
+      "tools": [],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-6767217e4ca195b300": {
+      "decision": "answer",
+      "tools": [],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-cdffb2c96602c20858": {
+      "decision": "tools",
+      "tools": [
+        "create_reminder"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-c7bfff03c58707676b": {
+      "decision": "tools",
+      "tools": [
+        "create_reminder"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-9710d7eec629b15eab": {
+      "decision": "tools",
+      "tools": [
+        "create_reminder"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-d6eeeff50f4294fe8c": {
+      "decision": "tools",
+      "tools": [
+        "create_reminder"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-0c65fb13f0e9e0b4b6": {
+      "decision": "tools",
+      "tools": [
+        "create_reminder"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-d8639db70facd66031": {
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-5a73cd5e66a4cb1e86": {
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-929a99ba23242e5374": {
+      "decision": "tools",
+      "tools": [
+        "create_reminder",
+        "log_expense"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-d8446d203b505d7b97": {
+      "decision": "tools",
+      "tools": [
+        "create_reminder",
+        "log_expense"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-f058bc766821e3fa4c": {
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-722154b1d5f4a44ce1": {
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-5ea1a54d25eda02935": {
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-3b137b7d95937db409": {
+      "decision": "tools",
+      "tools": [
+        "find_receipts"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-e1e67d71050270a783": {
+      "decision": "tools",
+      "tools": [
+        "find_receipts",
+        "get_receipt"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-bec8ceb4296bf82755": {
+      "decision": "tools",
+      "tools": [
+        "get_receipt"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-dcaef2a42fb7e990bf": {
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-f8fb1742812788d1b2": {
+      "decision": "tools",
+      "tools": [
+        "resolve_numbered_choice"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-49a14a55b78c07037d": {
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-9f654a737fbce8190c": {
+      "decision": "tools",
+      "tools": [
+        "create_reminder",
+        "get_agenda_range"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-83b6ef8cf66b0a3b13": {
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-8af7e02ec0f6bf3b17": {
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-61cad6a58c40596bec": {
+      "decision": "tools",
+      "tools": [
+        "create_reminder",
+        "get_agenda_range"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-bcdc99b3afbc654a18": {
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-367587587bdad96190": {
+      "decision": "tools",
+      "tools": [
+        "create_plan"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-430f9825cf1415c98c": {
+      "decision": "tools",
+      "tools": [
+        "list_plans",
+        "update_plan"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-a86cc38b5e4dd21f63": {
+      "decision": "tools",
+      "tools": [
+        "list_plans"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-5eaebd003d80354849": {
+      "decision": "tools",
+      "tools": [
+        "create_plan"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-8896c7ce6ecd60aa52": {
+      "decision": "tools",
+      "tools": [
+        "list_plans",
+        "update_plan"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-a12b4e6856934ed28c": {
+      "decision": "tools",
+      "tools": [
+        "list_plans"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-f6b83ee303f6080577": {
+      "decision": "tools",
+      "tools": [
+        "planning_create_goal"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-60a00f15795172e4b9": {
+      "decision": "tools",
+      "tools": [
+        "planning_goal_progress"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-522ee8c720c03c1666": {
+      "decision": "tools",
+      "tools": [
+        "log_expense"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-48095b10023cca227f": {
+      "decision": "tools",
+      "tools": [
+        "correct_expense",
+        "query_finances"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-41010e0fb5b92d38f0": {
+      "decision": "tools",
+      "tools": [
+        "log_expense"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-e3dda9caad17a8037b": {
+      "decision": "tools",
+      "tools": [
+        "log_expense"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-d755f7d6f0776156ea": {
+      "decision": "tools",
+      "tools": [
+        "save_item"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-1bbf863d425045876a": {
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-58b35a01b54ad3ec8c": {
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-f3b7634780157f7513": {
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-c1fb4a8f0c22485969": {
+      "decision": "tools",
+      "tools": [
+        "create_reminder"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-a275be22c14638b7de": {
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "reply_language": "en",
+      "provenance": "parent_independent_model"
+    },
+    "hai-eabd98a5ea575ff841": {
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "reply_language": "en",
+      "provenance": "delta_engineering_review"
+    },
+    "hai-e5ad31cc185681924b": {
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "reply_language": "en",
+      "provenance": "delta_engineering_review"
+    },
+    "hai-f47c7e08de24cc532f": {
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "reply_language": "en",
+      "provenance": "delta_engineering_review"
+    },
+    "hai-8665ac290f17712270": {
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "reply_language": "en",
+      "provenance": "delta_engineering_review"
+    },
+    "hai-e1668ef5363fae6f8d": {
+      "decision": "tools",
+      "tools": [
+        "add_shopping_item"
+      ],
+      "reply_language": "en",
+      "provenance": "delta_engineering_review"
+    },
+    "hai-47e771ca5b6d2f5bd4": {
+      "decision": "tools",
+      "tools": [
+        "add_shopping_item"
+      ],
+      "reply_language": "en",
+      "provenance": "delta_engineering_review"
+    },
+    "hai-7a1b0de8c5bc673282": {
+      "decision": "tools",
+      "tools": [
+        "ha_draft_automation"
+      ],
+      "reply_language": "en",
+      "provenance": "delta_engineering_review"
+    },
+    "hai-0993135dba7af09a6f": {
+      "decision": "tools",
+      "tools": [
+        "ha_draft_automation"
+      ],
+      "reply_language": "en",
+      "provenance": "delta_engineering_review"
+    },
+    "hai-17ce24e873619d6d16": {
+      "decision": "tools",
+      "tools": [
+        "ha_find_entities",
+        "ha_control"
+      ],
+      "reply_language": "en",
+      "provenance": "delta_engineering_review"
+    },
+    "hai-c07d4ded221e3c31a4": {
+      "decision": "tools",
+      "tools": [
+        "ha_find_entities",
+        "ha_control"
+      ],
+      "reply_language": "en",
+      "provenance": "delta_engineering_review"
+    },
+    "hai-8c29e2e55f8172c15a": {
+      "decision": "tools",
+      "tools": [
+        "work_schedule",
+        "work_departure_plan"
+      ],
+      "reply_language": "en",
+      "provenance": "delta_engineering_review"
+    },
+    "hai-ebdff19df4ccd622fa": {
+      "decision": "tools",
+      "tools": [
+        "work_schedule",
+        "work_departure_plan"
+      ],
+      "reply_language": "en",
+      "provenance": "delta_engineering_review"
+    },
+    "hai-3f705f38ea60cc3372": {
+      "decision": "tools",
+      "tools": [
+        "ha_find_entities",
+        "ha_get_state"
+      ],
+      "reply_language": "en",
+      "provenance": "delta_engineering_review"
+    },
+    "hai-45aea85483877f2c47": {
+      "decision": "tools",
+      "tools": [
+        "ha_find_entities",
+        "ha_control"
+      ],
+      "reply_language": "en",
+      "provenance": "delta_engineering_review"
+    }
+  }
+}

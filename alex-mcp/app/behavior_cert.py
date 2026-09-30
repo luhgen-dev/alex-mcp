@@ -388,24 +388,28 @@ def offline_certify(phase: str, heldout_path: str | None = None, contract_ids: s
     failures: list[dict] = []
     passes: list[dict] = []
     needs_live: list[dict] = []
+    conversation_step_checks = 0
 
-    selected_contracts = [
+    prompt_contracts = [
         contract for contract in contracts_for_phase(phase)
         if not contract_ids or contract.id in contract_ids
     ]
-    for contract in selected_contracts:
-        required_caps = set(contract.required_any) - {"routing.discovery"}
-        required_all_caps = set(contract.required_all) - {"routing.discovery"}
-        forbidden_caps = set(contract.forbidden) - {"routing.discovery"}
+    conversation_contracts = [
+        contract for contract in conversations_for_phase(phase)
+        if not contract_ids or contract.id in contract_ids
+    ]
+
+    def _implementation_gate(contract_label: str, required_caps: set[str],
+                             required_all_caps: set[str]) -> None:
         implemented_required = {
             cap for cap in required_caps if implementation_exists(cap, tool_names)
         }
         missing_required_all_impl = {
             cap for cap in required_all_caps if not implementation_exists(cap, tool_names)
         }
-        if not implemented_required:
+        if required_caps and not implemented_required:
             failures.append({
-                "contract": contract.id,
+                "contract": contract_label,
                 "kind": "missing-capability",
                 "detail": (
                     "none of the required semantic capabilities has a current implementation: "
@@ -413,10 +417,9 @@ def offline_certify(phase: str, heldout_path: str | None = None, contract_ids: s
                 ),
                 "missing_capabilities": sorted(required_caps),
             })
-
         if missing_required_all_impl:
             failures.append({
-                "contract": contract.id,
+                "contract": contract_label,
                 "kind": "missing-required-all-capability",
                 "detail": (
                     "required-all semantic capabilities are not implemented: "
@@ -425,92 +428,164 @@ def offline_certify(phase: str, heldout_path: str | None = None, contract_ids: s
                 "missing_capabilities": sorted(missing_required_all_impl),
             })
 
+    def _route_check(*, contract_id: str, phase_name: str, domain: str,
+                     source: str, phrase: str, expectation,
+                     variant_kind: str, prior_user_text: str | None = None,
+                     conversation_step: int | None = None) -> None:
+        required_caps = set(expectation.required_any) - {"routing.discovery"}
+        required_all_caps = set(getattr(expectation, "required_all", frozenset())) - {
+            "routing.discovery"
+        }
+        forbidden_caps = set(getattr(expectation, "forbidden", frozenset())) - {
+            "routing.discovery"
+        }
+        implemented_required = {
+            cap for cap in required_caps if implementation_exists(cap, tool_names)
+        }
+
+        media_context = (
+            ["[synthetic certification document/media context]"]
+            if source in {"image", "pdf", "document", "mixed"}
+            else None
+        )
+        specs = asyncio.run(
+            brain._tool_specs(
+                phrase,
+                media_context,
+                prior_user_text=prior_user_text,
+            )
+        )
+        selected_tools = {
+            str(spec["function"]["name"])
+            for spec in specs
+            if isinstance(spec, dict) and spec.get("function")
+        }
+        selected_caps = set(capabilities_for_tools(selected_tools))
+        direct = bool(selected_caps & required_caps)
+        direct_all = required_all_caps.issubset(selected_caps)
+        discovery_available = "routing.discovery" in selected_caps
+        forbidden = sorted(selected_caps & forbidden_caps)
+        over_cap = len(selected_tools) > brain.TOOL_EXPOSURE_MAX
+        row = {
+            "contract": contract_id,
+            "phase": phase_name,
+            "domain": domain,
+            "source": source,
+            "prompt": _report_prompt(phrase, variant_kind),
+            "variant_kind": variant_kind,
+            "conversation_step": conversation_step,
+            "prior_user_context": bool(prior_user_text),
+            "required_capabilities": sorted(required_caps),
+            "required_all_capabilities": sorted(required_all_caps),
+            "provider_facing_capabilities": sorted(selected_caps),
+            "provider_facing_tools": sorted(selected_tools),
+        }
+        problems = []
+        if forbidden:
+            problems.append(
+                "forbidden capability exposed: " + ", ".join(forbidden)
+            )
+        if over_cap:
+            problems.append(
+                f"tool exposure {len(selected_tools)} exceeds cap {brain.TOOL_EXPOSURE_MAX}"
+            )
+
+        if required_all_caps and not direct_all:
+            missing_all = sorted(required_all_caps - selected_caps)
+            if discovery_available and not problems:
+                needs_live.append({
+                    **row,
+                    "kind": "required-all-discovery-dependent",
+                    "detail": (
+                        "compound intent is not directly fully exposed; "
+                        "live certification must execute all required capabilities: "
+                        + ", ".join(missing_all)
+                    ),
+                })
+                return
+            problems.append(
+                "required-all capabilities not exposed: " + ", ".join(missing_all)
+            )
+
+        if not direct and not implemented_required:
+            # Structural implementation debt is recorded separately. Do not
+            # multiply the same missing tool into one routing failure per phrase.
+            if not problems:
+                return
+        elif not direct and discovery_available and not problems:
+            needs_live.append({
+                **row,
+                "kind": "discovery-dependent",
+                "detail": (
+                    "required capability is not directly exposed; "
+                    "live certification must prove discovery reaches the real capability"
+                ),
+            })
+            return
+        elif not direct:
+            problems.append(
+                "required capability not exposed and no discovery path: "
+                + " / ".join(sorted(required_caps))
+            )
+
+        if problems:
+            failures.append({
+                **row,
+                "kind": "routing",
+                "detail": "; ".join(problems),
+            })
+        else:
+            passes.append(row)
+
+    # First certify isolated natural-language contracts, including source media.
+    for contract in prompt_contracts:
+        required_caps = set(contract.required_any) - {"routing.discovery"}
+        required_all_caps = set(contract.required_all) - {"routing.discovery"}
+        _implementation_gate(contract.id, required_caps, required_all_caps)
         for source in contract.sources:
             for phrase, variant_kind in _contract_phrases(
                 contract, heldout, include_adversarial=True
             ):
-                specs = asyncio.run(brain._tool_specs(phrase))
-                selected_tools = {
-                    str(spec["function"]["name"])
-                    for spec in specs
-                    if isinstance(spec, dict) and spec.get("function")
-                }
-                selected_caps = set(capabilities_for_tools(selected_tools))
-                direct = bool(selected_caps & required_caps)
-                direct_all = required_all_caps.issubset(selected_caps)
-                discovery_available = "routing.discovery" in selected_caps
-                forbidden = sorted(selected_caps & forbidden_caps)
-                over_cap = len(selected_tools) > brain.TOOL_EXPOSURE_MAX
-                row = {
-                    "contract": contract.id,
-                    "phase": contract.phase,
-                    "domain": contract.domain,
-                    "source": source,
-                    "prompt": _report_prompt(phrase, variant_kind),
-                    "variant_kind": variant_kind,
-                    "required_capabilities": sorted(required_caps),
-                    "required_all_capabilities": sorted(required_all_caps),
-                    "provider_facing_capabilities": sorted(selected_caps),
-                    "provider_facing_tools": sorted(selected_tools),
-                }
-                problems = []
-                if forbidden:
-                    problems.append(
-                        "forbidden capability exposed: " + ", ".join(forbidden)
-                    )
-                if over_cap:
-                    problems.append(
-                        f"tool exposure {len(selected_tools)} exceeds cap {brain.TOOL_EXPOSURE_MAX}"
-                    )
+                _route_check(
+                    contract_id=contract.id,
+                    phase_name=contract.phase,
+                    domain=contract.domain,
+                    source=source,
+                    phrase=phrase,
+                    expectation=contract,
+                    variant_kind=variant_kind,
+                )
 
-                if required_all_caps and not direct_all:
-                    missing_all = sorted(required_all_caps - selected_caps)
-                    if discovery_available and not problems:
-                        needs_live.append({
-                            **row,
-                            "kind": "required-all-discovery-dependent",
-                            "detail": (
-                                "compound intent is not directly fully exposed; "
-                                "live certification must execute all required capabilities: "
-                                + ", ".join(missing_all)
-                            ),
-                        })
-                        continue
-                    problems.append(
-                        "required-all capabilities not exposed: " + ", ".join(missing_all)
-                    )
-
-                if not direct and not implemented_required:
-                    # The contract-level missing-capability failure already records
-                    # this structural debt. Do not fan it out into one routing
-                    # failure per paraphrase, because new corpus variants would
-                    # then look like product regressions while the same known
-                    # implementation gap remains. Independent forbidden/over-cap
-                    # problems are still reported below.
-                    if not problems:
-                        continue
-                elif not direct and discovery_available and not problems:
-                    # Discovery is never itself a PASS. It only means the live
-                    # model gets one chance to recover the real capability.
-                    needs_live.append({
-                        **row,
-                        "kind": "discovery-dependent",
-                        "detail": (
-                            "required capability is not directly exposed; "
-                            "live certification must prove discovery reaches the real capability"
-                        ),
-                    })
-                    continue
-                elif not direct:
-                    problems.append(
-                        "required capability not exposed and no discovery path: "
-                        + " / ".join(sorted(required_caps))
-                    )
-
-                if problems:
-                    failures.append({**row, "kind": "routing", "detail": "; ".join(problems)})
-                else:
-                    passes.append(row)
+    # v0.5: conversation contracts are a first-class offline gate too. Prior
+    # versions only ran them with a paid/live provider, so a short follow-up
+    # could silently lose the required tool while every zero-token check stayed
+    # green. Propagate only the immediately preceding user turn, matching the
+    # production bounded-context router.
+    for contract in conversation_contracts:
+        for index, step in enumerate(contract.steps, start=1):
+            required_caps = set(step.required_any) - {"routing.discovery"}
+            required_all_caps = set(step.required_all) - {"routing.discovery"}
+            _implementation_gate(
+                f"{contract.id}#step{index}",
+                required_caps,
+                required_all_caps,
+            )
+        for source in contract.sources:
+            prior_user_text: str | None = None
+            for index, step in enumerate(contract.steps, start=1):
+                conversation_step_checks += 1
+                _route_check(
+                    contract_id=contract.id,
+                    phase_name=contract.phase,
+                    domain=contract.domain,
+                    source=source,
+                    phrase=step.prompt,
+                    expectation=step,
+                    variant_kind="conversation",
+                    prior_user_text=prior_user_text,
+                    conversation_step=index,
+                )
+                prior_user_text = step.prompt
 
     # Architecture assertions that language routing alone cannot see.
     goal_schema = schemas.get("planning_create_goal", {}).get("schema", {})
@@ -577,7 +652,7 @@ def offline_certify(phase: str, heldout_path: str | None = None, contract_ids: s
                 "detail": f"no read path exists; expected one of {sorted(wanted)}",
             })
 
-    selected_contracts = list(contracts_for_phase(phase))
+    selected_contract_count = len(prompt_contracts) + len(conversation_contracts)
     failure_signatures = sorted(_offline_failure_signature(item) for item in failures)
     status = "FAIL" if failures else ("LIVE_REQUIRED" if needs_live else "PASS")
     return {
@@ -585,7 +660,10 @@ def offline_certify(phase: str, heldout_path: str | None = None, contract_ids: s
         "phase": phase,
         "status": status,
         "summary": {
-            "contracts": len(selected_contracts),
+            "contracts": selected_contract_count,
+            "prompt_contracts": len(prompt_contracts),
+            "conversation_contracts": len(conversation_contracts),
+            "conversation_step_checks": conversation_step_checks,
             "variant_checks_passed": len(passes),
             "discovery_dependent_checks": len(needs_live),
             "failures": len(failures),

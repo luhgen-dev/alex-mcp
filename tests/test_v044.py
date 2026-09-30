@@ -32,6 +32,7 @@ import media  # noqa: E402
 import services  # noqa: E402
 import brain  # noqa: E402
 import ingress  # noqa: E402
+import outbox  # noqa: E402
 from context import with_action_key  # noqa: E402
 
 HUSBAND = "+60111111111"
@@ -53,7 +54,7 @@ class V044Base(unittest.TestCase):
         try:
             for table in (
                 "tool_audit", "tool_execution_claims", "ai_usage", "outbound_messages",
-                "conversation_turns", "selection_sets", "task_reminder_links",
+                "conversation_turns", "selection_sets", "media_selection_sets", "task_reminder_links",
                 "task_events", "tasks", "event_media_links",
                 "financial_event_corrections", "financial_events", "saved_items",
                 "media_objects", "inbound_messages",
@@ -120,6 +121,195 @@ class TurnTests(V044Base):
             self.assertIn(must, voice, phrase)
             self.assertEqual(voice, typed, phrase)
 
+    def test_voice_candidate_selector_prefers_actionable_household_command(self):
+        candidates = [
+            ("local_auto", "mohon maaf apakah anda bermaksud sesuatu sebelumnya"),
+            ("local_en", "add test toothpaste to my shopping list"),
+        ]
+        label, transcript = media._choose_voice_transcript(candidates)
+        self.assertEqual(label, "local_en")
+        self.assertIn("shopping list", transcript)
+
+    def test_voice_candidate_selector_keeps_tamil_script(self):
+        label, transcript = media._choose_voice_transcript([
+            ("local_auto", "random unrelated words"),
+            ("local_ta", "நாளைக்கு காலை ஒன்பது மணிக்கு பில் கட்ட நினைவூட்டு"),
+        ])
+        self.assertEqual(label, "local_ta")
+        self.assertGreaterEqual(media._voice_intent_score(transcript), 2)
+
+    def test_live_smoke_voice_shopping_phrases_route_to_real_mutators(self):
+        for phrase, expected in (
+            ("Add test toothpaste to my shopping list", "add_shopping_item"),
+            ("Mark test batteries as bought", "update_shopping_item"),
+        ):
+            turn = ingress.build_turn(
+                {"audio_data": "x"},
+                [media.VOICE_TRANSCRIPT_PREFIX + phrase],
+            )
+            names = _names(asyncio.run(
+                brain._tool_specs(turn["trusted_text"], turn["document_lines"])
+            ))
+            self.assertIn(expected, names, phrase)
+
+    def test_false_capability_and_language_drift_guards(self):
+        self.assertTrue(brain._looks_like_false_capability_denial(
+            "I don't have the ability to update shopping items as bought."
+        ))
+        self.assertFalse(brain._looks_like_false_capability_denial(
+            "I can't access your spouse's private saved items."
+        ))
+        self.assertFalse(brain._looks_like_false_capability_denial(
+            "I am not authorized to remove another person's private memory."
+        ))
+        self.assertTrue(brain._looks_like_wrong_language_reply(
+            "Mohon maaf, apakah Anda bermaksud sesuatu? Silakan beri tahu saya.",
+            "add toothpaste to my shopping list",
+        ))
+        self.assertTrue(brain._looks_like_wrong_language_reply(
+            "நிச்சயமாக, அதை உங்கள் பட்டியலில் சேர்த்துவிட்டேன்.",
+            "add toothpaste to my shopping list",
+        ))
+        self.assertFalse(brain._looks_like_wrong_language_reply(
+            "Mohon maaf, silakan beri tahu saya.",
+            "reply in Malay please",
+        ))
+        self.assertFalse(brain._looks_like_wrong_language_reply(
+            "இதோ உங்கள் பட்டியல்.",
+            "reply in Tamil please",
+        ))
+
+    def test_voice_scoring_does_not_reject_valid_malay_commands(self):
+        self.assertGreaterEqual(
+            media._voice_intent_score("Tambah susu ke senarai barang"),
+            2,
+        )
+        self.assertGreaterEqual(
+            media._voice_intent_score("Ingatkan saya esok bayar bil"),
+            2,
+        )
+
+    def test_whisper_model_cache_requires_published_checksum(self):
+        fd, path = tempfile.mkstemp(suffix=".bin")
+        os.close(fd)
+        try:
+            blob = b"x" * (1024 * 1024 + 1)
+            with open(path, "wb") as handle:
+                handle.write(blob)
+            digest = __import__("hashlib").sha1(blob).hexdigest()
+            with patch.dict(media.WHISPER_MODEL_SHA1, {"tiny": digest}, clear=False):
+                self.assertTrue(media._valid_whisper_model(path, "tiny"))
+            with patch.dict(media.WHISPER_MODEL_SHA1, {"tiny": "0" * 40}, clear=False):
+                self.assertFalse(media._valid_whisper_model(path, "tiny"))
+        finally:
+            os.unlink(path)
+
+    def test_explicit_local_whisper_still_fails_closed_on_mutation_disagreement(self):
+        self.claim("explicit-local-voice", text="")
+        voice_id = media.save_media(
+            "explicit-local-voice", "AUDIO", "audio/ogg",
+            base64.b64encode(b"voice").decode(),
+        )
+        settings = SimpleNamespace(
+            stt_provider="local_whisper",
+            whisper_model="base",
+            cloud_stt_rescue_enabled=False,
+            xai_api_key="", openai_api_key="", gemini_api_key="",
+            gemini_model="gemini",
+        )
+        decodes = {
+            "auto": "add milk to my shopping list",
+            "en": "what time is it today",
+            "ta": "நாளைக்கு வானிலை எப்படி",
+        }
+        with patch.object(media, "get_settings", return_value=settings), \
+                patch.object(media, "_local_whisper", side_effect=lambda _p, _m, lang: decodes[lang]):
+            with self.assertRaises(media.VoiceTranscriptionUncertain):
+                media.transcribe_audio(voice_id)
+
+    def test_mutating_voice_requires_two_local_decoders_to_agree(self):
+        agreed = [
+            ("local_auto", "add test toothpaste to my shopping list"),
+            ("local_en", "add test toothpaste to my shopping list"),
+            ("local_ta", "தொடர்பில்லாத வார்த்தைகள்"),
+        ]
+        label, transcript = media._choose_voice_transcript(agreed)
+        self.assertTrue(media._voice_is_mutation_like(transcript))
+        self.assertTrue(media._local_voice_confident(label, transcript, agreed))
+
+        disagreed = [
+            ("local_auto", "add test toothpaste to my shopping list"),
+            ("local_en", "what time is it today"),
+            ("local_ta", "நாளைக்கு வானிலை எப்படி"),
+        ]
+        label, transcript = media._choose_voice_transcript(disagreed)
+        self.assertTrue(media._voice_is_mutation_like(transcript))
+        self.assertFalse(media._local_voice_confident(label, transcript, disagreed))
+
+    def test_forced_tamil_pass_is_not_trusted_just_because_it_has_tamil_script(self):
+        candidates = [
+            ("local_auto", "add milk to my shopping list"),
+            ("local_en", "add milk to my shopping list"),
+            ("local_ta", "நாளைக்கு ஏதோ தொடர்பில்லாத வார்த்தைகள்"),
+        ]
+        label, transcript = media._choose_voice_transcript(candidates)
+        self.assertIn(label, {"local_auto", "local_en"})
+        self.assertIn("shopping list", transcript)
+
+    def test_auto_stt_never_uses_cloud_without_explicit_rescue_opt_in(self):
+        fake_settings = SimpleNamespace(
+            stt_provider="auto", whisper_model="base",
+            cloud_stt_rescue_enabled=False,
+            gemini_api_key="configured-chat-key",
+            openai_api_key="", xai_api_key="",
+            gemini_model="gemini-test",
+        )
+
+        def fake_local(_path, _model, language="auto"):
+            return {
+                "auto": "add toothpaste to my shopping list",
+                "en": "what time is my appointment",
+                "ta": "நாளைக்கு வானிலை எப்படி",
+            }[language]
+
+        with patch.object(media, "get_media", return_value={
+            "media_id": "voice-cloud-off", "media_type": "AUDIO",
+            "local_path": "/tmp/fake.ogg", "mime_type": "audio/ogg",
+        }), patch.object(media, "get_settings", return_value=fake_settings), \
+                patch.object(media, "_local_whisper", side_effect=fake_local), \
+                patch.object(media, "_gemini_stt") as cloud:
+            with self.assertRaises(media.VoiceTranscriptionUncertain):
+                media.transcribe_audio("voice-cloud-off")
+            cloud.assert_not_called()
+
+    def test_auto_stt_cloud_rescue_requires_opt_in_and_can_resolve_disagreement(self):
+        fake_settings = SimpleNamespace(
+            stt_provider="auto", whisper_model="base",
+            cloud_stt_rescue_enabled=True,
+            gemini_api_key="configured-chat-key",
+            openai_api_key="", xai_api_key="",
+            gemini_model="gemini-test",
+        )
+
+        def fake_local(_path, _model, language="auto"):
+            return {
+                "auto": "add toothpaste to my shopping list",
+                "en": "what time is my appointment",
+                "ta": "நாளைக்கு வானிலை எப்படி",
+            }[language]
+
+        with patch.object(media, "get_media", return_value={
+            "media_id": "voice-cloud-on", "media_type": "AUDIO",
+            "local_path": "/tmp/fake.ogg", "mime_type": "audio/ogg",
+        }), patch.object(media, "get_settings", return_value=fake_settings), \
+                patch.object(media, "_local_whisper", side_effect=fake_local), \
+                patch.object(media, "_gemini_stt", return_value="add toothpaste to my shopping list") as cloud:
+            self.assertEqual(
+                media.transcribe_audio("voice-cloud-on"),
+                "add toothpaste to my shopping list",
+            )
+            cloud.assert_called_once()
+
     def test_voice_note_never_paired_with_earlier_text(self):
         """Smoke: unrelated vinyl picture appeared during a reminder voice note."""
         self.claim("t-vinyl", text="send me the actual saved vinyl picture")
@@ -173,6 +363,40 @@ class RoutingTests(V044Base):
             names = _names(asyncio.run(brain._tool_specs(phrase)))
             self.assertIn("query_finances", names, phrase)
             self.assertLessEqual(len(names), brain.TOOL_EXPOSURE_MAX)
+
+    def test_contextual_finance_correction_exposes_correction_not_second_write(self):
+        names = _names(asyncio.run(brain._tool_specs(
+            "Actually it was RM12.80.",
+            prior_user_text="I paid RM12.50 for parking.",
+        )))
+        self.assertIn("correct_expense", names)
+        self.assertIn("query_finances", names)
+        self.assertNotIn("log_expense", names)
+
+    def test_contextual_resend_carries_receipt_retrieval_tools(self):
+        names = _names(asyncio.run(brain._tool_specs(
+            "Send me that again.",
+            prior_user_text="Send me the management receipt.",
+        )))
+        self.assertIn("find_receipts", names)
+        self.assertIn("get_receipt", names)
+
+    def test_retained_receipt_browse_is_not_explicit_saved_memory(self):
+        names = _names(asyncio.run(brain._tool_specs(
+            "What receipts have I saved recently?"
+        )))
+        self.assertIn("find_receipts", names)
+        self.assertIn("get_receipt", names)
+        self.assertNotIn("save_item", names)
+        self.assertNotIn("search_saved_items", names)
+        self.assertNotIn("remove_saved_item", names)
+
+    def test_contextual_followup_does_not_replay_prior_mutator(self):
+        names = _names(asyncio.run(brain._tool_specs(
+            "Actually it was RM12.80.",
+            prior_user_text="I paid RM12.50 for parking.",
+        )))
+        self.assertNotIn("log_expense", names)
 
     def test_fallback_is_read_only(self):
         names = _names(asyncio.run(brain._tool_specs("what pictures did I ask you to save")))
@@ -616,6 +840,386 @@ class TurnLoopTests(V044Base):
         args, result = json.loads(row[0]), json.loads(row[1])
         self.assertIn(brain.DISCOVERY_TOOL_NAME, result["tools_called"])
         self.assertIn("list_reminders", args["exposed_tools"])
+
+
+
+class FinalHardeningTests(V044Base):
+    def test_uncertain_voice_is_completed_with_safe_retry_prompt_not_reprocessed(self):
+        payload = {
+            "message_id": "voice-uncertain-ingress",
+            "conversation_id": DM,
+            "conversation_type": "DIRECT_DM",
+            "sender_phone": HUSBAND,
+            "text": "",
+            "audio_data": base64.b64encode(b"voice").decode(),
+            "audio_mime_type": "audio/ogg",
+        }
+        with patch.object(
+            media, "process_payload_media",
+            side_effect=media.VoiceTranscriptionUncertain("uncertain"),
+        ), patch.object(brain, "respond") as responder:
+            result = ingress.process(payload)
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["voice_uncertain"])
+        responder.assert_not_called()
+        conn = db.connect()
+        try:
+            inbound = conn.execute(
+                "SELECT processing_state,cached_response FROM inbound_messages WHERE message_id=?",
+                ("voice-uncertain-ingress",),
+            ).fetchone()
+            outbound = conn.execute(
+                "SELECT text_body FROM outbound_messages WHERE source_message_id=?",
+                ("voice-uncertain-ingress",),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(inbound["processing_state"], "COMPLETED")
+        self.assertIn("couldn't understand", inbound["cached_response"])
+        self.assertIn("couldn't understand", outbound["text_body"])
+
+    def test_audio_attachment_is_emitted_as_whatsapp_audio_payload(self):
+        fd, path = tempfile.mkstemp(suffix=".ogg")
+        os.close(fd)
+        try:
+            with open(path, "wb") as handle:
+                handle.write(b"voice-bytes")
+            row = {
+                "outbound_id": "audio-outbound-1",
+                "conversation_id": DM,
+                "kind": "DOCUMENT",
+                "text_body": "",
+                "local_path": path,
+                "mime_type": "audio/ogg",
+                "source_message_id": "voice-origin",
+                "context_kind": None,
+            }
+            payload = outbox._payload(row)
+            self.assertEqual(payload["kind"], "audio")
+            self.assertEqual(payload["mimetype"], "audio/ogg")
+            self.assertEqual(payload["reply_to_message_id"], "voice-origin")
+            self.assertEqual(
+                payload["message_id"],
+                outbox._whatsapp_message_id("audio-outbound-1"),
+            )
+            self.assertEqual(
+                outbox._whatsapp_message_id("audio-outbound-1"),
+                outbox._whatsapp_message_id("audio-outbound-1"),
+            )
+            self.assertNotEqual(
+                outbox._whatsapp_message_id("audio-outbound-1"),
+                outbox._whatsapp_message_id("audio-outbound-2"),
+            )
+        finally:
+            os.unlink(path)
+
+    def test_semantic_discovery_cannot_resurrect_negated_home_control(self):
+        specs = asyncio.run(brain._discover_tool_specs(
+            "turn off the hall light",
+            original_user_text="Don't turn off the hall light; just tell me its state.",
+        ))
+        names = _names(specs)
+        self.assertNotIn("ha_control", names)
+        self.assertTrue({"ha_find_entities", "ha_get_state"} & names)
+
+    def test_semantic_discovery_allows_explicit_trusted_mutation(self):
+        specs = asyncio.run(brain._discover_tool_specs(
+            "turn off the hall light",
+            original_user_text="Please turn off the hall light.",
+        ))
+        self.assertIn("ha_control", _names(specs))
+
+    def test_switch_off_device_word_order_exposes_ha_control(self):
+        names = _names(asyncio.run(brain._tool_specs("Switch off the AC.")))
+        self.assertIn("ha_control", names)
+        self.assertIn("ha_find_entities", names)
+
+    def test_contextual_turn_it_off_uses_current_turn_as_write_authority(self):
+        names = _names(asyncio.run(brain._tool_specs(
+            "Turn it off.",
+            prior_user_text="Is the hall AC on?",
+        )))
+        self.assertIn("ha_control", names)
+        self.assertTrue({"ha_find_entities", "ha_get_state"} & names)
+
+    def test_ha_automation_draft_never_exposes_live_control(self):
+        names = _names(asyncio.run(brain._tool_specs(
+            "Draft an automation to turn off the hall AC at midnight."
+        )))
+        self.assertIn("ha_draft_automation", names)
+        self.assertNotIn("ha_control", names)
+
+    def test_negated_memory_write_is_blocked_but_explanation_can_continue(self):
+        names = _names(asyncio.run(brain._tool_specs(
+            "Don't save this, just explain it.",
+            media_context=["[Document text]\nWarranty details"],
+        )))
+        self.assertNotIn("save_item", names)
+        self.assertNotIn("remove_saved_item", names)
+
+    def test_negated_reminder_delete_routes_to_read_only(self):
+        names = _names(asyncio.run(brain._tool_specs(
+            "Don't delete the reminder, just show it."
+        )))
+        self.assertIn("list_reminders", names)
+        self.assertNotIn("update_reminder", names)
+        self.assertNotIn("create_reminder", names)
+
+    def test_typo_heavy_negated_reminder_stays_read_only(self):
+        names = _names(asyncio.run(brain._tool_specs(
+            "Don't delete the remnder, just show it."
+        )))
+        self.assertIn("list_reminders", names)
+        self.assertNotIn("update_reminder", names)
+        self.assertNotIn("create_reminder", names)
+
+    def test_unrelated_dont_does_not_disable_positive_mutation(self):
+        self.assertTrue(
+            brain._trusted_mutation_requested(
+                "Don't worry, add milk to the shopping list."
+            )
+        )
+        specs = asyncio.run(brain._discover_tool_specs(
+            "add milk to shopping list",
+            original_user_text="Don't worry, add milk to the shopping list.",
+        ))
+        self.assertIn("add_shopping_item", _names(specs))
+
+    def test_compound_shift_and_departure_keeps_both_required_reads(self):
+        names = _names(asyncio.run(brain._tool_specs(
+            "What shift am I on tomorrow and what time should I leave?"
+        )))
+        self.assertIn("work_schedule", names)
+        self.assertIn("work_departure_plan", names)
+        self.assertNotIn("work_record_event", names)
+        self.assertNotIn("set_leave_record", names)
+
+    def test_short_priority_tokens_do_not_match_inside_unrelated_words(self):
+        self.assertEqual(
+            brain._tool_priority("work_ot_status", "photo of total costs", False),
+            10,
+        )
+        self.assertEqual(
+            brain._tool_priority("find_receipts", "I prefer a refund", False),
+            10,
+        )
+
+    def test_explicit_saved_receipt_memory_keeps_memory_retrieval(self):
+        names = _names(asyncio.run(brain._tool_specs(
+            "Show the receipt photo I asked you to save."
+        )))
+        self.assertIn("find_receipts", names)
+        self.assertIn("get_saved_item", names)
+
+    def test_routing_keyword_matches_whole_phrase_not_substring(self):
+        self.assertTrue(services._routing_keyword_matches("fine", "I paid a traffic fine"))
+        self.assertFalse(services._routing_keyword_matches("fine", "I had a refined dinner"))
+        self.assertTrue(services._routing_keyword_matches("tng", "Top up TNG"))
+        self.assertFalse(services._routing_keyword_matches("tng", "testing something"))
+
+    def test_explicit_private_finance_overrides_family_catalogue_route(self):
+        self.claim("private-pharmacy", text="Log this pharmacy purchase privately")
+        actor = self.actor(
+            "private-pharmacy",
+            trusted_text="Log this pharmacy purchase privately",
+        )
+        conn = db.connect()
+        try:
+            space, category, _ = services._route(
+                conn, actor, "pharmacy medicine", "pharmacy"
+            )
+        finally:
+            conn.close()
+        self.assertEqual(space, actor.private_space)
+        self.assertEqual(category, "pharmacy")
+
+    def test_processing_lease_does_not_reclaim_slow_voice_turn_too_early(self):
+        from datetime import timedelta
+        self.claim("lease-test", text="voice")
+        conn = db.connect()
+        try:
+            recent = (ingress.runtime_clock.now_utc() - timedelta(minutes=5)).isoformat()
+            conn.execute(
+                "UPDATE inbound_messages SET processing_started_at_utc=? WHERE message_id=?",
+                (recent, "lease-test"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        duplicate = db.claim_inbound({
+            "message_id": "lease-test", "provider": "WHATSAPP",
+            "conversation_id": DM, "conversation_type": "DIRECT_DM",
+            "sender_phone": HUSBAND, "text": "voice",
+        })
+        self.assertEqual(duplicate, "DUPLICATE")
+
+        conn = db.connect()
+        try:
+            stale = (ingress.runtime_clock.now_utc() - timedelta(minutes=16)).isoformat()
+            conn.execute(
+                "UPDATE inbound_messages SET processing_started_at_utc=? WHERE message_id=?",
+                (stale, "lease-test"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        reclaimed = db.claim_inbound({
+            "message_id": "lease-test", "provider": "WHATSAPP",
+            "conversation_id": DM, "conversation_type": "DIRECT_DM",
+            "sender_phone": HUSBAND, "text": "voice",
+        })
+        self.assertEqual(reclaimed, "CLAIMED")
+
+    def test_original_voice_media_is_owner_scoped_and_retrievable(self):
+        self.claim("voice-origin", text="")
+        voice_id = media.save_media(
+            "voice-origin", "AUDIO", "audio/ogg",
+            base64.b64encode(b"voice-bytes").decode(),
+        )
+        media._update_transcript(
+            voice_id, "add milk to my shopping list",
+            {"mode": "test", "chosen": "fixture"},
+        )
+
+        husband = self.actor("media-query-h")
+        found = services.find_media(husband, "voice")
+        self.assertEqual(found["matches"][0]["media_id"], voice_id)
+        original = services.get_media_original(husband, voice_id)
+        self.assertEqual(original["media_type"], "AUDIO")
+        self.assertEqual(original["_attachments"][0]["mime_type"], "audio/ogg")
+
+        wife = self.actor("media-query-w", phone=WIFE)
+        wife_found = services.find_media(wife, "voice")
+        self.assertFalse(any(row["media_id"] == voice_id for row in wife_found["matches"]))
+        with self.assertRaises(PermissionError):
+            services.get_media_original(wife, voice_id)
+
+    def test_family_group_original_media_is_shared(self):
+        group = "120363000000@g.us"
+        self.claim(
+            "group-image", phone=WIFE, text="family image",
+            conv=group, ctype="GROUP",
+        )
+        image_id = media.save_media(
+            "group-image", "IMAGE", "image/jpeg",
+            base64.b64encode(b"fake-image").decode(),
+        )
+        husband = self.actor("media-query-family")
+        found = services.find_media(husband, "image")
+        self.assertTrue(any(row["media_id"] == image_id for row in found["matches"]))
+
+
+    def test_voice_mutation_guard_covers_move_and_contextual_amounts(self):
+        self.assertTrue(media._voice_is_mutation_like(
+            "Move my dentist appointment to 5 PM."
+        ))
+        self.assertTrue(media._voice_is_mutation_like("RM8.50"))
+        self.assertTrue(media._voice_is_mutation_like("2"))
+        self.assertFalse(media._voice_is_mutation_like(
+            "What reminders do I have?"
+        ))
+
+    def test_voice_consensus_rejects_disagreeing_critical_numbers(self):
+        candidates = [
+            ("local_auto", "spent RM15 on petrol"),
+            ("local_en", "spent RM50 on petrol"),
+        ]
+        self.assertFalse(media._local_consensus(
+            "local_auto", candidates[0][1], candidates
+        ))
+        agreeing = [
+            ("local_auto", "spent RM15 on petrol"),
+            ("local_en", "spent RM15 on petrol"),
+        ]
+        self.assertTrue(media._local_consensus(
+            "local_auto", agreeing[0][1], agreeing
+        ))
+
+    def test_restart_recovery_quarantines_inflight_message(self):
+        self.claim("restart-stranded", text="add milk")
+        conn = db.connect()
+        try:
+            recovered = db._recover_interrupted_inbound(conn)
+            conn.commit()
+            row = conn.execute(
+                "SELECT processing_state,last_error FROM inbound_messages WHERE message_id=?",
+                ("restart-stranded",),
+            ).fetchone()
+            notice = conn.execute(
+                "SELECT text_body,context_kind FROM outbound_messages "
+                "WHERE source_message_id=?",
+                ("restart-stranded",),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(recovered, 1)
+        self.assertEqual(row["processing_state"], "FAILED")
+        self.assertTrue(row["last_error"].startswith(db.RESTART_INTERRUPTED_PREFIX))
+        self.assertEqual(notice["context_kind"], "INBOUND_RECOVERY")
+        self.assertIn("won't repeat", notice["text_body"])
+        self.assertEqual(db.claim_inbound({
+            "message_id": "restart-stranded", "provider": "WHATSAPP",
+            "conversation_id": DM, "conversation_type": "DIRECT_DM",
+            "sender_phone": HUSBAND, "text": "add milk",
+        }), "DUPLICATE")
+
+    def test_failed_media_download_is_completed_without_model_or_mutation(self):
+        payload = {
+            "message_id": "media-download-failed",
+            "conversation_id": DM,
+            "conversation_type": "DIRECT_DM",
+            "sender_phone": HUSBAND,
+            "text": "save this",
+            "media_failed": True,
+            "media_failed_type": "image",
+        }
+        with patch.object(brain, "respond") as responder:
+            result = ingress.process(payload)
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["media_failed"])
+        responder.assert_not_called()
+        conn = db.connect()
+        try:
+            inbound = conn.execute(
+                "SELECT processing_state FROM inbound_messages WHERE message_id=?",
+                ("media-download-failed",),
+            ).fetchone()
+            outbound = conn.execute(
+                "SELECT text_body FROM outbound_messages WHERE source_message_id=?",
+                ("media-download-failed",),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(inbound["processing_state"], "COMPLETED")
+        self.assertIn("Please resend", outbound["text_body"])
+
+    def test_confirm_expense_refuses_non_pending_event(self):
+        self.claim("confirm-guard", text="spent RM5 on parking")
+        actor = with_action_key(
+            self.actor(
+                "confirm-guard",
+                trusted_text="spent RM5 on parking",
+                received_at_utc="2026-09-30T01:00:00+00:00",
+            ),
+            "confirm-guard-k",
+        )
+        logged = services.log_expense(
+            actor, "Parking", 5, "transport", "MYR"
+        )
+        result = services.confirm_expense(
+            self.actor("confirm-read"), logged["event_id"], amount=6
+        )
+        self.assertEqual(result["status"], "not_pending")
+        conn = db.connect()
+        try:
+            row = conn.execute(
+                "SELECT amount_minor,status FROM financial_events WHERE event_id=?",
+                (logged["event_id"],),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(row["amount_minor"], 500)
+        self.assertEqual(row["status"], "ACTIVE")
 
 
 if __name__ == "__main__":

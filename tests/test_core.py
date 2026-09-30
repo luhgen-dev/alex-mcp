@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 from datetime import datetime, timedelta, timezone
+from dataclasses import replace
 
 TEST_DIR = tempfile.mkdtemp(prefix="alex-mcp-tests-")
 OPTIONS = os.path.join(TEST_DIR, "options.json")
@@ -286,6 +287,71 @@ class AlexCoreTests(unittest.TestCase):
         xai.assert_not_called()
         self.assertEqual(media.get_media(media_id)["transcript_text"], "வணக்கம் alex")
 
+    def test_auto_stt_fails_closed_on_uncertain_mutating_command_without_cloud_opt_in(self):
+        self.claim("voice-uncertain", "+60111111111", "")
+        raw = base64.b64encode(b"dummy-voice-bytes").decode("ascii")
+        media_id = media.save_media("voice-uncertain", "AUDIO", "audio/ogg", raw)
+        settings = Settings(
+            stt_provider="auto",
+            cloud_stt_rescue_enabled=False,
+            whisper_model="base",
+            gemini_api_key="configured-chat-key",
+        )
+
+        def local_side_effect(_path, _model, language="auto"):
+            return {
+                "auto": "add milk to my shopping list",
+                "en": "what time is it today",
+                "ta": "நாளைக்கு வானிலை எப்படி",
+            }[language]
+
+        with patch.object(media, "get_settings", return_value=settings), \
+             patch.object(media, "_local_whisper", side_effect=local_side_effect) as local, \
+             patch.object(media, "_gemini_stt") as gemini, \
+             patch.object(media, "_openai_stt") as openai_stt, \
+             patch.object(media, "_xai_stt") as xai:
+            with self.assertRaises(media.VoiceTranscriptionUncertain):
+                media.transcribe_audio(media_id)
+
+        self.assertEqual(local.call_count, 3)
+        gemini.assert_not_called()
+        openai_stt.assert_not_called()
+        xai.assert_not_called()
+        stored = media.get_media(media_id)
+        self.assertIn('"confidence": "uncertain"', stored["transcript_meta_json"])
+
+    def test_auto_stt_cloud_rescue_requires_explicit_opt_in(self):
+        self.claim("voice-cloud-rescue", "+60111111111", "")
+        raw = base64.b64encode(b"dummy-voice-bytes").decode("ascii")
+        media_id = media.save_media("voice-cloud-rescue", "AUDIO", "audio/ogg", raw)
+        settings = Settings(
+            stt_provider="auto",
+            cloud_stt_rescue_enabled=True,
+            whisper_model="base",
+            gemini_api_key="configured-key",
+        )
+
+        def local_side_effect(_path, _model, language="auto"):
+            return {
+                "auto": "add milk to my shopping list",
+                "en": "what time is it today",
+                "ta": "நாளைக்கு வானிலை எப்படி",
+            }[language]
+
+        with patch.object(media, "get_settings", return_value=settings), \
+             patch.object(media, "_local_whisper", side_effect=local_side_effect), \
+             patch.object(media, "_gemini_stt", return_value="add milk to my shopping list") as gemini, \
+             patch.object(media, "_openai_stt") as openai_stt, \
+             patch.object(media, "_xai_stt") as xai:
+            text_value = media.transcribe_audio(media_id)
+
+        self.assertEqual(text_value, "add milk to my shopping list")
+        gemini.assert_called_once()
+        openai_stt.assert_not_called()
+        xai.assert_not_called()
+        stored = media.get_media(media_id)
+        self.assertIn('"cloud_rescue": true', stored["transcript_meta_json"])
+
     def test_nonfinancial_image_is_available_to_model_vision(self):
         self.claim("img1", "+60111111111", "what is this?")
         payload = {
@@ -417,6 +483,82 @@ class AlexCoreTests(unittest.TestCase):
         finally:
             conn.close()
 
+
+    def test_mcp_natural_reference_facades_execute_without_opaque_ids(self):
+        goal = phase2_finance.create_goal(
+            "Family Holiday Savings", 5000, 200,
+            "+60111111111", visibility="private"
+        )
+        cash = phase2_finance.record_cash_event(
+            "OT", 400, "2026-09-29", "+60111111111",
+            visibility="private"
+        )
+        asset = phase2_library.create_asset(
+            "Water Dispenser", "+60111111111", visibility="private"
+        )
+        self.claim("mcp-natural", "+60111111111", "natural references")
+        media_id = media.save_media(
+            "mcp-natural", "PDF", "application/pdf",
+            base64.b64encode(b"%PDF-1.4 natural facade manual").decode("ascii"),
+        )
+        actor = self.actor(
+            "mcp-natural", "+60111111111", [media_id]
+        )
+
+        async def exercise():
+            with use_actor(actor):
+                async with Client(mcp) as client:
+                    progress = await client.call_tool(
+                        "planning_goal_progress",
+                        {"goal_name": "holiday savings"},
+                    )
+                    self.assertFalse(progress.is_error)
+
+                    deviation = await client.call_tool(
+                        "planning_goal_deviation",
+                        {"goal_name": "Family Holiday Savings",
+                         "period": "2026-09"},
+                    )
+                    self.assertFalse(deviation.is_error)
+
+                    allocation = await client.call_tool(
+                        "planning_allocate_cash_to_goal",
+                        {
+                            "amount": 100,
+                            "cash_event_type": "OT",
+                            "cash_event_date": "2026-09-29",
+                            "goal_name": "Family Holiday Savings",
+                        },
+                    )
+                    self.assertFalse(allocation.is_error)
+
+                    linked = await client.call_tool(
+                        "asset_link_document",
+                        {
+                            "document_type": "MANUAL",
+                            "asset_name": "Water Dispenser",
+                        },
+                    )
+                    self.assertFalse(linked.is_error)
+
+        asyncio.run(exercise())
+        self.assertEqual(
+            phase2_finance.goal_progress(
+                goal["goal_id"], "+60111111111"
+            )["funded"],
+            100,
+        )
+        stored = phase2_library.list_assets(
+            "+60111111111", include_documents=True
+        )
+        self.assertEqual(stored[0]["asset_id"], asset["asset_id"])
+        self.assertEqual(stored[0]["documents"][0]["evidence_ref"], media_id)
+        self.assertEqual(
+            phase2_finance.cash_event_status(
+                cash["cash_event_id"], "+60111111111"
+            )["unallocated"],
+            300,
+        )
 
     def test_audio_media_does_not_force_private_expense_shared(self):
         self.claim("audio-route", "+60111111111", "")
@@ -755,6 +897,90 @@ class AlexCoreTests(unittest.TestCase):
         self.assertNotIn("xai_api_key", str(health))
 
 
+    def test_natural_planning_references_never_require_model_uuid_invention(self):
+        self.sync_phase2_fixture()
+        goal = phase2_finance.create_goal(
+            "Family Holiday Savings", 5000, 200,
+            "+60111111111", visibility="private"
+        )
+        self.assertEqual(
+            phase2_finance.resolve_goal_reference(
+                None, "holiday savings", "+60111111111"
+            ),
+            goal["goal_id"],
+        )
+
+        cash = phase2_finance.record_cash_event(
+            "OT", 400, "2026-09-29", "+60111111111",
+            visibility="private"
+        )
+        resolved_cash = phase2_finance.resolve_cash_event_reference(
+            None, "+60111111111", event_type="OT",
+            event_date="2026-09-29", require_unallocated=True,
+        )
+        self.assertEqual(resolved_cash, cash["cash_event_id"])
+
+        allocation = phase2_finance.allocate_cash_to_goal(
+            resolved_cash,
+            phase2_finance.resolve_goal_reference(
+                None, "Family Holiday Savings", "+60111111111"
+            ),
+            100, "+60111111111", contribution_date="2026-09-29",
+        )
+        self.assertEqual(allocation["remaining_unallocated"], 300)
+
+        # The model need not calculate or invent the period's actual
+        # contribution before asking whether the goal is below plan.
+        deviation = phase2_finance.evaluate_goal_deviation(
+            goal["goal_id"], None, "2026-09", "+60111111111"
+        )
+        self.assertEqual(deviation["actual"], 100)
+        self.assertEqual(deviation["status"], "BELOW_PLAN")
+
+        pool = phase2_finance.create_cash_pool(
+            "Holiday Buffer", "+60111111111", visibility="private"
+        )
+        self.assertEqual(
+            phase2_finance.resolve_cash_pool_reference(
+                None, "holiday buffer", "+60111111111"
+            ),
+            pool["pool_id"],
+        )
+        phase2_finance.allocate_cash_to_pool(
+            cash["cash_event_id"], pool["pool_id"], 50, "+60111111111"
+        )
+        self.assertEqual(
+            phase2_finance.cash_pool_balance(
+                phase2_finance.resolve_cash_pool_reference(
+                    None, "Holiday Buffer", "+60111111111"
+                ),
+                "+60111111111",
+            )["balance"],
+            50,
+        )
+
+        reserve = phase2_finance.add_plan_reserve(
+            "School Reserve", 300, "+60111111111", visibility="private"
+        )
+        self.assertEqual(
+            phase2_finance.resolve_reserve_reference(
+                None, "school reserve", "+60111111111"
+            ),
+            reserve["reserve_id"],
+        )
+
+    def test_natural_reference_resolution_refuses_ambiguous_planning_objects(self):
+        phase2_finance.create_goal(
+            "Holiday Europe", 5000, 0, "+60111111111", visibility="private"
+        )
+        phase2_finance.create_goal(
+            "Holiday Japan", 5000, 0, "+60111111111", visibility="private"
+        )
+        with self.assertRaises(ValueError):
+            phase2_finance.resolve_goal_reference(
+                None, "Holiday", "+60111111111"
+            )
+
     def test_advanced_goal_cash_and_obligation_lifecycle(self):
         self.sync_phase2_fixture()
         goal = phase2_finance.create_goal(
@@ -829,6 +1055,37 @@ class AlexCoreTests(unittest.TestCase):
             phase2_work.next_ot_payout_dates("2026-09-26", "+60111111111", count=4),
             ["2026-10-07", "2026-10-12", "2026-11-07", "2026-11-12"],
         )
+
+    def test_asset_name_and_current_attachment_are_groundable(self):
+        asset = phase2_library.create_asset(
+            "Water Dispenser", "+60111111111", visibility="private"
+        )
+        self.assertEqual(
+            phase2_library.resolve_asset_reference(
+                None, "water dispenser", "+60111111111"
+            ),
+            asset["asset_id"],
+        )
+
+        self.claim("asset-doc", "+60111111111", "attach this manual")
+        media_id = media.save_media(
+            "asset-doc", "PDF", "application/pdf",
+            base64.b64encode(b"%PDF-1.4 synthetic manual").decode("ascii"),
+        )
+        actor = self.actor("asset-doc", "+60111111111", [media_id])
+        # This mirrors the MCP wrapper's deterministic current-attachment bind.
+        linked = phase2_library.link_document(
+            phase2_library.resolve_asset_reference(
+                None, "Water Dispenser", "+60111111111"
+            ),
+            "MANUAL", actor.media_ids[0], "+60111111111",
+            source_message_id=actor.source_message_id,
+        )
+        self.assertEqual(linked["asset_id"], asset["asset_id"])
+        stored = phase2_library.list_assets(
+            "+60111111111", include_documents=True
+        )
+        self.assertEqual(stored[0]["documents"][0]["evidence_ref"], media_id)
 
     def test_asset_warranty_privacy_and_exact_document_reference(self):
         self.sync_phase2_fixture()
@@ -1242,6 +1499,18 @@ class AlexCoreTests(unittest.TestCase):
         finally:
             conn.close()
 
+    def test_identical_model_mutation_retries_share_one_action_key(self):
+        self.claim("same-call", "+60111111111", "log lunch")
+        actor = self.actor("same-call", "+60111111111")
+        args = {
+            "description": "Lunch", "amount": 9.5,
+            "category": "food", "currency": "MYR",
+        }
+        self.assertEqual(
+            brain._action_key(actor, "log_expense", args, 1),
+            brain._action_key(actor, "log_expense", args, 2),
+        )
+
     def test_uncertain_mutation_is_not_replayed(self):
         self.claim("uncertain1", "+60111111111", "turn off light")
         actor = self.actor("uncertain1", "+60111111111")
@@ -1313,6 +1582,56 @@ class AlexCoreTests(unittest.TestCase):
         group = self.group_actor("scope-group", "+60111111111")
         with self.assertRaises(PermissionError):
             services.query_finances(group, scope="private")
+
+    def test_dm_receipt_media_does_not_widen_private_finance_scope(self):
+        self.claim("scope-receipt-private", "+60111111111", "log this receipt")
+        raw = base64.b64encode(b"generic-receipt").decode("ascii")
+        receipt_media = media.save_media(
+            "scope-receipt-private", "IMAGE", "image/jpeg", raw
+        )
+        actor = with_action_key(
+            replace(
+                self.actor(
+                    "scope-receipt-private", "+60111111111", [receipt_media]
+                ),
+                trusted_text="log this receipt",
+            ),
+            "scope-receipt-private-a",
+        )
+        result = services.log_expense(
+            actor, "Personal purchase", 15, "personal", currency="MYR"
+        )
+        self.assertEqual(result["space"], "HUSBAND_PVT")
+
+    def test_sensitive_finance_categories_default_private_but_family_can_be_explicit(self):
+        self.claim("scope-pharmacy-private", "+60111111111", "pharmacy medicine")
+        actor = with_action_key(
+            replace(
+                self.actor("scope-pharmacy-private", "+60111111111"),
+                trusted_text="pharmacy medicine",
+            ),
+            "scope-pharmacy-private-a",
+        )
+        private = services.log_expense(
+            actor, "Pharmacy medicine", 20, "pharmacy", currency="MYR"
+        )
+        self.assertEqual(private["space"], "HUSBAND_PVT")
+
+        self.claim(
+            "scope-pharmacy-family", "+60111111111",
+            "share with the family pharmacy medicine",
+        )
+        family_actor = with_action_key(
+            replace(
+                self.actor("scope-pharmacy-family", "+60111111111"),
+                trusted_text="share with the family pharmacy medicine",
+            ),
+            "scope-pharmacy-family-a",
+        )
+        family = services.log_expense(
+            family_actor, "Pharmacy medicine", 20, "pharmacy", currency="MYR"
+        )
+        self.assertEqual(family["space"], "FAMILY_SHARED")
 
     def test_shopping_private_and_family_lists_do_not_collapse_each_other(self):
         self.claim("shop-scope", "+60111111111", "shopping")

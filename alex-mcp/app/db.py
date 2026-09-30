@@ -13,6 +13,8 @@ from context import ActorContext
 
 DB_PATH = os.path.join(DATA_DIR, "alex_mcp.db")
 SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "schema.sql")
+INBOUND_PROCESSING_LEASE_SECONDS = 900
+RESTART_INTERRUPTED_PREFIX = "restart_interrupted:"
 
 
 def utc_now() -> str:
@@ -45,8 +47,8 @@ ROUTING_CATALOGUE = [
     (("phone bill","bil telefon","maxis","celcom","digi","umobile","hotlink","topup","top up","reload"), "telco", "FAMILY_SHARED", None),
     (("astro","netflix","spotify","disney","subscription","langganan"), "subscriptions", "FAMILY_SHARED", None),
     (("doctor","clinic","klinik","hospital","doktor"), "medical", None, 150000),
-    (("pharmacy","farmasi","guardian","watsons","ubat","medicine"), "pharmacy", "FAMILY_SHARED", 30000),
-    (("credit card","kad kredit","cc payment","card payment","pawn","pajak","pajak gadai","pawn shop","tebus"), "debt_payment", "FAMILY_SHARED", None),
+    (("pharmacy","farmasi","guardian","watsons","ubat","medicine"), "pharmacy", None, 30000),
+    (("credit card","kad kredit","cc payment","card payment","pawn","pajak","pajak gadai","pawn shop","tebus"), "debt_payment", None, None),
     (("shopee","lazada","online order","bnpl","spaylater"), "online_shopping", None, 0),
     (("vep",), "sg_vehicle", "FAMILY_SHARED", None),
     (("saman","fine","summons","compound"), "fines", "FAMILY_SHARED", None),
@@ -58,6 +60,42 @@ def _ensure_column(conn: sqlite3.Connection, table: str, column: str, definition
     existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
     if column not in existing:
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
+def _recover_interrupted_inbound(conn: sqlite3.Connection) -> int:
+    """Quarantine turns left PROCESSING by an add-on restart.
+
+    A previous mutation may already have committed, so these message ids are
+    never replayed automatically. Instead Alex sends one durable recovery note
+    asking the user to verify state before trying the action again.
+    """
+    rows = conn.execute(
+        """SELECT message_id,conversation_id FROM inbound_messages
+           WHERE processing_state='PROCESSING'"""
+    ).fetchall()
+    if not rows:
+        return 0
+    stamp = utc_now()
+    for row in rows:
+        message_id = row["message_id"]
+        conn.execute(
+            """UPDATE inbound_messages
+               SET processing_state='FAILED',last_error=?
+               WHERE message_id=? AND processing_state='PROCESSING'""",
+            (RESTART_INTERRUPTED_PREFIX + stamp, message_id),
+        )
+        conn.execute(
+            """INSERT INTO outbound_messages(
+                outbound_id,source_message_id,conversation_id,kind,text_body,
+                context_kind,context_id
+               ) VALUES(?,?,?,?,?,?,?)""",
+            (
+                str(uuid.uuid4()), message_id, row["conversation_id"], "TEXT",
+                "Alex restarted while I was processing that message. I won't repeat the action automatically because it may already have happened. Ask me to check it, or resend only if you want me to try again.",
+                "INBOUND_RECOVERY", message_id,
+            ),
+        )
+    return len(rows)
 
 
 def initialize() -> None:
@@ -86,6 +124,7 @@ def initialize() -> None:
         _ensure_column(conn, "ai_usage", "cached_input_tokens", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(conn, "ai_usage", "reasoning_tokens", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(conn, "ai_usage", "model_calls", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(conn, "media_objects", "transcript_meta_json", "TEXT")
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_outbound_provider_message "
             "ON outbound_messages(conversation_id,provider_message_id)"
@@ -98,6 +137,7 @@ def initialize() -> None:
         _ensure_column(conn, "diary_events", "time_known", "INTEGER NOT NULL DEFAULT 1")
         _ensure_column(conn, "plans", "time_known", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(conn, "schedule_conflicts", "source_plan_id", "TEXT")
+        _recover_interrupted_inbound(conn)
         # v0.4.4 Phase-0 trace retention: only the compact per-turn trace rows
         # are pruned. Real tool audit history is never deleted here.
         conn.execute(
@@ -220,7 +260,7 @@ def claim_inbound(payload: dict) -> str:
     conn = connect()
     try:
         existing = conn.execute(
-            """SELECT processing_state,cached_response,attempt_count,processing_started_at_utc
+            """SELECT processing_state,cached_response,attempt_count,processing_started_at_utc,last_error
                FROM inbound_messages WHERE message_id=?""",
             (payload["message_id"],),
         ).fetchone()
@@ -229,13 +269,21 @@ def claim_inbound(payload: dict) -> str:
             state = existing["processing_state"]
             if state == "COMPLETED":
                 return "DUPLICATE"
+            if (
+                state == "FAILED"
+                and str(existing["last_error"] or "").startswith(RESTART_INTERRUPTED_PREFIX)
+            ):
+                # A prior process died mid-turn. The associated mutation may
+                # already have completed, so transport redelivery must never
+                # re-run this exact WhatsApp message automatically.
+                return "DUPLICATE"
             if existing["processing_started_at_utc"]:
                 try:
                     started = datetime.fromisoformat(existing["processing_started_at_utc"].replace("Z", "+00:00"))
                     if started.tzinfo is None:
                         started = started.replace(tzinfo=timezone.utc)
                     age = (now - started).total_seconds()
-                    if state == "PROCESSING" and age < 120:
+                    if state == "PROCESSING" and age < INBOUND_PROCESSING_LEASE_SECONDS:
                         return "DUPLICATE"
                     # The Node bridge retries non-2xx responses immediately. A
                     # short FAILED cooldown makes those transport retries no-op
@@ -271,6 +319,26 @@ def claim_inbound(payload: dict) -> str:
         )
         conn.commit()
         return "CLAIMED"
+    finally:
+        conn.close()
+
+
+def touch_inbound_processing(message_id: str) -> None:
+    """Refresh the processing lease around slow media/model stages.
+
+    First-use Whisper download plus multiple local passes can take several
+    minutes. Refreshing the lease prevents a concurrent transport retry from
+    re-entering the same WhatsApp message while the original worker is alive.
+    """
+    conn = connect()
+    try:
+        conn.execute(
+            """UPDATE inbound_messages
+               SET processing_started_at_utc=?
+               WHERE message_id=? AND processing_state='PROCESSING'""",
+            (runtime_clock.now_utc().isoformat(), message_id),
+        )
+        conn.commit()
     finally:
         conn.close()
 

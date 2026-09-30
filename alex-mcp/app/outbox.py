@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import os
 import time
@@ -41,22 +42,45 @@ def _provider_message_id(detail: str) -> str | None:
     return str(value)[:200] if value else None
 
 
+def _whatsapp_message_id(outbound_id: str) -> str:
+    """Stable Baileys message id so transport retries reuse the same WA key."""
+    digest = hashlib.sha256(str(outbound_id).encode("utf-8")).hexdigest().upper()
+    return "ALEX" + digest[:28]
+
+
 def _payload(row) -> dict:
     kind = row["kind"]
+    message_id = _whatsapp_message_id(row["outbound_id"])
+    reply_to = (
+        row["source_message_id"]
+        if row["source_message_id"] and not row["context_kind"]
+        else None
+    )
     if kind == "TEXT":
-        return {"to": row["conversation_id"], "kind": "text", "text": row["text_body"] or ""}
+        return {
+            "to": row["conversation_id"], "kind": "text",
+            "text": row["text_body"] or "", "message_id": message_id,
+            "reply_to_message_id": reply_to,
+        }
     path = row["local_path"]
     if not path or not os.path.isfile(path):
         raise FileNotFoundError(path or "missing attachment path")
     with open(path, "rb") as f:
         data = base64.b64encode(f.read()).decode("ascii")
+    mime = row["mime_type"] or ("image/jpeg" if kind == "IMAGE" else "application/octet-stream")
+    outbound_kind = (
+        "image" if kind == "IMAGE"
+        else ("audio" if str(mime).lower().startswith("audio/") else "document")
+    )
     return {
         "to": row["conversation_id"],
-        "kind": "image" if kind == "IMAGE" else "document",
+        "kind": outbound_kind,
         "file_b64": data,
-        "mimetype": row["mime_type"] or ("image/jpeg" if kind == "IMAGE" else "application/octet-stream"),
+        "mimetype": mime,
         "filename": os.path.basename(path),
         "caption": row["text_body"] or "",
+        "message_id": message_id,
+        "reply_to_message_id": reply_to,
     }
 
 
@@ -87,6 +111,7 @@ def sweep():
                            next_attempt_at_utc=NULL WHERE outbound_id=?""",
                         (row["outbound_id"],),
                     )
+                    conn.commit()
                     continue
             try:
                 payload = _payload(row)
@@ -144,6 +169,10 @@ def sweep():
                        last_error=?,next_attempt_at_utc=? WHERE outbound_id=?""",
                     (attempts, detail[:1000], next_try, row["outbound_id"]),
                 )
+            # Release SQLite's write lock before the next row performs a
+            # potentially slow network send. State + reminder-event updates for
+            # one row remain atomic, but WhatsApp latency cannot stall ingress.
+            conn.commit()
         conn.commit()
     finally:
         conn.close()

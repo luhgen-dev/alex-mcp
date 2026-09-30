@@ -1,5 +1,5 @@
 name: "Alex MCP"
-version: "0.4.4.2"
+version: "0.5.0"
 slug: "alex_mcp"
 description: "MCP-first household assistant — natural WhatsApp conversation, deterministic tools, receipts, reminders and memory"
 arch:
@@ -27,6 +27,7 @@ options:
   wife_phone: ""
   timezone: "Asia/Kuala_Lumpur"
   stt_provider: "auto"
+  cloud_stt_rescue_enabled: false
   whisper_model: "base"
   ocr_enabled: true
   context_turns: 8
@@ -55,6 +56,7 @@ schema:
   wife_phone: str
   timezone: str
   stt_provider: "list(auto|local_whisper|xai|openai|gemini)"
+  cloud_stt_rescue_enabled: bool
   whisper_model: "list(tiny|base|small)"
   ocr_enabled: bool
   context_turns: "int(2,20)"

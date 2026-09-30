@@ -22,14 +22,14 @@ No API key, phone number, provider or pairing credential is stored in source cod
 - privacy/identity checks
 - reminder scheduler
 - durable outbound queue
-- original receipt/media storage
+- original receipt/media storage and ACL-scoped later retrieval (including original voice notes)
 - receipt OCR through Tesseract
 - local multilingual Whisper voice-note transcription
 - PDF text extraction
 - WhatsApp session state
 - startup structural diagnostics
 
-The AI layer is used only for natural-language understanding, reasoning, tool selection and final wording. Normal household calls default to low reasoning, expose at most six relevant MCP tools and avoid replaying conversation history unless the new message is actually a follow-up.
+The AI layer is used only for natural-language understanding, reasoning, tool selection and final wording. Normal household calls default to low reasoning and expose at most six relevant MCP tools. Short follow-ups inherit only the minimum safe domain context needed to resolve phrases such as “actually it was…” or “send me that again”; prior mutating actions are never replayed merely because they are in history.
 
 ### Auto Saver routing
 
@@ -41,7 +41,7 @@ Auto mode is designed for the best household experience at the lowest practical 
 - Automatic Grok fallback has a separate monthly safety cap (default **$0.50**). Set it to `0` to disable automatic Grok fallback entirely; manual Grok mode is unaffected.
 - **OpenAI** is an optional final fallback when its key is configured.
 - Simple greetings, thanks and Alex health checks are answered locally without any model call.
-- Whisper and OCR remain local-first; Auto mode does not start sending every voice note or receipt directly to a paid multimodal model.
+- Whisper and OCR remain local-first. Merely configuring a Gemini/OpenAI/xAI chat key does **not** upload voice audio. Optional cloud STT rescue is controlled separately by `cloud_stt_rescue_enabled` and is **off by default**.
 
 The Web UI includes local 24-hour AI usage telemetry (input/cached/output/reasoning tokens, model calls, latency and cost) with a per-provider/model breakdown. Reading or refreshing this telemetry does not call an AI provider. xAI rows use xAI's provider-reported billed cost when the API returns it; other providers use the configured public token rates for local estimates.
 
@@ -61,7 +61,11 @@ Changing Auto ↔ Grok ↔ Gemini ↔ OpenAI is an app setting. The MCP tools an
 
 Voice notes are transcribed before the conversational model sees the request. With `stt_provider=auto`, Alex uses **local multilingual Whisper first**. This uses no AI API tokens and is the preferred path for Tamil/English/Tanglish voice notes.
 
-The default local model is `base`. It downloads automatically on the first voice note and is then kept under persistent `/data/models`. You can select `small` in Configuration later if you want to trade more storage/RAM for harder multilingual transcription. If local transcription fails, configured cloud transcription providers are fallback options.
+Short commands are guarded against auto-language drift. Alex can compare automatic, English and Tamil local decodes. A voice command that appears to mutate household state is accepted from local STT only when independent local decoding passes substantially agree; otherwise Alex asks you to resend/type rather than risking the wrong action.
+
+With `stt_provider=auto`, cloud STT rescue is attempted only when **`cloud_stt_rescue_enabled=true`** and local decoding is still not trustworthy. Enabling it means the complete voice-note audio may be sent to a configured STT-capable provider (Gemini first, then OpenAI/xAI as configured). Leave it off to keep Auto voice transcription entirely local. Alex records the chosen ASR path and confidence metadata locally for diagnostics without exposing transcript text in health reports.
+
+The default local model is `base`. It downloads automatically on the first voice note, is verified against the published whisper.cpp checksum, and is then kept under persistent `/data/models`. A corrupt or unexpected cached model is rejected and re-downloaded. First use can therefore take longer than later voice notes. You can select `small` in Configuration later if you want to trade more storage/RAM for harder multilingual transcription.
 
 Alex replies in text only.
 
@@ -78,6 +82,8 @@ Use ordinary language such as:
 - "How much did I spend over the weekend?"
 - "How much did the family spend yesterday?"
 - "Show my voice expenses."
+- "List my recent voice notes."
+- "Send me the original voice note again."
 - "Show 10." (after Alex displayed a numbered result list)
 - "Add detergent to the shopping list."
 - "Remind my wife Friday at 9am to renew road tax."
@@ -96,3 +102,5 @@ Persistent data lives under the app's `/data` volume:
 - `whatsapp_auth/`
 - `selftest.json`
 - `models/` (local Whisper model cache)
+
+Original household media and their selected transcripts/OCR are retained intentionally for provenance and later retrieval; Alex does not silently prune them. Plan storage capacity accordingly and take a full Home Assistant backup before upgrading or migrating the app.
