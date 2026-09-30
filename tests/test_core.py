@@ -2625,6 +2625,37 @@ class AlexCoreTests(unittest.TestCase):
         self.assertEqual(rows[1]["amount_minor"], -4000)
         self.assertEqual(rows[1]["category"], "food")
 
+    def test_leave_new_write_scope_follows_current_trusted_command(self):
+        cases = (
+            ("leave-scope-shared", "I'm on annual leave 6 October 2026, save that", "FAMILY_SHARED"),
+            ("leave-scope-private", "Save my annual leave 7 October 2026 privately", "HUSBAND_PVT"),
+            ("leave-scope-emoji", "Save my annual leave 8 October 2026 🙂", "HUSBAND_PVT"),
+        )
+        for mid, trusted_text, expected_space in cases:
+            self.claim(mid, "+60111111111", trusted_text)
+            actor = with_action_key(
+                replace(
+                    self.actor(mid, "+60111111111"),
+                    trusted_text=trusted_text,
+                ),
+                mid + "-action",
+            )
+            day = {
+                "leave-scope-shared": "2026-10-06",
+                "leave-scope-private": "2026-10-07",
+                "leave-scope-emoji": "2026-10-08",
+            }[mid]
+            result = phase2.set_leave_record(
+                actor, day, "PLANNED", "FULL", leave_type="ANNUAL_LEAVE"
+            )
+            self.assertEqual(result["space"], expected_space)
+
+        group = self.group_actor("leave-scope-group", "+60111111111")
+        visible = phase2.list_leave_records(
+            group, "2026-10-06", "2026-10-08"
+        )["leave"]
+        self.assertEqual([row["leave_date"] for row in visible], ["2026-10-06"])
+
     def test_leave_full_to_half_edits_same_record(self):
         self.claim("leave-full", "+60111111111", "record annual leave")
         first_actor = with_action_key(
