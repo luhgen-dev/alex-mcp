@@ -600,6 +600,9 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         low,
     ):
         force.add("asset_update")
+        # Editing an existing asset must never advertise asset creation as an
+        # alternative action; that was the source of live false-success risk.
+        block.add("asset_create")
     if re.search(r"\b(?:recent\s+(?:alex\s+)?(?:errors?|failures?)|alex\s+healthy|alex\s+health|why did alex fail)\b", low):
         force |= {"recent_failures", "system_health"}
 
@@ -705,13 +708,29 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         low,
     ):
         force |= {"planning_declare_cash_pool_balance", "planning_cash_pool_balance"}
+        # A declared balance is a fact about current state, not new cash and not
+        # an allocation instruction. Keep allocation/income mutators out.
+        block |= {
+            "planning_record_cash",
+            "planning_allocate_cash_to_goal",
+            "planning_allocate_cash_to_pool",
+        }
     if re.search(
         r"\b(?:spent|used|paid)\b.*\b(?:from|using)\b.*\b(?:stash|cash pool|buffer)\b",
         low,
     ):
         force |= {"planning_record_cash_pool_spend", "planning_cash_pool_balance"}
-    if re.search(r"\bcash\s*outflow\b|\bmoney\s*out\b|\btotal\s*outflow\b", low):
+    if re.search(
+        r"\bcash\s*outflow\b|\btotal\s*outflow\b"
+        r"|\bmoney\b.*\b(?:went|goes?|going)\s+out\b"
+        r"|\bhow much\b.*\bwent\s+out\b"
+        r"|\boutflow\b.*\b(?:savings?|contributions?|transfers?)\b",
+        low,
+    ):
         force.add("planning_cash_outflow")
+        # The broad outflow view is intentionally richer than the expense
+        # ledger; exposing query_finances encouraged the model to answer with
+        # expenses only, which is the live smoke failure.
         block.add("query_finances")
     if re.search(r"\b(?:put|allocate|channel)\b.*\b(?:stash|cash pool|buffer)\b", low):
         force.add("planning_allocate_cash_to_pool")
