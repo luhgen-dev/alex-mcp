@@ -1141,6 +1141,7 @@ def monitor_home_state(entity_id: str, target_state: str, actor: Actor,
         raise ValueError("an exact Home Assistant entity_id is required")
     if not target_state:
         raise ValueError("target_state is required")
+    import ha
     snapshot = ha.get_state(entity_id)
     current = str(snapshot.get("state") or "").strip().casefold()
     if current in {"unknown", "unavailable", ""}:
