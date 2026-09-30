@@ -1132,6 +1132,49 @@ def warranty_expiring(actor: Actor, within_days: int = 90,
 
 
 @mcp.tool()
+def monitor_home_state(entity_id: str, target_state: str, actor: Actor,
+                       shared: bool = False) -> dict:
+    """Create a one-shot Home Assistant state monitor after an explicit request such as 'tell me when Hall AC turns on'. Resolve the exact entity first; this tool does not control the device."""
+    entity_id = str(entity_id or "").strip()
+    target_state = str(target_state or "").strip().casefold()
+    if not entity_id or "." not in entity_id:
+        raise ValueError("an exact Home Assistant entity_id is required")
+    if not target_state:
+        raise ValueError("target_state is required")
+    snapshot = ha.get_state(entity_id)
+    current = str(snapshot.get("state") or "").strip().casefold()
+    if current in {"unknown", "unavailable", ""}:
+        raise ValueError("Home Assistant entity is currently unavailable")
+    if current == target_state:
+        return {
+            "status": "already_in_state",
+            "entity_id": entity_id,
+            "state": current,
+            "monitor_created": False,
+        }
+    friendly = (snapshot.get("attributes") or {}).get("friendly_name") or entity_id
+    created = phase2_delegation.create_delegation(
+        "CUSTOM", str(friendly), actor.phone, actor.source_message_id,
+        actor.conversation_type,
+        "family" if shared or actor.conversation_type == "GROUP" else "private",
+        {
+            "kind": "HA_STATE",
+            "entity_id": entity_id,
+            "target_state": target_state,
+            "one_shot": True,
+        },
+        True,
+    )
+    return {
+        **created,
+        "monitor_kind": "HA_STATE",
+        "entity_id": entity_id,
+        "target_state": target_state,
+        "current_state": current,
+    }
+
+
+@mcp.tool()
 def monitor_delegate(delegation_type: str, subject: str, actor: Actor,
                      shared: bool = False) -> dict:
     """Enable one proactive monitor only after an explicit user instruction. Quiet by default otherwise."""
