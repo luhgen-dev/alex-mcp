@@ -221,7 +221,7 @@ DIARY_EVENT_TOOLS = {"add_diary_event","update_diary_event","get_agenda","get_ag
 FINANCE_READ_TOOLS = {"query_finances","find_receipts","get_receipt","calculate"}
 ASSET_TOOLS = {"asset_create","asset_update","asset_link_document","asset_list","warranty_expiring"}
 DIAGNOSTIC_TOOLS = {"system_health","recent_failures"}
-MONITOR_TOOLS = {"monitor_delegate","monitor_list","monitor_cancel"}
+MONITOR_TOOLS = {"monitor_delegate","monitor_home_state","monitor_list","monitor_cancel"}
 REPORT_TOOLS = {"report_snapshot","report_export","report_payload"}
 LEGACY_SIMPLE_PLANNING = {
     "set_goal","list_goals","set_cashflow_baseline","get_cashflow_baseline",
@@ -343,6 +343,11 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
         "system_health": (r"health|diagnostic|status.*alex|working", 110),
         "recent_failures": (r"failed|failures?|errors?|didn't reply|did not reply|why", 115),
         "monitor_delegate": (r"monitor|track|watch|keep an eye|follow", 112),
+        "monitor_home_state": (
+            r"(?:monitor|watch|tell me when|let me know when).*?"
+            r"(?:light|switch|fan|ac|aircon|air conditioner|thermostat|climate|tv|television|media player|speaker)",
+            150,
+        ),
         "monitor_list": (r"what.*monitor|list.*monitor|monitoring|tracking", 118),
         "monitor_cancel": (r"stop.*monitor|cancel.*monitor|stop tracking", 120),
         "report_snapshot": (r"report|summary|snapshot|overview", 105),
@@ -755,6 +760,13 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
 
     if re.search(r"\b(?:monitor|track)\b.*\b(?:goal|payment|bill|subject)\b", low):
         force.add("monitor_delegate")
+    if re.search(
+        r"\b(?:monitor|watch|tell me when|let me know when)\b.*"
+        r"\b(?:light|switch|fan|ac|aircon|air conditioner|thermostat|climate|tv|television|media player|speaker)\b",
+        low,
+    ):
+        force |= {"ha_find_entities", "ha_get_state", "monitor_home_state"}
+        force.discard("monitor_delegate")
     if re.search(r"\b(?:stop monitoring|cancel .*tracking|stop tracking)\b", low):
         force.discard("monitor_delegate")
         force.add("monitor_cancel")
