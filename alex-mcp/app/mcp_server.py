@@ -53,9 +53,22 @@ def query_finances(actor: Actor, start_date: str | None = None, end_date: str | 
                    currency: str | None = None, limit: int = 20,
                    scope: str | None = None, source: str | None = None) -> dict:
     """Read true ledger totals and matching transactions. Use ISO dates YYYY-MM-DD. scope may be all/family/private. source may be all/voice/receipt/text. For today/tomorrow/yesterday, resolve the runtime date and set both start_date and end_date."""
-    return services.query_finances(
+    result = services.query_finances(
         actor, start_date, end_date, category, search, currency, limit, scope, source
     )
+    phase2_reports.remember_active_report(
+        actor.user_id, actor.conversation_id, "finance_query", result,
+        period=(
+            start_date[:7] if start_date and end_date and start_date[:7] == end_date[:7]
+            else None
+        ),
+        spec={
+            "start_date": start_date, "end_date": end_date, "category": category,
+            "search": search, "currency": currency, "limit": limit,
+            "scope": scope, "source": source,
+        },
+    )
+    return result
 
 
 @mcp.tool()
@@ -1072,10 +1085,15 @@ def report_snapshot(actor: Actor, period: str | None = None,
     """Build a privacy-scoped household/finance/work snapshot. Raw private income is never exposed in a family group."""
     if include_raw_income and actor.conversation_type == "GROUP":
         raise PermissionError("raw private income cannot be requested from the family group")
-    return phase2_reports.build_snapshot(
+    result = phase2_reports.build_snapshot(
         actor.phone, actor.conversation_type, "all", period,
         include_raw_income=include_raw_income, include_assets=True, include_leave=True,
     )
+    phase2_reports.remember_active_report(
+        actor.user_id, actor.conversation_id, "snapshot", result,
+        period=result.get("period"), spec={"include_raw_income": include_raw_income},
+    )
+    return result
 
 
 @mcp.tool()
@@ -1093,22 +1111,40 @@ def report_export(format: str, actor: Actor, period: str | None = None,
     if include_raw_income and actor.conversation_type == "GROUP":
         raise PermissionError("raw private income cannot be exported from the family group")
 
-    snapshot = phase2_reports.build_snapshot(
-        actor.phone, actor.conversation_type, "all", period,
-        include_raw_income=include_raw_income, include_assets=True, include_leave=True,
+    active = (
+        phase2_reports.load_active_report(actor.user_id, actor.conversation_id)
+        if period is None and not include_raw_income else None
     )
+    report_kind = active["kind"] if active else "snapshot"
+    snapshot = (
+        active["payload"] if active
+        else phase2_reports.build_snapshot(
+            actor.phone, actor.conversation_type, "all", period,
+            include_raw_income=include_raw_income, include_assets=True, include_leave=True,
+        )
+    )
+    effective_period = (active.get("period") if active else None) or period
     out_dir = Path(DATA_DIR) / "reports"
     out_dir.mkdir(parents=True, exist_ok=True)
-    safe_period = (period or "current").replace("/", "-").replace("..", "-")
+    safe_period = (effective_period or "current").replace("/", "-").replace("..", "-")
     # One immutable path per export prevents a queued private report from
     # being overwritten by another user's/group's export before outbox send.
     path = out_dir / f"alex-{safe_period}-{uuid.uuid4().hex}.{fmt}"
     if fmt == "pdf":
-        payload = phase2_reports.minimal_pdf(snapshot)
+        if report_kind == "finance_query":
+            payload = phase2_reports.text_pdf(
+                phase2_reports.finance_query_text(snapshot), title="ALEX Finance Report"
+            )
+        else:
+            payload = phase2_reports.minimal_pdf(snapshot)
         path.write_bytes(payload)
         mime = "application/pdf"
     elif fmt == "csv":
-        payload = phase2_reports.finance_csv(snapshot)
+        payload = (
+            phase2_reports.finance_query_csv(snapshot)
+            if report_kind == "finance_query"
+            else phase2_reports.finance_csv(snapshot)
+        )
         path.write_text(payload, encoding="utf-8")
         mime = "text/csv"
     else:
@@ -1118,7 +1154,8 @@ def report_export(format: str, actor: Actor, period: str | None = None,
     return {
         "status": "ready",
         "format": fmt,
-        "period": period,
+        "period": effective_period,
+        "source_report_kind": report_kind,
         "_attachments": [{"path": os.fspath(path), "kind": "DOCUMENT", "mime_type": mime}],
     }
 
