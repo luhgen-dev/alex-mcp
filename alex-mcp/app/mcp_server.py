@@ -395,20 +395,24 @@ def list_plans(actor: Actor, include_cancelled: bool = False, limit: int = 50) -
 
 
 @mcp.tool()
-def update_plan(plan_id: str, actor: Actor, status: str | None = None,
+def update_plan(actor: Actor, plan_id: str | None = None,
+                plan_name: str | None = None, status: str | None = None,
                 title: str | None = None, start_local: str | None = None,
                 end_local: str | None = None, notes: str | None = None) -> dict:
-    """Update a plan or mark it DRAFT, LOCKED or CANCELLED. Do not silently rewrite the user's baseline intent."""
-    return phase2.update_plan(actor, plan_id, status, title, start_local, end_local, notes)
+    """Update/cancel a plan by exact id or natural plan_name. Existing scope is preserved."""
+    resolved = phase2.resolve_plan_reference(actor, plan_id, plan_name)
+    return phase2.update_plan(actor, resolved, status, title, start_local, end_local, notes)
 
 
 @mcp.tool()
-def confirm_plan(plan_id: str, actor: Actor, add_to_diary: bool = True,
+def confirm_plan(actor: Actor, plan_id: str | None = None,
+                 plan_name: str | None = None, add_to_diary: bool = True,
                  reminder_minutes_before: int | None = None,
                  reminder_recipient: str = "me") -> dict:
-    """Confirm a plan. A dated plan materializes a linked Diary event; conflicts are gated before confirmation."""
+    """Confirm a plan by exact id or natural plan_name. A dated plan materializes a linked Diary event."""
+    resolved = phase2.resolve_plan_reference(actor, plan_id, plan_name)
     return phase2.confirm_plan(
-        actor, plan_id, add_to_diary, reminder_minutes_before, reminder_recipient
+        actor, resolved, add_to_diary, reminder_minutes_before, reminder_recipient
     )
 
 
