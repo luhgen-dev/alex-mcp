@@ -206,10 +206,11 @@ PLANNING_TOOLS = {
     "planning_record_cash","planning_compare_salary",
     "planning_match_goal_alias","planning_cash_status",
     "planning_allocate_cash_to_goal","planning_create_cash_pool",
-    "planning_cash_pool_balance","planning_allocate_cash_to_pool",
+    "planning_cash_pool_balance","planning_declare_cash_pool_balance",
+    "planning_record_cash_pool_spend","planning_allocate_cash_to_pool",
     "planning_add_reserve","planning_update_reserve","planning_list_reserves",
     "planning_baseline","planning_income_outlook",
-    "planning_cashflow","planning_brief","planning_list_goals","calculate",
+    "planning_cashflow","planning_cash_outflow","planning_brief","planning_list_goals","calculate",
 }
 BILL_TOOLS = {"bills_list","bills_match_payment","bills_record_payment","bills_defer","bills_confirm_unpaid"}
 HOME_TOOLS = {"ha_find_entities","ha_get_state","ha_home_summary","ha_home_report","ha_draft_automation","ha_control"}
@@ -309,7 +310,10 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
         "planning_allocate_cash_to_goal": (r"allocate|put.*goal|channel.*goal", 118),
         "planning_create_cash_pool": (r"create.*(?:stash|pool)|new.*(?:stash|pool)|stash called", 130),
         "planning_cash_pool_balance": (r"stash.*balance|pool.*balance|how much.*stash", 118),
-        "planning_allocate_cash_to_pool": (r"put.*stash|allocate.*pool|channel.*stash", 120),
+        "planning_allocate_cash_to_pool": (r"(?:put|allocate|channel).*?(?:stash|cash pool|buffer).*?(?:from|ot|bonus|cash event)", 120),
+        "planning_declare_cash_pool_balance": (r"\b(?:my\s+)?(?:stash|cash pool|buffer)\b.*\b(?:is|has|balance)\b.*\b(?:rm|myr|sgd|\d)", 145),
+        "planning_record_cash_pool_spend": (r"\b(?:spent|used|paid)\b.*\b(?:from|using)\b.*\b(?:stash|cash pool|buffer)\b", 145),
+        "planning_cash_outflow": (r"cash\s*outflow|money\s*out|total\s*outflow", 140),
         "planning_add_reserve": (r"reserve|allowance|keep aside|set aside", 112),
         "planning_update_reserve": (r"change.*reserve|change.*allowance|disable.*reserve|enable.*reserve", 120),
         "planning_list_reserves": (r"reserves|allowances|what.*reserve", 105),
@@ -690,6 +694,19 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
     if re.search(r"\b(?:change|update|edit|raise|lower)\b.*\bgoal\b.*\btarget\b", low):
         force.add("planning_update_goal_target")
         block.add("planning_create_goal")
+    if re.search(
+        r"\b(?:my\s+)?(?:stash|cash pool|buffer)\b.*\b(?:is|has|balance)\b.*\b(?:rm|myr|sgd|\d)",
+        low,
+    ):
+        force |= {"planning_declare_cash_pool_balance", "planning_cash_pool_balance"}
+    if re.search(
+        r"\b(?:spent|used|paid)\b.*\b(?:from|using)\b.*\b(?:stash|cash pool|buffer)\b",
+        low,
+    ):
+        force |= {"planning_record_cash_pool_spend", "planning_cash_pool_balance"}
+    if re.search(r"\bcash\s*outflow\b|\bmoney\s*out\b|\btotal\s*outflow\b", low):
+        force.add("planning_cash_outflow")
+        block.add("query_finances")
     if re.search(r"\b(?:put|allocate|channel)\b.*\b(?:stash|cash pool|buffer)\b", low):
         force.add("planning_allocate_cash_to_pool")
     if re.search(r"\b(?:create|make)\b.*\b(?:cash\s+pool|stash)\b", low):
@@ -1859,6 +1876,7 @@ READ_ONLY_TOOLS = {
     "check_spouse_availability","get_cashflow_baseline","system_health",
     "recent_failures","planning_goal_progress","planning_goal_deviation",
     "planning_cash_status","planning_cash_pool_balance","planning_cashflow",
+    "planning_cash_outflow",
     "planning_brief","planning_list_goals","planning_list_reserves",
     "planning_baseline","planning_income_outlook","planning_goal_projection",
     "planning_compare_salary","planning_match_goal_alias","bills_list",
