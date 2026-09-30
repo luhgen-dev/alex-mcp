@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import uuid
 from datetime import datetime, timedelta, timezone
 
 from config import DATA_DIR, get_settings
@@ -295,6 +297,292 @@ def system_health(actor, hours: int = 24) -> dict:
             },
             "note": "These are observed local facts only. A cause must not be claimed unless supported by a recorded error.",
         }
+    finally:
+        conn.close()
+
+
+_SECRET_KEY_RE = re.compile(
+    r"(?:api[_-]?key|token|secret|password|authorization|cookie|credential)",
+    re.IGNORECASE,
+)
+_SECRET_TEXT_RE = re.compile(
+    r"(?i)(?:bearer\s+)[A-Za-z0-9._~+/-]{8,}|"
+    r"\b(?:xai-|sk-)[A-Za-z0-9._-]{8,}"
+)
+
+
+def _redact_text(value: object) -> str:
+    return _SECRET_TEXT_RE.sub("[redacted]", str(value or ""))[:4000]
+
+
+def _redact_json(value):
+    if isinstance(value, dict):
+        return {
+            str(k): (
+                "[redacted]" if _SECRET_KEY_RE.search(str(k))
+                else _redact_json(v)
+            )
+            for k, v in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_json(x) for x in value[:100]]
+    if isinstance(value, str):
+        return _redact_text(value)
+    return value
+
+
+def _json_or_text(value):
+    if value is None:
+        return None
+    try:
+        return json.loads(value)
+    except Exception:
+        return _redact_text(value)
+
+
+def begin_user_error_report(actor, quoted_context: dict) -> dict:
+    """Persist a pending swipe-reply error report without invoking AI."""
+    outbound_id = str((quoted_context or {}).get("outbound_id") or "").strip()
+    if not outbound_id:
+        raise ValueError("Swipe-reply to the Alex message you want to mark as an error")
+    conn = connect()
+    try:
+        row = conn.execute(
+            """SELECT outbound_id,provider_message_id,source_message_id
+               FROM outbound_messages
+               WHERE outbound_id=? AND conversation_id=? LIMIT 1""",
+            (outbound_id, actor.conversation_id),
+        ).fetchone()
+        if not row:
+            raise PermissionError("quoted Alex message is not in this conversation")
+        conn.execute(
+            """INSERT INTO pending_error_reports(
+                   user_id,conversation_id,target_outbound_id,
+                   target_provider_message_id,target_source_message_id,created_at_utc
+               ) VALUES(?,?,?,?,?,CURRENT_TIMESTAMP)
+               ON CONFLICT(user_id,conversation_id) DO UPDATE SET
+                   target_outbound_id=excluded.target_outbound_id,
+                   target_provider_message_id=excluded.target_provider_message_id,
+                   target_source_message_id=excluded.target_source_message_id,
+                   created_at_utc=CURRENT_TIMESTAMP""",
+            (
+                actor.user_id, actor.conversation_id, row["outbound_id"],
+                row["provider_message_id"], row["source_message_id"],
+            ),
+        )
+        conn.commit()
+        return {"status": "awaiting_explanation", "target_outbound_id": outbound_id}
+    finally:
+        conn.close()
+
+
+def pending_user_error_report(actor) -> dict | None:
+    conn = connect()
+    try:
+        row = conn.execute(
+            """SELECT * FROM pending_error_reports
+               WHERE user_id=? AND conversation_id=? LIMIT 1""",
+            (actor.user_id, actor.conversation_id),
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def _build_user_error_bundle(conn, actor, target_outbound_id: str,
+                             explanation: str) -> tuple[dict, str]:
+    outbound = conn.execute(
+        """SELECT outbound_id,source_message_id,conversation_id,kind,text_body,
+                  context_kind,context_id,provider_message_id,delivery_status,
+                  attempt_count,last_error,created_at_utc,delivered_at_utc
+           FROM outbound_messages
+           WHERE outbound_id=? AND conversation_id=? LIMIT 1""",
+        (target_outbound_id, actor.conversation_id),
+    ).fetchone()
+    if not outbound:
+        raise PermissionError("target Alex message is not accessible")
+
+    source_id = outbound["source_message_id"]
+    inbound = conn.execute(
+        """SELECT message_id,conversation_type,sender_phone,raw_text,
+                  processing_state,attempt_count,last_error,received_at_utc,
+                  completed_at_utc
+           FROM inbound_messages WHERE message_id=? LIMIT 1""",
+        (source_id,),
+    ).fetchone() if source_id else None
+
+    tool_rows = conn.execute(
+        """SELECT tool_name,arguments_json,result_json,status,latency_ms,created_at_utc
+           FROM tool_audit
+           WHERE source_message_id=?
+           ORDER BY created_at_utc""",
+        (source_id,),
+    ).fetchall() if source_id else []
+    usage_rows = conn.execute(
+        """SELECT provider,model,input_tokens,cached_input_tokens,output_tokens,
+                  reasoning_tokens,model_calls,tool_rounds,latency_ms,
+                  estimated_cost_usd,created_at_utc
+           FROM ai_usage WHERE source_message_id=?
+           ORDER BY created_at_utc""",
+        (source_id,),
+    ).fetchall() if source_id else []
+
+    tool_errors = [r for r in tool_rows if r["status"] == "ERROR"]
+    inbound_failed = bool(inbound and inbound["processing_state"] == "FAILED")
+    detected = inbound_failed or bool(tool_errors) or outbound["delivery_status"] == "FAILED"
+    detection_state = "both" if detected else "reported-by-user"
+
+    tools = []
+    trace = None
+    for row in tool_rows:
+        result = _json_or_text(row["result_json"])
+        args = _json_or_text(row["arguments_json"])
+        entry = {
+            "tool": row["tool_name"],
+            "status": row["status"],
+            "arguments": _redact_json(args),
+            "result": _redact_json(result),
+            "latency_ms": row["latency_ms"],
+            "created_at_utc": row["created_at_utc"],
+        }
+        if row["tool_name"] == "_turn_trace":
+            trace = entry["result"]
+        else:
+            tools.append(entry)
+
+    bundle = {
+        "reported_at_utc": runtime_clock.now_utc().isoformat(),
+        "app_version": os.environ.get("ALEX_APP_VERSION", "0.5.0"),
+        "build_commit": os.environ.get("ALEX_BUILD_COMMIT", "unknown"),
+        "conversation": {
+            "type": inbound["conversation_type"] if inbound else actor.conversation_type,
+            "id_hash": __import__("hashlib").sha256(
+                actor.conversation_id.encode("utf-8")
+            ).hexdigest()[:16],
+        },
+        "original_user_message": _redact_text(inbound["raw_text"] if inbound else ""),
+        "alex_message": _redact_text(outbound["text_body"]),
+        "intent_trace": _redact_json(trace),
+        "tools": tools,
+        "provider_usage": [_redact_json(dict(r)) for r in usage_rows],
+        "retries": {
+            "inbound_attempts": int(inbound["attempt_count"] or 0) if inbound else 0,
+            "outbound_attempts": int(outbound["attempt_count"] or 0),
+        },
+        "ids": {
+            "source_message_id": source_id,
+            "outbound_id": outbound["outbound_id"],
+            "provider_message_id": outbound["provider_message_id"],
+            "context_kind": outbound["context_kind"],
+            "context_id": outbound["context_id"],
+        },
+        "machine_errors": {
+            "inbound_error": _redact_text(inbound["last_error"]) if inbound else None,
+            "outbound_error": _redact_text(outbound["last_error"]),
+            "tool_error_count": len(tool_errors),
+        },
+        "user_explanation": _redact_text(explanation),
+        "detection_state": detection_state,
+    }
+    return bundle, detection_state
+
+
+def complete_user_error_report(actor, explanation: str,
+                               quoted_context: dict | None = None) -> dict:
+    """Create a durable diagnostic bundle. Never retries or undoes the action."""
+    explanation = str(explanation or "").strip()
+    if not explanation:
+        raise ValueError("error explanation is required")
+    conn = connect()
+    try:
+        if quoted_context and quoted_context.get("outbound_id"):
+            target_outbound_id = str(quoted_context["outbound_id"])
+        else:
+            pending = conn.execute(
+                """SELECT target_outbound_id FROM pending_error_reports
+                   WHERE user_id=? AND conversation_id=? LIMIT 1""",
+                (actor.user_id, actor.conversation_id),
+            ).fetchone()
+            if not pending:
+                raise ValueError("no pending error report; swipe-reply to an Alex message first")
+            target_outbound_id = pending["target_outbound_id"]
+
+        bundle, detection_state = _build_user_error_bundle(
+            conn, actor, target_outbound_id, explanation
+        )
+        error_id = "ALEX-" + uuid.uuid4().hex[:8].upper()
+        outbound = conn.execute(
+            """SELECT provider_message_id,source_message_id
+               FROM outbound_messages WHERE outbound_id=?""",
+            (target_outbound_id,),
+        ).fetchone()
+        conn.execute(
+            """INSERT INTO user_reported_errors(
+                   error_id,reporter_user_id,conversation_id,target_outbound_id,
+                   target_provider_message_id,target_source_message_id,
+                   user_explanation,detection_state,bundle_json
+               ) VALUES(?,?,?,?,?,?,?,?,?)""",
+            (
+                error_id, actor.user_id, actor.conversation_id,
+                target_outbound_id,
+                outbound["provider_message_id"] if outbound else None,
+                outbound["source_message_id"] if outbound else None,
+                explanation[:4000], detection_state,
+                json.dumps(bundle, ensure_ascii=False, sort_keys=True),
+            ),
+        )
+        conn.execute(
+            "DELETE FROM pending_error_reports WHERE user_id=? AND conversation_id=?",
+            (actor.user_id, actor.conversation_id),
+        )
+        conn.commit()
+        return {
+            "status": "recorded",
+            "error_id": error_id,
+            "detection_state": detection_state,
+            "note": "Diagnostic only; no retry or undo was performed.",
+        }
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def get_user_reported_error(actor, error_id: str) -> dict:
+    conn = connect()
+    try:
+        row = conn.execute(
+            """SELECT error_id,user_explanation,detection_state,bundle_json,created_at_utc
+               FROM user_reported_errors
+               WHERE error_id=? AND reporter_user_id=? LIMIT 1""",
+            (str(error_id or "").strip().upper(), actor.user_id),
+        ).fetchone()
+        if not row:
+            raise PermissionError("diagnostic error bundle not found")
+        return {
+            "error_id": row["error_id"],
+            "user_explanation": row["user_explanation"],
+            "detection_state": row["detection_state"],
+            "created_at_utc": row["created_at_utc"],
+            "bundle": _redact_json(json.loads(row["bundle_json"])),
+        }
+    finally:
+        conn.close()
+
+
+def list_user_reported_errors(actor, limit: int = 10) -> dict:
+    bounded = max(1, min(50, int(limit)))
+    conn = connect()
+    try:
+        rows = conn.execute(
+            """SELECT error_id,user_explanation,detection_state,created_at_utc
+               FROM user_reported_errors
+               WHERE reporter_user_id=?
+               ORDER BY created_at_utc DESC LIMIT ?""",
+            (actor.user_id, bounded),
+        ).fetchall()
+        return {"errors": [dict(r) for r in rows]}
     finally:
         conn.close()
 
