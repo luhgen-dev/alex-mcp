@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS inbound_messages (
     conversation_id TEXT NOT NULL,
     conversation_type TEXT NOT NULL DEFAULT 'DIRECT_DM',
     sender_phone TEXT NOT NULL,
+    sender_provider_jid TEXT,
     raw_text TEXT NOT NULL DEFAULT '',
     quoted_message_id TEXT,
     processing_state TEXT NOT NULL CHECK(processing_state IN ('RECEIVED','PROCESSING','COMPLETED','FAILED')) DEFAULT 'RECEIVED',
@@ -524,6 +525,11 @@ CREATE TABLE IF NOT EXISTS outbound_messages (
     next_attempt_at_utc TEXT,
     created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     delivered_at_utc TEXT,
+    job_reacted_at_utc TEXT,
+    job_pinned_at_utc TEXT,
+    job_reaction_cleared_at_utc TEXT,
+    job_unpinned_at_utc TEXT,
+    job_failure_notice_at_utc TEXT,
     FOREIGN KEY(source_message_id) REFERENCES inbound_messages(message_id)
 );
 
