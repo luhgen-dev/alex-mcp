@@ -806,6 +806,18 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
     ):
         force.add("work_record_event")
     if re.search(
+        r"\b(?:i(?:'m| am| will be)?\s+(?:on\s+)?)?(?:annual leave|medical leave|mc)\b",
+        low,
+    ) and re.search(
+        r"\b(?:today|tomorrow|yesterday|on\s+\d|on\s+(?:mon|tue|wed|thu|fri|sat|sun)|"
+        r"\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec))",
+        low,
+    ):
+        # Natural personal leave statements are work-state facts, not employer
+        # booking requests and not generic saved-memory writes.
+        force |= {"set_leave_record", "list_leave_records"}
+        block |= {"save_item", "create_plan"}
+    if re.search(
         r"\b(?:recorded leave|leave entries|planned and taken leave|leave records?)\b"
         r"|\bwhat leave do i have recorded\b"
         r"|\b(?:leave balance|annual leave .*left|how much .*leave .*left)\b",
