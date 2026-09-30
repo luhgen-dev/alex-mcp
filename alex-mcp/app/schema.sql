@@ -216,6 +216,18 @@ CREATE TABLE IF NOT EXISTS media_selection_sets (
 CREATE INDEX IF NOT EXISTS idx_media_selection_context
 ON media_selection_sets(user_id,conversation_id,created_at_utc);
 
+CREATE TABLE IF NOT EXISTS active_report_contexts (
+    user_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    report_kind TEXT NOT NULL,
+    period TEXT,
+    payload_json TEXT NOT NULL,
+    spec_json TEXT,
+    created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY(user_id,conversation_id),
+    FOREIGN KEY(user_id) REFERENCES users(user_id)
+);
+
 CREATE TABLE IF NOT EXISTS reminder_events (
     event_id TEXT PRIMARY KEY,
     reminder_id TEXT NOT NULL,
