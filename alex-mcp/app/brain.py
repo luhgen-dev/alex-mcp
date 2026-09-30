@@ -934,7 +934,11 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
         selected |= ASSET_TOOLS | MEMORY_TOOLS
     if re.search(r"\b(?:light|switch|fan|thermostat|climate|media player|speaker|tv|television|home assistant|ac|aircon|air conditioner|home status|at home|turn on|turn off|switch on|switch off|state of)\b", low):
         selected |= HOME_READ_TOOLS
-        if re.search(r"\b(?:home|house)\b.*\b(?:report|card|image)\b|\bstatus\s+(?:card|image)\b", low):
+        if re.search(
+            r"\b(?:home|house)\b.*\b(?:report|card|image|picture)\b"
+            r"|\b(?:status|current home status)\b.*\b(?:card|image|picture)\b",
+            low,
+        ):
             selected.add("ha_home_report")
         if (
             _ha_action_requested(low)
