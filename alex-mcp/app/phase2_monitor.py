@@ -10,6 +10,7 @@ from datetime import date
 import phase2_delegation
 import phase2_finance
 import compat_tools as tools
+import ha
 
 
 def _norm(value):
@@ -22,6 +23,46 @@ def _subject_matches(subject, name, all_terms):
     if subject in all_terms:
         return True
     return bool(subject and name and (subject == name or subject in name or name in subject))
+
+
+def home_state_candidates(sender_phone, conversation_type="DIRECT_DM"):
+    """Return one-shot HA state matches for explicitly delegated monitors."""
+    delegations = phase2_delegation.active_delegations(
+        sender_phone, conversation_type, "CUSTOM"
+    )
+    candidates = []
+    for delegation in delegations:
+        params = delegation.get("parameters") or {}
+        if str(params.get("kind") or "").upper() != "HA_STATE":
+            continue
+        entity_id = str(params.get("entity_id") or "").strip()
+        target_state = str(params.get("target_state") or "").strip().casefold()
+        if not entity_id or not target_state:
+            continue
+        try:
+            snapshot = ha.get_state(entity_id)
+        except Exception:
+            continue
+        current_state = str(snapshot.get("state") or "").strip().casefold()
+        if current_state in {"", "unknown", "unavailable"}:
+            continue
+        if current_state != target_state:
+            continue
+        candidates.append({
+            "kind": "HOME_STATE_MATCH",
+            "entity_id": entity_id,
+            "friendly_name": (
+                (snapshot.get("attributes") or {}).get("friendly_name")
+                or delegation["subject"]
+                or entity_id
+            ),
+            "state": current_state,
+            "target_state": target_state,
+            "space": delegation["space_id"],
+            "delegation_id": delegation["delegation_id"],
+            "one_shot": True,
+        })
+    return candidates
 
 
 def bill_candidates(as_of_date, sender_phone,
