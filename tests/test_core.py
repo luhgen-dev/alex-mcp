@@ -32,6 +32,7 @@ import services
 import ha
 import phase2
 import diagnostics
+import ingress
 import profile_config
 import phase2_finance
 import phase2_work
@@ -1838,6 +1839,44 @@ class AlexCoreTests(unittest.TestCase):
         )
         self.assertIn("current local datetime is", clock_context)
         self.assertLessEqual(brain.MAX_MODEL_CALLS, 4)
+
+    def test_private_group_read_handoffs_to_owner_dm_without_group_leak(self):
+        group_id = "120363777777@g.us"
+
+        async def fake_respond(actor, user_text, *args, **kwargs):
+            self.assertEqual(actor.conversation_type, "DIRECT_DM")
+            self.assertIn("HUSBAND_PVT", actor.allowed_spaces)
+            self.assertNotEqual(actor.conversation_id, group_id)
+            return ("Your private salary figure is RM10,000.", [])
+
+        payload = {
+            "message_id": "private-group-handoff",
+            "provider": "WHATSAPP",
+            "conversation_id": group_id,
+            "conversation_type": "GROUP",
+            "sender_phone": "+60111111111",
+            "text": "show me my salary",
+        }
+        with patch.object(brain, "respond", new=fake_respond):
+            result = ingress.process(payload)
+        self.assertTrue(result["private_handoff"])
+
+        conn = db.connect()
+        try:
+            rows = conn.execute(
+                """SELECT conversation_id,text_body FROM outbound_messages
+                   WHERE source_message_id=? ORDER BY created_at_utc,rowid""",
+                ("private-group-handoff",),
+            ).fetchall()
+        finally:
+            conn.close()
+        self.assertEqual(len(rows), 2)
+        by_conversation = {row["conversation_id"]: row["text_body"] for row in rows}
+        self.assertEqual(by_conversation[group_id], "I sent that to you privately.")
+        self.assertNotIn("RM10,000", by_conversation[group_id])
+        self.assertIn(
+            "RM10,000", by_conversation["60111111111@s.whatsapp.net"]
+        )
 
     def test_group_receipt_lookup_never_surfaces_private_unlinked_dm_media(self):
         self.claim("private-receipt-media", "+60111111111", "")
