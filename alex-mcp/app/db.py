@@ -506,6 +506,27 @@ def resolve_quoted_context(conversation_id: str, quoted_message_id: str | None,
         conn.close()
 
 
+
+def resolve_recent_outbound_context(conversation_id: str, context_kind: str,
+                                    max_age_seconds: int = 600) -> dict | None:
+    """Resolve the latest delivered/queued Alex context in this conversation."""
+    bounded = max(15, min(3600, int(max_age_seconds)))
+    conn = connect()
+    try:
+        row = conn.execute(
+            """SELECT outbound_id,source_message_id,text_body,context_kind,context_id,
+                      provider_message_id,created_at_utc
+               FROM outbound_messages
+               WHERE conversation_id=? AND context_kind=?
+                 AND datetime(created_at_utc)>=datetime('now', ?)
+               ORDER BY created_at_utc DESC,rowid DESC LIMIT 1""",
+            (conversation_id, context_kind, f"-{bounded} seconds"),
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
 def resolve_recent_instruction_context(conversation_id: str, sender_phone: str,
                                        current_message_id: str,
                                        max_age_seconds: int = 120) -> dict | None:
