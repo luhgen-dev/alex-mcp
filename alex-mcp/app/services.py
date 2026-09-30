@@ -504,13 +504,14 @@ def _store_selection(conn, actor: ActorContext, kind: str, ids: list[str]) -> st
 
 
 def find_receipts(actor: ActorContext, query: str | None = None, amount: float | None = None,
-                  start_date: str | None = None, end_date: str | None = None, limit: int = 10) -> dict:
-    """Find linked receipts plus the caller's own preserved-but-unlinked media."""
-    marks, spaces = _spaces_sql(actor)
+                  start_date: str | None = None, end_date: str | None = None, limit: int = 10,
+                  scope: str | None = None) -> dict:
+    """Find linked receipts plus permitted preserved-but-unlinked media."""
+    marks, spaces = _spaces_sql(actor, scope)
     bounded = max(1, min(25, int(limit)))
     sql = f"""SELECT DISTINCT m.media_id,m.media_type,m.mime_type,m.created_at_utc,
                      f.event_id,f.amount_minor,f.currency,f.event_date_utc,f.description,
-                     f.reference_text,m.ocr_text,i.raw_text AS caption
+                     f.reference_text,f.space_id,m.ocr_text,i.raw_text AS caption
               FROM media_objects m
               JOIN inbound_messages i ON i.message_id=m.source_message_id
               JOIN event_media_links l ON l.media_id=m.media_id
@@ -556,6 +557,7 @@ def find_receipts(actor: ActorContext, query: str | None = None, amount: float |
              "currency": r["currency"], "description": r["description"],
              "caption": r["caption"], "label": (r["caption"] or r["description"]),
              "event_date_utc": r["event_date_utc"], "reference": r["reference_text"],
+             "scope": "family" if r["space_id"] == "FAMILY_SHARED" else "private",
              "linked": True}
             for r in linked
         ]
