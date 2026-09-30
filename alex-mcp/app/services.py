@@ -1054,6 +1054,53 @@ def remove_saved_item(actor: ActorContext, item_id: str) -> dict:
         conn.close()
 
 
+
+def latest_single_selection_context(actor: ActorContext,
+                                    created_after_utc: str | None = None) -> dict | None:
+    """Return one exact persisted selection only when the newest set has one item."""
+    conn = connect()
+    try:
+        where_after = " AND datetime(created_at_utc)>=datetime(?)" if created_after_utc else ""
+        args_a = [actor.user_id, actor.conversation_id, utc_now()]
+        args_b = [actor.user_id, actor.conversation_id, utc_now()]
+        if created_after_utc:
+            args_a.append(created_after_utc)
+            args_b.append(created_after_utc)
+        rows = conn.execute(
+            f"""SELECT selection_kind,items_json,created_at_utc
+                  FROM selection_sets
+                 WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
+                       {where_after}
+                UNION ALL
+                SELECT 'MEDIA' AS selection_kind,items_json,created_at_utc
+                  FROM media_selection_sets
+                 WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
+                       {where_after}
+                ORDER BY created_at_utc DESC LIMIT 1""",
+            args_a + args_b,
+        ).fetchall()
+        if not rows:
+            return None
+        ids = json.loads(rows[0]["items_json"])
+        if len(ids) != 1:
+            return None
+        return {"kind": rows[0]["selection_kind"], "id": str(ids[0])}
+    finally:
+        conn.close()
+
+
+def get_selection_target(actor: ActorContext, kind: str, target_id: str) -> dict:
+    """Retrieve an exact trusted SELECTION context without model re-search."""
+    normalized = str(kind or "").upper()
+    if normalized == "SAVED_ITEM":
+        return get_saved_item(actor, target_id)
+    if normalized == "RECEIPT":
+        return get_receipt(actor, target_id)
+    if normalized == "MEDIA":
+        return get_media_original(actor, target_id)
+    raise ValueError("unsupported selection context")
+
+
 def resolve_numbered_choice(actor: ActorContext, choice: int) -> dict:
     """Resolve the newest unexpired receipt/saved-memory/original-media list."""
     index = int(choice)
