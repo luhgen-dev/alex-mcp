@@ -41,6 +41,7 @@ import phase2_monitor
 import phase2_presence
 import phase2_reports
 import brain
+import mcp_server
 from context import use_actor, with_action_key
 from config import Settings
 from mcp import Client
@@ -1834,6 +1835,50 @@ class AlexCoreTests(unittest.TestCase):
         )
         self.assertIn("current local datetime is", clock_context)
         self.assertLessEqual(brain.MAX_MODEL_CALLS, 4)
+
+    def test_group_receipt_lookup_never_surfaces_private_unlinked_dm_media(self):
+        self.claim("private-receipt-media", "+60111111111", "")
+        media_id = media.save_media(
+            "private-receipt-media", "IMAGE", "image/jpeg",
+            base64.b64encode(b"private-receipt").decode(),
+        )
+        group_id = "120363000000@g.us"
+        db.claim_inbound({
+            "message_id": "group-receipt-query",
+            "provider": "WHATSAPP",
+            "conversation_id": group_id,
+            "conversation_type": "GROUP",
+            "sender_phone": "+60111111111",
+            "text": "@Alex show my receipts",
+        })
+        group_actor = db.resolve_actor(
+            "+60111111111", group_id, "GROUP", "group-receipt-query", []
+        )
+
+        found = services.find_receipts(group_actor)
+        self.assertFalse(any(x["media_id"] == media_id for x in found["matches"]))
+        with self.assertRaises(PermissionError):
+            services.get_receipt(group_actor, media_id)
+
+        dm_actor = self.actor("private-receipt-media", "+60111111111", [media_id])
+        dm_found = services.find_receipts(dm_actor)
+        self.assertTrue(any(x["media_id"] == media_id for x in dm_found["matches"]))
+        self.assertEqual(services.get_receipt(dm_actor, media_id)["media_id"], media_id)
+
+    def test_report_exports_use_immutable_unique_paths(self):
+        self.claim("export-one", "+60111111111", "send September as JSON")
+        first = mcp_server.report_export(
+            "json", self.actor("export-one", "+60111111111"), period="2026-09"
+        )
+        self.claim("export-two", "+60111111111", "send September as JSON again")
+        second = mcp_server.report_export(
+            "json", self.actor("export-two", "+60111111111"), period="2026-09"
+        )
+        first_path = first["_attachments"][0]["path"]
+        second_path = second["_attachments"][0]["path"]
+        self.assertNotEqual(first_path, second_path)
+        self.assertTrue(os.path.exists(first_path))
+        self.assertTrue(os.path.exists(second_path))
 
     def actor_for_context(self):
         self.claim("context-policy", "+60111111111", "context")
