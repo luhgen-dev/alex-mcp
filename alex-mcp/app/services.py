@@ -1151,6 +1151,8 @@ def create_reminder(actor: ActorContext, task: str, due_local: str,
         raise ValueError("destination must be dm or group")
     if claimable and destination != "group":
         raise ValueError("claimable reminders must use destination=group")
+    if claimable and recurrence_rule:
+        raise ValueError("claimable reminders currently support one occurrence at a time")
     conn = connect()
     try:
         targets = [actor.user_id] if destination == "group" else _reminder_targets(actor, recipient)
@@ -1503,6 +1505,7 @@ def release_reminder_claim(actor: ActorContext, reminder_id: str) -> dict:
             """UPDATE reminders
                SET claimed_by_user_id=NULL,claimed_at_utc=NULL,
                    claimant_follow_up_at_utc=NULL,family_resurfaced_at_utc=NULL,
+                   status=CASE WHEN status='DUE' THEN 'OPEN' ELSE status END,
                    next_delivery_at_utc=?
                WHERE reminder_id=?""",
             (next_delivery, reminder_id),
