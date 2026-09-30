@@ -268,6 +268,23 @@ CREATE TABLE IF NOT EXISTS reminder_claim_events (
 CREATE INDEX IF NOT EXISTS idx_reminder_claim_events
 ON reminder_claim_events(reminder_id,created_at_utc);
 
+CREATE TABLE IF NOT EXISTS reminder_handoffs (
+    handoff_id TEXT PRIMARY KEY,
+    reminder_id TEXT NOT NULL,
+    from_user_id TEXT NOT NULL,
+    to_user_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('PENDING','ACCEPTED','CANCELLED')) DEFAULT 'PENDING',
+    created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    accepted_at_utc TEXT,
+    cancelled_at_utc TEXT,
+    FOREIGN KEY(reminder_id) REFERENCES reminders(reminder_id),
+    FOREIGN KEY(from_user_id) REFERENCES users(user_id),
+    FOREIGN KEY(to_user_id) REFERENCES users(user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_reminder_handoffs_pending
+ON reminder_handoffs(reminder_id,status,created_at_utc);
+
 CREATE TABLE IF NOT EXISTS savings_goals (
     goal_id TEXT PRIMARY KEY,
     action_key TEXT NOT NULL UNIQUE,
