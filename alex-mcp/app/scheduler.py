@@ -359,9 +359,9 @@ def run_delegated_monitors():
     global _last_monitor_hour
     now = datetime.now(timezone.utc)
     hour_key = now.strftime("%Y-%m-%dT%H")
-    if _last_monitor_hour == hour_key:
-        return
-    _last_monitor_hour = hour_key
+    run_hourly_monitors = _last_monitor_hour != hour_key
+    if run_hourly_monitors:
+        _last_monitor_hour = hour_key
 
     conn = connect()
     try:
@@ -374,9 +374,13 @@ def run_delegated_monitors():
             phone = user["phone_number"]
             try:
                 candidates = []
-                candidates.extend(phase2_monitor.bill_candidates(now.date().isoformat(), phone, "DIRECT_DM"))
-                candidates.extend(phase2_monitor.goal_candidates(now.strftime("%Y-%m"), phone, "DIRECT_DM"))
-                candidates.extend(phase2_monitor.ot_allocation_candidates(phone, "DIRECT_DM"))
+                # Slow-changing finance/planning monitors stay hourly. Home
+                # Assistant one-shot state monitors are checked every scheduler
+                # loop (15s) so short transitions are not missed.
+                if run_hourly_monitors:
+                    candidates.extend(phase2_monitor.bill_candidates(now.date().isoformat(), phone, "DIRECT_DM"))
+                    candidates.extend(phase2_monitor.goal_candidates(now.strftime("%Y-%m"), phone, "DIRECT_DM"))
+                    candidates.extend(phase2_monitor.ot_allocation_candidates(phone, "DIRECT_DM"))
                 candidates.extend(phase2_monitor.home_state_candidates(phone, "DIRECT_DM"))
             except Exception as exc:
                 print(f"[Alex MCP monitor] candidate error for {user['user_id']}: {exc}", flush=True)
