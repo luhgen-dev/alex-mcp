@@ -700,9 +700,19 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         force.add("get_agenda_range")
         block.add("add_diary_event")
 
-    if re.search(r"\b(?:change|update|edit|raise|lower)\b.*\bgoal\b.*\btarget\b", low):
+    if (
+        re.search(r"\b(?:change|update|edit|raise|lower)\b.*\bgoal\b.*\btarget\b", low)
+        or re.search(
+            r"\b(?:change|update|edit|raise|lower)\b.*\b(?:savings?|target)\b"
+            r".*\btarget\b.*\b(?:rm|myr|sgd|\d)",
+            low,
+        )
+    ):
         force.add("planning_update_goal_target")
         block.add("planning_create_goal")
+        # A named savings target is a goal mutation, not a holiday/trip plan.
+        if re.search(r"\b(?:savings?|goal)\b", low):
+            block |= PLAN_TOOLS
     if re.search(
         r"\b(?:my\s+)?(?:stash|cash pool|buffer)\b.*\b(?:is|has|balance)\b.*\b(?:rm|myr|sgd|\d)",
         low,
@@ -1003,7 +1013,8 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
         selected |= HOME_READ_TOOLS
         if re.search(
             r"\b(?:home|house)\b.*\b(?:report|card|image|picture)\b"
-            r"|\b(?:status|current home status)\b.*\b(?:card|image|picture)\b",
+            r"|\b(?:status|current home status)\b.*\b(?:card|image|picture)\b"
+            r"|\b(?:image|picture|card)\b.*\b(?:home|house)\b.*\bstatus\b",
             low,
         ):
             selected.add("ha_home_report")
