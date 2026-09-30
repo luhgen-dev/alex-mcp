@@ -589,16 +589,18 @@ def process(payload: dict) -> dict:
             private_selection = _selection_context_for_offer(
                 dm_actor, private_reply, private_attachments
             )
-            db.queue_outbound(
-                dm_conversation, "TEXT", text=private_reply,
-                source_message_id=actor.source_message_id,
-                context_kind="SELECTION" if private_selection else None,
-                context_id=(
-                    f"{private_selection['kind']}:{private_selection['id']}"
-                    if private_selection else None
-                ),
-            )
+            if not private_attachments:
+                db.queue_outbound(
+                    dm_conversation, "TEXT", text=private_reply,
+                    source_message_id=actor.source_message_id,
+                    context_kind="SELECTION" if private_selection else None,
+                    context_id=(
+                        f"{private_selection['kind']}:{private_selection['id']}"
+                        if private_selection else None
+                    ),
+                )
             sent_paths: set[str] = set()
+            first_private_attachment = True
             for item in private_attachments:
                 path = item.get("path")
                 kind = item.get("kind", "DOCUMENT")
@@ -607,11 +609,16 @@ def process(payload: dict) -> dict:
                     db.queue_outbound(
                         dm_conversation,
                         "IMAGE" if kind == "IMAGE" else "DOCUMENT",
+                        text=private_reply if first_private_attachment else None,
                         local_path=path,
                         mime_type=item.get("mime_type"),
                         source_message_id=actor.source_message_id,
                     )
-            group_reply = "I sent that to you privately."
+                    first_private_attachment = False
+            group_reply = (
+                "I’m handling that in your private DM."
+                if private_attachments else "I sent that to you privately."
+            )
             db.queue_outbound(
                 actor.conversation_id, "TEXT", text=group_reply,
                 source_message_id=actor.source_message_id,
@@ -629,16 +636,18 @@ def process(payload: dict) -> dict:
         selection_context = _selection_context_for_offer(
             actor, reply, attachments
         )
-        db.queue_outbound(
-            actor.conversation_id, "TEXT", text=reply,
-            source_message_id=actor.source_message_id,
-            context_kind="SELECTION" if selection_context else None,
-            context_id=(
-                f"{selection_context['kind']}:{selection_context['id']}"
-                if selection_context else None
-            ),
-        )
+        if not attachments:
+            db.queue_outbound(
+                actor.conversation_id, "TEXT", text=reply,
+                source_message_id=actor.source_message_id,
+                context_kind="SELECTION" if selection_context else None,
+                context_id=(
+                    f"{selection_context['kind']}:{selection_context['id']}"
+                    if selection_context else None
+                ),
+            )
         sent_paths: set[str] = set()
+        first_attachment = True
         for item in attachments:
             path = item.get("path")
             kind = item.get("kind", "DOCUMENT")
@@ -647,10 +656,12 @@ def process(payload: dict) -> dict:
                 db.queue_outbound(
                     actor.conversation_id,
                     "IMAGE" if kind == "IMAGE" else "DOCUMENT",
+                    text=reply if first_attachment else None,
                     local_path=path,
                     mime_type=item.get("mime_type"),
                     source_message_id=actor.source_message_id,
                 )
+                first_attachment = False
         db.finish_inbound(actor.source_message_id, reply)
         return {"ok": True}
     except media.VoiceTranscriptionUncertain as exc:
