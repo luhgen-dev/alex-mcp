@@ -1589,55 +1589,74 @@ class AlexCoreTests(unittest.TestCase):
         with self.assertRaises(PermissionError):
             services.query_finances(group, scope="private")
 
-    def test_dm_receipt_media_does_not_widen_private_finance_scope(self):
-        self.claim("scope-receipt-private", "+60111111111", "log this receipt")
+    def test_dm_receipt_media_does_not_override_current_command_scope(self):
+        self.claim("scope-receipt-default", "+60111111111", "log this receipt")
         raw = base64.b64encode(b"generic-receipt").decode("ascii")
         receipt_media = media.save_media(
-            "scope-receipt-private", "IMAGE", "image/jpeg", raw
+            "scope-receipt-default", "IMAGE", "image/jpeg", raw
         )
         actor = with_action_key(
             replace(
                 self.actor(
-                    "scope-receipt-private", "+60111111111", [receipt_media]
+                    "scope-receipt-default", "+60111111111", [receipt_media]
                 ),
                 trusted_text="log this receipt",
             ),
-            "scope-receipt-private-a",
+            "scope-receipt-default-a",
         )
         result = services.log_expense(
             actor, "Personal purchase", 15, "personal", currency="MYR"
         )
-        self.assertEqual(result["space"], "HUSBAND_PVT")
+        # Current locked rule: new writes are Family Shared unless THIS user
+        # command explicitly says private or contains any emoji. The receipt
+        # bytes/OCR never influence that decision.
+        self.assertEqual(result["space"], "FAMILY_SHARED")
 
-    def test_sensitive_finance_categories_default_private_but_family_can_be_explicit(self):
-        self.claim("scope-pharmacy-private", "+60111111111", "pharmacy medicine")
+    def test_new_finance_write_scope_uses_command_not_category(self):
+        self.claim("scope-pharmacy-default", "+60111111111", "pharmacy medicine")
         actor = with_action_key(
             replace(
-                self.actor("scope-pharmacy-private", "+60111111111"),
+                self.actor("scope-pharmacy-default", "+60111111111"),
                 trusted_text="pharmacy medicine",
+            ),
+            "scope-pharmacy-default-a",
+        )
+        default_shared = services.log_expense(
+            actor, "Pharmacy medicine", 20, "pharmacy", currency="MYR"
+        )
+        self.assertEqual(default_shared["space"], "FAMILY_SHARED")
+
+        self.claim(
+            "scope-pharmacy-private", "+60111111111",
+            "log this privately pharmacy medicine",
+        )
+        private_actor = with_action_key(
+            replace(
+                self.actor("scope-pharmacy-private", "+60111111111"),
+                trusted_text="log this privately pharmacy medicine",
             ),
             "scope-pharmacy-private-a",
         )
-        private = services.log_expense(
-            actor, "Pharmacy medicine", 20, "pharmacy", currency="MYR"
+        explicit_private = services.log_expense(
+            private_actor, "Pharmacy medicine", 21, "pharmacy", currency="MYR"
         )
-        self.assertEqual(private["space"], "HUSBAND_PVT")
+        self.assertEqual(explicit_private["space"], "HUSBAND_PVT")
 
         self.claim(
-            "scope-pharmacy-family", "+60111111111",
-            "share with the family pharmacy medicine",
+            "scope-pharmacy-emoji", "+60111111111",
+            "pharmacy medicine 🙂",
         )
-        family_actor = with_action_key(
+        emoji_actor = with_action_key(
             replace(
-                self.actor("scope-pharmacy-family", "+60111111111"),
-                trusted_text="share with the family pharmacy medicine",
+                self.actor("scope-pharmacy-emoji", "+60111111111"),
+                trusted_text="pharmacy medicine 🙂",
             ),
-            "scope-pharmacy-family-a",
+            "scope-pharmacy-emoji-a",
         )
-        family = services.log_expense(
-            family_actor, "Pharmacy medicine", 20, "pharmacy", currency="MYR"
+        emoji_private = services.log_expense(
+            emoji_actor, "Pharmacy medicine", 22, "pharmacy", currency="MYR"
         )
-        self.assertEqual(family["space"], "FAMILY_SHARED")
+        self.assertEqual(emoji_private["space"], "HUSBAND_PVT")
 
     def test_shopping_private_and_family_lists_do_not_collapse_each_other(self):
         self.claim("shop-scope", "+60111111111", "shopping")
