@@ -12,6 +12,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import runtime_clock
+import scope_policy
 
 from dateutil.rrule import rrulestr
 
@@ -109,38 +110,12 @@ def _route(conn, actor: ActorContext, text: str, category: str | None) -> tuple[
     # a model-supplied category. Alex must ask the user instead.
     resolved_category = (rule["category"] if rule else None) or (None if generic_transfer else proposed)
 
-    trusted = str(getattr(actor, "trusted_text", "") or "")
-    explicit_private = bool(re.search(
-        r"\b(?:private|privately|just\s+for\s+me|only\s+for\s+me|my\s+private)\b",
-        trusted,
-        re.IGNORECASE,
-    ))
-    explicit_family = bool(re.search(
-        r"\b(?:family\s+shared|shared\s+with\s+(?:the\s+)?family|share\s+with\s+(?:the\s+)?family)\b",
-        trusted,
-        re.IGNORECASE,
-    ))
-
-    if actor.conversation_type == "GROUP":
-        space = "FAMILY_SHARED"
-    elif explicit_private:
-        # An explicit privacy request always outranks catalogue defaults.
-        space = actor.private_space
-    elif explicit_family:
-        space = "FAMILY_SHARED"
-    elif rule and rule["force_space_id"]:
-        space = rule["force_space_id"]
-    else:
-        # Input transport never widens privacy. A DM receipt/image/PDF is
-        # private unless the owner explicitly shares it or its trusted
-        # household-purpose routing rule is FAMILY_SHARED. Voice was already
-        # private; documents now follow the same principle.
-        space = actor.private_space
+    fallback = (rule["force_space_id"] if rule and rule["force_space_id"] else actor.private_space)
+    space = scope_policy.resolve_new_write_space(actor, fallback_space=fallback)
     if space not in actor.allowed_spaces:
         raise PermissionError("Resolved space is outside the authenticated user's memberships")
     threshold = rule["high_value_threshold_minor"] if rule else None
     return space, resolved_category, threshold
-
 
 def _parse_event_time(value: str | None, tz_name: str) -> str:
     if not value:
@@ -891,7 +866,7 @@ def save_item(actor: ActorContext, title: str, content: str, tags: str | None = 
         existing = conn.execute("SELECT item_id FROM saved_items WHERE action_key=?", (actor.action_key,)).fetchone()
         if existing:
             return {"status": "already_saved", "item_id": existing["item_id"]}
-        space = "FAMILY_SHARED" if shared or actor.conversation_type == "GROUP" else actor.private_space
+        space = scope_policy.resolve_new_write_space(actor, requested_shared=shared)
         if space not in actor.allowed_spaces:
             raise PermissionError("requested memory space is not accessible")
         item_id = str(uuid.uuid4())
@@ -1217,10 +1192,12 @@ def create_reminder(actor: ActorContext, task: str, due_local: str,
                     raise ValueError("target household member has no configured WhatsApp number")
                 conversation_id = phone.replace("+", "") + "@s.whatsapp.net"
 
-            space = "FAMILY_SHARED" if (
-                destination == "group" or shared or actor.conversation_type == "GROUP"
-                or target_user != actor.user_id or len(targets) > 1
-            ) else actor.private_space
+            if destination == "group" or target_user != actor.user_id or len(targets) > 1:
+                space = "FAMILY_SHARED"
+            else:
+                space = scope_policy.resolve_new_write_space(
+                    actor, requested_shared=shared
+                )
             if space not in actor.allowed_spaces:
                 raise PermissionError("requested reminder space is not accessible")
 
@@ -1657,11 +1634,29 @@ def set_goal(actor: ActorContext, name: str, target_amount: float | None = None,
              current_amount: float | None = None, currency: str = "MYR",
              target_date: str | None = None, notes: str | None = None,
              shared: bool = False) -> dict:
-    space = "FAMILY_SHARED" if shared or actor.conversation_type == "GROUP" else actor.private_space
+    marks, spaces = _spaces_sql(actor)
     conn = connect()
     try:
-        row = conn.execute("SELECT * FROM savings_goals WHERE space_id=? AND LOWER(goal_name)=LOWER(?)",
-                           (space, name)).fetchone()
+        existing = conn.execute(
+            f"""SELECT * FROM savings_goals
+                WHERE LOWER(goal_name)=LOWER(?) AND space_id IN ({marks})
+                ORDER BY updated_at_utc DESC""",
+            [name] + spaces,
+        ).fetchall()
+        if len(existing) == 1:
+            row = existing[0]
+            space = row["space_id"]
+        elif len(existing) > 1:
+            intended = scope_policy.resolve_new_write_space(actor, requested_shared=shared)
+            matches = [row for row in existing if row["space_id"] == intended]
+            if len(matches) != 1:
+                raise ValueError("goal name exists in more than one scope; specify which one")
+            row = matches[0]
+            space = row["space_id"]
+        else:
+            row = None
+            space = scope_policy.resolve_new_write_space(actor, requested_shared=shared)
+
         target_minor = _minor(target_amount) if target_amount is not None else (row["target_amount_minor"] if row else None)
         current_minor = _minor(current_amount) if current_amount is not None and current_amount > 0 else (
             0 if current_amount == 0 else (row["current_amount_minor"] if row else 0)
@@ -1669,9 +1664,9 @@ def set_goal(actor: ActorContext, name: str, target_amount: float | None = None,
         if row:
             conn.execute(
                 """UPDATE savings_goals SET target_amount_minor=?,current_amount_minor=?,currency=?,
-                   target_date=?,notes=?,space_id=?,action_key=?,updated_at_utc=? WHERE goal_id=?""",
+                   target_date=?,notes=?,action_key=?,updated_at_utc=? WHERE goal_id=?""",
                 (target_minor, current_minor, currency.upper(), target_date or row["target_date"],
-                 notes if notes is not None else row["notes"], space, actor.action_key or row["action_key"],
+                 notes if notes is not None else row["notes"], actor.action_key or row["action_key"],
                  utc_now(), row["goal_id"]),
             )
             gid = row["goal_id"]
@@ -1688,10 +1683,10 @@ def set_goal(actor: ActorContext, name: str, target_amount: float | None = None,
         conn.commit()
         return {"status": "saved", "goal_id": gid, "name": name,
                 "target_amount": target_minor/100 if target_minor else None,
-                "current_amount": current_minor/100, "currency": currency.upper()}
+                "current_amount": current_minor/100, "currency": currency.upper(),
+                "space": space}
     finally:
         conn.close()
-
 
 def list_goals(actor: ActorContext) -> dict:
     marks, spaces = _spaces_sql(actor)
@@ -1771,7 +1766,7 @@ def add_shopping_item(actor: ActorContext, item: str, quantity: str | None = Non
     clean_item = (item or "").strip()
     if not clean_item:
         raise ValueError("shopping item is required")
-    space = "FAMILY_SHARED" if shared else actor.private_space
+    space = scope_policy.resolve_new_write_space(actor, requested_shared=shared)
     if space not in actor.allowed_spaces:
         raise PermissionError("requested shopping space is not accessible")
     conn = connect()
@@ -1902,25 +1897,38 @@ def list_pending_expenses(actor: ActorContext, limit: int = 10) -> dict:
 def set_money_bucket(actor: ActorContext, name: str, amount: float,
                      currency: str = "MYR", notes: str | None = None,
                      shared: bool = False) -> dict:
-    """Set an allocation/budget/stash bucket to an explicit amount supplied by the user."""
+    """Set an explicit bucket. Existing records keep their stored scope."""
     if amount < 0:
         raise ValueError("bucket amount cannot be negative")
-    space = "FAMILY_SHARED" if shared or actor.conversation_type == "GROUP" else actor.private_space
-    if space not in actor.allowed_spaces:
-        raise PermissionError("requested bucket space is not accessible")
     amount_minor = int((Decimal(str(amount)) * Decimal("100")).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    marks, spaces = _spaces_sql(actor)
     conn = connect()
     try:
-        row = conn.execute(
-            "SELECT bucket_id FROM money_buckets WHERE space_id=? AND LOWER(bucket_name)=LOWER(?)",
-            (space, name),
-        ).fetchone()
+        rows = conn.execute(
+            f"""SELECT * FROM money_buckets
+                WHERE LOWER(bucket_name)=LOWER(?) AND space_id IN ({marks})
+                ORDER BY updated_at_utc DESC""",
+            [name] + spaces,
+        ).fetchall()
+        if len(rows) == 1:
+            row = rows[0]
+            space = row["space_id"]
+        elif len(rows) > 1:
+            intended = scope_policy.resolve_new_write_space(actor, requested_shared=shared)
+            matches = [row for row in rows if row["space_id"] == intended]
+            if len(matches) != 1:
+                raise ValueError("bucket name exists in more than one scope; specify which one")
+            row = matches[0]
+            space = row["space_id"]
+        else:
+            row = None
+            space = scope_policy.resolve_new_write_space(actor, requested_shared=shared)
         if row:
             bucket_id = row["bucket_id"]
             conn.execute(
-                """UPDATE money_buckets SET amount_minor=?,currency=?,notes=?,space_id=?,updated_at_utc=?
+                """UPDATE money_buckets SET amount_minor=?,currency=?,notes=?,updated_at_utc=?
                    WHERE bucket_id=?""",
-                (amount_minor, currency.upper(), notes, space, utc_now(), bucket_id),
+                (amount_minor, currency.upper(), notes, utc_now(), bucket_id),
             )
         else:
             bucket_id = str(uuid.uuid4())
@@ -1937,7 +1945,6 @@ def set_money_bucket(actor: ActorContext, name: str, amount: float,
         }
     finally:
         conn.close()
-
 
 def list_money_buckets(actor: ActorContext) -> dict:
     marks, spaces = _spaces_sql(actor)
