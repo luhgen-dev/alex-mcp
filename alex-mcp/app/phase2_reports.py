@@ -9,6 +9,156 @@ from datetime import date
 import phase2_finance
 import phase2_library
 import phase2_work
+import compat_tools as tools
+
+
+def remember_active_report(user_id, conversation_id, report_kind, payload,
+                          period=None, spec=None):
+    """Remember exactly what this conversation most recently displayed."""
+    conn = tools.get_db()
+    try:
+        conn.execute(
+            """INSERT INTO active_report_contexts(
+                   user_id,conversation_id,report_kind,period,payload_json,spec_json,created_at_utc
+               ) VALUES(?,?,?,?,?,?,CURRENT_TIMESTAMP)
+               ON CONFLICT(user_id,conversation_id) DO UPDATE SET
+                   report_kind=excluded.report_kind,
+                   period=excluded.period,
+                   payload_json=excluded.payload_json,
+                   spec_json=excluded.spec_json,
+                   created_at_utc=CURRENT_TIMESTAMP""",
+            (
+                user_id, conversation_id, report_kind, period,
+                json.dumps(payload, ensure_ascii=False, sort_keys=True),
+                json.dumps(spec or {}, ensure_ascii=False, sort_keys=True),
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def load_active_report(user_id, conversation_id, max_age_hours=6):
+    """Return only the report context from this exact user + conversation."""
+    conn = tools.get_db()
+    try:
+        row = conn.execute(
+            """SELECT * FROM active_report_contexts
+               WHERE user_id=? AND conversation_id=?
+                 AND datetime(created_at_utc) >= datetime('now', ?)
+               LIMIT 1""",
+            (user_id, conversation_id, f"-{int(max_age_hours)} hours"),
+        ).fetchone()
+        if not row:
+            return None
+        return {
+            "kind": row["report_kind"],
+            "period": row["period"],
+            "payload": json.loads(row["payload_json"]),
+            "spec": json.loads(row["spec_json"] or "{}"),
+            "created_at_utc": row["created_at_utc"],
+        }
+    finally:
+        conn.close()
+
+
+def finance_query_csv(payload):
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow(["date", "type", "category", "description", "amount", "currency", "reference"])
+    for row in payload.get("records", []):
+        writer.writerow([
+            row.get("date_local"), row.get("type"), row.get("category"),
+            row.get("description"), row.get("amount"), row.get("currency"),
+            row.get("reference"),
+        ])
+    return out.getvalue()
+
+
+def finance_query_text(payload):
+    lines = ["ALEX Finance Report", ""]
+    for currency, amount in sorted((payload.get("spending_totals") or {}).items()):
+        lines.append(f"Spending total: {currency} {amount:.2f}")
+    for currency, amount in sorted((payload.get("income_totals") or {}).items()):
+        lines.append(f"Income total: {currency} {amount:.2f}")
+    lines.append(f"Matching records: {int(payload.get('count') or 0)}")
+    lines.extend(["", "Transactions:"])
+    for row in payload.get("records", []):
+        lines.append(
+            f"- {row.get('date_local','')} | {row.get('description','')} | "
+            f"{row.get('currency','')} {float(row.get('amount') or 0):.2f} | "
+            f"{row.get('category') or ''}"
+        )
+    return lines
+
+
+def text_pdf(lines, title="ALEX Report"):
+    """Dependency-free multi-page PDF with safe row wrapping and page numbers."""
+    def esc(value):
+        return _pdf_escape(value)
+    wrapped = []
+    for line in lines:
+        value = str(line)
+        if not value:
+            wrapped.append("")
+            continue
+        while len(value) > 92:
+            cut = value.rfind(" ", 0, 92)
+            cut = cut if cut > 24 else 92
+            wrapped.append(value[:cut])
+            value = value[cut:].lstrip()
+        wrapped.append(value)
+
+    per_page = 43
+    pages = [wrapped[i:i + per_page] for i in range(0, len(wrapped), per_page)] or [[]]
+    objects = []
+    page_ids = []
+    font_id = 3
+    next_id = 4
+    content_ids = []
+    for page_index, page_lines in enumerate(pages, 1):
+        page_id, content_id = next_id, next_id + 1
+        next_id += 2
+        page_ids.append(page_id)
+        content_ids.append(content_id)
+        y = 760
+        ops = ["BT", "/F1 18 Tf", f"54 {y} Td", f"({esc(title)}) Tj", "ET"]
+        y -= 34
+        for line in page_lines:
+            size = 9 if line.startswith("- ") else 10
+            ops.extend(["BT", f"/F1 {size} Tf", f"54 {y} Td", f"({esc(line)}) Tj", "ET"])
+            y -= 16
+        ops.extend(["BT", "/F1 8 Tf", f"280 30 Td", f"(Page {page_index} of {len(pages)}) Tj", "ET"])
+        stream = "\n".join(ops).encode("latin-1", "replace")
+        objects.append((content_id, b"<< /Length %d >>\nstream\n" % len(stream) + stream + b"\nendstream"))
+        objects.append((page_id, (
+            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+            f"/Resources << /Font << /F1 {font_id} 0 R >> >> "
+            f"/Contents {content_id} 0 R >>"
+        ).encode("ascii")))
+    objects.extend([
+        (1, b"<< /Type /Catalog /Pages 2 0 R >>"),
+        (2, f"<< /Type /Pages /Kids [{' '.join(f'{pid} 0 R' for pid in page_ids)}] /Count {len(page_ids)} >>".encode("ascii")),
+        (font_id, b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"),
+    ])
+    objects.sort(key=lambda x: x[0])
+    out = bytearray(b"%PDF-1.4\n")
+    offsets = {0: 0}
+    for oid, body in objects:
+        offsets[oid] = len(out)
+        out.extend(f"{oid} 0 obj\n".encode("ascii"))
+        out.extend(body)
+        out.extend(b"\nendobj\n")
+    xref = len(out)
+    max_id = max(offsets)
+    out.extend(f"xref\n0 {max_id + 1}\n".encode("ascii"))
+    out.extend(b"0000000000 65535 f \n")
+    for oid in range(1, max_id + 1):
+        out.extend(f"{offsets.get(oid, 0):010d} 00000 n \n".encode("ascii"))
+    out.extend(
+        f"trailer\n<< /Size {max_id + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode("ascii")
+    )
+    return bytes(out)
 
 
 def build_snapshot(sender_phone, conversation_type="DIRECT_DM",
