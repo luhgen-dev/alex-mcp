@@ -18,7 +18,12 @@ jobs:
           python-version: "3.12"
 
       - name: Install Python dependencies
-        run: pip install -r alex-mcp/app/requirements.txt
+        run: |
+          pip install -r alex-mcp/app/requirements.txt
+          pip install pyflakes
+
+      - name: Reject undefined Python names
+        run: pyflakes alex-mcp/app
 
       - name: Compile Python
         run: python -m compileall -q alex-mcp/app tests
