@@ -485,6 +485,19 @@ def finance_csv(snapshot):
             item.get("paid"), item.get("currency"),
             f"expected={item.get('expected')}; due={item.get('due_date')}",
         ])
+    for asset in snapshot.get("assets", []):
+        writer.writerow([
+            "asset", asset.get("name"), asset.get("status"), "",
+            "", f"category={asset.get('category')}; brand={asset.get('brand')}; "
+                f"model={asset.get('model')}; warranty_end={asset.get('warranty_end')}",
+        ])
+    for leave in snapshot.get("leave_balances", []):
+        writer.writerow([
+            "leave", leave.get("name") or leave.get("leave_id"),
+            leave.get("status") or "current",
+            leave.get("remaining_days"), "days",
+            f"entitlement={leave.get('entitlement_days')}; as_of={leave.get('as_of_date')}",
+        ])
     return out.getvalue()
 
 
@@ -529,66 +542,148 @@ def _pdf_escape(value):
 
 
 def minimal_pdf(snapshot):
-    """Create a dependency-free, text-only PDF suitable for household reports."""
-    plan = snapshot.get("baseline_plan", {})
-    lines = [
-        f"Project Jarvis Household Report - {snapshot.get('period','')}",
-        f"Baseline available: {plan.get('currency','MYR')} {plan.get('available_baseline_monthly',0):.2f}",
-        "Variable income such as overtime is excluded from baseline planning.",
-        "",
-        "Goals:",
-    ]
-    for goal in snapshot.get("goals", []):
-        lines.append(
-            f"- {goal.get('name')}: {goal.get('currency')} "
-            f"{goal.get('funded',0):.2f} / {goal.get('target',0):.2f}"
-        )
-    lines.append("")
-    lines.append("Obligations:")
-    for item in snapshot.get("obligations", []):
-        amount = item.get("expected")
-        amount_text = "variable" if amount is None else f"{item.get('currency')} {amount:.2f}"
-        lines.append(
-            f"- {item.get('name')}: {item.get('state')} ({amount_text})"
-        )
+    """Render the broader household/planning snapshot in ALEX premium style."""
+    period_label = _month_label(snapshot.get("period"))
+    plan = snapshot.get("baseline_plan") or {}
+    goals = list(snapshot.get("goals") or [])
+    obligations = list(snapshot.get("obligations") or [])
+    assets = list(snapshot.get("assets") or [])
+    leave_balances = list(snapshot.get("leave_balances") or [])
 
-    # One-page PDF; reports with many rows can later use the same builder with
-    # pagination. No external PDF dependency is required in the HA add-on.
-    y = 800
-    commands = ["BT", "/F1 11 Tf"]
-    for line in lines[:48]:
-        commands.append(f"1 0 0 1 50 {y} Tm ({_pdf_escape(line)}) Tj")
-        y -= 15
-    commands.append("ET")
-    stream = "\n".join(commands).encode("latin-1", errors="replace")
-
-    objects = [
-        b"<< /Type /Catalog /Pages 2 0 R >>",
-        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] "
-        b"/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
-        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-        b"<< /Length " + str(len(stream)).encode() + b" >>\nstream\n"
-        + stream + b"\nendstream",
+    sections = [
+        ("Goals", [
+            f"{g.get('name')}: {g.get('currency') or 'MYR'} {float(g.get('funded') or 0):,.2f} / "
+            f"{g.get('currency') or 'MYR'} {float(g.get('target') or 0):,.2f}"
+            for g in goals
+        ]),
+        ("Bills / obligations", [
+            f"{item.get('name')}: {item.get('state')} - "
+            + (
+                "variable"
+                if item.get("expected") is None
+                else f"{item.get('currency') or 'MYR'} {float(item.get('expected') or 0):,.2f}"
+            )
+            for item in obligations
+        ]),
+        ("Assets", [
+            " | ".join(
+                x for x in [
+                    str(asset.get("name") or ""),
+                    str(asset.get("brand") or ""),
+                    str(asset.get("model") or ""),
+                    (
+                        f"Warranty {asset.get('warranty_end')}"
+                        if asset.get("warranty_end") else ""
+                    ),
+                ] if x
+            )
+            for asset in assets
+        ]),
+        ("Leave", [
+            f"{leave.get('name') or leave.get('leave_id')}: "
+            f"{leave.get('remaining_days')} days remaining"
+            for leave in leave_balances
+        ]),
     ]
-    pdf = bytearray(b"%PDF-1.4\n")
-    offsets = [0]
-    for i, obj in enumerate(objects, 1):
-        offsets.append(len(pdf))
-        pdf.extend(f"{i} 0 obj\n".encode())
-        pdf.extend(obj)
-        pdf.extend(b"\nendobj\n")
-    xref = len(pdf)
-    pdf.extend(f"xref\n0 {len(objects)+1}\n".encode())
-    pdf.extend(b"0000000000 65535 f \n")
-    for off in offsets[1:]:
-        pdf.extend(f"{off:010d} 00000 n \n".encode())
-    pdf.extend(
-        f"trailer\n<< /Size {len(objects)+1} /Root 1 0 R >>\n"
-        f"startxref\n{xref}\n%%EOF\n".encode()
+
+    # Flatten into presentation rows while preserving section boundaries.
+    rows = []
+    baseline = plan.get("available_baseline_monthly")
+    if baseline is not None:
+        rows.append(("Baseline", f"{plan.get('currency') or 'MYR'} {float(baseline):,.2f}", True))
+        rows.append(("", "Variable income / OT excluded from baseline.", False))
+    for title, values in sections:
+        rows.append((title, "", True))
+        if values:
+            rows.extend(("", value, False) for value in values)
+        else:
+            rows.append(("", "No entries.", False))
+
+    per_page = 27
+    pages = [rows[i:i + per_page] for i in range(0, len(rows), per_page)] or [[]]
+    page_count = len(pages)
+    objects = []
+    page_ids = []
+    regular_font_id = 3
+    bold_font_id = 4
+    next_id = 5
+
+    def text_op(x, y, size, value, bold=False, gray=0.12):
+        font = "/F2" if bold else "/F1"
+        return [
+            f"{gray:.3f} g",
+            "BT", f"{font} {size} Tf", f"{x} {y} Td",
+            f"({_pdf_literal(value)}) Tj", "ET",
+        ]
+
+    for page_no, page_rows in enumerate(pages, 1):
+        page_id, content_id = next_id, next_id + 1
+        next_id += 2
+        page_ids.append(page_id)
+        ops = [
+            "0.047 0.086 0.133 rg", "0 714 612 78 re f",
+            "0.886 0.624 0.204 rg", "0 708 612 6 re f",
+        ]
+        ops += text_op(48, 754, 19, "ALEX", True, 1.0)
+        ops += text_op(48, 730, 11, "Household Planning Snapshot", False, 0.88)
+        ops += text_op(430, 735, 10, period_label, True, 0.95)
+        ops += text_op(500, 28, 8, f"Page {page_no} of {page_count}", False, 0.48)
+
+        y = 674
+        for label, value, heading in page_rows:
+            if heading:
+                if label == "Baseline":
+                    ops += ["0.965 0.965 0.965 rg", f"48 {y-8} 516 27 re f"]
+                    ops += text_op(60, y, 10, "Available monthly baseline", False, 0.28)
+                    ops += text_op(385, y, 11, value, True, 0.08)
+                    y -= 36
+                else:
+                    y -= 4
+                    ops += text_op(48, y, 13, label, True)
+                    y -= 24
+                continue
+            safe = _pdf_safe_text(value)
+            while len(safe) > 78:
+                cut = safe.rfind(" ", 0, 78)
+                cut = cut if cut > 28 else 78
+                ops += text_op(58, y, 9, safe[:cut], False, 0.22)
+                safe = safe[cut:].lstrip()
+                y -= 17
+            ops += text_op(58, y, 9, safe, False, 0.22)
+            y -= 19
+
+        stream = "\n".join(ops).encode("latin-1", "replace")
+        objects.append((content_id, b"<< /Length %d >>\nstream\n" % len(stream) + stream + b"\nendstream"))
+        objects.append((page_id, (
+            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+            f"/Resources << /Font << /F1 {regular_font_id} 0 R /F2 {bold_font_id} 0 R >> >> "
+            f"/Contents {content_id} 0 R >>"
+        ).encode("ascii")))
+
+    objects.extend([
+        (1, b"<< /Type /Catalog /Pages 2 0 R >>"),
+        (2, f"<< /Type /Pages /Kids [{' '.join(f'{pid} 0 R' for pid in page_ids)}] /Count {len(page_ids)} >>".encode("ascii")),
+        (regular_font_id, b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"),
+        (bold_font_id, b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>"),
+    ])
+    objects.sort(key=lambda x: x[0])
+    out = bytearray(b"%PDF-1.4\n")
+    offsets = {0: 0}
+    for oid, body in objects:
+        offsets[oid] = len(out)
+        out.extend(f"{oid} 0 obj\n".encode("ascii"))
+        out.extend(body)
+        out.extend(b"\nendobj\n")
+    xref = len(out)
+    max_id = max(offsets)
+    out.extend(f"xref\n0 {max_id + 1}\n".encode("ascii"))
+    out.extend(b"0000000000 65535 f \n")
+    for oid in range(1, max_id + 1):
+        out.extend(f"{offsets.get(oid, 0):010d} 00000 n \n".encode("ascii"))
+    out.extend(
+        f"trailer\n<< /Size {max_id + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode("ascii")
     )
-    return bytes(pdf)
-
+    return bytes(out)
 
 def handoff_google_sheets(snapshot, uploader):
     """Use an injected, authorized uploader; no credentials live in this module."""
