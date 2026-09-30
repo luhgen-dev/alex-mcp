@@ -65,6 +65,7 @@ class AlexCoreTests(unittest.TestCase):
             for table in (
                 "alex_phase2_asset_documents", "alex_phase2_assets",
                 "alex_phase2_cash_allocations", "alex_phase2_cash_pool_allocations",
+                "alex_phase2_cash_pool_adjustments",
                 "alex_phase2_goal_contributions", "alex_phase2_goal_period_targets",
                 "alex_phase2_goal_baseline_versions", "alex_phase2_obligation_instances",
                 "alex_phase2_evidence_facts", "alex_phase2_cash_events",
