@@ -349,6 +349,7 @@ CREATE TABLE IF NOT EXISTS leave_records (
     leave_id TEXT PRIMARY KEY,
     action_key TEXT NOT NULL UNIQUE,
     owner_id TEXT NOT NULL,
+    space_id TEXT NOT NULL,
     leave_date TEXT NOT NULL,
     end_date TEXT,
     leave_type TEXT NOT NULL DEFAULT 'ANNUAL_LEAVE'
@@ -359,9 +360,11 @@ CREATE TABLE IF NOT EXISTS leave_records (
     created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(owner_id,leave_date,portion),
-    FOREIGN KEY(owner_id) REFERENCES users(user_id)
+    FOREIGN KEY(owner_id) REFERENCES users(user_id),
+    FOREIGN KEY(space_id) REFERENCES spaces(space_id)
 );
 CREATE INDEX IF NOT EXISTS idx_leave_owner_date ON leave_records(owner_id,leave_date,status);
+CREATE INDEX IF NOT EXISTS idx_leave_owner_space_date ON leave_records(owner_id,space_id,leave_date,status);
 
 CREATE TABLE IF NOT EXISTS diary_events (
     diary_id TEXT PRIMARY KEY,
