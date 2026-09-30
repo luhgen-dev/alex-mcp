@@ -230,10 +230,11 @@ LEGACY_SIMPLE_PLANNING = {
 }
 
 
-# Preserve the proven six-domain-tool budget. Discovery is a seventh, tiny
-# recovery facade and never competes with a real capability for a slot.
+# Preserve the proven six-tool provider budget. Deterministic routing may use
+# all six slots; semantic discovery is added only when a slot is free, so it
+# never evicts a known capability and never increases provider schema cost.
 TOOL_DOMAIN_MAX = 6
-TOOL_EXPOSURE_MAX = TOOL_DOMAIN_MAX + 1
+TOOL_EXPOSURE_MAX = 6
 MAX_MODEL_CALLS = 4
 
 # Safe read-only recovery surface. Deterministic routing and semantic discovery
@@ -1437,9 +1438,12 @@ async def _tool_specs(user_text: str, media_context: list[str] | None = None,
     # The discovery tool is a tiny safety valve for typo-heavy, incomplete,
     # Tanglish or otherwise novel phrasing. It lets the LLM normalize intent
     # without exposing Alex's full MCP catalog or adding a separate classifier call.
-    if not _pure_chat(user_text, media_context):
-        # Discovery is deliberately additive: never evict a real domain tool
-        # simply because the six-domain budget is already full.
+    if (
+        not _pure_chat(user_text, media_context)
+        and len(specs) < TOOL_EXPOSURE_MAX
+    ):
+        # Discovery uses only spare provider budget. High-confidence routes are
+        # never crowded out, and total exposed schemas remain capped at six.
         specs.append(DISCOVERY_TOOL)
     return specs[:TOOL_EXPOSURE_MAX]
 
@@ -2617,7 +2621,9 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                     original_user_text=user_text,
                     trusted_context_text=trusted_context_text,
                 )
-                tools = discovered_specs[:TOOL_DOMAIN_MAX] + [DISCOVERY_TOOL]
+                # Discovery has already done its job. The next reasoning round
+                # receives only the resolved domain tools, still capped at six.
+                tools = discovered_specs[:TOOL_EXPOSURE_MAX]
                 trace["exposed_tools"] = sorted(set(trace["exposed_tools"]) | {
                     x["function"]["name"] for x in tools
                 })
@@ -2629,7 +2635,7 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                         "normalized_intent": normalized,
                         "tool_names": [
                             x["function"]["name"]
-                            for x in discovered_specs[:TOOL_DOMAIN_MAX]
+                            for x in discovered_specs[:TOOL_EXPOSURE_MAX]
                         ],
                         "semantic_rescue": True,
                     }, ensure_ascii=False, separators=(",", ":")),
