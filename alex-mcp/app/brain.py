@@ -190,7 +190,7 @@ CORE_FINANCE = {
 }
 MEDIA_TOOLS = {"find_media","get_media_original","resolve_numbered_choice"}
 MEMORY_TOOLS = {"save_item","search_saved_items","get_saved_item","remove_saved_item","resolve_numbered_choice"}
-REMINDER_TOOLS = {"create_reminder","list_reminders","update_reminder","reminder_history","release_reminder_claim","handoff_reminder_claim"}
+REMINDER_TOOLS = {"create_reminder","list_reminders","update_reminder","reminder_history","release_reminder_claim"}
 SHOPPING_TOOLS = {"add_shopping_item","list_shopping_items","update_shopping_item"}
 DIARY_TOOLS = {
     "add_diary_event","resolve_diary_conflict","resolve_latest_diary_conflict",
