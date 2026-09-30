@@ -54,13 +54,19 @@ GENERIC_CATEGORIES = {
     "general", "other", "misc", "miscellaneous", "unknown",
     "payment", "transfer", "bank_transfer", "fund_transfer", "duitnow",
 }
+SCOPE_ONLY_CATEGORIES = {
+    "private", "privately", "personal", "family", "shared", "family_shared",
+    "family-shared", "just_for_me", "only_for_me", "my_private",
+}
 
 
 def _clean_category(value: str | None) -> str | None:
     if not value:
         return None
     cleaned = str(value).strip().lower().replace(" ", "_")[:80]
-    return None if cleaned in GENERIC_CATEGORIES else cleaned
+    if cleaned in GENERIC_CATEGORIES or cleaned in SCOPE_ONLY_CATEGORIES:
+        return None
+    return cleaned
 
 
 def _routing_keyword_matches(keyword: str, text: str) -> bool:
@@ -324,8 +330,14 @@ def confirm_expense(actor: ActorContext, event_id: str, approve: bool = True,
 def query_finances(actor: ActorContext, start_date: str | None = None, end_date: str | None = None,
                    category: str | None = None, search: str | None = None,
                    currency: str | None = None, limit: int = 20,
-                   scope: str | None = None, source: str | None = None) -> dict:
-    """Return exact aggregates over the full match set plus a bounded recent-record sample."""
+                   scope: str | None = None, source: str | None = None,
+                   include_all_records: bool = False) -> dict:
+    """Return exact aggregates over the full match set plus records.
+
+    Aggregates are always computed by SQL over the complete match set. By
+    default records are bounded for chat use; report/export callers may request
+    the full matching ledger with include_all_records=True.
+    """
     marks, spaces = _spaces_sql(actor, scope)
     where = f"status='ACTIVE' AND space_id IN ({marks})"
     params: list = spaces[:]
@@ -377,16 +389,27 @@ def query_finances(actor: ActorContext, start_date: str | None = None, end_date:
                 GROUP BY event_type,currency""",
             params,
         ).fetchall()
+        category_rows = conn.execute(
+            f"""SELECT COALESCE(NULLIF(category,''),'uncategorised') AS category,
+                       currency,COALESCE(SUM(amount_minor),0) AS total_minor,COUNT(*) AS n
+                FROM financial_events
+                WHERE {where} AND event_type='Expense'
+                GROUP BY category,currency
+                ORDER BY total_minor DESC,category""",
+            params,
+        ).fetchall()
         count_row = conn.execute(
             f"SELECT COUNT(*) AS n FROM financial_events WHERE {where}", params
         ).fetchone()
-        rows = [dict(r) for r in conn.execute(
-            f"""SELECT event_id,event_type,category,amount_minor,currency,event_date_utc,
-                       description,reference_text,space_id
-                FROM financial_events WHERE {where}
-                ORDER BY event_date_utc DESC, created_at_utc DESC, rowid DESC LIMIT ?""",
-            params + [max(1, min(100, int(limit)))],
-        ).fetchall()]
+        row_sql = f"""SELECT event_id,event_type,category,amount_minor,currency,event_date_utc,
+                             description,reference_text,space_id
+                      FROM financial_events WHERE {where}
+                      ORDER BY event_date_utc DESC, created_at_utc DESC, rowid DESC"""
+        row_params = list(params)
+        if not include_all_records:
+            row_sql += " LIMIT ?"
+            row_params.append(max(1, min(100, int(limit))))
+        rows = [dict(r) for r in conn.execute(row_sql, row_params).fetchall()]
     finally:
         conn.close()
 
@@ -396,6 +419,16 @@ def query_finances(actor: ActorContext, start_date: str | None = None, end_date:
         amount = (r["total_minor"] or 0) / 100
         target = spending_totals if r["event_type"] == "Expense" else income_totals
         target[r["currency"]] = round(amount, 2)
+
+    category_totals = [
+        {
+            "category": r["category"],
+            "currency": r["currency"],
+            "amount": round((r["total_minor"] or 0) / 100, 2),
+            "count": int(r["n"] or 0),
+        }
+        for r in category_rows
+    ]
 
     records = []
     tz = ZoneInfo(actor.timezone)
@@ -409,6 +442,7 @@ def query_finances(actor: ActorContext, start_date: str | None = None, end_date:
             "event_id": r["event_id"], "type": r["event_type"], "amount": amount,
             "currency": r["currency"], "category": r["category"], "description": r["description"],
             "date_local": local, "reference": r["reference_text"],
+            "scope": "family" if r["space_id"] == "FAMILY_SHARED" else "private",
         })
 
     currencies = set(spending_totals) | set(income_totals)
@@ -420,8 +454,10 @@ def query_finances(actor: ActorContext, start_date: str | None = None, end_date:
         "spending_totals": spending_totals,
         "income_totals": income_totals,
         "net_outflow": net_outflow,
+        "category_totals": category_totals,
         "count": int(count_row["n"] if count_row else 0),
         "returned_records": len(records),
+        "all_records_returned": bool(include_all_records),
         "latest_record": records[0] if records else None,
         "records": records,
     }
@@ -552,7 +588,8 @@ def find_receipts(actor: ActorContext, query: str | None = None, amount: float |
         remaining = bounded - len(matches)
         # Unlinked media is private provenance from the sender's DM. A group
         # request must never surface that private material into Family Shared.
-        if remaining > 0 and actor.conversation_type != "GROUP":
+        requested_scope = str(scope or "all").strip().casefold()
+        if remaining > 0 and actor.conversation_type != "GROUP" and requested_scope not in {"family", "shared"}:
             orphan_sql = """SELECT m.media_id,m.created_at_utc,m.ocr_text,i.raw_text AS caption
                             FROM media_objects m
                             JOIN inbound_messages i ON i.message_id=m.source_message_id
@@ -1343,14 +1380,41 @@ def update_reminder(actor: ActorContext, reminder_id: str, status: str = "open",
 
 
 def reminder_history(actor: ActorContext, reminder_id: str | None = None,
-                     limit: int = 50) -> dict:
+                      limit: int = 50) -> dict:
     marks, spaces = _spaces_sql(actor)
     bounded = max(1, min(200, int(limit)))
+    tz = ZoneInfo(actor.timezone)
+
+    def local_iso(value):
+        if not value:
+            return None
+        try:
+            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed.astimezone(tz).isoformat()
+        except Exception:
+            return None
+
+    def event_view(row, include_task=False):
+        out = {
+            "event_type": row["event_type"],
+            "previous_state": row["previous_state"],
+            "new_state": row["new_state"],
+            "previous_due_local": local_iso(row["previous_due_at_utc"]),
+            "new_due_local": local_iso(row["new_due_at_utc"]),
+            "note": row["note"],
+            "created_local": local_iso(row["created_at_utc"]),
+        }
+        if include_task:
+            out["task"] = row["task_text"]
+        return out
+
     conn = connect()
     try:
         if reminder_id:
             owned = conn.execute(
-                f"SELECT 1 FROM reminders WHERE reminder_id=? AND space_id IN ({marks})",
+                f"SELECT task_text FROM reminders WHERE reminder_id=? AND space_id IN ({marks})",
                 [reminder_id] + spaces,
             ).fetchone()
             if not owned:
@@ -1368,10 +1432,38 @@ def reminder_history(actor: ActorContext, reminder_id: str | None = None,
                    WHERE reminder_id=? ORDER BY created_at_utc""",
                 (reminder_id,),
             ).fetchall()
+            history = [event_view(r) for r in rows]
+            claim_history = [
+                {
+                    "actor_user_id": r["actor_user_id"],
+                    "event_type": r["event_type"],
+                    "reaction_text": r["reaction_text"],
+                    "note": r["note"],
+                    "created_local": local_iso(r["created_at_utc"]),
+                }
+                for r in claim_rows
+            ]
+            status_flow = " → ".join(
+                r["event_type"].replace("_", " ").title() for r in rows
+                if r["event_type"] not in {"CREATED"}
+            ) or "Created"
+            latest_due = next(
+                (item["new_due_local"] for item in reversed(history) if item["new_due_local"]),
+                None,
+            )
+            display = {
+                "title": "Reminder History",
+                "items": [{
+                    "number": 1,
+                    "task": owned["task_text"],
+                    "status": status_flow,
+                    "due_local": latest_due,
+                }],
+            }
             return {
-                "reminder_id": reminder_id,
-                "history": [dict(r) for r in rows],
-                "claim_history": [dict(r) for r in claim_rows],
+                "history": history,
+                "claim_history": claim_history,
+                "display": display,
             }
 
         rows = conn.execute(
@@ -1383,7 +1475,35 @@ def reminder_history(actor: ActorContext, reminder_id: str | None = None,
                 ORDER BY e.created_at_utc DESC LIMIT ?""",
             spaces + [bounded],
         ).fetchall()
-        return {"history": [dict(r) for r in rows], "aggregate": True}
+        history = [event_view(r, include_task=True) for r in rows]
+        grouped = []
+        seen = set()
+        for row in rows:
+            rid = row["reminder_id"]
+            if rid in seen:
+                continue
+            seen.add(rid)
+            events = [x for x in rows if x["reminder_id"] == rid]
+            flow = " → ".join(
+                x["event_type"].replace("_", " ").title()
+                for x in reversed(events)
+                if x["event_type"] != "CREATED"
+            ) or "Created"
+            latest_due = next(
+                (local_iso(x["new_due_at_utc"]) for x in events if x["new_due_at_utc"]),
+                None,
+            )
+            grouped.append({
+                "number": len(grouped) + 1,
+                "task": row["task_text"],
+                "status": flow,
+                "due_local": latest_due,
+            })
+        return {
+            "history": history,
+            "aggregate": True,
+            "display": {"title": "Reminder History", "items": grouped},
+        }
     finally:
         conn.close()
 
