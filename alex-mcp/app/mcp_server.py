@@ -1044,6 +1044,7 @@ def report_export(format: str, actor: Actor, period: str | None = None,
                   include_raw_income: bool = False) -> dict:
     """Create a local privacy-scoped PDF/CSV/JSON report and return it as a WhatsApp document attachment."""
     import os
+    import uuid
     from pathlib import Path
     from config import DATA_DIR
 
@@ -1060,7 +1061,9 @@ def report_export(format: str, actor: Actor, period: str | None = None,
     out_dir = Path(DATA_DIR) / "reports"
     out_dir.mkdir(parents=True, exist_ok=True)
     safe_period = (period or "current").replace("/", "-").replace("..", "-")
-    path = out_dir / f"alex-{safe_period}.{fmt}"
+    # One immutable path per export prevents a queued private report from
+    # being overwritten by another user's/group's export before outbox send.
+    path = out_dir / f"alex-{safe_period}-{uuid.uuid4().hex}.{fmt}"
     if fmt == "pdf":
         payload = phase2_reports.minimal_pdf(snapshot)
         path.write_bytes(payload)
