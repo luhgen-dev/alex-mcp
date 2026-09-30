@@ -186,7 +186,7 @@ CORE_FINANCE = {
 }
 MEDIA_TOOLS = {"find_media","get_media_original","resolve_numbered_choice"}
 MEMORY_TOOLS = {"save_item","search_saved_items","get_saved_item","remove_saved_item","resolve_numbered_choice"}
-REMINDER_TOOLS = {"create_reminder","list_reminders","update_reminder","reminder_history","release_reminder_claim"}
+REMINDER_TOOLS = {"create_reminder","list_reminders","update_reminder","reminder_history","release_reminder_claim","handoff_reminder_claim"}
 SHOPPING_TOOLS = {"add_shopping_item","list_shopping_items","update_shopping_item"}
 DIARY_TOOLS = {
     "add_diary_event","resolve_diary_conflict","resolve_latest_diary_conflict",
@@ -903,6 +903,13 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
     ):
         force |= {"list_reminders", "reminder_history"}
         block |= BILL_TOOLS
+    if re.search(
+        r"\b(?:push|hand|give|pass|transfer|ask)\b.*\b(?:priya|wife|husband|spouse|partner)\b"
+        r"|\b(?:priya|wife|husband|spouse|partner)\b.*\b(?:take|claim|handle)\b",
+        low,
+    ):
+        force |= {"handoff_reminder_claim", "list_reminders"}
+
     if re.search(
         r"\b(?:release|unclaim)\b.*\breminder\b"
         r"|\b(?:i can'?t|i cannot|i can not)\b.*\b(?:do|handle)\b.*\b(?:it|this)\b"
