@@ -1102,7 +1102,7 @@ def record_cash_pool_spend(pool_id, amount, event_date, sender_phone,
             """INSERT INTO alex_phase2_cash_pool_adjustments(
                    adjustment_id,pool_id,space_id,owner_user_id,amount_minor,
                    adjustment_kind,event_date,category,funding_source,note,source_message_id
-               ) VALUES(?,?,?,?,?,'SPEND',?,?,?,?,?,?)""",
+               ) VALUES(?,?,?,?,?,'SPEND',?,?,?,?,?)""",
             (
                 str(uuid.uuid4()), pool_id, pool["space_id"], pool["owner_user_id"],
                 -value, d.isoformat(), category, funding_source, note,
