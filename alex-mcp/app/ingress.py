@@ -18,6 +18,7 @@ import brain
 import db
 import media
 import services
+import scope_policy
 import diagnostics
 from config import DATA_DIR
 
@@ -311,31 +312,40 @@ def build_turn(payload: dict, media_lines: list[str]) -> dict:
 
 
 def _private_group_handoff_requested(text: str) -> bool:
-    """Deterministically identify private *read* requests that should answer in DM.
+    """Identify owner-private group requests that must execute in the owner's DM.
 
-    The group actor never gains private-space access. Instead, the same
-    authenticated household sender is re-resolved in their own DM context.
+    Reads stay read-intent gated. For writes, explicit private wording or the
+    owner's emoji shortcut is enough. The group actor itself never gains a
+    private space.
     """
     low = str(text or "").casefold()
     if not low.strip():
         return False
     readish = bool(re.search(
         r"\b(?:show|list|find|get|what|when|where|how much|how many|tell me|"
-        r"check|latest|recent|history|balance|did i|have i|do i)\b",
+        r"check|latest|recent|history|balance|did i|have i|do i|"
+        r"spend|spent|spending|transactions?)\b",
         low,
     ))
-    if not readish:
-        return False
-    explicit_private = bool(re.search(r"\bprivate\b", low))
-    sensitive = bool(re.search(
+    writeish = bool(re.search(
+        r"\b(?:add|create|record|log|save|remember|set|update|change|edit|"
+        r"correct|contribute|allocate|put|schedule|remind|monitor)\b",
+        low,
+    ))
+    explicit_private = scope_policy.explicit_private(text)
+    emoji_private_write = scope_policy.contains_emoji(text) and writeish
+    sensitive_read = readish and bool(re.search(
         r"\b(?:salary|paycheck|take[- ]home|income|ot rate|overtime rate|"
         r"overtime pay|exact ot|stash|cash pool|bank balance|"
-        r"my expenses?|my spending|my transactions?|my receipts?|"
+        r"(?:my\s+)?(?:expenses?|spending|transactions?|receipts?)|"
         r"my saved (?:items?|memories?)|my private (?:notes?|memory|data))\b",
         low,
     ))
-    return explicit_private or sensitive
-
+    return (
+        (explicit_private and (readish or writeish))
+        or emoji_private_write
+        or sensitive_read
+    )
 
 def _dm_conversation_for_actor(actor) -> str:
     return actor.phone.replace("+", "") + "@s.whatsapp.net"
