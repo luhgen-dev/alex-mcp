@@ -318,6 +318,25 @@ def process(payload: dict) -> dict:
         return {"ok": True, "duplicate": True}
 
     try:
+        if str(payload.get("event_kind") or "").upper() == "REACTION":
+            actor = db.resolve_actor(
+                payload["sender_phone"],
+                payload["conversation_id"],
+                payload.get("conversation_type", "GROUP"),
+                payload["message_id"],
+                [],
+            )
+            result = services.claim_reminder_from_reaction(
+                actor,
+                str(payload.get("reaction_target_message_id") or ""),
+                str(payload.get("reaction_text") or ""),
+            )
+            # Reactions are intentionally quiet: the visible WhatsApp reaction
+            # itself is the acknowledgement. No model call and no extra group
+            # chatter are required.
+            db.finish_inbound(payload["message_id"], json.dumps(result, sort_keys=True))
+            return {"ok": True, "reaction": result}
+
         if payload.get("media_failed"):
             kind = str(payload.get("media_failed_type") or "attachment").strip().lower()
             label = "document" if kind == "pdf" else kind
