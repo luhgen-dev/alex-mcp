@@ -1946,8 +1946,11 @@ class AlexCoreTests(unittest.TestCase):
         for phrase, expected in cases.items():
             names = {x["function"]["name"] for x in asyncio.run(brain._tool_specs(phrase))}
             self.assertTrue(expected <= names, (phrase, names))
-            self.assertIn(brain.DISCOVERY_TOOL_NAME, names, phrase)
             self.assertLessEqual(len(names), brain.TOOL_EXPOSURE_MAX, phrase)
+            # Discovery may fill a spare slot, but must never displace a
+            # deterministic route or push provider exposure above six.
+            if len(names) < brain.TOOL_EXPOSURE_MAX:
+                self.assertIn(brain.DISCOVERY_TOOL_NAME, names, phrase)
 
         simple_ha = {x["function"]["name"] for x in asyncio.run(
             brain._tool_specs("Is the hall AC on?")
