@@ -743,6 +743,44 @@ def planning_cash_pool_balance(actor: Actor, pool_id: str | None = None,
 
 
 @mcp.tool()
+def planning_declare_cash_pool_balance(amount: float, actor: Actor,
+                                       pool_id: str | None = None,
+                                       pool_name: str | None = None,
+                                       event_date: str | None = None,
+                                       note: str | None = None) -> dict:
+    """Set a user-declared stash/cash-pool balance exactly. This is a balance fact, not income and not an automatic goal allocation."""
+    import runtime_clock
+    resolved = phase2_finance.resolve_cash_pool_reference(
+        pool_id, pool_name, actor.phone, actor.conversation_type
+    )
+    effective_date = event_date or runtime_clock.today(actor.timezone).isoformat()
+    return phase2_finance.declare_cash_pool_balance(
+        resolved, amount, effective_date, actor.phone, actor.conversation_type,
+        note, actor.source_message_id,
+    )
+
+
+@mcp.tool()
+def planning_record_cash_pool_spend(amount: float, actor: Actor,
+                                    pool_id: str | None = None,
+                                    pool_name: str | None = None,
+                                    event_date: str | None = None,
+                                    category: str | None = None,
+                                    funding_source: str | None = None,
+                                    note: str | None = None) -> dict:
+    """Record spending from a stash/cash pool with optional category and funding-source note. This reduces the pool balance and does not create a second income record."""
+    import runtime_clock
+    resolved = phase2_finance.resolve_cash_pool_reference(
+        pool_id, pool_name, actor.phone, actor.conversation_type
+    )
+    effective_date = event_date or runtime_clock.today(actor.timezone).isoformat()
+    return phase2_finance.record_cash_pool_spend(
+        resolved, amount, effective_date, actor.phone, actor.conversation_type,
+        category, funding_source, note, actor.source_message_id,
+    )
+
+
+@mcp.tool()
 def planning_allocate_cash_to_pool(amount: float, actor: Actor,
                                    cash_event_id: str | None = None,
                                    cash_event_type: str | None = None,
@@ -834,6 +872,41 @@ def planning_goal_projection(actor: Actor, goal_id: str | None = None,
     return phase2_finance.goal_projection(
         resolved, actor.phone, actor.conversation_type, from_period
     )
+
+
+@mcp.tool()
+def planning_cash_outflow(actor: Actor, period: str | None = None,
+                          currency: str = "MYR") -> dict:
+    """Read actual monthly cash outflow in separate sections: consumption/expenses, goal-savings contributions, and internal stash movements. Internal stash allocations are shown but excluded from the outflow total to prevent double counting."""
+    import calendar
+    import runtime_clock
+    effective_period = period or runtime_clock.today(actor.timezone).strftime("%Y-%m")
+    year, month = (int(x) for x in effective_period.split("-", 1))
+    start_date = f"{year:04d}-{month:02d}-01"
+    end_date = f"{year:04d}-{month:02d}-{calendar.monthrange(year, month)[1]:02d}"
+    ledger = services.query_finances(
+        actor, start_date=start_date, end_date=end_date, currency=currency,
+        limit=100, scope=None, source=None,
+    )
+    components = phase2_finance.cash_outflow_components(
+        effective_period, actor.phone, actor.conversation_type, "all", currency
+    )
+    spending = float((ledger.get("spending_totals") or {}).get(currency.upper(), 0) or 0)
+    savings = float(components.get("goal_savings_contributions") or 0)
+    return {
+        "period": effective_period,
+        "currency": currency.upper(),
+        "consumption_and_expenses": spending,
+        "goal_savings_contributions": savings,
+        "other_transfers": 0.0,
+        "internal_stash_allocations": components.get("internal_stash_allocations", 0.0),
+        "stash_spending": components.get("stash_spending", 0.0),
+        "cash_outflow_total_excluding_internal_allocations": round(spending + savings, 2),
+        "double_count_policy": (
+            "stash allocations are internal earmarks and obligation paid amounts are not "
+            "added again when already represented in the expense ledger"
+        ),
+    }
 
 
 @mcp.tool()
