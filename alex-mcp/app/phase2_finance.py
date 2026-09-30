@@ -348,6 +348,44 @@ def create_goal(name, target_amount, baseline_monthly, sender_phone,
         conn.close()
 
 
+def update_goal_target(goal_id, new_target_amount, sender_phone,
+                       conversation_type="DIRECT_DM"):
+    """Change only the goal target; recurring baseline/deadline stay untouched."""
+    ensure_schema()
+    conn = tools.get_db()
+    try:
+        goal = _get_authorized_goal(conn, goal_id, sender_phone, conversation_type)
+        target_minor = _minor(new_target_amount)
+        if target_minor <= 0:
+            raise ValueError("Goal target must be greater than zero")
+        conn.execute(
+            """UPDATE alex_phase2_goals
+               SET target_minor=?,updated_at_utc=CURRENT_TIMESTAMP
+               WHERE goal_id=?""",
+            (target_minor, goal_id),
+        )
+        funded = conn.execute(
+            """SELECT COALESCE(SUM(amount_minor),0) AS total
+               FROM alex_phase2_goal_contributions WHERE goal_id=?""",
+            (goal_id,),
+        ).fetchone()["total"]
+        conn.commit()
+        return {
+            "status": "updated",
+            "goal_id": goal_id,
+            "name": goal["name"],
+            "target": _money(target_minor),
+            "funded": _money(funded),
+            "remaining": _money(max(0, target_minor - funded)),
+            "baseline_monthly": _money(goal["baseline_monthly_minor"]),
+            "target_date": goal["target_date"],
+            "baseline_changed": False,
+            "deadline_changed": False,
+        }
+    finally:
+        conn.close()
+
+
 def _get_authorized_goal(conn, goal_id, sender_phone, conversation_type):
     user_id, private_space, shared = _context(conn, sender_phone, conversation_type)
     row = conn.execute(
