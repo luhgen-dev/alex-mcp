@@ -488,6 +488,20 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
                 or _one(tools, "find_receipts", "get_receipt"),
             )
 
+    # A named finance/expense report is a report product, not merely a ledger
+    # search. Explicit file/export requests keep the export path.
+    if (
+        "report" in text
+        and re.search(r"\b(?:finance|financial|expenses?|spending|payment)\b", text)
+    ):
+        if (
+            re.search(r"\b(?:pdf|csv|export)\b", text)
+            and "report_export" in tools
+        ):
+            return result("tools", ["report_export"])
+        if "finance_report" in tools:
+            return result("tools", ["finance_report"])
+
     # Finance ledger.
     finance_signal = bool(
         re.search(
