@@ -385,6 +385,9 @@ async function handleIncoming(message) {
     conversation_id: remoteJid,
     conversation_type: isGroup ? 'GROUP' : 'DIRECT_DM',
     sender_phone: '+' + senderPhone,
+    // Preserve the provider participant key for durable react/pin cleanup after
+    // a Python or Node restart. This is transport metadata, never identity/ACL.
+    sender_provider_jid: isGroup ? (message.key.participant || rawSenderJid) : remoteJid,
     text: rawText,
     quoted_message_id: extractQuotedId(message),
     sent_at_ms: messageTimestampMs(message),
@@ -766,6 +769,27 @@ function startEgress() {
         if (quoted) sendOptions.quoted = quoted;
         if (payload.kind === 'text') {
           sent = await currentSock.sendMessage(to, { text: payload.text || '' }, sendOptions);
+        } else if (payload.kind === 'reaction' || payload.kind === 'pin' || payload.kind === 'unpin') {
+          const targetKey = {
+            remoteJid: to,
+            id: String(payload.target_message_id || ''),
+            fromMe: false,
+          };
+          if (!targetKey.id) throw new Error('Missing target message id');
+          if (payload.target_participant_jid) targetKey.participant = String(payload.target_participant_jid);
+          if (payload.kind === 'reaction') {
+            sent = await currentSock.sendMessage(to, {
+              react: { text: String(payload.emoji || ''), key: targetKey },
+            });
+          } else {
+            sent = await currentSock.sendMessage(to, {
+              pin: {
+                type: payload.kind === 'pin' ? 1 : 0,
+                time: payload.kind === 'pin' ? 2592000 : undefined,
+                key: targetKey,
+              },
+            });
+          }
         } else if (payload.kind === 'image') {
           const buf = Buffer.from(payload.file_b64 || '', 'base64');
           sent = await currentSock.sendMessage(to, { image: buf, mimetype: payload.mimetype || 'image/jpeg', caption: payload.caption || undefined }, sendOptions);
