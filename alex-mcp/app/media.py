@@ -388,7 +388,7 @@ def _critical_voice_values_agree(left: str, right: str) -> bool:
     return a == b if (a or b) else True
 
 
-def _candidate_voice_score(def _candidate_voice_score(label: str, text: str) -> int:
+def _candidate_voice_score(label: str, text: str) -> int:
     """Rank ASR candidates without pretending a forced language is evidence."""
     value = (text or "").strip()
     score = _voice_intent_score(value)
