@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -308,6 +309,37 @@ def build_turn(payload: dict, media_lines: list[str]) -> dict:
     }
 
 
+def _private_group_handoff_requested(text: str) -> bool:
+    """Deterministically identify private *read* requests that should answer in DM.
+
+    The group actor never gains private-space access. Instead, the same
+    authenticated household sender is re-resolved in their own DM context.
+    """
+    low = str(text or "").casefold()
+    if not low.strip():
+        return False
+    readish = bool(re.search(
+        r"\b(?:show|list|find|get|what|when|where|how much|how many|tell me|"
+        r"check|latest|recent|history|balance|did i|have i|do i)\b",
+        low,
+    ))
+    if not readish:
+        return False
+    explicit_private = bool(re.search(r"\bprivate\b", low))
+    sensitive = bool(re.search(
+        r"\b(?:salary|paycheck|take[- ]home|income|ot rate|overtime rate|"
+        r"overtime pay|exact ot|stash|cash pool|bank balance|"
+        r"my expenses?|my spending|my transactions?|my receipts?|"
+        r"my saved (?:items?|memories?)|my private (?:notes?|memory|data))\b",
+        low,
+    ))
+    return explicit_private or sensitive
+
+
+def _dm_conversation_for_actor(actor) -> str:
+    return actor.phone.replace("+", "") + "@s.whatsapp.net"
+
+
 def process(payload: dict) -> dict:
     required = ("message_id", "conversation_id", "sender_phone")
     if any(not payload.get(k) for k in required):
@@ -385,6 +417,56 @@ def process(payload: dict) -> dict:
                 actor.conversation_id, actor.phone, actor.source_message_id
             )
         db.touch_inbound_processing(payload["message_id"])
+
+        # Private reads asked from Family Shared are handed to the authenticated
+        # owner's DM without ever widening the group actor's ACL. This is one
+        # model/tool turn, not a group answer followed by a second private retry.
+        if (
+            actor.conversation_type == "GROUP"
+            and _private_group_handoff_requested(turn["trusted_text"])
+        ):
+            dm_conversation = _dm_conversation_for_actor(actor)
+            dm_actor = db.resolve_actor(
+                actor.phone, dm_conversation, "DIRECT_DM",
+                actor.source_message_id, media_ids,
+            )
+            dm_actor = replace(
+                dm_actor,
+                source=turn["source"],
+                trusted_text=turn["trusted_text"],
+                received_at_utc=turn["received_at_utc"],
+            )
+            private_reply, private_attachments = asyncio.run(
+                brain.respond(
+                    dm_actor, turn["trusted_text"], turn["document_lines"],
+                    vision_parts, quoted_context=None,
+                )
+            )
+            db.queue_outbound(
+                dm_conversation, "TEXT", text=private_reply,
+                source_message_id=actor.source_message_id,
+            )
+            sent_paths: set[str] = set()
+            for item in private_attachments:
+                path = item.get("path")
+                kind = item.get("kind", "DOCUMENT")
+                if path and path not in sent_paths:
+                    sent_paths.add(path)
+                    db.queue_outbound(
+                        dm_conversation,
+                        "IMAGE" if kind == "IMAGE" else "DOCUMENT",
+                        local_path=path,
+                        mime_type=item.get("mime_type"),
+                        source_message_id=actor.source_message_id,
+                    )
+            group_reply = "I sent that to you privately."
+            db.queue_outbound(
+                actor.conversation_id, "TEXT", text=group_reply,
+                source_message_id=actor.source_message_id,
+            )
+            db.finish_inbound(actor.source_message_id, group_reply)
+            return {"ok": True, "private_handoff": True}
+
         reply, attachments = asyncio.run(
             brain.respond(
                 actor, turn["trusted_text"], turn["document_lines"], vision_parts,
