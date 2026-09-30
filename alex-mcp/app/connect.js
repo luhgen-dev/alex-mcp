@@ -767,7 +767,25 @@ function startEgress() {
         if (!to) throw new Error('Missing target conversation');
 
         let sent;
-        const quoted = rememberedInboundForReply(to, payload.reply_to_message_id);
+        let quoted = rememberedInboundForReply(to, payload.reply_to_message_id);
+        // Durable fallback after a Node/add-on restart: the in-memory quote
+        // cache may be gone, but Python persisted the original provider id,
+        // sender participant and trusted user text. Reconstruct only the
+        // minimum quoted WAMessage needed for a real anchored reply.
+        if (!quoted && payload.reply_to_message_id) {
+          const quotedKey = {
+            remoteJid: to,
+            id: String(payload.reply_to_message_id),
+            fromMe: false,
+          };
+          if (payload.reply_to_participant_jid) {
+            quotedKey.participant = String(payload.reply_to_participant_jid);
+          }
+          quoted = {
+            key: quotedKey,
+            message: { conversation: String(payload.reply_to_text || '') },
+          };
+        }
         const sendOptions = {};
         if (payload.message_id) sendOptions.messageId = String(payload.message_id);
         if (quoted) sendOptions.quoted = quoted;
