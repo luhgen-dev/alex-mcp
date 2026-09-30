@@ -17,6 +17,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import brain
 import db
 import media
+import services
 import diagnostics
 from config import DATA_DIR
 
@@ -576,6 +577,11 @@ def process(payload: dict) -> dict:
     except Exception as exc:
         db.fail_inbound(payload["message_id"], str(exc))
         _record_processing_error(exc, payload)
+        # Reaction events are transport-level signals. A broken reaction must
+        # never post a scary processing-error message into the family group.
+        if str(payload.get("event_kind") or "").upper() == "REACTION":
+            print(traceback.format_exc(), file=sys.stderr, flush=True)
+            return {"ok": False, "reaction_error": True, "error": str(exc)[:500]}
         try:
             db.queue_outbound(
                 payload["conversation_id"], "TEXT",
