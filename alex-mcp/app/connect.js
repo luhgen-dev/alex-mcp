@@ -291,6 +291,46 @@ async function forwardToPython(payload) {
   throw lastError || new Error('Python ingress unavailable');
 }
 
+async function forwardReactionEvent(targetKey, reaction) {
+  const remoteJid = (targetKey && targetKey.remoteJid) || '';
+  if (!remoteJid || !remoteJid.endsWith('@g.us')) return;
+  const familyGroup = getFamilyGroupJid();
+  if (!familyGroup || familyGroup !== remoteJid) return;
+
+  const reactionKey = reaction && reaction.key ? reaction.key : {};
+  let rawSenderJid = reactionKey.participant || reactionKey.remoteJid || '';
+  if (!rawSenderJid || rawSenderJid.endsWith('@g.us')) return;
+  const senderJid = await resolveSenderJid(null, rawSenderJid);
+  const senderPhone = cleanNumber(senderJid.split('@')[0].split(':')[0]);
+  if (!isWhitelisted(senderPhone)) return;
+
+  const targetMessageId = targetKey && targetKey.id ? String(targetKey.id) : '';
+  if (!targetMessageId) return;
+  const reactionText = String((reaction && reaction.text) || '');
+  const eventId = String(
+    reactionKey.id ||
+    ('REACTION:' + targetMessageId + ':' + senderPhone + ':' +
+      String((reaction && reaction.senderTimestampMs) || '0') + ':' + reactionText)
+  );
+
+  await forwardToPython({
+    event_kind: 'REACTION',
+    message_id: eventId,
+    provider: 'WHATSAPP',
+    conversation_id: remoteJid,
+    conversation_type: 'GROUP',
+    sender_phone: '+' + senderPhone,
+    text: '',
+    reaction_target_message_id: targetMessageId,
+    reaction_text: reactionText,
+    reaction_removed: !reactionText,
+    sent_at_ms: reaction && reaction.senderTimestampMs
+      ? Number(reaction.senderTimestampMs)
+      : Date.now(),
+  });
+}
+
+
 async function handleIncoming(message) {
   if (!message || !message.key || message.key.fromMe) return;
   const remoteJid = message.key.remoteJid || '';
@@ -467,6 +507,20 @@ async function startWhatsApp() {
           await handleIncoming(message);
         } catch (err) {
           console.error('[Alex MCP] Incoming message error:', err.message);
+        }
+      }
+    });
+
+    // Baileys emits reaction updates separately from ordinary messages.
+    // A reaction is a deterministic household signal, so it bypasses the
+    // @mention wake gate but still requires the paired Family Shared group
+    // and an authorized household sender.
+    sock.ev.on('messages.reaction', async function(events) {
+      for (const entry of events || []) {
+        try {
+          await forwardReactionEvent(entry.key, entry.reaction);
+        } catch (err) {
+          console.error('[Alex MCP] Incoming reaction error:', err.message);
         }
       }
     });
