@@ -132,9 +132,7 @@ def set_leave_record(actor: ActorContext, leave_date: str, status: str = "PLANNE
                      portion: str = "FULL", notes: str | None = None,
                      end_date: str | None = None,
                      leave_type: str = "ANNUAL_LEAVE") -> dict:
-    """Store future leave lifecycle. Only TAKEN becomes historical work absence."""
-    if actor.conversation_type == "GROUP":
-        raise PermissionError("private leave lifecycle must be managed in the owner's DM")
+    """Store future leave lifecycle. New writes follow the global scope rule; edits preserve scope."""
     if not actor.action_key:
         raise RuntimeError("missing deterministic action key")
     state = status.upper()
@@ -157,13 +155,13 @@ def set_leave_record(actor: ActorContext, leave_date: str, status: str = "PLANNE
         if existing_action:
             return {"status": "already_applied", **dict(existing_action)}
 
-        # Portion is editable state, not identity. Matching on portion caused a
-        # FULL -> HALF correction to insert a second active leave row.
+        marks = ",".join("?" for _ in actor.allowed_spaces)
         row = conn.execute(
-            """SELECT * FROM leave_records
-               WHERE owner_id=? AND leave_date=? AND status!='CANCELLED'
-               ORDER BY updated_at_utc DESC LIMIT 1""",
-            (actor.user_id, start_d.isoformat()),
+            f"""SELECT * FROM leave_records
+                WHERE owner_id=? AND leave_date=? AND status!='CANCELLED'
+                  AND space_id IN ({marks})
+                ORDER BY updated_at_utc DESC LIMIT 1""",
+            [actor.user_id, start_d.isoformat()] + list(actor.allowed_spaces),
         ).fetchone()
 
         if row and row["status"] == "TAKEN" and state != "TAKEN":
@@ -174,6 +172,7 @@ def set_leave_record(actor: ActorContext, leave_date: str, status: str = "PLANNE
 
         if row:
             leave_id = row["leave_id"]
+            space = row["space_id"]
             conn.execute(
                 """UPDATE leave_records SET status=?,end_date=?,leave_type=?,portion=?,notes=?,
                    updated_at_utc=? WHERE leave_id=?""",
@@ -181,19 +180,18 @@ def set_leave_record(actor: ActorContext, leave_date: str, status: str = "PLANNE
             )
         else:
             leave_id = str(uuid.uuid4())
+            space = _space(actor, False)
             conn.execute(
                 """INSERT INTO leave_records(
-                    leave_id,action_key,owner_id,leave_date,end_date,leave_type,
+                    leave_id,action_key,owner_id,space_id,leave_date,end_date,leave_type,
                     portion,status,notes
-                   ) VALUES(?,?,?,?,?,?,?,?,?)""",
-                (leave_id, actor.action_key, actor.user_id, start_d.isoformat(),
+                   ) VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                (leave_id, actor.action_key, actor.user_id, space, start_d.isoformat(),
                  end_d.isoformat(), kind, portion, state, notes),
             )
 
         materialized = 0
         if state == "TAKEN" and kind in {"ANNUAL_LEAVE", "MEDICAL_LEAVE"}:
-            # Materialize dated historical absence exactly once. This is what
-            # the proven roster/OT engine consumes; PLANNED/CONFIRMED never do.
             import phase2_work
             phase2_work.ensure_schema(conn)
             day = start_d
@@ -210,7 +208,7 @@ def set_leave_record(actor: ActorContext, leave_date: str, status: str = "PLANNE
                             work_event_id,space_id,owner_user_id,event_date,event_type,
                             units_days,note,source_message_id
                            ) VALUES(?,?,?,?,?,?,?,?)""",
-                        (str(uuid.uuid4()), actor.private_space, actor.user_id,
+                        (str(uuid.uuid4()), space, actor.user_id,
                          day.isoformat(), kind,
                          0.5 if portion.startswith("HALF") else 1.0,
                          notes or "Taken from Alex leave lifecycle",
@@ -224,7 +222,7 @@ def set_leave_record(actor: ActorContext, leave_date: str, status: str = "PLANNE
             "status": "saved", "leave_id": leave_id,
             "leave_date": start_d.isoformat(), "end_date": end_d.isoformat(),
             "leave_type": kind, "portion": portion, "state": state,
-            "materialized_days": materialized,
+            "space": space, "materialized_days": materialized,
         }
     except Exception:
         conn.rollback()
@@ -232,16 +230,12 @@ def set_leave_record(actor: ActorContext, leave_date: str, status: str = "PLANNE
     finally:
         conn.close()
 
-
 def list_leave_records(actor: ActorContext, start_date: str | None = None,
                        end_date: str | None = None,
                        include_cancelled: bool = False) -> dict:
-    if actor.conversation_type == "GROUP":
-        # Work/leave is private unless the owner explicitly publishes another
-        # family-safe artifact. Never expose private leave state in group.
-        return {"leave": []}
-    where = "owner_id=?"
-    params: list = [actor.user_id]
+    marks = ",".join("?" for _ in actor.allowed_spaces)
+    where = f"owner_id=? AND space_id IN ({marks})"
+    params: list = [actor.user_id] + list(actor.allowed_spaces)
     if not include_cancelled:
         where += " AND status!='CANCELLED'"
     if start_date:
@@ -254,13 +248,12 @@ def list_leave_records(actor: ActorContext, start_date: str | None = None,
     try:
         rows = conn.execute(
             f"""SELECT leave_id,leave_date,COALESCE(end_date,leave_date) AS end_date,
-                       leave_type,portion,status,notes
+                       leave_type,portion,status,notes,space_id
                 FROM leave_records WHERE {where} ORDER BY leave_date""", params,
         ).fetchall()
         return {"leave": [dict(r) for r in rows]}
     finally:
         conn.close()
-
 
 def create_plan(actor: ActorContext, title: str, start_local: str | None = None,
                 end_local: str | None = None, notes: str | None = None,
@@ -998,15 +991,15 @@ def _same_day_heads_up(conn, actor: ActorContext, local_date: str,
 
 
 def _leave_heads_up(conn, actor: ActorContext, local_date: str) -> list[dict]:
-    if actor.conversation_type == "GROUP":
-        return []
+    marks = ",".join("?" for _ in actor.allowed_spaces)
     rows = conn.execute(
-        """SELECT leave_id,leave_date,COALESCE(end_date,leave_date) AS end_date,
+        f"""SELECT leave_id,leave_date,COALESCE(end_date,leave_date) AS end_date,
                   leave_type,status
            FROM leave_records
-           WHERE owner_id=? AND status IN ('PLANNED','CONFIRMED','TAKEN')
+           WHERE owner_id=? AND space_id IN ({marks})
+             AND status IN ('PLANNED','CONFIRMED','TAKEN')
              AND leave_date<=? AND COALESCE(end_date,leave_date)>=?""",
-        (actor.user_id, local_date, local_date),
+        [actor.user_id] + list(actor.allowed_spaces) + [local_date, local_date],
     ).fetchall()
     return [
         {
