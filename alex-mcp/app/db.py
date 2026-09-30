@@ -460,6 +460,8 @@ def resolve_quoted_context(conversation_id: str, quoted_message_id: str | None,
         if row:
             result = {
                 "quoted_alex_text": row["text_body"] or "",
+                "outbound_id": row["outbound_id"],
+                "provider_message_id": row["provider_message_id"],
                 "source_message_id": row["source_message_id"],
                 "context_kind": row["context_kind"],
                 "context_id": row["context_id"],
