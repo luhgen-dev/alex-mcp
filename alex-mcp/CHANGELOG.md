@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.3
+Upgrade-safety hotfix for existing Home Assistant installations.
+- Fixed a startup migration ordering bug introduced in v0.5.2: an index on `leave_records.space_id` could be created before the new `space_id` column was added to an existing pre-v0.5.2 database, causing the add-on to exit during startup.
+- The leave-scope index is now created only after the additive column migration and historical leave-scope backfill complete.
+- Added an explicit regression test that boots a synthetic pre-v0.5.2 database, verifies existing leave data is preserved/backfilled, and verifies the new index is created successfully.
+
 ## 0.5.2
 Post-live regression repair release after the third independent engineering audit.
 - Fixed Family Shared reminder reaction claiming at the production ingress boundary; ordinary reactions remain quiet and claimable reminder reactions now resolve deterministically.
