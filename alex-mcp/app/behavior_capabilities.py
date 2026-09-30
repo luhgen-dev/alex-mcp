@@ -61,6 +61,7 @@ CAPABILITY_TO_TOOLS: dict[str, frozenset[str]] = {
 
     # Goals / planning / cash
     "goal.create": frozenset({"planning_create_goal"}),
+    "goal.target.update": frozenset({"planning_update_goal_target"}),
     "goal.list": frozenset({"planning_list_goals"}),
     "goal.progress": frozenset({"planning_goal_progress"}),
     "goal.lock": frozenset({"planning_lock_goal"}),
@@ -77,6 +78,8 @@ CAPABILITY_TO_TOOLS: dict[str, frozenset[str]] = {
     "cash.allocate.goal": frozenset({"planning_allocate_cash_to_goal"}),
     "cash.pool.create": frozenset({"planning_create_cash_pool"}),
     "cash.pool.balance": frozenset({"planning_cash_pool_balance"}),
+    "cash.pool.balance.declare": frozenset({"planning_declare_cash_pool_balance"}),
+    "cash.pool.spend": frozenset({"planning_record_cash_pool_spend"}),
     "cash.pool.allocate": frozenset({"planning_allocate_cash_to_pool"}),
     "reserve.add": frozenset({"planning_add_reserve"}),
     "reserve.update": frozenset({"planning_update_reserve"}),
@@ -84,6 +87,7 @@ CAPABILITY_TO_TOOLS: dict[str, frozenset[str]] = {
     "planning.baseline": frozenset({"planning_baseline"}),
     "planning.income": frozenset({"planning_income_outlook"}),
     "planning.cashflow": frozenset({"planning_cashflow"}),
+    "planning.cash.outflow": frozenset({"planning_cash_outflow"}),
     "planning.brief": frozenset({"planning_brief"}),
 
     # Bills
@@ -106,6 +110,7 @@ CAPABILITY_TO_TOOLS: dict[str, frozenset[str]] = {
 
     # Assets / monitoring
     "asset.create": frozenset({"asset_create"}),
+    "asset.update": frozenset({"asset_update"}),
     "asset.document.link": frozenset({"asset_link_document"}),
     "asset.list": frozenset({"asset_list"}),
     "asset.warranty": frozenset({"warranty_expiring"}),
