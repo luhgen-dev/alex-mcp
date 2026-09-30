@@ -213,7 +213,7 @@ PLANNING_TOOLS = {
 }
 BILL_TOOLS = {"bills_list","bills_match_payment","bills_record_payment","bills_defer","bills_confirm_unpaid"}
 HOME_TOOLS = {"ha_find_entities","ha_get_state","ha_home_summary","ha_home_report","ha_draft_automation","ha_control"}
-HOME_READ_TOOLS = {"ha_find_entities","ha_get_state","ha_home_summary","ha_home_report","ha_draft_automation"}
+HOME_READ_TOOLS = {"ha_find_entities","ha_get_state","ha_home_summary","ha_draft_automation"}
 PLAN_TOOLS = {"create_plan","list_plans","update_plan","confirm_plan","share_plan"}
 TASK_TOOLS = {"create_task","list_tasks","update_task","complete_task","reopen_task","cancel_task"}
 DIARY_EVENT_TOOLS = {"add_diary_event","update_diary_event","get_agenda","get_agenda_range","check_my_availability","check_spouse_availability","resolve_diary_conflict","resolve_latest_diary_conflict"}
@@ -229,7 +229,10 @@ LEGACY_SIMPLE_PLANNING = {
 }
 
 
-TOOL_EXPOSURE_MAX = 6
+# Preserve the proven six-domain-tool budget. Discovery is a seventh, tiny
+# recovery facade and never competes with a real capability for a slot.
+TOOL_DOMAIN_MAX = 6
+TOOL_EXPOSURE_MAX = TOOL_DOMAIN_MAX + 1
 MAX_MODEL_CALLS = 4
 
 # Safe read-only recovery surface. Deterministic routing and semantic discovery
@@ -261,7 +264,7 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
         "reminder_history": (r"history|what happened|reminder history", 105),
         "add_shopping_item": (r"add|buy|need|shopping", 105),
         "list_shopping_items": (r"list|shopping|grocery", 95),
-        "update_shopping_item": (r"bought|purchased|remove|delete", 110),
+        "update_shopping_item": (r"bought|purchased|remove|delete|rename|correct|not .* but|change .* shopping", 126),
         "save_item": (r"save|remember", 115),
         "search_saved_items": (r"find|search|remember|saved", 105),
         "get_saved_item": (r"show|open|original|saved", 95),
@@ -278,7 +281,7 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
         "list_plans": (r"plans|what.*plan|show.*(?:plan|draft)|draft.*so far|what do we have.*trip", 124),
         "create_task": (r"(?:add|make|create|need).*?\btask\b|\btask\b.*(?:for|under)", 138),
         "list_tasks": (r"what.*tasks|show.*tasks|unfinished tasks|left to do|active tasks", 136),
-        "update_task": (r"(?:change|update|edit).*\btask\b|task.*(?:title|note)", 140),
+        "update_task": (r"(?:change|update|edit|rename).*\btask\b|task.*(?:title|note|name)", 140),
         "complete_task": (r"(?:mark|complete|finish).*\btask\b.*(?:done|complete)?|task.*\bdone\b", 142),
         "reopen_task": (r"reopen.*\btask\b|task.*back to open", 144),
         "cancel_task": (r"(?:cancel|remove).*\btask\b", 143),
@@ -320,9 +323,9 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
         "bills_record_payment": (r"record.*payment|paid.*bill|bill.*paid", 112),
         "bills_defer": (r"defer|postpone|new due", 120),
         "bills_confirm_unpaid": (r"unpaid|didn't pay|did not pay", 120),
-        "ha_find_entities": (r"light|switch|fan|climate|thermostat|media player|home assistant|\bac\b|air conditioner", 120),
+        "ha_find_entities": (r"light|switch|fan|climate|thermostat|media player|speaker|\btv\b|television|home assistant|\bac\b|aircon|air conditioner", 120),
         "ha_get_state": (r"state|is .* on|status", 108),
-        "ha_control": (r"turn on|turn off|toggle|set .*%|set temperature|play|pause", 125),
+        "ha_control": (r"turn on|turn off|switch on|switch off|toggle|set .*%|set .*temperature|change .*temperature|make .*\d+|play|pause", 125),
         "ha_home_summary": (r"home status|house status|what's on|whats on|at home|home right now", 125),
         "ha_home_report": (r"home.*report|house.*report|status.*image|status.*card", 120),
         "ha_draft_automation": (r"automation|automate|when .* then", 112),
@@ -331,7 +334,7 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
         "asset_list": (r"assets|appliances|devices", 128),
         "warranty_expiring": (r"warranty.*expir|expiring.*warranty", 118),
         "system_health": (r"health|diagnostic|status.*alex|working", 110),
-        "recent_failures": (r"failed|failure|error|didn't reply|did not reply|why", 115),
+        "recent_failures": (r"failed|failures?|errors?|didn't reply|did not reply|why", 115),
         "monitor_delegate": (r"monitor|track|watch|keep an eye|follow", 112),
         "monitor_list": (r"what.*monitor|list.*monitor|monitoring|tracking", 118),
         "monitor_cancel": (r"stop.*monitor|cancel.*monitor|stop tracking", 120),
@@ -367,7 +370,7 @@ def _cap_tool_names(selected: set[str], user_text: str,
     the actual requested action under the six-tool budget.
     """
     required = (required or set()) & selected
-    if len(selected) <= TOOL_EXPOSURE_MAX:
+    if len(selected) <= TOOL_DOMAIN_MAX:
         return selected
     has_media = bool(media_context)
     required_ranked = sorted(
@@ -378,10 +381,10 @@ def _cap_tool_names(selected: set[str], user_text: str,
         selected - required,
         key=lambda name: (-_tool_priority(name, user_text, has_media), name),
     )
-    return set((required_ranked + remaining)[:TOOL_EXPOSURE_MAX])
+    return set((required_ranked + remaining)[:TOOL_DOMAIN_MAX])
 
 
-_HA_DEVICE = r"(?:light|fan|switch|ac|air conditioner|thermostat|climate)"
+_HA_DEVICE = r"(?:light|fan|switch|ac|aircon|air conditioner|thermostat|climate|tv|television|media player|speaker)"
 
 
 def _ha_action_requested(text: str) -> bool:
@@ -393,7 +396,9 @@ def _ha_action_requested(text: str) -> bool:
             rf"|\b(?:turn|switch)\b.{{0,60}}\b{_HA_DEVICE}\b.{{0,30}}\b(?:on|off)\b"
             rf"|\btoggle\b.{{0,60}}\b{_HA_DEVICE}\b"
             rf"|\bset\b.{{0,60}}\b{_HA_DEVICE}\b.*(?:%|degrees?|temperature)"
-            rf"|\b(?:play|pause)\b.*\b(?:media player|speaker|tv)\b",
+            rf"|\b(?:change|set|make)\b.{{0,60}}\b{_HA_DEVICE}\b.{{0,45}}(?:temperature\s*(?:to)?\s*)?\d+(?:\.\d+)?\s*(?:degrees?)?"
+            rf"|\b{_HA_DEVICE}\b.{{0,45}}\b(?:temperature\s*(?:to)?\s*)?\d+(?:\.\d+)?\s*(?:degrees?)?"
+            rf"|\b(?:play|pause)\b.*\b(?:media player|speaker|tv|television)\b",
             low,
         )
     )
@@ -434,7 +439,7 @@ _NEGATED_ACTION_PHRASE_RE = re.compile(
     r"(?:actually\s+)?(?:add|create|record|log|save|remember|remove|delete|mark|"
     r"complete|finish|reopen|cancel|update|change|edit|correct|fix|move|"
     r"reschedule|allocate|channel|lock|activate|defer|turn|switch|set|link|"
-    r"share|publish|confirm|approve)\b",
+    r"share|publish|confirm|approve|forget|rename|snooze|undo|unmark|postpone|drop)\b",
     re.IGNORECASE,
 )
 
@@ -546,13 +551,19 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         force.add("save_item")
     if re.search(r"\b(?:delete|remove)\b.*\b(?:saved|memory|note|remembered)\b", low):
         force.add("remove_saved_item")
+    if (
+        re.search(r"\b(?:forget|erase)\b.*\b(?:saved|memory|note|password|code|where|item)?", low)
+        and not re.search(r"\b(?:don't|dont|do\s+not)\s+forget\b", low)
+    ):
+        force |= {"remove_saved_item", "search_saved_items"}
 
     # Shopping adds include natural household phrasing such as "we need milk".
     # Tentative wording still exposes the add capability so the model can ask
     # for confirmation; it does not perform the mutation deterministically.
     shopping_update = bool(re.search(
-        r"\b(?:remove|delete)\b.*\b(?:shopping|grocery|list|bananas?|milk|diapers?|bread)\b"
-        r"|\b(?:mark|already)\b.*\b(?:bought|done)\b",
+        r"\b(?:remove|delete|rename|correct|change)\b.*\b(?:shopping|grocery|list|bananas?|milk|diapers?|bread|item)\b"
+        r"|\b(?:mark|already)\b.*\b(?:bought|done)\b"
+        r"|\b[^,.!?]{1,60}\bnot\b[^,.!?]{1,60}\b(?:shopping|list|toothpaste|toothbrush)\b",
         low,
     ))
     shopping_candidate = bool(re.search(
@@ -571,7 +582,7 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
     # Dedicated read/diagnostic domains must survive the six-tool cap.
     if re.search(r"\b(?:appliances?|assets?|warrant(?:y|ies))\b", low):
         force |= {"asset_list", "warranty_expiring"}
-    if re.search(r"\b(?:recent\s+alex\s+errors?|alex\s+healthy|alex\s+health|why did alex fail)\b", low):
+    if re.search(r"\b(?:recent\s+(?:alex\s+)?(?:errors?|failures?)|alex\s+healthy|alex\s+health|why did alex fail)\b", low):
         force |= {"recent_failures", "system_health"}
 
     # A polite wrapper around a numeric follow-up is still the persisted
@@ -595,7 +606,7 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         low,
     ))
     task_update = bool(re.search(
-        r"\b(?:change|update|edit)\b.*\btask\b|\btask\b.*\b(?:title|note)\b",
+        r"\b(?:change|update|edit|rename)\b.*\btask\b|\btask\b.*\b(?:title|note|name)\b",
         low,
     ))
     task_complete = bool(re.search(
@@ -628,6 +639,17 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         # not silently degrade into a plan edit or a reminder.
         block |= {"create_plan", "create_reminder"}
 
+    natural_day_plan = bool(
+        re.search(
+            r"\b(?:what(?:'s| is)?|show me|tell me)\b.*\b(?:my\s+)?plan\b.*"
+            r"\b(?:today|tomorrow|tonight|this morning|this afternoon|this evening|next\s+(?:day|week|monday|tuesday|wednesday|thursday|friday|saturday|sunday))\b",
+            low,
+        )
+        or (
+            re.search(r"\b(?:naalaiku|naalku|nalaiku|nalaki)\b", low)
+            and re.search(r"\bplan\b", low)
+        )
+    )
     plan_read = bool(
         re.search(r"\b(?:show|what|remind me what)\b.*\b(?:plan|draft|planned|decided)\b", low)
         or re.search(r"\bwhat (?:do we have planned|have we decided)\b", low)
@@ -636,7 +658,10 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         re.search(r"\b(?:start|create|brainstorm)\b.*\b(?:plan|draft)\b", low)
         or re.search(r"\blet'?s (?:start )?planning\b", low)
     )
-    if plan_read and not plan_create:
+    if natural_day_plan:
+        force.add("get_agenda_range")
+        block |= {"list_plans", "create_plan"}
+    elif plan_read and not plan_create:
         force.add("list_plans")
         block.add("create_plan")
         if re.search(r"\bremind me what\b", low):
@@ -776,6 +801,12 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
     elif ha_switch:
         force.add("ha_control")
 
+    # Reminder-specific "due" is not a bill signal. Keep the reminder domain
+    # authoritative so natural readback cannot be crowded out by five bill tools.
+    if re.search(r"\bremind(?:er|ers)?\b", low) and re.search(r"\bdue\b", low):
+        force |= {"list_reminders", "reminder_history"}
+        block |= BILL_TOOLS
+
     # Frequent phone-typing reminder misspellings still have a deterministic,
     # safe action path instead of being crowded out by bill tools.
     if re.search(r"\b(?:rember|remnder|remidn|remindn|remidr)\b", low):
@@ -841,6 +872,11 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
         selected |= CORE_FINANCE | MEMORY_TOOLS
         if re.search(r"warrant|manual|serial|appliance|product", low):
             selected |= ASSET_TOOLS
+        if re.search(r"\bgoal\b|\bsavings?\b", low):
+            selected |= {
+                "planning_record_goal_contribution", "planning_goal_progress",
+                "planning_list_goals", "find_receipts", "get_receipt",
+            }
 
     if re.search(r"\b(?:spent|spend|expenses?|paid|payments?|transactions?|receipt|duitnow|bank|how much|how many|total|breakdown|refund|spending)\b", low):
         money_signal = bool(re.search(
@@ -896,15 +932,17 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
         selected |= MEMORY_TOOLS
     if re.search(r"\b(?:warranty|warranties|manual|serial number|appliance|asset)\b", low):
         selected |= ASSET_TOOLS | MEMORY_TOOLS
-    if re.search(r"\b(?:light|switch|fan|thermostat|climate|media player|home assistant|ac|air conditioner|home status|at home|turn on|turn off|switch on|switch off|state of)\b", low):
+    if re.search(r"\b(?:light|switch|fan|thermostat|climate|media player|speaker|tv|television|home assistant|ac|aircon|air conditioner|home status|at home|turn on|turn off|switch on|switch off|state of)\b", low):
         selected |= HOME_READ_TOOLS
+        if re.search(r"\b(?:home|house)\b.*\b(?:report|card|image)\b|\bstatus\s+(?:card|image)\b", low):
+            selected.add("ha_home_report")
         if (
             _ha_action_requested(low)
             and not _ha_negated_or_hypothetical(low)
             and not _ha_draft_request(low)
         ):
             selected.add("ha_control")
-    if re.search(r"\b(?:why didn't|why did not|health|diagnostic|fail|failed|failure|failing|error|offline|didn't reply|did not reply)\b", low):
+    if re.search(r"\b(?:why didn't|why did not|health|diagnostic|fail|failed|failures?|failing|errors?|offline|didn't reply|did not reply)\b", low):
         selected |= DIAGNOSTIC_TOOLS
     if re.search(r"\b(?:monitor|monitoring|track|tracking|watch this|proactive|follow this)\b", low):
         selected |= MONITOR_TOOLS
@@ -942,6 +980,11 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
     selected -= LEGACY_SIMPLE_PLANNING
 
     forced, blocked = _routing_refinements(text, has_media=has_media)
+    if has_media and re.search(r"\b(?:goal|savings?)\b", low) and not re.search(
+        r"\b(?:expense|spent|shop|shopping|bill|utility|purchase)\b", low
+    ):
+        blocked |= {"log_expense", "correct_expense", "confirm_expense"}
+        forced |= {"planning_record_goal_contribution", "planning_goal_progress"}
     selected |= forced
     selected -= blocked
     return _cap_tool_names(selected, text, media_context, required=forced)
@@ -984,7 +1027,8 @@ _SEMANTIC_MUTATION_WORDS = {
     "add", "create", "record", "log", "change", "update", "remove", "delete",
     "mark", "complete", "finish", "reopen", "cancel", "move", "reschedule",
     "allocate", "lock", "activate", "defer", "turn", "switch", "set", "save",
-    "remember", "share", "confirm", "approve",
+    "remember", "share", "confirm", "approve", "forget", "rename", "snooze",
+    "undo", "unmark", "postpone", "drop",
 }
 
 
@@ -1007,6 +1051,7 @@ _TRUSTED_MUTATION_RE = re.compile(
     r"\b(?:add|create|record|log|save|remember|remove|delete|mark|complete|finish|"
     r"reopen|cancel|update|change|edit|correct|fix|move|reschedule|allocate|channel|"
     r"lock|activate|defer|turn|switch|set|link|share|publish|confirm|approve|"
+    r"forget|rename|snooze|undo|unmark|postpone|drop|"
     r"spent|paid|bought|received|credited|came\s+in)\b",
     re.IGNORECASE,
 )
@@ -1077,18 +1122,18 @@ async def _discover_tool_specs(
         for spec in direct_specs
         if spec.get("function", {}).get("name")
     }
-    if len(by_name) >= TOOL_EXPOSURE_MAX - 1:
+    if len(by_name) >= TOOL_DOMAIN_MAX:
         ranked = sorted(
             by_name.values(),
             key=lambda spec: -_tool_priority(
                 spec["function"]["name"], intent, bool(media_context)
             ),
         )
-        return ranked[:TOOL_EXPOSURE_MAX - 1]
+        return ranked[:TOOL_DOMAIN_MAX]
 
     terms = _semantic_terms(intent)
     if not terms:
-        return list(by_name.values())[:TOOL_EXPOSURE_MAX - 1]
+        return list(by_name.values())[:TOOL_DOMAIN_MAX]
     # Semantic action words in a model-written normalization are insufficient
     # to authorize writes; only the trusted user/quoted context can do that.
     async with Client(mcp) as client:
@@ -1115,7 +1160,7 @@ async def _discover_tool_specs(
 
     for _, name, spec in sorted(scored, key=lambda row: (-row[0], row[1])):
         by_name[name] = spec
-        if len(by_name) >= TOOL_EXPOSURE_MAX - 1:
+        if len(by_name) >= TOOL_DOMAIN_MAX:
             break
 
     ranked = sorted(
@@ -1124,7 +1169,7 @@ async def _discover_tool_specs(
             spec["function"]["name"], intent, bool(media_context)
         ),
     )
-    return ranked[:TOOL_EXPOSURE_MAX - 1]
+    return ranked[:TOOL_DOMAIN_MAX]
 
 
 def _pure_chat(user_text: str, media_context: list[str] | None = None) -> bool:
@@ -1298,7 +1343,9 @@ async def _tool_specs(user_text: str, media_context: list[str] | None = None,
     # The discovery tool is a tiny safety valve for typo-heavy, incomplete,
     # Tanglish or otherwise novel phrasing. It lets the LLM normalize intent
     # without exposing Alex's full MCP catalog or adding a separate classifier call.
-    if len(specs) < TOOL_EXPOSURE_MAX and not _pure_chat(user_text, media_context):
+    if not _pure_chat(user_text, media_context):
+        # Discovery is deliberately additive: never evict a real domain tool
+        # simply because the six-domain budget is already full.
         specs.append(DISCOVERY_TOOL)
     return specs[:TOOL_EXPOSURE_MAX]
 
@@ -1649,7 +1696,7 @@ def _needs_exact_clock(user_text: str) -> bool:
     low = (user_text or "").casefold()
     return bool(re.search(
         r"\b(?:right\s+now|from\s+now|within\s+\d+\s*(?:min|minute|hour)|"
-        r"in\s+\d+\s*(?:min|minute|hour)s?)\b",
+        r"in\s+\d+\s*(?:min|minute|hour)s?|for\s+\d+\s*(?:min|minute|hour)s?)\b",
         low,
     ))
 
@@ -2028,7 +2075,7 @@ def _attachment_request_finished(trace: dict) -> bool:
 _CAPABILITY_DENIAL_RE = re.compile(
     r"\b(?:i\s+)?(?:do\s+not|don't|dont)\s+have\s+(?:the\s+)?(?:ability|capability|access)\b"
     r"|\b(?:i\s+)?(?:cannot|can't|cant|am\s+unable\s+to|am\s+not\s+able\s+to)\s+"
-    r"(?:access|update|change|mark|add|remove|retrieve|check|manage|do)\b",
+    r"(?:access|update|change|mark|add|remove|retrieve|check|manage|do|look\s*up|find|see|rename|forget|snooze)\b",
     re.IGNORECASE,
 )
 
@@ -2358,7 +2405,7 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                     original_user_text=user_text,
                     trusted_context_text=trusted_context_text,
                 )
-                tools = discovered_specs[:TOOL_EXPOSURE_MAX - 1] + [DISCOVERY_TOOL]
+                tools = discovered_specs[:TOOL_DOMAIN_MAX] + [DISCOVERY_TOOL]
                 trace["exposed_tools"] = sorted(set(trace["exposed_tools"]) | {
                     x["function"]["name"] for x in tools
                 })
@@ -2370,7 +2417,7 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                         "normalized_intent": normalized,
                         "tool_names": [
                             x["function"]["name"]
-                            for x in discovered_specs[:TOOL_EXPOSURE_MAX - 1]
+                            for x in discovered_specs[:TOOL_DOMAIN_MAX]
                         ],
                         "semantic_rescue": True,
                     }, ensure_ascii=False, separators=(",", ":")),
