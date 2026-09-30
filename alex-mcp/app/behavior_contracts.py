@@ -728,6 +728,7 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
             "Record annual leave for 10 October.",
             "Mark 10 October as planned annual leave.",
             "I took MC on 10 October; record it.",
+            "I'm on annual leave tomorrow, save that.",
         ),
         _fs("set_leave_record", "work_record_event"), seed="core", live=False,
     ),
