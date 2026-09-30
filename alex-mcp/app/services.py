@@ -1570,8 +1570,6 @@ def request_reminder_handoff(actor: ActorContext, reminder_id: str,
     The current claimant remains responsible until the recipient reacts to the
     DM handoff request. A missing recipient phone never changes ownership.
     """
-    if actor.conversation_type == "GROUP":
-        raise PermissionError("claim handoff must be requested from the claimant's DM")
     target_user = _handoff_recipient_user(actor, recipient)
     if target_user == actor.user_id:
         return {"status": "already_claimant", "reminder_id": reminder_id}
