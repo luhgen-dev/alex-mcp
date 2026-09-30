@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.5.2
+Post-live regression repair release after the third independent engineering audit.
+- Fixed Family Shared reminder reaction claiming at the production ingress boundary; ordinary reactions remain quiet and claimable reminder reactions now resolve deterministically.
+- Added durable claimant handoff: the current claimant can ask Priya/spouse to take a shared reminder, ownership changes only after the recipient accepts by DM reaction, and unreachable/pending handoffs never silently overwrite responsibility.
+- Added a durable unresolved-document lifecycle: failed document delivery marks the original request with ⏳ and a pin, retries without blocking later commands, anchors the eventual attachment to the original request, and removes managed markers only after WhatsApp confirms SENT.
+- Rebuilt monthly finance reporting around one canonical full-ledger dataset for WhatsApp, PDF, CSV and JSON; category totals are SQL-derived, privacy scope is never an expense category, and historical invalid privacy categories are cleaned without altering amounts/dates/scope.
+- Added premium multi-page ALEX PDF presentation with navy/charcoal identity, amber accents, hierarchy, repeatable transaction headers, safe pagination and page numbers. Household/planning snapshots use the same professional document style.
+- Separated actual monthly finance reports from broader household/planning snapshots.
+- Fixed private receipt scope filtering and broadened safe Family Shared → owner-DM handoff for private reads/writes without widening group ACLs.
+- Centralized the new-write scope contract across finance, shopping, memory, reminders, plans/tasks/diary, goals/planning, assets, work/leave and monitoring: normal new writes are Family Shared; explicit private wording or any emoji in the current trusted user command makes the write private; edits preserve stored scope.
+- Added scope-aware leave lifecycle storage and migration. Existing leave remains owner-private; new leave follows the current scope rule; TAKEN leave materializes into the same scope.
+- Fixed goal-contribution routing, natural leave/MC routing, plan-name confirm/update, reminder due shorthand, roster reads without optional OT configuration, local reminder-history timestamps, and exact saved-image “Yes/show it” continuation.
+- Fixed Home Assistant one-shot monitor runtime import and moved one-shot HA-state checks to the scheduler loop instead of hourly polling.
+- Prevented unsupported capability escape-hatches (fake HR portal/app/library instructions) and speculative diagnostic claims of broad instability.
+- Added a global human presentation contract for meaningful lists/status/history/progress/breakdowns/reports while keeping simple confirmations concise.
+- Added an undefined-name CI guard and expanded production-entry, scope, handoff, deferred-delivery and reporting regression coverage.
+- Certification at the pre-version-bump repair head passed: 211/211 core tests, structural self-test, Phase-3 stress, 134-contract/1117-variant offline certification with 0 failures, 378-packet reasoning corpus with 0 routing gaps/forbidden exposure, refreshed GPT-5.6 Sol reasoning snapshot, deterministic reasoning oracle, final parity architecture audit, WhatsApp bridge syntax, Home Assistant container build/media verification, and External Alex Lab.
+
+
 ## 0.5.0
 Final pre-HA release candidate after independent audit closeout.
 - Broadened voice mutation detection for appointment/task/share/confirm flows while keeping normal clear speech frictionless.
