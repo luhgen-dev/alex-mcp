@@ -145,6 +145,27 @@ CREATE TABLE IF NOT EXISTS alex_phase2_cash_pool_allocations (
 CREATE INDEX IF NOT EXISTS idx_p2_cash_pool_alloc
     ON alex_phase2_cash_pool_allocations(cash_event_id,pool_id);
 
+CREATE TABLE IF NOT EXISTS alex_phase2_cash_pool_adjustments (
+    adjustment_id TEXT PRIMARY KEY,
+    pool_id TEXT NOT NULL,
+    space_id TEXT NOT NULL,
+    owner_user_id TEXT NOT NULL,
+    amount_minor INTEGER NOT NULL CHECK(amount_minor != 0),
+    adjustment_kind TEXT NOT NULL
+        CHECK(adjustment_kind IN ('OPENING_BALANCE','MANUAL_ADJUSTMENT','SPEND')),
+    event_date TEXT NOT NULL,
+    category TEXT,
+    funding_source TEXT,
+    note TEXT,
+    source_message_id TEXT,
+    created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(pool_id) REFERENCES alex_phase2_cash_pools(pool_id),
+    FOREIGN KEY(space_id) REFERENCES spaces(space_id),
+    FOREIGN KEY(owner_user_id) REFERENCES users(user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_p2_cash_pool_adjustments
+    ON alex_phase2_cash_pool_adjustments(pool_id,event_date);
+
 CREATE TABLE IF NOT EXISTS alex_phase2_plan_reserves (
     reserve_id TEXT PRIMARY KEY,
     space_id TEXT NOT NULL,
@@ -747,6 +768,24 @@ def record_goal_contribution(goal_id, amount, contribution_date,
         amount_minor = _minor(amount)
         if amount_minor <= 0:
             raise ValueError("Contribution must be greater than zero")
+        if source_message_id:
+            existing = conn.execute(
+                """SELECT contribution_id,amount_minor,currency,period
+                   FROM alex_phase2_goal_contributions
+                   WHERE goal_id=? AND source_message_id=?
+                   ORDER BY created_at_utc LIMIT 1""",
+                (goal_id, source_message_id),
+            ).fetchone()
+            if existing:
+                return {
+                    "status": "already_applied",
+                    "contribution_id": existing["contribution_id"],
+                    "goal_id": goal_id,
+                    "amount": _money(existing["amount_minor"]),
+                    "currency": existing["currency"],
+                    "period": existing["period"],
+                    "baseline_changed": False,
+                }
         ident = str(uuid.uuid4())
         conn.execute("""
             INSERT INTO alex_phase2_goal_contributions(
@@ -931,14 +970,206 @@ def cash_pool_balance(pool_id, sender_phone, conversation_type="DIRECT_DM"):
     try:
         pool = _get_authorized_pool(
             conn, pool_id, sender_phone, conversation_type)
-        total = conn.execute("""
+        allocated = conn.execute("""
             SELECT COALESCE(SUM(amount_minor),0) AS total
             FROM alex_phase2_cash_pool_allocations WHERE pool_id=?
         """, (pool_id,)).fetchone()["total"]
+        adjusted = conn.execute("""
+            SELECT COALESCE(SUM(amount_minor),0) AS total
+            FROM alex_phase2_cash_pool_adjustments WHERE pool_id=?
+        """, (pool_id,)).fetchone()["total"]
+        total = int(allocated or 0) + int(adjusted or 0)
         return {
             "pool_id": pool_id, "name": pool["name"],
             "balance": _money(total), "currency": pool["currency"],
             "space": pool["space_id"],
+            "cash_event_allocations": _money(int(allocated or 0)),
+            "manual_adjustments": _money(int(adjusted or 0)),
+        }
+    finally:
+        conn.close()
+
+
+def declare_cash_pool_balance(pool_id, amount, event_date, sender_phone,
+                              conversation_type="DIRECT_DM", note=None,
+                              source_message_id=None):
+    """Set a user-declared current pool/stash balance without inventing income."""
+    target = _minor(amount)
+    if target < 0:
+        raise ValueError("Declared cash-pool balance cannot be negative")
+    d = date.fromisoformat(str(event_date)[:10])
+    ensure_schema()
+    conn = tools.get_db()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        pool = _get_authorized_pool(conn, pool_id, sender_phone, conversation_type)
+        if source_message_id:
+            prior = conn.execute(
+                """SELECT adjustment_id FROM alex_phase2_cash_pool_adjustments
+                   WHERE pool_id=? AND source_message_id=? LIMIT 1""",
+                (pool_id, source_message_id),
+            ).fetchone()
+            if prior:
+                conn.rollback()
+                current = cash_pool_balance(
+                    pool_id, sender_phone, conversation_type
+                )
+                return {"status": "already_applied", **current}
+        allocated = conn.execute(
+            """SELECT COALESCE(SUM(amount_minor),0) AS total
+               FROM alex_phase2_cash_pool_allocations WHERE pool_id=?""",
+            (pool_id,),
+        ).fetchone()["total"]
+        adjusted = conn.execute(
+            """SELECT COALESCE(SUM(amount_minor),0) AS total
+               FROM alex_phase2_cash_pool_adjustments WHERE pool_id=?""",
+            (pool_id,),
+        ).fetchone()["total"]
+        current = int(allocated or 0) + int(adjusted or 0)
+        delta = target - current
+        if delta == 0:
+            conn.rollback()
+            return {
+                "status": "already_in_state", "pool_id": pool_id,
+                "balance": _money(target), "currency": pool["currency"],
+            }
+        prior_adjustments = conn.execute(
+            "SELECT COUNT(*) AS n FROM alex_phase2_cash_pool_adjustments WHERE pool_id=?",
+            (pool_id,),
+        ).fetchone()["n"]
+        kind = "OPENING_BALANCE" if current == 0 and not prior_adjustments else "MANUAL_ADJUSTMENT"
+        conn.execute(
+            """INSERT INTO alex_phase2_cash_pool_adjustments(
+                   adjustment_id,pool_id,space_id,owner_user_id,amount_minor,
+                   adjustment_kind,event_date,note,source_message_id
+               ) VALUES(?,?,?,?,?,?,?,?,?)""",
+            (
+                str(uuid.uuid4()), pool_id, pool["space_id"], pool["owner_user_id"],
+                delta, kind, d.isoformat(), note, source_message_id,
+            ),
+        )
+        conn.commit()
+        return {
+            "status": "updated", "pool_id": pool_id,
+            "balance": _money(target), "currency": pool["currency"],
+            "adjustment": _money(delta), "adjustment_kind": kind,
+        }
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def record_cash_pool_spend(pool_id, amount, event_date, sender_phone,
+                           conversation_type="DIRECT_DM", category=None,
+                           funding_source=None, note=None,
+                           source_message_id=None):
+    """Track spending from discretionary stash without double-counting income."""
+    value = _minor(amount)
+    if value <= 0:
+        raise ValueError("Stash spending must be greater than zero")
+    d = date.fromisoformat(str(event_date)[:10])
+    ensure_schema()
+    conn = tools.get_db()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        pool = _get_authorized_pool(conn, pool_id, sender_phone, conversation_type)
+        if source_message_id:
+            prior = conn.execute(
+                """SELECT adjustment_id,amount_minor FROM alex_phase2_cash_pool_adjustments
+                   WHERE pool_id=? AND source_message_id=? LIMIT 1""",
+                (pool_id, source_message_id),
+            ).fetchone()
+            if prior:
+                conn.rollback()
+                return {
+                    "status": "already_applied", "pool_id": pool_id,
+                    "spent": _money(abs(prior["amount_minor"])),
+                }
+        allocated = conn.execute(
+            "SELECT COALESCE(SUM(amount_minor),0) AS total FROM alex_phase2_cash_pool_allocations WHERE pool_id=?",
+            (pool_id,),
+        ).fetchone()["total"]
+        adjusted = conn.execute(
+            "SELECT COALESCE(SUM(amount_minor),0) AS total FROM alex_phase2_cash_pool_adjustments WHERE pool_id=?",
+            (pool_id,),
+        ).fetchone()["total"]
+        balance = int(allocated or 0) + int(adjusted or 0)
+        if value > balance:
+            raise ValueError("Stash spending exceeds the recorded pool balance")
+        conn.execute(
+            """INSERT INTO alex_phase2_cash_pool_adjustments(
+                   adjustment_id,pool_id,space_id,owner_user_id,amount_minor,
+                   adjustment_kind,event_date,category,funding_source,note,source_message_id
+               ) VALUES(?,?,?,?,?,'SPEND',?,?,?,?,?,?)""",
+            (
+                str(uuid.uuid4()), pool_id, pool["space_id"], pool["owner_user_id"],
+                -value, d.isoformat(), category, funding_source, note,
+                source_message_id,
+            ),
+        )
+        conn.commit()
+        return {
+            "status": "recorded", "pool_id": pool_id,
+            "spent": _money(value), "balance": _money(balance - value),
+            "category": category, "funding_source": funding_source,
+            "currency": pool["currency"],
+        }
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def cash_outflow_components(period, sender_phone,
+                            conversation_type="DIRECT_DM",
+                            requested_scope="all", currency="MYR"):
+    """Separate actual spending, goal savings and internal stash movements."""
+    if not re.fullmatch(r"\d{4}-\d{2}", str(period or "")):
+        raise ValueError("period must be YYYY-MM")
+    currency = str(currency or "MYR").upper()
+    ensure_schema()
+    conn = tools.get_db()
+    try:
+        _, _, clause, args = _authorized_space_clause(
+            conn, sender_phone, conversation_type, requested_scope
+        )
+        goal = conn.execute(
+            """SELECT COALESCE(SUM(amount_minor),0) AS total
+               FROM alex_phase2_goal_contributions
+               WHERE period=? AND currency=? AND """ + clause,
+            (period, currency, *args),
+        ).fetchone()["total"]
+        stash_in = conn.execute(
+            """SELECT COALESCE(SUM(a.amount_minor),0) AS total
+               FROM alex_phase2_cash_pool_allocations a
+               JOIN alex_phase2_cash_events e ON e.cash_event_id=a.cash_event_id
+               WHERE substr(a.created_at_utc,1,7)=? AND e.currency=? AND """
+            + clause.replace("space_id", "e.space_id"),
+            (period, currency, *args),
+        ).fetchone()["total"]
+        stash_adjust = conn.execute(
+            """SELECT COALESCE(SUM(amount_minor),0) AS total
+               FROM alex_phase2_cash_pool_adjustments
+               WHERE substr(event_date,1,7)=? AND amount_minor>0 AND """
+            + clause,
+            (period, *args),
+        ).fetchone()["total"]
+        stash_spend = conn.execute(
+            """SELECT COALESCE(SUM(-amount_minor),0) AS total
+               FROM alex_phase2_cash_pool_adjustments
+               WHERE substr(event_date,1,7)=? AND adjustment_kind='SPEND' AND """
+            + clause,
+            (period, *args),
+        ).fetchone()["total"]
+        return {
+            "period": period, "currency": currency,
+            "goal_savings_contributions": _money(int(goal or 0)),
+            "internal_stash_allocations": _money(int(stash_in or 0) + int(stash_adjust or 0)),
+            "stash_spending": _money(int(stash_spend or 0)),
+            "internal_allocations_included_in_cash_outflow": False,
         }
     finally:
         conn.close()
