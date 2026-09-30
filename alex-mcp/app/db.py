@@ -155,6 +155,15 @@ def initialize() -> None:
         _ensure_column(conn, "schedule_conflicts", "expires_at_utc", "TEXT")
         _ensure_column(conn, "leave_records", "end_date", "TEXT")
         _ensure_column(conn, "leave_records", "leave_type", "TEXT NOT NULL DEFAULT 'ANNUAL_LEAVE'")
+        _ensure_column(conn, "leave_records", "space_id", "TEXT")
+        conn.execute(
+            """UPDATE leave_records
+               SET space_id=CASE owner_id
+                   WHEN 'USR_HUSBAND' THEN 'HUSBAND_PVT'
+                   WHEN 'USR_WIFE' THEN 'WIFE_PVT'
+                   ELSE space_id END
+               WHERE space_id IS NULL OR TRIM(space_id)=''"""
+        )
         _ensure_column(conn, "diary_events", "time_known", "INTEGER NOT NULL DEFAULT 1")
         _ensure_column(conn, "plans", "time_known", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(conn, "schedule_conflicts", "source_plan_id", "TEXT")
