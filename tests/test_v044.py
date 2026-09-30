@@ -1109,5 +1109,118 @@ class FinalHardeningTests(V044Base):
         self.assertTrue(any(row["media_id"] == image_id for row in found["matches"]))
 
 
+    def test_voice_mutation_guard_covers_move_and_contextual_amounts(self):
+        self.assertTrue(media._voice_is_mutation_like(
+            "Move my dentist appointment to 5 PM."
+        ))
+        self.assertTrue(media._voice_is_mutation_like("RM8.50"))
+        self.assertTrue(media._voice_is_mutation_like("2"))
+        self.assertFalse(media._voice_is_mutation_like(
+            "What reminders do I have?"
+        ))
+
+    def test_voice_consensus_rejects_disagreeing_critical_numbers(self):
+        candidates = [
+            ("local_auto", "spent RM15 on petrol"),
+            ("local_en", "spent RM50 on petrol"),
+        ]
+        self.assertFalse(media._local_consensus(
+            "local_auto", candidates[0][1], candidates
+        ))
+        agreeing = [
+            ("local_auto", "spent RM15 on petrol"),
+            ("local_en", "spent RM15 on petrol"),
+        ]
+        self.assertTrue(media._local_consensus(
+            "local_auto", agreeing[0][1], agreeing
+        ))
+
+    def test_restart_recovery_quarantines_inflight_message(self):
+        self.claim("restart-stranded", text="add milk")
+        conn = db.connect()
+        try:
+            recovered = db._recover_interrupted_inbound(conn)
+            conn.commit()
+            row = conn.execute(
+                "SELECT processing_state,last_error FROM inbound_messages WHERE message_id=?",
+                ("restart-stranded",),
+            ).fetchone()
+            notice = conn.execute(
+                "SELECT text_body,context_kind FROM outbound_messages "
+                "WHERE source_message_id=?",
+                ("restart-stranded",),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(recovered, 1)
+        self.assertEqual(row["processing_state"], "FAILED")
+        self.assertTrue(row["last_error"].startswith(db.RESTART_INTERRUPTED_PREFIX))
+        self.assertEqual(notice["context_kind"], "INBOUND_RECOVERY")
+        self.assertIn("won't repeat", notice["text_body"])
+        self.assertEqual(db.claim_inbound({
+            "message_id": "restart-stranded", "provider": "WHATSAPP",
+            "conversation_id": DM, "conversation_type": "DIRECT_DM",
+            "sender_phone": HUSBAND, "text": "add milk",
+        }), "DUPLICATE")
+
+    def test_failed_media_download_is_completed_without_model_or_mutation(self):
+        payload = {
+            "message_id": "media-download-failed",
+            "conversation_id": DM,
+            "conversation_type": "DIRECT_DM",
+            "sender_phone": HUSBAND,
+            "text": "save this",
+            "media_failed": True,
+            "media_failed_type": "image",
+        }
+        with patch.object(brain, "respond") as responder:
+            result = ingress.process(payload)
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["media_failed"])
+        responder.assert_not_called()
+        conn = db.connect()
+        try:
+            inbound = conn.execute(
+                "SELECT processing_state FROM inbound_messages WHERE message_id=?",
+                ("media-download-failed",),
+            ).fetchone()
+            outbound = conn.execute(
+                "SELECT text_body FROM outbound_messages WHERE source_message_id=?",
+                ("media-download-failed",),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(inbound["processing_state"], "COMPLETED")
+        self.assertIn("Please resend", outbound["text_body"])
+
+    def test_confirm_expense_refuses_non_pending_event(self):
+        self.claim("confirm-guard", text="spent RM5 on parking")
+        actor = with_action_key(
+            self.actor(
+                "confirm-guard",
+                trusted_text="spent RM5 on parking",
+                received_at_utc="2026-09-30T01:00:00+00:00",
+            ),
+            "confirm-guard-k",
+        )
+        logged = services.log_expense(
+            actor, "Parking", 5, "transport", "MYR"
+        )
+        result = services.confirm_expense(
+            self.actor("confirm-read"), logged["event_id"], amount=6
+        )
+        self.assertEqual(result["status"], "not_pending")
+        conn = db.connect()
+        try:
+            row = conn.execute(
+                "SELECT amount_minor,status FROM financial_events WHERE event_id=?",
+                (logged["event_id"],),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(row["amount_minor"], 500)
+        self.assertEqual(row["status"], "ACTIVE")
+
+
 if __name__ == "__main__":
     unittest.main()

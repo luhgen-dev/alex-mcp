@@ -353,6 +353,8 @@ async function handleIncoming(message) {
     audio_data: media.type === 'audio' && mediaData ? mediaData.data : null,
     audio_mime_type: media.type === 'audio' && mediaData ? mediaData.mimeType : null,
     pdf_data: media.type === 'pdf' && mediaData ? mediaData.data : null,
+    media_failed: Boolean(media.type && !mediaData),
+    media_failed_type: media.type || null,
   };
 
   let slowAckTimer = null;
@@ -718,7 +720,9 @@ function startEgress() {
           sent = await currentSock.sendMessage(to, { document: buf, mimetype: payload.mimetype || 'application/octet-stream', fileName: payload.filename || 'file', caption: payload.caption || undefined }, sendOptions);
         } else if (payload.kind === 'audio') {
           const buf = Buffer.from(payload.file_b64 || '', 'base64');
-          sent = await currentSock.sendMessage(to, { audio: buf, mimetype: payload.mimetype || 'audio/ogg', ptt: true }, sendOptions);
+          const mime = String(payload.mimetype || 'audio/ogg').toLowerCase();
+          const ptt = mime.includes('audio/ogg') || mime.includes('audio/opus');
+          sent = await currentSock.sendMessage(to, { audio: buf, mimetype: payload.mimetype || 'audio/ogg', ptt }, sendOptions);
         } else {
           throw new Error('Unsupported outbound kind');
         }

@@ -293,6 +293,12 @@ def confirm_expense(actor: ActorContext, event_id: str, approve: bool = True,
         ).fetchone()
         if not row:
             raise PermissionError("event not found in your accessible spaces")
+        if row["status"] != "PENDING_HUMAN_REVIEW":
+            return {
+                "status": "not_pending",
+                "event_id": event_id,
+                "current_status": row["status"],
+            }
         if not approve:
             conn.execute("UPDATE financial_events SET status='IGNORED' WHERE event_id=?", (event_id,))
             conn.commit()

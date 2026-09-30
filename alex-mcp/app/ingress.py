@@ -318,6 +318,20 @@ def process(payload: dict) -> dict:
         return {"ok": True, "duplicate": True}
 
     try:
+        if payload.get("media_failed"):
+            kind = str(payload.get("media_failed_type") or "attachment").strip().lower()
+            label = "document" if kind == "pdf" else kind
+            reply = (
+                f"I couldn't download that {label} from WhatsApp, so I didn't act on it. "
+                "Please resend the attachment."
+            )
+            db.queue_outbound(
+                payload["conversation_id"], "TEXT",
+                text=reply,
+                source_message_id=payload["message_id"],
+            )
+            db.finish_inbound(payload["message_id"], reply)
+            return {"ok": True, "media_failed": True}
         db.touch_inbound_processing(payload["message_id"])
         media_ids, media_lines, vision_parts = media.process_payload_media(payload)
         db.touch_inbound_processing(payload["message_id"])

@@ -301,10 +301,16 @@ _VOICE_ACTION_PATTERNS = (
 
 _VOICE_MUTATION_RE = re.compile(
     r"\b(?:add|put|remove|delete|mark|buy|bought|spent|paid|save|remember|"
-    r"remind|notify|create|record|log|update|change|correct|fix|turn|switch|"
-    r"set|cancel|complete|reopen|reschedule|allocate|received|credited|"
+    r"remind|notify|create|record|log|update|change|edit|correct|fix|move|"
+    r"turn|switch|set|cancel|complete|reopen|reschedule|schedule|book|allocate|"
+    r"lock|activate|defer|link|share|publish|confirm|approve|received|credited|"
     r"tambah|letak|buang|padam|beli|dibeli|bayar|ingatkan|simpan|tutup|hidupkan)\b"
     r"|(?:நினைவூட்டு|சேமி|வாங்க|அழி|மாற்று)",
+    re.IGNORECASE,
+)
+_VOICE_CONTEXTUAL_REPLY_RE = re.compile(
+    r"^\s*(?:yes|yeah|yep|sure|confirm|approve|no|nope|"
+    r"(?:RM|MYR|SGD|S\$|\$)?\s*\d+(?:[.,:]\d+)?\s*(?:RM|MYR|SGD|am|pm)?)\s*$",
     re.IGNORECASE,
 )
 _VOICE_DRIFT_RE = re.compile(
@@ -349,7 +355,37 @@ def _voice_intent_score(text: str) -> int:
 
 
 def _voice_is_mutation_like(text: str) -> bool:
-    return bool(_VOICE_MUTATION_RE.search(text or ""))
+    value = (text or "").strip()
+    return bool(
+        _VOICE_MUTATION_RE.search(value)
+        or _VOICE_CONTEXTUAL_REPLY_RE.fullmatch(value)
+    )
+
+
+def _critical_voice_tokens(text: str) -> tuple[str, ...]:
+    """Values that must agree before a mutating voice command is trusted.
+
+    Keep this deliberately narrow: ordinary wording differences should not make
+    Alex interrogate the user, while amounts/times/dates/numbered choices must
+    never be silently guessed when local decodes disagree.
+    """
+    value = (text or "").casefold()
+    tokens = re.findall(
+        r"(?:rm|myr|sgd|s\$|\$)?\s*\d+(?:[.,:]\d+)?(?:\s*(?:am|pm|rm|myr|sgd))?",
+        value,
+        re.IGNORECASE,
+    )
+    return tuple(
+        re.sub(r"\s+", "", token).casefold()
+        for token in tokens
+        if token.strip()
+    )
+
+
+def _critical_voice_values_agree(left: str, right: str) -> bool:
+    a = _critical_voice_tokens(left)
+    b = _critical_voice_tokens(right)
+    return a == b if (a or b) else True
 
 
 def _candidate_voice_score(label: str, text: str) -> int:
@@ -394,7 +430,10 @@ def _local_consensus(
     for label, text in candidates:
         if label == chosen_label or label not in _LOCAL_LABELS:
             continue
-        if _transcript_similarity(chosen_text, text) >= 0.60:
+        if (
+            _transcript_similarity(chosen_text, text) >= 0.60
+            and _critical_voice_values_agree(chosen_text, text)
+        ):
             return True
     return False
 
