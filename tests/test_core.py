@@ -1939,6 +1939,7 @@ class AlexCoreTests(unittest.TestCase):
             "Show recent failures": {"recent_failures"},
             "Change my iPhone goal target to RM3500": {"planning_update_goal_target"},
             "Change the toaster warranty expiry to 1 December 2027": {"asset_update"},
+            "Monitor Hall AC and tell me when it turns on": {"ha_find_entities", "monitor_home_state"},
             "Send me the home status card": {"ha_home_report"},
         }
         for phrase, expected in cases.items():
@@ -2228,6 +2229,44 @@ class AlexCoreTests(unittest.TestCase):
         self.assertIsNotNone(resurfaced)
         self.assertEqual(resurfaced["conversation_id"], group_id)
         self.assertIn("Still outstanding", resurfaced["text_body"])
+
+    def test_home_state_monitor_is_explicit_one_shot_candidate(self):
+        self.claim("home-monitor-create", "+60111111111", "monitor hall ac")
+        delegation = phase2_delegation.create_delegation(
+            "CUSTOM", "Hall AC", "+60111111111", "home-monitor-create",
+            "DIRECT_DM", "private",
+            {
+                "kind": "HA_STATE",
+                "entity_id": "climate.hall_ac",
+                "target_state": "on",
+                "one_shot": True,
+            },
+            True,
+        )
+        with patch.object(
+            ha, "get_state",
+            return_value={
+                "entity_id": "climate.hall_ac",
+                "state": "off",
+                "attributes": {"friendly_name": "Hall AC"},
+            },
+        ):
+            self.assertEqual(
+                phase2_monitor.home_state_candidates("+60111111111"), []
+            )
+        with patch.object(
+            ha, "get_state",
+            return_value={
+                "entity_id": "climate.hall_ac",
+                "state": "on",
+                "attributes": {"friendly_name": "Hall AC"},
+            },
+        ):
+            candidates = phase2_monitor.home_state_candidates("+60111111111")
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0]["delegation_id"], delegation["delegation_id"])
+        self.assertEqual(candidates[0]["target_state"], "on")
+        self.assertTrue(candidates[0]["one_shot"])
 
     def test_declared_stash_balance_and_spend_do_not_require_cash_event(self):
         pool = phase2_finance.create_cash_pool(
