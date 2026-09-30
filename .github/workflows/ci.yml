@@ -23,7 +23,18 @@ jobs:
           pip install pyflakes
 
       - name: Reject undefined Python names
-        run: pyflakes alex-mcp/app
+        run: |
+          set +e
+          OUTPUT="$(pyflakes alex-mcp/app 2>&1)"
+          STATUS=$?
+          set -e
+          if [ "$STATUS" -ne 0 ]; then
+            printf '%s\n' "$OUTPUT"
+          fi
+          if printf '%s\n' "$OUTPUT" | grep -q "undefined name"; then
+            echo "Undefined Python name detected."
+            exit 1
+          fi
 
       - name: Compile Python
         run: python -m compileall -q alex-mcp/app tests
