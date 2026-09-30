@@ -285,6 +285,7 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
     # through to an unrelated domain.
     if (
         re.search(r"\b(?:spending|expenses?|transactions?)\b", text)
+        and "report" not in text
         and not re.search(
             r"\b(?:log|record|add|correct|fix|wrong|actually|change|"
             r"pending|waiting|clarif|approve|confirm)\b",
