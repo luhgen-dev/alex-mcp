@@ -25,7 +25,7 @@ import human_ai_lab
 
 # Frozen deterministic regression corpus. Any prompt/tool-surface change
 # invalidates this oracle until its regression expectations are reviewed.
-REVIEWED_CORPUS_FINGERPRINT = "c9710998dc597b5038e71de661be26bc53b2d4bd9e85d209442e852c3a323eb1"
+REVIEWED_CORPUS_FINGERPRINT = "a71c3d1887bb02a4a6015df2795fe9759b7093f9aa8de0b9afae3c12bea27bf7"
 
 
 def _low(value: str) -> str:
@@ -178,6 +178,72 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
             "tools",
             _pick(tools, "find_media", "get_media_original")
             or _one(tools, "get_media_original", "find_media"),
+        )
+
+    # Post-smoke lifecycle routes that previously produced false success or
+    # wrong-domain answers. Keep them ahead of generic finance/monitor/reminder
+    # keyword handling.
+    if (
+        "reminder" in text
+        and re.search(r"\b(?:release|unclaim|can'?t handle|cannot handle|can'?t do)\b", text)
+    ):
+        return result(
+            "tools",
+            _pick(tools, "list_reminders", "release_reminder_claim")
+            or _one(tools, "release_reminder_claim"),
+        )
+
+    if re.search(r"\b(?:annual leave|medical leave|\bmc\b)\b", text) and (
+        re.search(r"\b(?:today|tomorrow|yesterday)\b", text)
+        or re.search(r"\b(?:record|save|mark)\b", text)
+    ):
+        return result("tools", _one(tools, "set_leave_record", "work_record_event"))
+
+    if re.search(
+        r"\b(?:change|update|edit|raise|lower)\b.*\b(?:goal|savings?)\b.*\btarget\b"
+        r"|\b(?:goal|savings?)\b.*\btarget\b.*\b(?:to|=)\b",
+        text,
+    ):
+        return result("tools", _one(tools, "planning_update_goal_target"))
+
+    if re.search(
+        r"\b(?:my\s+)?(?:stash|cash pool|buffer)\b.*\b(?:is|has|balance)\b.*\b(?:rm|myr|sgd|\d)",
+        text,
+    ) or re.search(
+        r"\bset\b.*\b(?:stash|cash pool|buffer)\b.*\bbalance\b", text
+    ):
+        return result("tools", _one(tools, "planning_declare_cash_pool_balance"))
+
+    if re.search(
+        r"\b(?:spent|used|paid|record)\b.*\b(?:from|using)\b.*\b(?:stash|cash pool|buffer)\b"
+        r"|\brecord\b.*\bspent\b.*\b(?:stash|cash pool|buffer)\b",
+        text,
+    ):
+        return result("tools", _one(tools, "planning_record_cash_pool_spend"))
+
+    if re.search(
+        r"\bcash\s*outflow\b|\btotal\s*outflow\b"
+        r"|\bmoney\b.*\b(?:went|goes?|going)\s+out\b",
+        text,
+    ):
+        return result("tools", _one(tools, "planning_cash_outflow"))
+
+    if re.search(
+        r"\b(?:change|update|edit)\b.*\b(?:warranty|asset|appliance)\b"
+        r"|\bwarranty\b.*\b(?:expiry|end date|expires)\b.*\b(?:to|on)\b",
+        text,
+    ):
+        return result("tools", _one(tools, "asset_update"))
+
+    if re.search(
+        r"\b(?:monitor|watch|tell me when|let me know when)\b.*"
+        r"\b(?:light|switch|fan|ac|aircon|air conditioner|thermostat|climate|tv|television|speaker)\b",
+        text,
+    ) and "monitor_home_state" in tools:
+        return result(
+            "tools",
+            _pick(tools, "ha_find_entities", "ha_get_state", "monitor_home_state")
+            or ["monitor_home_state"],
         )
 
     # Cross-domain semantic precedence discovered during the regression QC
