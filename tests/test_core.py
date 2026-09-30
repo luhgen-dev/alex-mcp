@@ -2047,6 +2047,136 @@ class AlexCoreTests(unittest.TestCase):
         self.assertEqual(shared["conversation_id"], group_id)
         self.assertEqual(shared["space"], "FAMILY_SHARED")
 
+    def test_reaction_entrypoint_is_quiet_and_claims_shared_reminder(self):
+        group_id = "120363777777@g.us"
+        with open(os.path.join(TEST_DIR, "family_group.json"), "w", encoding="utf-8") as handle:
+            handle.write('{"group_jid":"%s"}' % group_id)
+
+        self.claim("reaction-create", "+60111111111", "group reminder")
+        creator = with_action_key(
+            self.actor("reaction-create", "+60111111111"),
+            "reaction-create-action",
+        )
+        reminder = services.create_reminder(
+            creator, "pick up parcel", "2026-10-01T18:00:00+08:00",
+            destination="group",
+        )
+        self.assertTrue(reminder["claimable"])
+
+        confirmation_id = db.queue_outbound(
+            group_id, "TEXT", text="Reminder created.",
+            source_message_id="reaction-create",
+        )
+        reminder_outbound_id = db.queue_outbound(
+            group_id, "TEXT", text="Reminder: pick up parcel",
+            context_kind="REMINDER_INITIAL", context_id=reminder["reminder_id"],
+        )
+        conn = db.connect()
+        try:
+            conn.execute(
+                """UPDATE outbound_messages SET provider_message_id='wa-confirm',
+                   delivery_status='SENT',delivered_at_utc=CURRENT_TIMESTAMP
+                   WHERE outbound_id=?""",
+                (confirmation_id,),
+            )
+            conn.execute(
+                """UPDATE outbound_messages SET provider_message_id='wa-fired',
+                   delivery_status='SENT',delivered_at_utc=CURRENT_TIMESTAMP
+                   WHERE outbound_id=?""",
+                (reminder_outbound_id,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        ignored = ingress.process({
+            "message_id": "reaction-entry-ignore",
+            "provider": "WHATSAPP",
+            "conversation_id": group_id,
+            "conversation_type": "GROUP",
+            "sender_phone": "+60222222222",
+            "event_kind": "REACTION",
+            "reaction_target_message_id": "wa-confirm",
+            "reaction_text": "👍",
+        })
+        self.assertTrue(ignored["ok"])
+        self.assertEqual(ignored["reaction"]["status"], "not_a_reminder_message")
+
+        claimed = ingress.process({
+            "message_id": "reaction-entry-claim",
+            "provider": "WHATSAPP",
+            "conversation_id": group_id,
+            "conversation_type": "GROUP",
+            "sender_phone": "+60222222222",
+            "event_kind": "REACTION",
+            "reaction_target_message_id": "wa-fired",
+            "reaction_text": "✅",
+        })
+        self.assertTrue(claimed["ok"])
+        self.assertEqual(claimed["reaction"]["status"], "claimed")
+        self.assertEqual(claimed["reaction"]["claimed_by_user_id"], "USR_WIFE")
+
+        removed = ingress.process({
+            "message_id": "reaction-entry-remove",
+            "provider": "WHATSAPP",
+            "conversation_id": group_id,
+            "conversation_type": "GROUP",
+            "sender_phone": "+60222222222",
+            "event_kind": "REACTION",
+            "reaction_target_message_id": "wa-fired",
+            "reaction_text": "",
+        })
+        self.assertTrue(removed["ok"])
+        self.assertEqual(removed["reaction"]["status"], "ignored_reaction_removal")
+
+        conn = db.connect()
+        try:
+            error_posts = conn.execute(
+                """SELECT COUNT(*) AS n FROM outbound_messages
+                   WHERE source_message_id IN (
+                     'reaction-entry-ignore','reaction-entry-claim','reaction-entry-remove'
+                   )"""
+            ).fetchone()["n"]
+        finally:
+            conn.close()
+        self.assertEqual(error_posts, 0)
+
+    def test_monitor_home_state_executes_real_tool_body(self):
+        self.claim("monitor-entry", "+60111111111", "tell me when the Hall AC turns on")
+        actor = self.actor("monitor-entry", "+60111111111")
+        with patch.object(
+            ha, "get_state",
+            return_value={"state": "off", "attributes": {"friendly_name": "Hall AC"}},
+        ), patch.object(
+            phase2_delegation, "create_delegation",
+            return_value={"delegation_id": "monitor-1", "status": "ACTIVE"},
+        ) as create:
+            result = mcp_server.monitor_home_state(
+                "climate.hall_ac", "on", actor
+            )
+        self.assertEqual(result["monitor_kind"], "HA_STATE")
+        self.assertEqual(result["current_state"], "off")
+        create.assert_called_once()
+
+    def test_home_state_monitor_is_checked_each_scheduler_loop(self):
+        scheduler._last_monitor_hour = None
+        with patch.object(
+            phase2_monitor, "bill_candidates", return_value=[]
+        ) as bills, patch.object(
+            phase2_monitor, "goal_candidates", return_value=[]
+        ), patch.object(
+            phase2_monitor, "ot_allocation_candidates", return_value=[]
+        ), patch.object(
+            phase2_monitor, "home_state_candidates", return_value=[]
+        ) as home:
+            scheduler.run_delegated_monitors()
+            first_home_calls = home.call_count
+            first_bill_calls = bills.call_count
+            scheduler.run_delegated_monitors()
+        self.assertGreater(first_home_calls, 0)
+        self.assertEqual(home.call_count, first_home_calls * 2)
+        self.assertEqual(bills.call_count, first_bill_calls)
+
     def test_claimable_group_reminder_first_reaction_wins_and_release_is_explicit(self):
         group_id = "120363999999@g.us"
         with open(os.path.join(TEST_DIR, "family_group.json"), "w", encoding="utf-8") as handle:
