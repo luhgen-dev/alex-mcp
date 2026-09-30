@@ -593,14 +593,18 @@ def leave_balance(leave_id, sender_phone, conversation_type="DIRECT_DM",
     ensure_schema()
     conn = tools.get_db()
     try:
-        user_id, private_space, _ = _ctx(conn, sender_phone, conversation_type)
-        row = conn.execute("""
+        user_id, private_space, shared = _ctx(conn, sender_phone, conversation_type)
+        spaces = [private_space]
+        if shared:
+            spaces.append("FAMILY_SHARED")
+        placeholders = ",".join("?" for _ in spaces)
+        row = conn.execute(f"""
             SELECT COALESCE(SUM(COALESCE(units_days,1)),0) AS used
             FROM alex_phase2_work_events
-            WHERE owner_user_id=? AND space_id=? AND event_type=?
+            WHERE owner_user_id=? AND space_id IN ({placeholders}) AND event_type=?
               AND event_date>? AND event_date<=?
         """, (
-            user_id, private_space, event_type,
+            user_id, *spaces, event_type,
             snapshot_date.isoformat(), end.isoformat(),
         )).fetchone()
         used = float(row["used"] or 0)
