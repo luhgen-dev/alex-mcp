@@ -176,12 +176,59 @@ def control(entity_id: str, action: str, value: float | None = None) -> dict:
     elif value is not None and service not in {"turn_on"}:
         raise ValueError("value is not used by this Home Assistant action")
 
+    before = get_state(entity)
     _request("POST", f"/services/{domain}/{service}", payload)
-    time.sleep(0.25)
-    verified = get_state(entity)
+
+    def matches_requested(snapshot: dict) -> bool:
+        state = str(snapshot.get("state") or "").lower()
+        if state in {"unavailable", "unknown", ""}:
+            return False
+        attrs = snapshot.get("attributes") or {}
+        if service == "turn_on":
+            return state == "on"
+        if service == "turn_off":
+            return state == "off"
+        if service == "toggle":
+            before_state = str(before.get("state") or "").lower()
+            return before_state not in {"", "unknown", "unavailable"} and state != before_state
+        if domain == "fan" and service == "set_percentage":
+            try:
+                return abs(float(attrs.get("percentage")) - float(value)) <= 1.0
+            except (TypeError, ValueError):
+                return False
+        if domain == "climate" and service == "set_temperature":
+            try:
+                return abs(float(attrs.get("temperature")) - float(value)) <= 0.5
+            except (TypeError, ValueError):
+                return False
+        if domain == "media_player" and service == "media_play":
+            return state == "playing"
+        if domain == "media_player" and service == "media_pause":
+            return state in {"paused", "idle"}
+        if domain == "media_player" and service == "volume_set":
+            try:
+                return abs(float(attrs.get("volume_level")) - float(value)) <= 0.03
+            except (TypeError, ValueError):
+                return False
+        return False
+
+    verified = None
+    for _ in range(4):
+        time.sleep(0.25)
+        verified = get_state(entity)
+        if matches_requested(verified):
+            return {
+                "status": "executed_and_verified",
+                "entity_id": entity,
+                "action": service,
+                "state_after": verified,
+            }
+
     return {
-        "status": "executed_and_verified",
+        "status": "requested_unconfirmed",
         "entity_id": entity,
         "action": service,
+        "state_before": before,
         "state_after": verified,
+        "note": "Home Assistant accepted the service call but the requested state was not verified.",
     }

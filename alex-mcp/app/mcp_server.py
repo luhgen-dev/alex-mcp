@@ -19,7 +19,7 @@ import phase2_reports
 
 mcp = MCPServer(
     "Alex Household Tools",
-    version="0.5.0",
+    version="0.5.1",
     instructions="Deterministic household tools. Identity and permissions are injected by Alex and are never model-controlled.",
 )
 
@@ -53,9 +53,22 @@ def query_finances(actor: Actor, start_date: str | None = None, end_date: str | 
                    currency: str | None = None, limit: int = 20,
                    scope: str | None = None, source: str | None = None) -> dict:
     """Read true ledger totals and matching transactions. Use ISO dates YYYY-MM-DD. scope may be all/family/private. source may be all/voice/receipt/text. For today/tomorrow/yesterday, resolve the runtime date and set both start_date and end_date."""
-    return services.query_finances(
+    result = services.query_finances(
         actor, start_date, end_date, category, search, currency, limit, scope, source
     )
+    phase2_reports.remember_active_report(
+        actor.user_id, actor.conversation_id, "finance_query", result,
+        period=(
+            start_date[:7] if start_date and end_date and start_date[:7] == end_date[:7]
+            else None
+        ),
+        spec={
+            "start_date": start_date, "end_date": end_date, "category": category,
+            "search": search, "currency": currency, "limit": limit,
+            "scope": scope, "source": source,
+        },
+    )
+    return result
 
 
 @mcp.tool()
@@ -134,13 +147,15 @@ def resolve_numbered_choice(choice: int, actor: Actor) -> dict:
 @mcp.tool()
 def create_reminder(task: str, due_local: str, actor: Actor,
                     recurrence_rule: str | None = None, shared: bool = False,
-                    recipient: str = "me", presence_aware: bool = False,
+                    recipient: str = "me", destination: str = "dm",
+                    claimable: bool = False,
+                    presence_aware: bool = False,
                     delivery_class: str = "routine",
                     follow_up_after_hours: int = 24) -> dict:
-    """Create a durable reminder. recipient is me/spouse/husband/wife/both; routine reminders may use quiet/presence policy, while time_critical bypasses those deferrals."""
+    """Create a durable reminder. recipient chooses me/spouse/husband/wife/both. destination=dm sends to the intended person's DM regardless of command origin; destination=group sends one Family Shared group reminder. Set claimable=true only for a group reminder where any authorized household reaction should atomically claim responsibility."""
     return services.create_reminder(
-        actor, task, due_local, recurrence_rule, shared, recipient,
-        presence_aware, delivery_class, follow_up_after_hours,
+        actor, task, due_local, recurrence_rule, shared, recipient, destination,
+        claimable, presence_aware, delivery_class, follow_up_after_hours,
     )
 
 
@@ -151,16 +166,27 @@ def list_reminders(actor: Actor, include_completed: bool = False, limit: int = 2
 
 
 @mcp.tool()
-def update_reminder(reminder_id: str, status: str, actor: Actor,
-                    new_due_local: str | None = None) -> dict:
-    """Complete, cancel, acknowledge, reopen or defer a reminder. Provide new_due_local when rescheduling."""
-    return services.update_reminder(actor, reminder_id, status, new_due_local)
+def update_reminder(reminder_id: str, actor: Actor, status: str = "open",
+                    new_due_local: str | None = None,
+                    snooze_minutes: int | None = None,
+                    snooze_until_local: str | None = None) -> dict:
+    """Complete/cancel/acknowledge/defer/reschedule a reminder. For relative snooze pass snooze_minutes; the backend computes now+N and reopens it."""
+    return services.update_reminder(
+        actor, reminder_id, status, new_due_local, snooze_minutes, snooze_until_local
+    )
 
 
 @mcp.tool()
-def reminder_history(reminder_id: str, actor: Actor) -> dict:
-    """Read the durable state-transition history for one authorized reminder."""
-    return services.reminder_history(actor, reminder_id)
+def reminder_history(actor: Actor, reminder_id: str | None = None,
+                     limit: int = 50) -> dict:
+    """Read durable reminder lifecycle history. Omit reminder_id for recent aggregate history across authorized reminders; per-reminder output also includes claim/release history."""
+    return services.reminder_history(actor, reminder_id, limit)
+
+
+@mcp.tool()
+def release_reminder_claim(reminder_id: str, actor: Actor) -> dict:
+    """Explicitly release a claimable family reminder after the claimant says they cannot do it / release it. Removing a WhatsApp reaction never releases ownership."""
+    return services.release_reminder_claim(actor, reminder_id)
 
 
 @mcp.tool()
@@ -253,10 +279,11 @@ def list_shopping_items(actor: Actor, include_purchased: bool = False, limit: in
 
 
 @mcp.tool()
-def update_shopping_item(item_id: str, actor: Actor, status: str = "purchased",
-                         quantity: str | None = None, notes: str | None = None) -> dict:
-    """Mark a shopping item purchased/open/removed or update its quantity/notes. Do not mark purchased unless the user indicates it."""
-    return services.update_shopping_item(actor, item_id, status, quantity, notes)
+def update_shopping_item(item_id: str, actor: Actor, status: str | None = None,
+                         quantity: str | None = None, notes: str | None = None,
+                         item: str | None = None) -> dict:
+    """Rename a shopping item or update status/quantity/notes. Omitted status preserves its existing state; never mark purchased unless the user explicitly indicates it."""
+    return services.update_shopping_item(actor, item_id, status, quantity, notes, item)
 
 
 @mcp.tool()
@@ -497,6 +524,19 @@ def planning_create_goal(name: str, target_amount: float, actor: Actor,
 
 
 @mcp.tool()
+def planning_update_goal_target(new_target_amount: float, actor: Actor,
+                                goal_id: str | None = None,
+                                goal_name: str | None = None) -> dict:
+    """Change only an existing goal's target amount after explicit user instruction. This never creates a deadline or recurring contribution."""
+    resolved = phase2_finance.resolve_goal_reference(
+        goal_id, goal_name, actor.phone, actor.conversation_type
+    )
+    return phase2_finance.update_goal_target(
+        resolved, new_target_amount, actor.phone, actor.conversation_type
+    )
+
+
+@mcp.tool()
 def planning_lock_goal(actor: Actor, goal_id: str | None = None,
                        goal_name: str | None = None) -> dict:
     """Lock/activate one draft goal after explicit owner approval. Provide either goal_id from a prior result or its natural goal_name; Alex resolves names conservatively."""
@@ -710,6 +750,44 @@ def planning_cash_pool_balance(actor: Actor, pool_id: str | None = None,
 
 
 @mcp.tool()
+def planning_declare_cash_pool_balance(amount: float, actor: Actor,
+                                       pool_id: str | None = None,
+                                       pool_name: str | None = None,
+                                       event_date: str | None = None,
+                                       note: str | None = None) -> dict:
+    """Set a user-declared stash/cash-pool balance exactly. This is a balance fact, not income and not an automatic goal allocation."""
+    import runtime_clock
+    resolved = phase2_finance.resolve_cash_pool_reference(
+        pool_id, pool_name, actor.phone, actor.conversation_type
+    )
+    effective_date = event_date or runtime_clock.today(actor.timezone).isoformat()
+    return phase2_finance.declare_cash_pool_balance(
+        resolved, amount, effective_date, actor.phone, actor.conversation_type,
+        note, actor.source_message_id,
+    )
+
+
+@mcp.tool()
+def planning_record_cash_pool_spend(amount: float, actor: Actor,
+                                    pool_id: str | None = None,
+                                    pool_name: str | None = None,
+                                    event_date: str | None = None,
+                                    category: str | None = None,
+                                    funding_source: str | None = None,
+                                    note: str | None = None) -> dict:
+    """Record spending from a stash/cash pool with optional category and funding-source note. This reduces the pool balance and does not create a second income record."""
+    import runtime_clock
+    resolved = phase2_finance.resolve_cash_pool_reference(
+        pool_id, pool_name, actor.phone, actor.conversation_type
+    )
+    effective_date = event_date or runtime_clock.today(actor.timezone).isoformat()
+    return phase2_finance.record_cash_pool_spend(
+        resolved, amount, effective_date, actor.phone, actor.conversation_type,
+        category, funding_source, note, actor.source_message_id,
+    )
+
+
+@mcp.tool()
 def planning_allocate_cash_to_pool(amount: float, actor: Actor,
                                    cash_event_id: str | None = None,
                                    cash_event_type: str | None = None,
@@ -801,6 +879,41 @@ def planning_goal_projection(actor: Actor, goal_id: str | None = None,
     return phase2_finance.goal_projection(
         resolved, actor.phone, actor.conversation_type, from_period
     )
+
+
+@mcp.tool()
+def planning_cash_outflow(actor: Actor, period: str | None = None,
+                          currency: str = "MYR") -> dict:
+    """Read actual monthly cash outflow in separate sections: consumption/expenses, goal-savings contributions, and internal stash movements. Internal stash allocations are shown but excluded from the outflow total to prevent double counting."""
+    import calendar
+    import runtime_clock
+    effective_period = period or runtime_clock.today(actor.timezone).strftime("%Y-%m")
+    year, month = (int(x) for x in effective_period.split("-", 1))
+    start_date = f"{year:04d}-{month:02d}-01"
+    end_date = f"{year:04d}-{month:02d}-{calendar.monthrange(year, month)[1]:02d}"
+    ledger = services.query_finances(
+        actor, start_date=start_date, end_date=end_date, currency=currency,
+        limit=100, scope=None, source=None,
+    )
+    components = phase2_finance.cash_outflow_components(
+        effective_period, actor.phone, actor.conversation_type, "all", currency
+    )
+    spending = float((ledger.get("spending_totals") or {}).get(currency.upper(), 0) or 0)
+    savings = float(components.get("goal_savings_contributions") or 0)
+    return {
+        "period": effective_period,
+        "currency": currency.upper(),
+        "consumption_and_expenses": spending,
+        "goal_savings_contributions": savings,
+        "other_transfers": 0.0,
+        "internal_stash_allocations": components.get("internal_stash_allocations", 0.0),
+        "stash_spending": components.get("stash_spending", 0.0),
+        "cash_outflow_total_excluding_internal_allocations": round(spending + savings, 2),
+        "double_count_policy": (
+            "stash allocations are internal earmarks and obligation paid amounts are not "
+            "added again when already represented in the expense ledger"
+        ),
+    }
 
 
 @mcp.tool()
@@ -955,6 +1068,25 @@ def asset_create(name: str, actor: Actor, category: str | None = None,
 
 
 @mcp.tool()
+def asset_update(actor: Actor, asset_id: str | None = None,
+                 asset_name: str | None = None, name: str | None = None,
+                 category: str | None = None, brand: str | None = None,
+                 model: str | None = None, serial_number: str | None = None,
+                 purchase_date: str | None = None,
+                 warranty_end: str | None = None, note: str | None = None,
+                 status: str | None = None) -> dict:
+    """Edit an authorized asset, including warranty expiry, without replacing its linked receipt/manual/photo evidence."""
+    resolved = phase2_library.resolve_asset_reference(
+        asset_id, asset_name, actor.phone, actor.conversation_type
+    )
+    return phase2_library.update_asset(
+        resolved, actor.phone, actor.conversation_type,
+        name, category, brand, model, serial_number,
+        purchase_date, warranty_end, note, status,
+    )
+
+
+@mcp.tool()
 def asset_link_document(document_type: str, actor: Actor,
                         asset_id: str | None = None,
                         asset_name: str | None = None,
@@ -1000,6 +1132,49 @@ def warranty_expiring(actor: Actor, within_days: int = 90,
 
 
 @mcp.tool()
+def monitor_home_state(entity_id: str, target_state: str, actor: Actor,
+                       shared: bool = False) -> dict:
+    """Create a one-shot Home Assistant state monitor after an explicit request such as 'tell me when Hall AC turns on'. Resolve the exact entity first; this tool does not control the device."""
+    entity_id = str(entity_id or "").strip()
+    target_state = str(target_state or "").strip().casefold()
+    if not entity_id or "." not in entity_id:
+        raise ValueError("an exact Home Assistant entity_id is required")
+    if not target_state:
+        raise ValueError("target_state is required")
+    snapshot = ha.get_state(entity_id)
+    current = str(snapshot.get("state") or "").strip().casefold()
+    if current in {"unknown", "unavailable", ""}:
+        raise ValueError("Home Assistant entity is currently unavailable")
+    if current == target_state:
+        return {
+            "status": "already_in_state",
+            "entity_id": entity_id,
+            "state": current,
+            "monitor_created": False,
+        }
+    friendly = (snapshot.get("attributes") or {}).get("friendly_name") or entity_id
+    created = phase2_delegation.create_delegation(
+        "CUSTOM", str(friendly), actor.phone, actor.source_message_id,
+        actor.conversation_type,
+        "family" if shared or actor.conversation_type == "GROUP" else "private",
+        {
+            "kind": "HA_STATE",
+            "entity_id": entity_id,
+            "target_state": target_state,
+            "one_shot": True,
+        },
+        True,
+    )
+    return {
+        **created,
+        "monitor_kind": "HA_STATE",
+        "entity_id": entity_id,
+        "target_state": target_state,
+        "current_state": current,
+    }
+
+
+@mcp.tool()
 def monitor_delegate(delegation_type: str, subject: str, actor: Actor,
                      shared: bool = False) -> dict:
     """Enable one proactive monitor only after an explicit user instruction. Quiet by default otherwise."""
@@ -1033,10 +1208,15 @@ def report_snapshot(actor: Actor, period: str | None = None,
     """Build a privacy-scoped household/finance/work snapshot. Raw private income is never exposed in a family group."""
     if include_raw_income and actor.conversation_type == "GROUP":
         raise PermissionError("raw private income cannot be requested from the family group")
-    return phase2_reports.build_snapshot(
+    result = phase2_reports.build_snapshot(
         actor.phone, actor.conversation_type, "all", period,
         include_raw_income=include_raw_income, include_assets=True, include_leave=True,
     )
+    phase2_reports.remember_active_report(
+        actor.user_id, actor.conversation_id, "snapshot", result,
+        period=result.get("period"), spec={"include_raw_income": include_raw_income},
+    )
+    return result
 
 
 @mcp.tool()
@@ -1044,6 +1224,7 @@ def report_export(format: str, actor: Actor, period: str | None = None,
                   include_raw_income: bool = False) -> dict:
     """Create a local privacy-scoped PDF/CSV/JSON report and return it as a WhatsApp document attachment."""
     import os
+    import uuid
     from pathlib import Path
     from config import DATA_DIR
 
@@ -1053,20 +1234,40 @@ def report_export(format: str, actor: Actor, period: str | None = None,
     if include_raw_income and actor.conversation_type == "GROUP":
         raise PermissionError("raw private income cannot be exported from the family group")
 
-    snapshot = phase2_reports.build_snapshot(
-        actor.phone, actor.conversation_type, "all", period,
-        include_raw_income=include_raw_income, include_assets=True, include_leave=True,
+    active = (
+        phase2_reports.load_active_report(actor.user_id, actor.conversation_id)
+        if period is None and not include_raw_income else None
     )
+    report_kind = active["kind"] if active else "snapshot"
+    snapshot = (
+        active["payload"] if active
+        else phase2_reports.build_snapshot(
+            actor.phone, actor.conversation_type, "all", period,
+            include_raw_income=include_raw_income, include_assets=True, include_leave=True,
+        )
+    )
+    effective_period = (active.get("period") if active else None) or period
     out_dir = Path(DATA_DIR) / "reports"
     out_dir.mkdir(parents=True, exist_ok=True)
-    safe_period = (period or "current").replace("/", "-").replace("..", "-")
-    path = out_dir / f"alex-{safe_period}.{fmt}"
+    safe_period = (effective_period or "current").replace("/", "-").replace("..", "-")
+    # One immutable path per export prevents a queued private report from
+    # being overwritten by another user's/group's export before outbox send.
+    path = out_dir / f"alex-{safe_period}-{uuid.uuid4().hex}.{fmt}"
     if fmt == "pdf":
-        payload = phase2_reports.minimal_pdf(snapshot)
+        if report_kind == "finance_query":
+            payload = phase2_reports.text_pdf(
+                phase2_reports.finance_query_text(snapshot), title="ALEX Finance Report"
+            )
+        else:
+            payload = phase2_reports.minimal_pdf(snapshot)
         path.write_bytes(payload)
         mime = "application/pdf"
     elif fmt == "csv":
-        payload = phase2_reports.finance_csv(snapshot)
+        payload = (
+            phase2_reports.finance_query_csv(snapshot)
+            if report_kind == "finance_query"
+            else phase2_reports.finance_csv(snapshot)
+        )
         path.write_text(payload, encoding="utf-8")
         mime = "text/csv"
     else:
@@ -1076,7 +1277,8 @@ def report_export(format: str, actor: Actor, period: str | None = None,
     return {
         "status": "ready",
         "format": fmt,
-        "period": period,
+        "period": effective_period,
+        "source_report_kind": report_kind,
         "_attachments": [{"path": os.fspath(path), "kind": "DOCUMENT", "mime_type": mime}],
     }
 

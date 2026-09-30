@@ -140,6 +140,61 @@ def create_asset(name, sender_phone, conversation_type="DIRECT_DM",
         conn.close()
 
 
+def update_asset(asset_id, sender_phone, conversation_type="DIRECT_DM",
+                 name=None, category=None, brand=None, model=None,
+                 serial_number=None, purchase_date=None, warranty_end=None,
+                 note=None, status=None):
+    """Edit authorized asset metadata without recreating or relinking documents."""
+    ensure_schema()
+    conn = tools.get_db()
+    try:
+        row = _authorized_asset(conn, asset_id, sender_phone, conversation_type)
+        if purchase_date is not None and str(purchase_date).strip():
+            date.fromisoformat(str(purchase_date)[:10])
+        if warranty_end is not None and str(warranty_end).strip():
+            date.fromisoformat(str(warranty_end)[:10])
+        next_status = row["status"] if status is None else str(status).upper()
+        if next_status not in {"ACTIVE", "SOLD", "DISPOSED", "LOST"}:
+            raise ValueError("asset status must be ACTIVE, SOLD, DISPOSED or LOST")
+        next_name = row["name"] if name is None else str(name).strip()
+        if not next_name:
+            raise ValueError("Asset name cannot be empty")
+        def keep_or(value, existing, date_value=False):
+            if value is None:
+                return existing
+            if date_value:
+                return str(value)[:10] if str(value).strip() else None
+            return value
+        values = {
+            "category": keep_or(category, row["category"]),
+            "brand": keep_or(brand, row["brand"]),
+            "model": keep_or(model, row["model"]),
+            "serial_number": keep_or(serial_number, row["serial_number"]),
+            "purchase_date": keep_or(purchase_date, row["purchase_date"], True),
+            "warranty_end": keep_or(warranty_end, row["warranty_end"], True),
+            "note": keep_or(note, row["note"]),
+        }
+        conn.execute(
+            """UPDATE alex_phase2_assets
+               SET name=?,category=?,brand=?,model=?,serial_number=?,
+                   purchase_date=?,warranty_end=?,note=?,status=?,
+                   updated_at_utc=CURRENT_TIMESTAMP
+               WHERE asset_id=?""",
+            (
+                next_name, values["category"], values["brand"], values["model"],
+                values["serial_number"], values["purchase_date"],
+                values["warranty_end"], values["note"], next_status, asset_id,
+            ),
+        )
+        conn.commit()
+        return {
+            "status": "updated", "asset_id": asset_id, "name": next_name,
+            "warranty_end": values["warranty_end"], "asset_status": next_status,
+        }
+    finally:
+        conn.close()
+
+
 def resolve_asset_reference(asset_id, asset_name, sender_phone,
                             conversation_type="DIRECT_DM"):
     """Resolve one authorized asset by id or a unique natural name."""

@@ -116,6 +116,11 @@ def initialize() -> None:
         _ensure_column(conn, "reminders", "last_follow_up_at_utc", "TEXT")
         _ensure_column(conn, "reminders", "next_delivery_at_utc", "TEXT")
         _ensure_column(conn, "reminders", "defer_reason", "TEXT")
+        _ensure_column(conn, "reminders", "claimable", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(conn, "reminders", "claimed_by_user_id", "TEXT")
+        _ensure_column(conn, "reminders", "claimed_at_utc", "TEXT")
+        _ensure_column(conn, "reminders", "claimant_follow_up_at_utc", "TEXT")
+        _ensure_column(conn, "reminders", "family_resurfaced_at_utc", "TEXT")
         _ensure_column(conn, "outbound_messages", "context_kind", "TEXT")
         _ensure_column(conn, "outbound_messages", "context_id", "TEXT")
         _ensure_column(conn, "outbound_messages", "provider_message_id", "TEXT")
@@ -455,6 +460,8 @@ def resolve_quoted_context(conversation_id: str, quoted_message_id: str | None,
         if row:
             result = {
                 "quoted_alex_text": row["text_body"] or "",
+                "outbound_id": row["outbound_id"],
+                "provider_message_id": row["provider_message_id"],
                 "source_message_id": row["source_message_id"],
                 "context_kind": row["context_kind"],
                 "context_id": row["context_id"],

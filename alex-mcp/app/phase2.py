@@ -156,10 +156,13 @@ def set_leave_record(actor: ActorContext, leave_date: str, status: str = "PLANNE
         if existing_action:
             return {"status": "already_applied", **dict(existing_action)}
 
+        # Portion is editable state, not identity. Matching on portion caused a
+        # FULL -> HALF correction to insert a second active leave row.
         row = conn.execute(
             """SELECT * FROM leave_records
-               WHERE owner_id=? AND leave_date=? AND portion=?""",
-            (actor.user_id, start_d.isoformat(), portion),
+               WHERE owner_id=? AND leave_date=? AND status!='CANCELLED'
+               ORDER BY updated_at_utc DESC LIMIT 1""",
+            (actor.user_id, start_d.isoformat()),
         ).fetchone()
 
         if row and row["status"] == "TAKEN" and state != "TAKEN":
@@ -171,9 +174,9 @@ def set_leave_record(actor: ActorContext, leave_date: str, status: str = "PLANNE
         if row:
             leave_id = row["leave_id"]
             conn.execute(
-                """UPDATE leave_records SET status=?,end_date=?,leave_type=?,notes=?,
+                """UPDATE leave_records SET status=?,end_date=?,leave_type=?,portion=?,notes=?,
                    updated_at_utc=? WHERE leave_id=?""",
-                (state, end_d.isoformat(), kind, notes, utc_now(), leave_id),
+                (state, end_d.isoformat(), kind, portion, notes, utc_now(), leave_id),
             )
         else:
             leave_id = str(uuid.uuid4())
@@ -207,7 +210,8 @@ def set_leave_record(actor: ActorContext, leave_date: str, status: str = "PLANNE
                             units_days,note,source_message_id
                            ) VALUES(?,?,?,?,?,?,?,?)""",
                         (str(uuid.uuid4()), actor.private_space, actor.user_id,
-                         day.isoformat(), kind, 1.0,
+                         day.isoformat(), kind,
+                         0.5 if portion.startswith("HALF") else 1.0,
                          notes or "Taken from Alex leave lifecycle",
                          actor.source_message_id),
                     )
@@ -328,6 +332,43 @@ def update_plan(actor: ActorContext, plan_id: str, status: str | None = None,
         new_start = _to_utc(start_local, actor.timezone) if start_local else row["start_at_utc"]
         new_end = _to_utc(end_local, actor.timezone) if end_local else row["end_at_utc"]
         new_time_known = _has_explicit_time(start_local) if start_local is not None else bool(row["time_known"])
+
+        link = conn.execute(
+            "SELECT diary_id FROM plan_diary_links WHERE plan_id=?",
+            (plan_id,),
+        ).fetchone()
+        linked_diary_result = None
+        if link:
+            changing_time = (
+                new_start != row["start_at_utc"] or new_end != row["end_at_utc"]
+            )
+            cancelling = state == "CANCELLED" and row["status"] != "CANCELLED"
+            changing_content = title is not None or notes is not None
+            if cancelling or changing_time or changing_content:
+                # A confirmed plan and its materialized diary event are one
+                # lifecycle. Cancellation cascades; time edits shift linked
+                # reminders by the same delta; text-only edits keep reminders.
+                linked_diary_result = update_diary_event(
+                    actor,
+                    link["diary_id"],
+                    status="CANCELLED" if cancelling else None,
+                    start_local=start_local if changing_time else None,
+                    end_local=end_local if changing_time else None,
+                    title=title,
+                    notes=notes,
+                    linked_reminders=(
+                        "cancel" if cancelling else ("shift" if changing_time else "keep")
+                    ),
+                )
+                if linked_diary_result.get("status") in {
+                    "needs_reminder_choice", "needs_conflict_resolution"
+                }:
+                    return {
+                        **linked_diary_result,
+                        "plan_id": plan_id,
+                        "plan_unchanged": True,
+                    }
+
         conn.execute(
             """UPDATE plans SET title=?,start_at_utc=?,end_at_utc=?,time_known=?,
                notes=?,status=?,updated_at_utc=? WHERE plan_id=?""",
@@ -339,7 +380,11 @@ def update_plan(actor: ActorContext, plan_id: str, status: str | None = None,
             ),
         )
         conn.commit()
-        return {"status": "updated", "plan_id": plan_id, "state": state}
+        return {
+            "status": "updated", "plan_id": plan_id, "state": state,
+            "linked_diary_id": link["diary_id"] if link else None,
+            "linked_diary_updated": bool(linked_diary_result),
+        }
     finally:
         conn.close()
 

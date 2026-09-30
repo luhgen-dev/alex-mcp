@@ -99,7 +99,10 @@ def sweep():
             permanent_error = False
             # Reminder rows are cancellable while still queued. Never deliver a
             # stale reminder after the user completed/cancelled it.
-            if row["context_kind"] in ("REMINDER_INITIAL", "REMINDER_FOLLOWUP") and row["context_id"]:
+            if row["context_kind"] in (
+                "REMINDER_INITIAL", "REMINDER_FOLLOWUP",
+                "REMINDER_CLAIMANT_FOLLOWUP", "REMINDER_FAMILY_RESURFACE",
+            ) and row["context_id"]:
                 reminder = conn.execute(
                     "SELECT status FROM reminders WHERE reminder_id=?",
                     (row["context_id"],),
@@ -129,19 +132,26 @@ def sweep():
                        provider_message_id=? WHERE outbound_id=?""",
                     (attempts, delivered, _provider_message_id(detail), row["outbound_id"]),
                 )
-                if row["context_kind"] in ("REMINDER_INITIAL", "REMINDER_FOLLOWUP") and row["context_id"]:
+                if row["context_kind"] in (
+                    "REMINDER_INITIAL", "REMINDER_FOLLOWUP",
+                    "REMINDER_CLAIMANT_FOLLOWUP", "REMINDER_FAMILY_RESURFACE",
+                ) and row["context_id"]:
                     if row["context_kind"] == "REMINDER_INITIAL":
                         conn.execute(
                             "UPDATE reminders SET last_fired_at_utc=? WHERE reminder_id=?",
                             (delivered, row["context_id"]),
                         )
                         event_type = "DELIVERED"
-                    else:
+                    elif row["context_kind"] == "REMINDER_FOLLOWUP":
                         conn.execute(
                             "UPDATE reminders SET last_follow_up_at_utc=? WHERE reminder_id=?",
                             (delivered, row["context_id"]),
                         )
                         event_type = "FOLLOW_UP_DELIVERED"
+                    elif row["context_kind"] == "REMINDER_CLAIMANT_FOLLOWUP":
+                        event_type = "CLAIMANT_FOLLOW_UP_DELIVERED"
+                    else:
+                        event_type = "FAMILY_RESURFACED_DELIVERED"
                     conn.execute(
                         """INSERT INTO reminder_events(
                             event_id,reminder_id,event_type,note

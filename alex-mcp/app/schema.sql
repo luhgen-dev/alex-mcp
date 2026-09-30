@@ -181,6 +181,11 @@ CREATE TABLE IF NOT EXISTS reminders (
     last_follow_up_at_utc TEXT,
     next_delivery_at_utc TEXT,
     defer_reason TEXT,
+    claimable INTEGER NOT NULL DEFAULT 0 CHECK(claimable IN (0,1)),
+    claimed_by_user_id TEXT,
+    claimed_at_utc TEXT,
+    claimant_follow_up_at_utc TEXT,
+    family_resurfaced_at_utc TEXT,
     created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(source_message_id) REFERENCES inbound_messages(message_id),
     FOREIGN KEY(owner_id) REFERENCES users(user_id),
@@ -216,6 +221,18 @@ CREATE TABLE IF NOT EXISTS media_selection_sets (
 CREATE INDEX IF NOT EXISTS idx_media_selection_context
 ON media_selection_sets(user_id,conversation_id,created_at_utc);
 
+CREATE TABLE IF NOT EXISTS active_report_contexts (
+    user_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    report_kind TEXT NOT NULL,
+    period TEXT,
+    payload_json TEXT NOT NULL,
+    spec_json TEXT,
+    created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY(user_id,conversation_id),
+    FOREIGN KEY(user_id) REFERENCES users(user_id)
+);
+
 CREATE TABLE IF NOT EXISTS reminder_events (
     event_id TEXT PRIMARY KEY,
     reminder_id TEXT NOT NULL,
@@ -232,6 +249,23 @@ CREATE TABLE IF NOT EXISTS reminder_events (
     FOREIGN KEY(reminder_id) REFERENCES reminders(reminder_id)
 );
 CREATE INDEX IF NOT EXISTS idx_reminder_events ON reminder_events(reminder_id,created_at_utc);
+
+CREATE TABLE IF NOT EXISTS reminder_claim_events (
+    claim_event_id TEXT PRIMARY KEY,
+    reminder_id TEXT NOT NULL,
+    actor_user_id TEXT,
+    event_type TEXT NOT NULL CHECK(event_type IN (
+        'CLAIMED','RELEASED','CLEARED_COMPLETED','CLEARED_CANCELLED'
+    )),
+    provider_message_id TEXT,
+    reaction_text TEXT,
+    note TEXT,
+    created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(reminder_id) REFERENCES reminders(reminder_id),
+    FOREIGN KEY(actor_user_id) REFERENCES users(user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_reminder_claim_events
+ON reminder_claim_events(reminder_id,created_at_utc);
 
 CREATE TABLE IF NOT EXISTS savings_goals (
     goal_id TEXT PRIMARY KEY,
@@ -551,6 +585,36 @@ CREATE TABLE IF NOT EXISTS monitor_notifications (
 );
 CREATE INDEX IF NOT EXISTS idx_monitor_owner
 ON monitor_notifications(owner_id,queued_at_utc);
+
+CREATE TABLE IF NOT EXISTS pending_error_reports (
+    user_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    target_outbound_id TEXT NOT NULL,
+    target_provider_message_id TEXT,
+    target_source_message_id TEXT,
+    created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY(user_id,conversation_id),
+    FOREIGN KEY(user_id) REFERENCES users(user_id),
+    FOREIGN KEY(target_outbound_id) REFERENCES outbound_messages(outbound_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_reported_errors (
+    error_id TEXT PRIMARY KEY,
+    reporter_user_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    target_outbound_id TEXT NOT NULL,
+    target_provider_message_id TEXT,
+    target_source_message_id TEXT,
+    user_explanation TEXT NOT NULL,
+    detection_state TEXT NOT NULL
+        CHECK(detection_state IN ('detected-by-Alex','reported-by-user','both')),
+    bundle_json TEXT NOT NULL,
+    created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(reporter_user_id) REFERENCES users(user_id),
+    FOREIGN KEY(target_outbound_id) REFERENCES outbound_messages(outbound_id)
+);
+CREATE INDEX IF NOT EXISTS idx_user_reported_errors_actor
+ON user_reported_errors(reporter_user_id,created_at_utc);
 
 CREATE TABLE IF NOT EXISTS diagnostic_runs (
     run_id TEXT PRIMARY KEY,

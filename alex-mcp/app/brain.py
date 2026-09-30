@@ -186,7 +186,7 @@ CORE_FINANCE = {
 }
 MEDIA_TOOLS = {"find_media","get_media_original","resolve_numbered_choice"}
 MEMORY_TOOLS = {"save_item","search_saved_items","get_saved_item","remove_saved_item","resolve_numbered_choice"}
-REMINDER_TOOLS = {"create_reminder","list_reminders","update_reminder","reminder_history"}
+REMINDER_TOOLS = {"create_reminder","list_reminders","update_reminder","reminder_history","release_reminder_claim"}
 SHOPPING_TOOLS = {"add_shopping_item","list_shopping_items","update_shopping_item"}
 DIARY_TOOLS = {
     "add_diary_event","resolve_diary_conflict","resolve_latest_diary_conflict",
@@ -199,28 +199,29 @@ WORK_TOOLS = {
     "work_leave_balance","work_departure_plan","list_work_roster",
 }
 PLANNING_TOOLS = {
-    "planning_create_goal","planning_lock_goal","planning_reopen_goal",
+    "planning_create_goal","planning_update_goal_target","planning_lock_goal","planning_reopen_goal",
     "planning_set_period_target","planning_change_goal_baseline",
     "planning_record_goal_contribution","planning_goal_progress",
     "planning_goal_deviation","planning_goal_projection",
     "planning_record_cash","planning_compare_salary",
     "planning_match_goal_alias","planning_cash_status",
     "planning_allocate_cash_to_goal","planning_create_cash_pool",
-    "planning_cash_pool_balance","planning_allocate_cash_to_pool",
+    "planning_cash_pool_balance","planning_declare_cash_pool_balance",
+    "planning_record_cash_pool_spend","planning_allocate_cash_to_pool",
     "planning_add_reserve","planning_update_reserve","planning_list_reserves",
     "planning_baseline","planning_income_outlook",
-    "planning_cashflow","planning_brief","planning_list_goals","calculate",
+    "planning_cashflow","planning_cash_outflow","planning_brief","planning_list_goals","calculate",
 }
 BILL_TOOLS = {"bills_list","bills_match_payment","bills_record_payment","bills_defer","bills_confirm_unpaid"}
 HOME_TOOLS = {"ha_find_entities","ha_get_state","ha_home_summary","ha_home_report","ha_draft_automation","ha_control"}
-HOME_READ_TOOLS = {"ha_find_entities","ha_get_state","ha_home_summary","ha_home_report","ha_draft_automation"}
+HOME_READ_TOOLS = {"ha_find_entities","ha_get_state","ha_home_summary","ha_draft_automation"}
 PLAN_TOOLS = {"create_plan","list_plans","update_plan","confirm_plan","share_plan"}
 TASK_TOOLS = {"create_task","list_tasks","update_task","complete_task","reopen_task","cancel_task"}
 DIARY_EVENT_TOOLS = {"add_diary_event","update_diary_event","get_agenda","get_agenda_range","check_my_availability","check_spouse_availability","resolve_diary_conflict","resolve_latest_diary_conflict"}
 FINANCE_READ_TOOLS = {"query_finances","find_receipts","get_receipt","calculate"}
-ASSET_TOOLS = {"asset_create","asset_link_document","asset_list","warranty_expiring"}
+ASSET_TOOLS = {"asset_create","asset_update","asset_link_document","asset_list","warranty_expiring"}
 DIAGNOSTIC_TOOLS = {"system_health","recent_failures"}
-MONITOR_TOOLS = {"monitor_delegate","monitor_list","monitor_cancel"}
+MONITOR_TOOLS = {"monitor_delegate","monitor_home_state","monitor_list","monitor_cancel"}
 REPORT_TOOLS = {"report_snapshot","report_export","report_payload"}
 LEGACY_SIMPLE_PLANNING = {
     "set_goal","list_goals","set_cashflow_baseline","get_cashflow_baseline",
@@ -229,6 +230,10 @@ LEGACY_SIMPLE_PLANNING = {
 }
 
 
+# Preserve the proven six-tool provider budget. Deterministic routing may use
+# all six slots; semantic discovery is added only when a slot is free, so it
+# never evicts a known capability and never increases provider schema cost.
+TOOL_DOMAIN_MAX = 6
 TOOL_EXPOSURE_MAX = 6
 MAX_MODEL_CALLS = 4
 
@@ -259,9 +264,10 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
         "list_reminders": (r"list|what reminders|reminders", 95),
         "update_reminder": (r"cancel|complete|ack|snooze|defer|reschedule", 115),
         "reminder_history": (r"history|what happened|reminder history", 105),
+        "release_reminder_claim": (r"(?:release|unclaim).*reminder|(?:i can'?t|cannot|can not).*do it|release this", 145),
         "add_shopping_item": (r"add|buy|need|shopping", 105),
         "list_shopping_items": (r"list|shopping|grocery", 95),
-        "update_shopping_item": (r"bought|purchased|remove|delete", 110),
+        "update_shopping_item": (r"bought|purchased|remove|delete|rename|correct|not .* but|change .* shopping", 126),
         "save_item": (r"save|remember", 115),
         "search_saved_items": (r"find|search|remember|saved", 105),
         "get_saved_item": (r"show|open|original|saved", 95),
@@ -278,7 +284,7 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
         "list_plans": (r"plans|what.*plan|show.*(?:plan|draft)|draft.*so far|what do we have.*trip", 124),
         "create_task": (r"(?:add|make|create|need).*?\btask\b|\btask\b.*(?:for|under)", 138),
         "list_tasks": (r"what.*tasks|show.*tasks|unfinished tasks|left to do|active tasks", 136),
-        "update_task": (r"(?:change|update|edit).*\btask\b|task.*(?:title|note)", 140),
+        "update_task": (r"(?:change|update|edit|rename).*\btask\b|task.*(?:title|note|name)", 140),
         "complete_task": (r"(?:mark|complete|finish).*\btask\b.*(?:done|complete)?|task.*\bdone\b", 142),
         "reopen_task": (r"reopen.*\btask\b|task.*back to open", 144),
         "cancel_task": (r"(?:cancel|remove).*\btask\b", 143),
@@ -292,7 +298,8 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
         "list_leave_records": (r"leave entries|leave records|recorded leave|show.*leave", 124),
         "list_work_roster": (r"roster entries|roster records|show.*roster", 118),
         "work_departure_plan": (r"leave home|depart|departure|alarm|travel time", 126),
-        "planning_create_goal": (r"(?:create|start).*goal|new goal|save for|savings?\s+goal|goal.*target", 128),
+        "planning_create_goal": (r"(?:create|start).*goal|new goal|save for|savings?\s+goal", 128),
+        "planning_update_goal_target": (r"(?:change|update|edit|raise|lower).*goal.*target|goal.*target.*(?:to|=)", 142),
         "planning_lock_goal": (r"lock.*goal|activate.*goal|confirm.*goal", 122),
         "planning_reopen_goal": (r"reopen.*goal|resume.*goal", 120),
         "planning_set_period_target": (r"this month|this period|only this month|enough this month", 124),
@@ -305,7 +312,10 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
         "planning_allocate_cash_to_goal": (r"allocate|put.*goal|channel.*goal", 118),
         "planning_create_cash_pool": (r"create.*(?:stash|pool)|new.*(?:stash|pool)|stash called", 130),
         "planning_cash_pool_balance": (r"stash.*balance|pool.*balance|how much.*stash", 118),
-        "planning_allocate_cash_to_pool": (r"put.*stash|allocate.*pool|channel.*stash", 120),
+        "planning_allocate_cash_to_pool": (r"(?:put|allocate|channel).*?(?:stash|cash pool|buffer).*?(?:from|ot|bonus|cash event)", 120),
+        "planning_declare_cash_pool_balance": (r"\b(?:my\s+)?(?:stash|cash pool|buffer)\b.*\b(?:is|has|balance)\b.*\b(?:rm|myr|sgd|\d)", 145),
+        "planning_record_cash_pool_spend": (r"\b(?:spent|used|paid)\b.*\b(?:from|using)\b.*\b(?:stash|cash pool|buffer)\b", 145),
+        "planning_cash_outflow": (r"cash\s*outflow|money\s*out|total\s*outflow", 140),
         "planning_add_reserve": (r"reserve|allowance|keep aside|set aside", 112),
         "planning_update_reserve": (r"change.*reserve|change.*allowance|disable.*reserve|enable.*reserve", 120),
         "planning_list_reserves": (r"reserves|allowances|what.*reserve", 105),
@@ -320,19 +330,25 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
         "bills_record_payment": (r"record.*payment|paid.*bill|bill.*paid", 112),
         "bills_defer": (r"defer|postpone|new due", 120),
         "bills_confirm_unpaid": (r"unpaid|didn't pay|did not pay", 120),
-        "ha_find_entities": (r"light|switch|fan|climate|thermostat|media player|home assistant|\bac\b|air conditioner", 120),
+        "ha_find_entities": (r"light|switch|fan|climate|thermostat|media player|speaker|\btv\b|television|home assistant|\bac\b|aircon|air conditioner", 120),
         "ha_get_state": (r"state|is .* on|status", 108),
-        "ha_control": (r"turn on|turn off|toggle|set .*%|set temperature|play|pause", 125),
+        "ha_control": (r"turn on|turn off|switch on|switch off|toggle|set .*%|set .*temperature|change .*temperature|make .*\d+|play|pause", 125),
         "ha_home_summary": (r"home status|house status|what's on|whats on|at home|home right now", 125),
         "ha_home_report": (r"home.*report|house.*report|status.*image|status.*card", 120),
         "ha_draft_automation": (r"automation|automate|when .* then", 112),
         "asset_create": (r"(?:save|add|register|bought).*?(?:asset|appliance|device)|serial", 112),
+        "asset_update": (r"(?:change|update|edit).*?(?:asset|appliance|warranty)|warranty.*(?:expiry|expires|end).*(?:to|on)", 142),
         "asset_link_document": (r"warranty|manual|receipt.*asset|link.*document", 108),
         "asset_list": (r"assets|appliances|devices", 128),
         "warranty_expiring": (r"warranty.*expir|expiring.*warranty", 118),
         "system_health": (r"health|diagnostic|status.*alex|working", 110),
-        "recent_failures": (r"failed|failure|error|didn't reply|did not reply|why", 115),
+        "recent_failures": (r"failed|failures?|errors?|didn't reply|did not reply|why", 115),
         "monitor_delegate": (r"monitor|track|watch|keep an eye|follow", 112),
+        "monitor_home_state": (
+            r"(?:monitor|watch|tell me when|let me know when).*?"
+            r"(?:light|switch|fan|ac|aircon|air conditioner|thermostat|climate|tv|television|media player|speaker)",
+            150,
+        ),
         "monitor_list": (r"what.*monitor|list.*monitor|monitoring|tracking", 118),
         "monitor_cancel": (r"stop.*monitor|cancel.*monitor|stop tracking", 120),
         "report_snapshot": (r"report|summary|snapshot|overview", 105),
@@ -367,7 +383,7 @@ def _cap_tool_names(selected: set[str], user_text: str,
     the actual requested action under the six-tool budget.
     """
     required = (required or set()) & selected
-    if len(selected) <= TOOL_EXPOSURE_MAX:
+    if len(selected) <= TOOL_DOMAIN_MAX:
         return selected
     has_media = bool(media_context)
     required_ranked = sorted(
@@ -378,10 +394,10 @@ def _cap_tool_names(selected: set[str], user_text: str,
         selected - required,
         key=lambda name: (-_tool_priority(name, user_text, has_media), name),
     )
-    return set((required_ranked + remaining)[:TOOL_EXPOSURE_MAX])
+    return set((required_ranked + remaining)[:TOOL_DOMAIN_MAX])
 
 
-_HA_DEVICE = r"(?:light|fan|switch|ac|air conditioner|thermostat|climate)"
+_HA_DEVICE = r"(?:light|fan|switch|ac|aircon|air conditioner|thermostat|climate|tv|television|media player|speaker)"
 
 
 def _ha_action_requested(text: str) -> bool:
@@ -393,7 +409,9 @@ def _ha_action_requested(text: str) -> bool:
             rf"|\b(?:turn|switch)\b.{{0,60}}\b{_HA_DEVICE}\b.{{0,30}}\b(?:on|off)\b"
             rf"|\btoggle\b.{{0,60}}\b{_HA_DEVICE}\b"
             rf"|\bset\b.{{0,60}}\b{_HA_DEVICE}\b.*(?:%|degrees?|temperature)"
-            rf"|\b(?:play|pause)\b.*\b(?:media player|speaker|tv)\b",
+            rf"|\b(?:change|set|make)\b.{{0,60}}\b{_HA_DEVICE}\b.{{0,45}}(?:temperature\s*(?:to)?\s*)?\d+(?:\.\d+)?\s*(?:degrees?)?"
+            rf"|\b{_HA_DEVICE}\b.{{0,45}}\b(?:temperature\s*(?:to)?\s*)?\d+(?:\.\d+)?\s*(?:degrees?)?"
+            rf"|\b(?:play|pause)\b.*\b(?:media player|speaker|tv|television)\b",
             low,
         )
     )
@@ -434,7 +452,7 @@ _NEGATED_ACTION_PHRASE_RE = re.compile(
     r"(?:actually\s+)?(?:add|create|record|log|save|remember|remove|delete|mark|"
     r"complete|finish|reopen|cancel|update|change|edit|correct|fix|move|"
     r"reschedule|allocate|channel|lock|activate|defer|turn|switch|set|link|"
-    r"share|publish|confirm|approve)\b",
+    r"share|publish|confirm|approve|forget|rename|snooze|undo|unmark|postpone|drop)\b",
     re.IGNORECASE,
 )
 
@@ -546,13 +564,19 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         force.add("save_item")
     if re.search(r"\b(?:delete|remove)\b.*\b(?:saved|memory|note|remembered)\b", low):
         force.add("remove_saved_item")
+    if (
+        re.search(r"\b(?:forget|erase)\b.*\b(?:saved|memory|note|password|code|where|item)?", low)
+        and not re.search(r"\b(?:don't|dont|do\s+not)\s+forget\b", low)
+    ):
+        force |= {"remove_saved_item", "search_saved_items"}
 
     # Shopping adds include natural household phrasing such as "we need milk".
     # Tentative wording still exposes the add capability so the model can ask
     # for confirmation; it does not perform the mutation deterministically.
     shopping_update = bool(re.search(
-        r"\b(?:remove|delete)\b.*\b(?:shopping|grocery|list|bananas?|milk|diapers?|bread)\b"
-        r"|\b(?:mark|already)\b.*\b(?:bought|done)\b",
+        r"\b(?:remove|delete|rename|correct|change)\b.*\b(?:shopping|grocery|list|bananas?|milk|diapers?|bread|item)\b"
+        r"|\b(?:mark|already)\b.*\b(?:bought|done)\b"
+        r"|\b[^,.!?]{1,60}\bnot\b[^,.!?]{1,60}\b(?:shopping|list|toothpaste|toothbrush)\b",
         low,
     ))
     shopping_candidate = bool(re.search(
@@ -571,7 +595,16 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
     # Dedicated read/diagnostic domains must survive the six-tool cap.
     if re.search(r"\b(?:appliances?|assets?|warrant(?:y|ies))\b", low):
         force |= {"asset_list", "warranty_expiring"}
-    if re.search(r"\b(?:recent\s+alex\s+errors?|alex\s+healthy|alex\s+health|why did alex fail)\b", low):
+    if re.search(
+        r"\b(?:change|update|edit)\b.*\b(?:asset|appliance|warranty)\b"
+        r"|\bwarranty\b.*\b(?:expiry|expires|end)\b.*\b(?:to|on)\b",
+        low,
+    ):
+        force.add("asset_update")
+        # Editing an existing asset must never advertise asset creation as an
+        # alternative action; that was the source of live false-success risk.
+        block.add("asset_create")
+    if re.search(r"\b(?:recent\s+(?:alex\s+)?(?:errors?|failures?)|alex\s+healthy|alex\s+health|why did alex fail)\b", low):
         force |= {"recent_failures", "system_health"}
 
     # A polite wrapper around a numeric follow-up is still the persisted
@@ -595,7 +628,7 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         low,
     ))
     task_update = bool(re.search(
-        r"\b(?:change|update|edit)\b.*\btask\b|\btask\b.*\b(?:title|note)\b",
+        r"\b(?:change|update|edit|rename)\b.*\btask\b|\btask\b.*\b(?:title|note|name)\b",
         low,
     ))
     task_complete = bool(re.search(
@@ -628,6 +661,17 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         # not silently degrade into a plan edit or a reminder.
         block |= {"create_plan", "create_reminder"}
 
+    natural_day_plan = bool(
+        re.search(
+            r"\b(?:what(?:'s| is)?|show me|tell me)\b.*\b(?:my\s+)?plan\b.*"
+            r"\b(?:today|tomorrow|tonight|this morning|this afternoon|this evening|next\s+(?:day|week|monday|tuesday|wednesday|thursday|friday|saturday|sunday))\b",
+            low,
+        )
+        or (
+            re.search(r"\b(?:naalaiku|naalku|nalaiku|nalaki)\b", low)
+            and re.search(r"\bplan\b", low)
+        )
+    )
     plan_read = bool(
         re.search(r"\b(?:show|what|remind me what)\b.*\b(?:plan|draft|planned|decided)\b", low)
         or re.search(r"\bwhat (?:do we have planned|have we decided)\b", low)
@@ -636,7 +680,10 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         re.search(r"\b(?:start|create|brainstorm)\b.*\b(?:plan|draft)\b", low)
         or re.search(r"\blet'?s (?:start )?planning\b", low)
     )
-    if plan_read and not plan_create:
+    if natural_day_plan:
+        force.add("get_agenda_range")
+        block |= {"list_plans", "create_plan"}
+    elif plan_read and not plan_create:
         force.add("list_plans")
         block.add("create_plan")
         if re.search(r"\bremind me what\b", low):
@@ -654,6 +701,48 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         force.add("get_agenda_range")
         block.add("add_diary_event")
 
+    if (
+        re.search(r"\b(?:change|update|edit|raise|lower)\b.*\bgoal\b.*\btarget\b", low)
+        or re.search(
+            r"\b(?:change|update|edit|raise|lower)\b.*\b(?:savings?|target)\b"
+            r".*\btarget\b.*\b(?:rm|myr|sgd|\d)",
+            low,
+        )
+    ):
+        force.add("planning_update_goal_target")
+        block.add("planning_create_goal")
+        # A named savings target is a goal mutation, not a holiday/trip plan.
+        if re.search(r"\b(?:savings?|goal)\b", low):
+            block |= PLAN_TOOLS
+    if re.search(
+        r"\b(?:my\s+)?(?:stash|cash pool|buffer)\b.*\b(?:is|has|balance)\b.*\b(?:rm|myr|sgd|\d)",
+        low,
+    ):
+        force |= {"planning_declare_cash_pool_balance", "planning_cash_pool_balance"}
+        # A declared balance is a fact about current state, not new cash and not
+        # an allocation instruction. Keep allocation/income mutators out.
+        block |= {
+            "planning_record_cash",
+            "planning_allocate_cash_to_goal",
+            "planning_allocate_cash_to_pool",
+        }
+    if re.search(
+        r"\b(?:spent|used|paid)\b.*\b(?:from|using)\b.*\b(?:stash|cash pool|buffer)\b",
+        low,
+    ):
+        force |= {"planning_record_cash_pool_spend", "planning_cash_pool_balance"}
+    if re.search(
+        r"\bcash\s*outflow\b|\btotal\s*outflow\b"
+        r"|\bmoney\b.*\b(?:went|goes?|going)\s+out\b"
+        r"|\bhow much\b.*\bwent\s+out\b"
+        r"|\boutflow\b.*\b(?:savings?|contributions?|transfers?)\b",
+        low,
+    ):
+        force.add("planning_cash_outflow")
+        # The broad outflow view is intentionally richer than the expense
+        # ledger; exposing query_finances encouraged the model to answer with
+        # expenses only, which is the live smoke failure.
+        block.add("query_finances")
     if re.search(r"\b(?:put|allocate|channel)\b.*\b(?:stash|cash pool|buffer)\b", low):
         force.add("planning_allocate_cash_to_pool")
     if re.search(r"\b(?:create|make)\b.*\b(?:cash\s+pool|stash)\b", low):
@@ -701,6 +790,13 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
 
     if re.search(r"\b(?:monitor|track)\b.*\b(?:goal|payment|bill|subject)\b", low):
         force.add("monitor_delegate")
+    if re.search(
+        r"\b(?:monitor|watch|tell me when|let me know when)\b.*"
+        r"\b(?:light|switch|fan|ac|aircon|air conditioner|thermostat|climate|tv|television|media player|speaker)\b",
+        low,
+    ):
+        force |= {"ha_find_entities", "ha_get_state", "monitor_home_state"}
+        force.discard("monitor_delegate")
     if re.search(r"\b(?:stop monitoring|cancel .*tracking|stop tracking)\b", low):
         force.discard("monitor_delegate")
         force.add("monitor_cancel")
@@ -710,6 +806,18 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         low,
     ):
         force.add("work_record_event")
+    if re.search(
+        r"\b(?:i(?:'m| am| will be)?\s+(?:on\s+)?)?(?:annual leave|medical leave|mc)\b",
+        low,
+    ) and re.search(
+        r"\b(?:today|tomorrow|yesterday|on\s+\d|on\s+(?:mon|tue|wed|thu|fri|sat|sun)|"
+        r"\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec))",
+        low,
+    ):
+        # Natural personal leave statements are work-state facts, not employer
+        # booking requests and not generic saved-memory writes.
+        force |= {"set_leave_record", "list_leave_records"}
+        block |= {"save_item", "create_plan"}
     if re.search(
         r"\b(?:recorded leave|leave entries|planned and taken leave|leave records?)\b"
         r"|\bwhat leave do i have recorded\b"
@@ -776,6 +884,19 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
     elif ha_switch:
         force.add("ha_control")
 
+    # Reminder-specific "due" is not a bill signal. Keep the reminder domain
+    # authoritative so natural readback cannot be crowded out by five bill tools.
+    if re.search(r"\bremind(?:er|ers)?\b", low) and re.search(r"\bdue\b", low):
+        force |= {"list_reminders", "reminder_history"}
+        block |= BILL_TOOLS
+    if re.search(
+        r"\b(?:release|unclaim)\b.*\breminder\b"
+        r"|\b(?:i can'?t|i cannot|i can not)\b.*\b(?:do|handle)\b.*\b(?:it|this)\b"
+        r"|\brelease this\b",
+        low,
+    ):
+        force |= {"release_reminder_claim", "list_reminders"}
+
     # Frequent phone-typing reminder misspellings still have a deterministic,
     # safe action path instead of being crowded out by bill tools.
     if re.search(r"\b(?:rember|remnder|remidn|remindn|remidr)\b", low):
@@ -841,6 +962,11 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
         selected |= CORE_FINANCE | MEMORY_TOOLS
         if re.search(r"warrant|manual|serial|appliance|product", low):
             selected |= ASSET_TOOLS
+        if re.search(r"\bgoal\b|\bsavings?\b", low):
+            selected |= {
+                "planning_record_goal_contribution", "planning_goal_progress",
+                "planning_list_goals", "find_receipts", "get_receipt",
+            }
 
     if re.search(r"\b(?:spent|spend|expenses?|paid|payments?|transactions?|receipt|duitnow|bank|how much|how many|total|breakdown|refund|spending)\b", low):
         money_signal = bool(re.search(
@@ -896,15 +1022,22 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
         selected |= MEMORY_TOOLS
     if re.search(r"\b(?:warranty|warranties|manual|serial number|appliance|asset)\b", low):
         selected |= ASSET_TOOLS | MEMORY_TOOLS
-    if re.search(r"\b(?:light|switch|fan|thermostat|climate|media player|home assistant|ac|air conditioner|home status|at home|turn on|turn off|switch on|switch off|state of)\b", low):
+    if re.search(r"\b(?:light|switch|fan|thermostat|climate|media player|speaker|tv|television|home assistant|ac|aircon|air conditioner|home status|at home|turn on|turn off|switch on|switch off|state of)\b", low):
         selected |= HOME_READ_TOOLS
+        if re.search(
+            r"\b(?:home|house)\b.*\b(?:report|card|image|picture)\b"
+            r"|\b(?:status|current home status)\b.*\b(?:card|image|picture)\b"
+            r"|\b(?:image|picture|card)\b.*\b(?:home|house)\b.*\bstatus\b",
+            low,
+        ):
+            selected.add("ha_home_report")
         if (
             _ha_action_requested(low)
             and not _ha_negated_or_hypothetical(low)
             and not _ha_draft_request(low)
         ):
             selected.add("ha_control")
-    if re.search(r"\b(?:why didn't|why did not|health|diagnostic|fail|failed|failure|failing|error|offline|didn't reply|did not reply)\b", low):
+    if re.search(r"\b(?:why didn't|why did not|health|diagnostic|fail|failed|failures?|failing|errors?|offline|didn't reply|did not reply)\b", low):
         selected |= DIAGNOSTIC_TOOLS
     if re.search(r"\b(?:monitor|monitoring|track|tracking|watch this|proactive|follow this)\b", low):
         selected |= MONITOR_TOOLS
@@ -942,6 +1075,11 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
     selected -= LEGACY_SIMPLE_PLANNING
 
     forced, blocked = _routing_refinements(text, has_media=has_media)
+    if has_media and re.search(r"\b(?:goal|savings?)\b", low) and not re.search(
+        r"\b(?:expense|spent|shop|shopping|bill|utility|purchase)\b", low
+    ):
+        blocked |= {"log_expense", "correct_expense", "confirm_expense"}
+        forced |= {"planning_record_goal_contribution", "planning_goal_progress"}
     selected |= forced
     selected -= blocked
     return _cap_tool_names(selected, text, media_context, required=forced)
@@ -984,7 +1122,8 @@ _SEMANTIC_MUTATION_WORDS = {
     "add", "create", "record", "log", "change", "update", "remove", "delete",
     "mark", "complete", "finish", "reopen", "cancel", "move", "reschedule",
     "allocate", "lock", "activate", "defer", "turn", "switch", "set", "save",
-    "remember", "share", "confirm", "approve",
+    "remember", "share", "confirm", "approve", "forget", "rename", "snooze",
+    "undo", "unmark", "postpone", "drop",
 }
 
 
@@ -1007,6 +1146,7 @@ _TRUSTED_MUTATION_RE = re.compile(
     r"\b(?:add|create|record|log|save|remember|remove|delete|mark|complete|finish|"
     r"reopen|cancel|update|change|edit|correct|fix|move|reschedule|allocate|channel|"
     r"lock|activate|defer|turn|switch|set|link|share|publish|confirm|approve|"
+    r"forget|rename|snooze|undo|unmark|postpone|drop|"
     r"spent|paid|bought|received|credited|came\s+in)\b",
     re.IGNORECASE,
 )
@@ -1077,18 +1217,18 @@ async def _discover_tool_specs(
         for spec in direct_specs
         if spec.get("function", {}).get("name")
     }
-    if len(by_name) >= TOOL_EXPOSURE_MAX - 1:
+    if len(by_name) >= TOOL_DOMAIN_MAX:
         ranked = sorted(
             by_name.values(),
             key=lambda spec: -_tool_priority(
                 spec["function"]["name"], intent, bool(media_context)
             ),
         )
-        return ranked[:TOOL_EXPOSURE_MAX - 1]
+        return ranked[:TOOL_DOMAIN_MAX]
 
     terms = _semantic_terms(intent)
     if not terms:
-        return list(by_name.values())[:TOOL_EXPOSURE_MAX - 1]
+        return list(by_name.values())[:TOOL_DOMAIN_MAX]
     # Semantic action words in a model-written normalization are insufficient
     # to authorize writes; only the trusted user/quoted context can do that.
     async with Client(mcp) as client:
@@ -1115,7 +1255,7 @@ async def _discover_tool_specs(
 
     for _, name, spec in sorted(scored, key=lambda row: (-row[0], row[1])):
         by_name[name] = spec
-        if len(by_name) >= TOOL_EXPOSURE_MAX - 1:
+        if len(by_name) >= TOOL_DOMAIN_MAX:
             break
 
     ranked = sorted(
@@ -1124,7 +1264,7 @@ async def _discover_tool_specs(
             spec["function"]["name"], intent, bool(media_context)
         ),
     )
-    return ranked[:TOOL_EXPOSURE_MAX - 1]
+    return ranked[:TOOL_DOMAIN_MAX]
 
 
 def _pure_chat(user_text: str, media_context: list[str] | None = None) -> bool:
@@ -1298,7 +1438,12 @@ async def _tool_specs(user_text: str, media_context: list[str] | None = None,
     # The discovery tool is a tiny safety valve for typo-heavy, incomplete,
     # Tanglish or otherwise novel phrasing. It lets the LLM normalize intent
     # without exposing Alex's full MCP catalog or adding a separate classifier call.
-    if len(specs) < TOOL_EXPOSURE_MAX and not _pure_chat(user_text, media_context):
+    if (
+        not _pure_chat(user_text, media_context)
+        and len(specs) < TOOL_EXPOSURE_MAX
+    ):
+        # Discovery uses only spare provider budget. High-confidence routes are
+        # never crowded out, and total exposed schemas remain capped at six.
         specs.append(DISCOVERY_TOOL)
     return specs[:TOOL_EXPOSURE_MAX]
 
@@ -1649,7 +1794,7 @@ def _needs_exact_clock(user_text: str) -> bool:
     low = (user_text or "").casefold()
     return bool(re.search(
         r"\b(?:right\s+now|from\s+now|within\s+\d+\s*(?:min|minute|hour)|"
-        r"in\s+\d+\s*(?:min|minute|hour)s?)\b",
+        r"in\s+\d+\s*(?:min|minute|hour)s?|for\s+\d+\s*(?:min|minute|hour)s?)\b",
         low,
     ))
 
@@ -1797,6 +1942,7 @@ READ_ONLY_TOOLS = {
     "check_spouse_availability","get_cashflow_baseline","system_health",
     "recent_failures","planning_goal_progress","planning_goal_deviation",
     "planning_cash_status","planning_cash_pool_balance","planning_cashflow",
+    "planning_cash_outflow",
     "planning_brief","planning_list_goals","planning_list_reserves",
     "planning_baseline","planning_income_outlook","planning_goal_projection",
     "planning_compare_salary","planning_match_goal_alias","bills_list",
@@ -2028,7 +2174,7 @@ def _attachment_request_finished(trace: dict) -> bool:
 _CAPABILITY_DENIAL_RE = re.compile(
     r"\b(?:i\s+)?(?:do\s+not|don't|dont)\s+have\s+(?:the\s+)?(?:ability|capability|access)\b"
     r"|\b(?:i\s+)?(?:cannot|can't|cant|am\s+unable\s+to|am\s+not\s+able\s+to)\s+"
-    r"(?:access|update|change|mark|add|remove|retrieve|check|manage|do)\b",
+    r"(?:access|update|change|mark|add|remove|retrieve|check|manage|do|look\s*up|find|see|rename|forget|snooze)\b",
     re.IGNORECASE,
 )
 
@@ -2056,11 +2202,7 @@ def _requested_non_english_output(user_text: str) -> bool:
 
 
 def _looks_like_wrong_language_reply(text: str, user_text: str = "") -> bool:
-    """Catch obvious Malay/Indonesian answer drift when English is required.
-
-    This is deliberately narrow: Malay remains valid input, and an explicit
-    request for another output language always wins.
-    """
+    """Catch obvious Malay/Indonesian/Tamil output drift when English is required."""
     if _requested_non_english_output(user_text):
         return False
     value = text or ""
@@ -2069,14 +2211,98 @@ def _looks_like_wrong_language_reply(text: str, user_text: str = "") -> bool:
         "mohon maaf", "apakah anda", "silakan", "bermaksud",
         "sebelumnya", "jika anda", "ingin saya", "perlu saya",
     )
-    # Tamil is a supported *input* language, but Alex's owner-selected default
-    # output is English. A fully Tamil answer without an explicit language
-    # request is therefore the same drift class as the observed Indonesian
-    # response.
     tamil_chars = len(re.findall(r"[\u0B80-\u0BFF]", value))
     return (
         sum(1 for marker in markers if marker in low) >= 2
         or tamil_chars >= 4
+    )
+
+
+_REPAIR_SCAFFOLD_RE = re.compile(
+    r"\b(?:my previous response|previous answer analysis|now rewrite|"
+    r"self[- ]correction|constraint check|system message|assistant message|"
+    r"rewrite only|role:\s*(?:assistant|system|user))\b",
+    re.IGNORECASE,
+)
+
+
+def _validated_rewrite(original: str, rewritten: str) -> str | None:
+    """Accept only a compact user-facing rewrite; never leak repair scaffolding."""
+    value = (rewritten or "").strip()
+    if not value or _REPAIR_SCAFFOLD_RE.search(value):
+        return None
+    # A translation/rewrite should not explode into model analysis.
+    original_len = max(1, len((original or "").strip()))
+    if len(value) > max(700, int(original_len * 2.5)):
+        return None
+    return value
+
+
+_SUCCESS_CLAIM_RE = re.compile(
+    r"\b(?:done|successfully|i(?:'ve| have)\s+(?:updated|saved|corrected|"
+    r"rescheduled|recorded|contributed|added|changed|created|completed|cancelled|"
+    r"canceled|renamed|snoozed|deferred|removed|marked)|"
+    r"(?:has|have|was|were)\s+(?:been\s+)?(?:updated|saved|corrected|"
+    r"rescheduled|recorded|added|changed|created|completed|cancelled|canceled|"
+    r"renamed|snoozed|deferred|removed|marked))\b",
+    re.IGNORECASE,
+)
+_SUCCESS_NEGATION_RE = re.compile(
+    r"\b(?:couldn't|could not|didn't|did not|unable|failed|not\s+(?:yet\s+)?)\b",
+    re.IGNORECASE,
+)
+_NON_COMMITTED_STATUSES = {
+    "clarification_required", "still_needs_information", "not_pending",
+    "not_found", "no_match", "refused", "failed", "error",
+    "requested_unconfirmed", "unsupported",
+}
+
+
+def _looks_like_success_claim(text: str) -> bool:
+    value = text or ""
+    if _SUCCESS_NEGATION_RE.search(value):
+        return False
+    return bool(_SUCCESS_CLAIM_RE.search(value))
+
+
+def _mutation_result_committed(
+    tool_name: str, result: dict | None, *, has_media: bool = False
+) -> tuple[bool, str]:
+    """Normalize authoritative tool outcomes for user-visible success claims."""
+    if not isinstance(result, dict):
+        return False, "tool returned no structured result"
+    if result.get("error"):
+        return False, str(result.get("error"))[:240]
+    status = str(result.get("status") or "").strip().casefold()
+    if status in _NON_COMMITTED_STATUSES:
+        return False, status
+    if tool_name == "save_item" and has_media and result.get("media_saved") is False:
+        return False, "requested media was not persisted"
+    if tool_name == "ha_control" and status != "executed_and_verified":
+        return False, status or "device state was not verified"
+    # An idempotent replay whose desired state already exists is safe to
+    # acknowledge; the important invariant is that the state is authoritative.
+    return True, status or "committed"
+
+
+def _guard_mutation_success(
+    candidate: str, user_text: str, mutation_ledger: list[dict]
+) -> str:
+    if not _trusted_mutation_requested(user_text) or not _looks_like_success_claim(candidate):
+        return candidate
+    committed = [x for x in mutation_ledger if x.get("committed")]
+    failed = [x for x in mutation_ledger if not x.get("committed")]
+    if committed and not failed:
+        return candidate
+    if committed and failed:
+        return (
+            "I completed part of that request, but I couldn't verify every requested change. "
+            "I won't claim the rest was done."
+        )
+    reason = failed[-1].get("reason") if failed else "no committed mutation was returned"
+    return (
+        "I couldn't verify that change, so I won't claim it was completed. "
+        f"Reason: {reason}."
     )
 
 
@@ -2161,6 +2387,17 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
             "role": "system",
             "content": "The current user message is a transcribed WhatsApp voice note from the user.",
         })
+    if (
+        re.search(r"[\u0B80-\u0BFF]", user_text or "")
+        and not _requested_non_english_output(user_text)
+    ):
+        messages.append({
+            "role": "system",
+            "content": (
+                "The user's current message may be Tamil. Understand the Tamil request, "
+                "but answer the user in concise English unless they explicitly requested another language."
+            ),
+        })
     trusted_quote = _quoted_context_message(quoted_context)
     if trusted_quote:
         messages.append({"role": "system", "content": trusted_quote})
@@ -2202,6 +2439,7 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
     provider_failures: list[dict] = []
     capability_retry_used = False
     language_retry_used = False
+    mutation_ledger: list[dict] = []
 
     for _ in range(MAX_MODEL_CALLS):
         # If the cheap model is genuinely looping through tools, escalate the
@@ -2286,42 +2524,67 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                 and _looks_like_false_capability_denial(candidate)
             ):
                 capability_retry_used = True
-                messages.append({"role": "assistant", "content": candidate})
+                # Re-issue the trusted current request instead of appending the
+                # rejected assistant answer. This prevents a repair prompt from
+                # becoming conversational authority on the next model turn.
                 messages.append({
                     "role": "system",
                     "content": (
-                        "Re-evaluate that answer. Alex has the MCP tools currently supplied to you. "
+                        "Re-evaluate the user's current request using the MCP tools supplied to you. "
                         "Do not claim a capability is unavailable before trying the relevant tool. "
-                        "Use the appropriate supplied tool, use discover_alex_tools if needed, or ask "
-                        "one focused clarification when the user's intent is genuinely ambiguous. "
-                        "Reply in English."
+                        "Use discover_alex_tools if needed, or ask one focused clarification when "
+                        "the intent is genuinely ambiguous. Reply in English."
                     ),
+                })
+                messages.append({
+                    "role": "user",
+                    "content": current_content if vision_parts else current,
                 })
                 trace["routes"].append("self_repair:capability_denial")
                 continue
 
-            # The system contract requires English unless the user explicitly
-            # asks otherwise. A narrow post-answer guard repairs the exact
-            # Malay/Indonesian drift seen in live voice testing. No tools are
-            # exposed during this rewrite, so committed actions cannot repeat.
+            # Language repair is isolated from the household conversation.
+            # The rejected answer and the rewrite instruction are never appended
+            # to live history, so provider scaffolding cannot contaminate later turns.
             if (
                 not language_retry_used
                 and _looks_like_wrong_language_reply(candidate, user_text)
             ):
                 language_retry_used = True
-                messages.append({"role": "assistant", "content": candidate})
-                messages.append({
-                    "role": "system",
-                    "content": (
-                        "Rewrite only your immediately previous answer in concise English. "
-                        "Preserve its factual meaning. Do not perform or repeat any household action."
-                    ),
-                })
-                tools = []
                 trace["routes"].append("self_repair:reply_language")
-                continue
+                rewritten = None
+                try:
+                    rewrite_messages = [
+                        {
+                            "role": "system",
+                            "content": (
+                                "Translate the supplied assistant reply into concise natural English. "
+                                "Preserve facts exactly. Return only the user-facing answer, with no "
+                                "analysis, labels, commentary, or mention of rewriting."
+                            ),
+                        },
+                        {"role": "user", "content": candidate},
+                    ]
+                    rewrite_started = time.monotonic()
+                    rewrite_client = _client_for(active_route["provider"], settings)
+                    rewrite_response = rewrite_client.chat.completions.create(
+                        **_completion_kwargs(active_route, rewrite_messages, [], actor)
+                    )
+                    rewrite_ms = int((time.monotonic() - rewrite_started) * 1000)
+                    rewrite_msg = rewrite_response.choices[0].message
+                    rewritten = _validated_rewrite(
+                        candidate, _content_text(rewrite_msg.content)
+                    )
+                    _accumulate_usage(
+                        usage_by_route, active_route,
+                        getattr(rewrite_response, "usage", None),
+                        rewrite_ms, had_tool_calls=False,
+                    )
+                except Exception:
+                    rewritten = None
+                candidate = rewritten or candidate
 
-            final = candidate
+            final = _guard_mutation_success(candidate, user_text, mutation_ledger)
             _record_usage_buckets(actor.source_message_id, usage_by_route)
             add_turn(actor.user_id, actor.conversation_id, "user", history_user)
             add_turn(actor.user_id, actor.conversation_id, "assistant", final)
@@ -2358,7 +2621,9 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                     original_user_text=user_text,
                     trusted_context_text=trusted_context_text,
                 )
-                tools = discovered_specs[:TOOL_EXPOSURE_MAX - 1] + [DISCOVERY_TOOL]
+                # Discovery has already done its job. The next reasoning round
+                # receives only the resolved domain tools, still capped at six.
+                tools = discovered_specs[:TOOL_EXPOSURE_MAX]
                 trace["exposed_tools"] = sorted(set(trace["exposed_tools"]) | {
                     x["function"]["name"] for x in tools
                 })
@@ -2370,7 +2635,7 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                         "normalized_intent": normalized,
                         "tool_names": [
                             x["function"]["name"]
-                            for x in discovered_specs[:TOOL_EXPOSURE_MAX - 1]
+                            for x in discovered_specs[:TOOL_EXPOSURE_MAX]
                         ],
                         "semantic_rescue": True,
                     }, ensure_ascii=False, separators=(",", ":")),
@@ -2400,9 +2665,22 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                         "note": "Alex sends these original files with your reply automatically.",
                     }
                 trace["tools_called"].append(name)
+                if _is_mutating_tool(name):
+                    committed, reason = _mutation_result_committed(
+                        name, payload,
+                        has_media=bool(media_context or vision_parts or actor.media_ids),
+                    )
+                    mutation_ledger.append({
+                        "tool": name, "committed": committed, "reason": reason,
+                    })
             except Exception as exc:
                 payload = {"error": str(exc)[:1000]}
                 trace["tools_called"].append(name + ":error")
+                if _is_mutating_tool(name):
+                    mutation_ledger.append({
+                        "tool": name, "committed": False,
+                        "reason": str(exc)[:240],
+                    })
                 _audit(actor, name, args, payload, False, 0, action_key)
 
             messages.append({
@@ -2418,7 +2696,19 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
     elif attachments:
         final = "I sent the file, but I couldn't finish the rest of that request."
     else:
-        final = "I couldn't complete that safely after several tool steps. Nothing else was changed."
+        committed = [x for x in mutation_ledger if x.get("committed")]
+        if committed:
+            final = (
+                "I completed at least one requested change, but I couldn't finish the rest safely. "
+                "I won't claim the unfinished part was done."
+            )
+        elif _trusted_mutation_requested(user_text):
+            final = (
+                "I couldn't complete that safely after several tool steps, and no requested "
+                "change was verified."
+            )
+        else:
+            final = "I couldn't complete that safely after several tool steps."
     add_turn(actor.user_id, actor.conversation_id, "user", history_user)
     add_turn(actor.user_id, actor.conversation_id, "assistant", final)
     trace["outcome"] = "max_steps"
