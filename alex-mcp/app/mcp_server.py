@@ -134,12 +134,13 @@ def resolve_numbered_choice(choice: int, actor: Actor) -> dict:
 @mcp.tool()
 def create_reminder(task: str, due_local: str, actor: Actor,
                     recurrence_rule: str | None = None, shared: bool = False,
-                    recipient: str = "me", presence_aware: bool = False,
+                    recipient: str = "me", destination: str = "dm",
+                    presence_aware: bool = False,
                     delivery_class: str = "routine",
                     follow_up_after_hours: int = 24) -> dict:
-    """Create a durable reminder. recipient is me/spouse/husband/wife/both; routine reminders may use quiet/presence policy, while time_critical bypasses those deferrals."""
+    """Create a durable reminder. recipient chooses me/spouse/husband/wife/both. destination=dm sends to the intended person's DM regardless of where the command was issued; destination=group sends one Family Shared group reminder."""
     return services.create_reminder(
-        actor, task, due_local, recurrence_rule, shared, recipient,
+        actor, task, due_local, recurrence_rule, shared, recipient, destination,
         presence_aware, delivery_class, follow_up_after_hours,
     )
 
@@ -151,16 +152,21 @@ def list_reminders(actor: Actor, include_completed: bool = False, limit: int = 2
 
 
 @mcp.tool()
-def update_reminder(reminder_id: str, status: str, actor: Actor,
-                    new_due_local: str | None = None) -> dict:
-    """Complete, cancel, acknowledge, reopen or defer a reminder. Provide new_due_local when rescheduling."""
-    return services.update_reminder(actor, reminder_id, status, new_due_local)
+def update_reminder(reminder_id: str, actor: Actor, status: str = "open",
+                    new_due_local: str | None = None,
+                    snooze_minutes: int | None = None,
+                    snooze_until_local: str | None = None) -> dict:
+    """Complete/cancel/acknowledge/defer/reschedule a reminder. For relative snooze pass snooze_minutes; the backend computes now+N and reopens it."""
+    return services.update_reminder(
+        actor, reminder_id, status, new_due_local, snooze_minutes, snooze_until_local
+    )
 
 
 @mcp.tool()
-def reminder_history(reminder_id: str, actor: Actor) -> dict:
-    """Read the durable state-transition history for one authorized reminder."""
-    return services.reminder_history(actor, reminder_id)
+def reminder_history(actor: Actor, reminder_id: str | None = None,
+                     limit: int = 50) -> dict:
+    """Read durable reminder lifecycle history. Omit reminder_id for recent aggregate history across authorized reminders."""
+    return services.reminder_history(actor, reminder_id, limit)
 
 
 @mcp.tool()
@@ -253,10 +259,11 @@ def list_shopping_items(actor: Actor, include_purchased: bool = False, limit: in
 
 
 @mcp.tool()
-def update_shopping_item(item_id: str, actor: Actor, status: str = "purchased",
-                         quantity: str | None = None, notes: str | None = None) -> dict:
-    """Mark a shopping item purchased/open/removed or update its quantity/notes. Do not mark purchased unless the user indicates it."""
-    return services.update_shopping_item(actor, item_id, status, quantity, notes)
+def update_shopping_item(item_id: str, actor: Actor, status: str | None = None,
+                         quantity: str | None = None, notes: str | None = None,
+                         item: str | None = None) -> dict:
+    """Rename a shopping item or update status/quantity/notes. Omitted status preserves its existing state; never mark purchased unless the user explicitly indicates it."""
+    return services.update_shopping_item(actor, item_id, status, quantity, notes, item)
 
 
 @mcp.tool()
