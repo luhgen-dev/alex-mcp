@@ -164,6 +164,13 @@ def initialize() -> None:
                    ELSE space_id END
                WHERE space_id IS NULL OR TRIM(space_id)=''"""
         )
+        # This index depends on the additive space_id migration above. Keep it
+        # out of schema.sql so upgrades from pre-0.5.2 databases cannot fail
+        # before _ensure_column() has a chance to add the column.
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_leave_owner_space_date "
+            "ON leave_records(owner_id,space_id,leave_date,status)"
+        )
         _ensure_column(conn, "diary_events", "time_known", "INTEGER NOT NULL DEFAULT 1")
         _ensure_column(conn, "plans", "time_known", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(conn, "schedule_conflicts", "source_plan_id", "TEXT")
