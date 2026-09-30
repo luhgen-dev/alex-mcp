@@ -293,9 +293,12 @@ async function forwardToPython(payload) {
 
 async function forwardReactionEvent(targetKey, reaction) {
   const remoteJid = (targetKey && targetKey.remoteJid) || '';
-  if (!remoteJid || !remoteJid.endsWith('@g.us')) return;
-  const familyGroup = getFamilyGroupJid();
-  if (!familyGroup || familyGroup !== remoteJid) return;
+  if (!remoteJid) return;
+  const isGroup = remoteJid.endsWith('@g.us');
+  if (isGroup) {
+    const familyGroup = getFamilyGroupJid();
+    if (!familyGroup || familyGroup !== remoteJid) return;
+  }
 
   const reactionKey = reaction && reaction.key ? reaction.key : {};
   let rawSenderJid = reactionKey.participant || reactionKey.remoteJid || '';
@@ -318,8 +321,9 @@ async function forwardReactionEvent(targetKey, reaction) {
     message_id: eventId,
     provider: 'WHATSAPP',
     conversation_id: remoteJid,
-    conversation_type: 'GROUP',
+    conversation_type: isGroup ? 'GROUP' : 'DIRECT_DM',
     sender_phone: '+' + senderPhone,
+    sender_provider_jid: rawSenderJid,
     text: '',
     reaction_target_message_id: targetMessageId,
     reaction_text: reactionText,
