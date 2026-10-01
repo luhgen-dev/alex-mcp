@@ -284,12 +284,16 @@ def _received_at_utc(payload: dict) -> str:
 def build_turn(payload: dict, media_lines: list[str]) -> dict:
     """Normalize one inbound WhatsApp message into a single Turn shape.
 
-    trusted_text  = typed text and/or the user's own voice transcript
+    trusted_text  = typed text only
     document_lines = OCR/PDF text (untrusted content, never user intent)
+
+    Voice transcripts are deliberately non-authoritative in v0.5.6. Original
+    audio is saved to the pending-review inbox and only later typed text may
+    become executable intent.
     """
     typed = str(payload.get("text") or "").strip()
-    transcript, document_lines = media.split_voice_transcript(media_lines)
-    trusted_text = "\n".join(x for x in (typed, transcript) if x).strip()
+    _transcript, document_lines = media.split_voice_transcript(media_lines)
+    trusted_text = typed
     has_audio = bool(payload.get("audio_data"))
     has_image = bool(payload.get("image_data"))
     has_pdf = bool(payload.get("pdf_data"))
