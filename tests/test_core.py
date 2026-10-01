@@ -3568,12 +3568,66 @@ class AlexCoreTests(unittest.TestCase):
             self.assertEqual([x["user_id"] for x in rows], ["USR_HUSBAND", "USR_WIFE"])
             for item in rows:
                 data = json.loads(item["data_json"])
+                self.assertTrue(data["confirmation"])
+                self.assertTrue(data["alex_notification_id"])
                 self.assertEqual(len(data["actions"]), 1)
                 parsed = ha_mobile.parse_action_token(data["actions"][0]["action"])
                 self.assertEqual(parsed["action"], "CLAIM")
                 self.assertEqual(parsed["user_id"], item["user_id"])
         finally:
             conn.close()
+
+    def test_v055_ha_phone_receipt_is_distinct_from_human_acknowledgement(self):
+        conn = db.connect()
+        settings = Settings(
+            husband_phone="+60111111111",
+            wife_phone="+60222222222",
+            ha_notify_devices=[
+                {"id": "h", "owner": "husband", "notify_service": "mobile_app_h", "active": True},
+            ],
+        )
+        try:
+            with patch.object(ha_mobile, "get_settings", return_value=settings):
+                ha_mobile._queue(
+                    conn, "USR_HUSBAND", "receipt-distinct-test",
+                    "Test reminder notification",
+                )
+            conn.commit()
+            row = conn.execute(
+                """SELECT notification_id,delivery_status,received_at_utc
+                   FROM ha_notification_outbox
+                   WHERE event_key='receipt-distinct-test:USR_HUSBAND:mobile_app_h'"""
+            ).fetchone()
+            self.assertEqual(row["delivery_status"], "PENDING")
+            self.assertIsNone(row["received_at_utc"])
+            notification_id = row["notification_id"]
+        finally:
+            conn.close()
+
+        result = ha_mobile._process_received_event({
+            "event": {
+                "event_type": "mobile_app_notification_received",
+                "data": {
+                    "alex_notification_id": notification_id,
+                    "device_id": "phone-device-id",
+                },
+            }
+        })
+        self.assertEqual(result["status"], "received")
+        conn = db.connect()
+        try:
+            row = conn.execute(
+                """SELECT delivery_status,received_at_utc,received_device_id
+                   FROM ha_notification_outbox WHERE notification_id=?""",
+                (notification_id,),
+            ).fetchone()
+        finally:
+            conn.close()
+        # Phone receipt does not acknowledge/complete anything; it records only
+        # the delivery evidence from the Companion app.
+        self.assertEqual(row["delivery_status"], "PENDING")
+        self.assertTrue(row["received_at_utc"])
+        self.assertEqual(row["received_device_id"], "phone-device-id")
 
     def test_v055_direct_ha_claim_uses_same_atomic_first_winner_rule(self):
         group_id = "120363966666@g.us"
