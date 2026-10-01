@@ -546,6 +546,19 @@ def process(payload: dict) -> dict:
                     context_kind="REMINDER_CLAIM_CONFIRMED",
                     context_id=result.get("reminder_id"),
                 )
+                try:
+                    import ha_mobile
+                    conn = db.connect()
+                    try:
+                        ha_mobile.queue_claim_confirmation(
+                            conn, actor.user_id, result.get("reminder_id"), task,
+                            event_key=f"wa-claim:{payload['message_id']}",
+                        )
+                        conn.commit()
+                    finally:
+                        conn.close()
+                except Exception:
+                    pass
                 result["claimant_notified"] = True
 
             # A later claimant should not silently wonder whether they now own
@@ -565,6 +578,14 @@ def process(payload: dict) -> dict:
                     actor.conversation_id, "TEXT", text=text,
                     source_message_id=payload["message_id"],
                 )
+                try:
+                    import ha_mobile
+                    ha_mobile.queue_info(
+                        actor.user_id, f"wa-claim-collision:{payload['message_id']}",
+                        text, result.get("reminder_id"),
+                    )
+                except Exception:
+                    pass
                 result["collision_reply"] = text
             db.finish_inbound(payload["message_id"], json.dumps(result, sort_keys=True))
             return {"ok": True, "reaction": result}
