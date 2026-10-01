@@ -341,7 +341,7 @@ def _private_group_handoff_requested(text: str) -> bool:
     # profile facts that have no meaningful shared interpretation.
     sensitive_read = readish and bool(re.search(
         r"\b(?:salary|paycheck|take[- ]home|ot rate|overtime rate|"
-        r"overtime pay|exact ot|bank balance|"
+        r"overtime pay|exact ot|bank balance|stash|cash\s+pool|cash\s+pools|"
         r"my private (?:notes?|memory|data))\b",
         low,
     ))
