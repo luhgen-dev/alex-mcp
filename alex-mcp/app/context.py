@@ -29,7 +29,7 @@ class ActorContext:
     received_at_utc: str = ""
     # Deterministic read boundary derived once from the current trusted command.
     # family is the safe default; private/all require an explicit current-turn signal.
-    read_scope: str = "family"
+    read_scope: str | None = None
     # True only for a Family Shared turn that must execute in the owner's DM.
     private_handoff: bool = False
 
