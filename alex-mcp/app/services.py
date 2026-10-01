@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import json
 import math
 import operator
@@ -562,9 +563,66 @@ def find_receipts(actor: ActorContext, query: str | None = None, amount: float |
             for r in linked
         ]
 
+        # Explicitly saved receipt evidence is authorized by the saved
+        # item's stored scope, not by the chat in which the image was uploaded.
+        # This allows a receipt saved Family Shared from DM to be retrieved in
+        # the family group while keeping private saved media invisible there.
         remaining = bounded - len(matches)
-        # Unlinked media is private provenance from the sender's DM. A group
-        # request must never surface that private material into Family Shared.
+        if remaining > 0:
+            saved_sql = f"""SELECT DISTINCT m.media_id,m.created_at_utc,m.ocr_text,
+                                    i.raw_text AS caption,s.title,s.content,s.space_id
+                             FROM media_objects m
+                             JOIN inbound_messages i ON i.message_id=m.source_message_id
+                             JOIN saved_items s ON s.media_id=m.media_id
+                             WHERE s.space_id IN ({marks})
+                               AND m.media_type IN ('IMAGE','PDF')
+                               AND NOT EXISTS (
+                                   SELECT 1 FROM event_media_links l WHERE l.media_id=m.media_id
+                               )
+                               AND (
+                                   LOWER(COALESCE(s.title,'')) LIKE '%receipt%'
+                                   OR LOWER(COALESCE(s.title,'')) LIKE '%invoice%'
+                                   OR LOWER(COALESCE(s.content,'')) LIKE '%receipt%'
+                                   OR LOWER(COALESCE(s.content,'')) LIKE '%invoice%'
+                                   OR LOWER(COALESCE(i.raw_text,'')) LIKE '%receipt%'
+                                   OR LOWER(COALESCE(i.raw_text,'')) LIKE '%invoice%'
+                               )"""
+            saved_params: list = spaces[:]
+            if query:
+                stop = {"latest","recent","receipt","receipts","show","find","get","send",
+                        "open","original","please","my","our","the","a","an"}
+                terms = [
+                    token for token in re.findall(r"[a-z0-9]+", query.casefold())
+                    if len(token) > 1 and token not in stop
+                ]
+                for token in terms:
+                    saved_sql += """ AND LOWER(
+                        COALESCE(s.title,'') || ' ' || COALESCE(s.content,'') || ' ' ||
+                        COALESCE(i.raw_text,'') || ' ' || COALESCE(m.ocr_text,'')
+                    ) LIKE ?"""
+                    saved_params.append(f"%{token}%")
+            saved_sql += " ORDER BY m.created_at_utc DESC LIMIT ?"
+            saved_params.append(remaining)
+            existing_ids = {m["media_id"] for m in matches}
+            for r in conn.execute(saved_sql, saved_params).fetchall():
+                if r["media_id"] in existing_ids:
+                    continue
+                matches.append({
+                    "media_id": r["media_id"], "event_id": None, "amount": None,
+                    "currency": None,
+                    "description": r["title"] or "Saved receipt",
+                    "caption": r["caption"],
+                    "label": (r["title"] or r["caption"] or "Saved receipt"),
+                    "event_date_utc": r["created_at_utc"], "reference": None,
+                    "scope": "family" if r["space_id"] == "FAMILY_SHARED" else "private",
+                    "linked": False,
+                })
+                existing_ids.add(r["media_id"])
+
+        remaining = bounded - len(matches)
+        # Bare unlinked provenance from a DM is eligible only when the user's
+        # own caption explicitly identifies receipt/invoice evidence. Generic
+        # saved images/documents must never pollute a receipt-only result.
         requested_scope = str(scope or "all").strip().casefold()
         if remaining > 0 and actor.conversation_type != "GROUP" and requested_scope not in {"family", "shared"}:
             orphan_sql = """SELECT m.media_id,m.created_at_utc,m.ocr_text,i.raw_text AS caption
@@ -573,6 +631,15 @@ def find_receipts(actor: ActorContext, query: str | None = None, amount: float |
                             WHERE i.sender_phone=? AND m.media_type IN ('IMAGE','PDF')
                               AND NOT EXISTS (
                                   SELECT 1 FROM event_media_links l WHERE l.media_id=m.media_id
+                              )
+                              AND NOT EXISTS (
+                                  SELECT 1 FROM saved_items s WHERE s.media_id=m.media_id
+                              )
+                              AND (
+                                  LOWER(COALESCE(i.raw_text,'')) LIKE '%receipt%'
+                                  OR LOWER(COALESCE(i.raw_text,'')) LIKE '%invoice%'
+                                  OR LOWER(COALESCE(i.raw_text,'')) LIKE '%payment%'
+                                  OR LOWER(COALESCE(i.raw_text,'')) LIKE '%transfer%'
                               )"""
             orphan_params: list = [actor.phone]
             if start_date:
@@ -638,6 +705,31 @@ def get_receipt(actor: ActorContext, media_id: str) -> dict:
                 "currency": row["currency"], "event_date_utc": row["event_date_utc"],
                 "_attachments": [{"path": row["local_path"], "mime_type": row["mime_type"],
                                   "kind": "IMAGE" if row["media_type"] == "IMAGE" else "DOCUMENT"}],
+            }
+
+        saved = conn.execute(
+            f"""SELECT m.*,s.title,s.content,s.space_id
+                FROM media_objects m
+                JOIN saved_items s ON s.media_id=m.media_id
+                WHERE m.media_id=? AND s.space_id IN ({marks})
+                  AND m.media_type IN ('IMAGE','PDF')
+                  AND (
+                      LOWER(COALESCE(s.title,'')) LIKE '%receipt%'
+                      OR LOWER(COALESCE(s.title,'')) LIKE '%invoice%'
+                      OR LOWER(COALESCE(s.content,'')) LIKE '%receipt%'
+                      OR LOWER(COALESCE(s.content,'')) LIKE '%invoice%'
+                  )
+                ORDER BY s.created_at_utc DESC LIMIT 1""",
+            [media_id] + spaces,
+        ).fetchone()
+        if saved:
+            return {
+                "status": "found_saved_receipt", "media_id": media_id, "event_id": None,
+                "description": saved["title"] or "Saved receipt",
+                "amount": None, "currency": None, "event_date_utc": saved["created_at_utc"],
+                "scope": "family" if saved["space_id"] == "FAMILY_SHARED" else "private",
+                "_attachments": [{"path": saved["local_path"], "mime_type": saved["mime_type"],
+                                  "kind": "IMAGE" if saved["media_type"] == "IMAGE" else "DOCUMENT"}],
             }
 
         if actor.conversation_type == "GROUP":
@@ -885,11 +977,16 @@ def save_item(actor: ActorContext, title: str, content: str, tags: str | None = 
                 list(actor.media_ids),
             ).fetchone()
             media_id = row_m["media_id"] if row_m else None
+        stored_title = str(title or "")
+        stored_content = str(content or "")
+        if scope_policy.contains_emoji(getattr(actor, "trusted_text", "")):
+            stored_title = scope_policy.strip_control_emoji(stored_title)
+            stored_content = scope_policy.strip_control_emoji(stored_content)
         conn.execute(
             """INSERT INTO saved_items(item_id,action_key,source_message_id,space_id,owner_id,title,content,tags,media_id)
                VALUES(?,?,?,?,?,?,?,?,?)""",
             (item_id, actor.action_key, actor.source_message_id, space, actor.user_id,
-             title[:200], content[:20000], (tags or "")[:500] or None, media_id),
+             stored_title[:200], stored_content[:20000], (tags or "")[:500] or None, media_id),
         )
         conn.commit()
         return {"status": "saved", "item_id": item_id, "space": space, "media_saved": bool(media_id)}
@@ -977,8 +1074,11 @@ def search_saved_items(actor: ActorContext, query: str | None = None, limit: int
                     clauses.append(field)
                     n = f"%{w}%"
                     extra.extend([n, n, n])
-                matches = run(" AND (" + " OR ".join(clauses) + ")", extra)
-                mode = "words"
+                # Multi-word fallback is deliberately conjunctive. A deleted
+                # "v053 memory test phrase" must not be replaced by an unrelated
+                # note merely because both contain "v053" or "test".
+                matches = run(" AND (" + " AND ".join(clauses) + ")", extra)
+                mode = "words_all"
         else:
             matches = run("", [])
         if matches:
@@ -1665,7 +1765,8 @@ def claim_reminder_from_reaction(
     try:
         conn.execute("BEGIN IMMEDIATE")
         outbound = conn.execute(
-            """SELECT context_kind,context_id FROM outbound_messages
+            """SELECT outbound_id,context_kind,context_id,provider_message_id
+               FROM outbound_messages
                WHERE conversation_id=? AND provider_message_id=?
                  AND context_kind IN (
                      'REMINDER_INITIAL','REMINDER_FOLLOWUP',
@@ -1675,6 +1776,34 @@ def claim_reminder_from_reaction(
                ORDER BY delivered_at_utc DESC,created_at_utc DESC LIMIT 1""",
             (actor.conversation_id, provider_message_id),
         ).fetchone()
+        if not outbound:
+            # Baileys is asked to use a stable ALEX message id for every
+            # outbound. Some live reaction events refer to that deterministic
+            # key even when the provider-returned id was absent/different.
+            # Resolve only among delivered reminder messages in this exact
+            # conversation; never broaden by text or timing.
+            candidates = conn.execute(
+                """SELECT outbound_id,context_kind,context_id,provider_message_id
+                   FROM outbound_messages
+                   WHERE conversation_id=? AND delivery_status='SENT'
+                     AND context_kind IN (
+                         'REMINDER_INITIAL','REMINDER_FOLLOWUP',
+                         'REMINDER_CLAIMANT_FOLLOWUP','REMINDER_FAMILY_RESURFACE',
+                         'REMINDER_HANDOFF'
+                     )
+                   ORDER BY delivered_at_utc DESC,created_at_utc DESC LIMIT 50""",
+                (actor.conversation_id,),
+            ).fetchall()
+            wanted = str(provider_message_id or "")
+            for candidate in candidates:
+                expected = (
+                    "ALEX"
+                    + hashlib.sha256(str(candidate["outbound_id"]).encode("utf-8"))
+                    .hexdigest().upper()[:28]
+                )
+                if wanted and wanted in {str(candidate["provider_message_id"] or ""), expected}:
+                    outbound = candidate
+                    break
         if not outbound or not outbound["context_id"]:
             conn.rollback()
             return {"status": "not_a_reminder_message"}
