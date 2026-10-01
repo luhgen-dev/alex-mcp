@@ -78,9 +78,26 @@ def resolve_read_scope(text: str | None) -> str:
     return "family"
 
 
+def effective_read_scope(actor, requested_scope: str | None = None) -> str:
+    """Resolve an effective backend scope without allowing model-side widening."""
+    policy = str(getattr(actor, "read_scope", "family") or "family").strip().casefold()
+    requested = str(requested_scope or "").strip().casefold()
+    if policy in {"family", "private"}:
+        return policy
+    if policy != "all":
+        raise ValueError("read scope must be family, private, or all")
+    if requested in {"family", "shared", "family_shared"}:
+        return "family"
+    if requested in {"private", "personal", "my"}:
+        return "private"
+    if requested not in {"", "all", "visible", "accessible"}:
+        raise ValueError("scope must be all, family, or private")
+    return "all"
+
+
 def read_spaces(actor, requested_scope: str | None = None) -> list[str]:
     """Return the spaces a read may use; model arguments may never widen policy."""
-    policy = str(getattr(actor, "read_scope", "family") or "family").strip().casefold()
+    policy = effective_read_scope(actor, requested_scope)
     requested = str(requested_scope or "").strip().casefold()
     allowed = list(getattr(actor, "allowed_spaces", ()) or ())
 
