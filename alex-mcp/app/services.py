@@ -18,7 +18,7 @@ import scope_policy
 from dateutil.rrule import rrulestr
 
 from context import ActorContext
-from config import DATA_DIR
+from config import DATA_DIR, get_settings
 from db import connect, utc_now
 
 
@@ -1288,19 +1288,67 @@ def _family_group_conversation_id() -> str:
     raise ValueError("Family Shared group is not paired yet")
 
 
+def _household_display_name(user_id: str) -> str:
+    settings = get_settings()
+    if user_id == "USR_HUSBAND":
+        return (settings.husband_name or "Husband").strip() or "Husband"
+    if user_id == "USR_WIFE":
+        return (settings.wife_name or "Wife").strip() or "Wife"
+    return "Household member"
+
+
+def _reminder_recipient_aliases(actor: ActorContext) -> dict[str, str]:
+    settings = get_settings()
+    aliases = {
+        "me": actor.user_id,
+        "self": actor.user_id,
+        "myself": actor.user_id,
+        "husband": "USR_HUSBAND",
+        "him": "USR_HUSBAND",
+        "wife": "USR_WIFE",
+        "her": "USR_WIFE",
+        "spouse": "USR_WIFE" if actor.user_id == "USR_HUSBAND" else "USR_HUSBAND",
+        "partner": "USR_WIFE" if actor.user_id == "USR_HUSBAND" else "USR_HUSBAND",
+    }
+    for name, user_id in (
+        (settings.husband_name, "USR_HUSBAND"),
+        (settings.wife_name, "USR_WIFE"),
+    ):
+        key = str(name or "").strip().casefold()
+        if key:
+            aliases[key] = user_id
+    return aliases
+
+
 def _reminder_targets(actor: ActorContext, recipient: str) -> list[str]:
-    value = (recipient or "me").strip().lower()
-    if value in {"me", "self", "myself"}:
-        return [actor.user_id]
-    if value in {"husband", "him"}:
-        return ["USR_HUSBAND"]
-    if value in {"wife", "her"}:
-        return ["USR_WIFE"]
-    if value in {"spouse", "partner"}:
-        return ["USR_WIFE" if actor.user_id == "USR_HUSBAND" else "USR_HUSBAND"]
+    value = (recipient or "me").strip().casefold()
     if value in {"both", "both of us", "everyone"}:
         return ["USR_HUSBAND", "USR_WIFE"]
-    raise ValueError("recipient must be me, spouse, husband, wife, or both")
+    target = _reminder_recipient_aliases(actor).get(value)
+    if target:
+        return [target]
+    raise ValueError("recipient must be me, spouse, a configured household name, husband, wife, or both")
+
+
+def _trusted_named_reminder_recipient(actor: ActorContext) -> tuple[str, str] | None:
+    """Resolve an explicit assignee from the current trusted command only."""
+    text = str(getattr(actor, "trusted_text", "") or "").strip()
+    if not text:
+        return None
+    aliases = _reminder_recipient_aliases(actor)
+    for alias in sorted(aliases, key=len, reverse=True):
+        if re.search(r"\bremind\s+" + re.escape(alias) + r"\b", text, re.IGNORECASE):
+            return alias, aliases[alias]
+    return None
+
+
+def _explicit_group_reminder_destination(text: str) -> bool:
+    return bool(re.search(
+        r"\b(?:in|to)\s+(?:this|the|our)\s+(?:family\s+)?group\b"
+        r"|\b(?:put|post|send|broadcast)\b.{0,35}\b(?:family\s+)?group\b",
+        str(text or ""),
+        re.IGNORECASE,
+    ))
 
 
 def _record_reminder_event(conn, reminder_id: str, event_type: str,
@@ -1334,6 +1382,28 @@ def create_reminder(actor: ActorContext, task: str, due_local: str,
     destination = (destination or "dm").strip().lower()
     if destination not in {"dm", "group"}:
         raise ValueError("destination must be dm or group")
+
+    # A named household assignee overrides the chat where the instruction was
+    # written. This prevents "remind Luhgen ..." in Family Shared from becoming
+    # a claimable group reminder merely because the command originated there.
+    trusted_assignee = _trusted_named_reminder_recipient(actor)
+    if (
+        actor.conversation_type == "GROUP"
+        and trusted_assignee
+        and not _explicit_group_reminder_destination(getattr(actor, "trusted_text", ""))
+    ):
+        alias, target_user = trusted_assignee
+        destination = "dm"
+        recipient = alias
+        claimable = False
+        display = _household_display_name(target_user)
+        task = re.sub(
+            r"^\s*" + re.escape(display) + r"\s+to\s+",
+            "",
+            str(task or ""),
+            flags=re.IGNORECASE,
+        ).strip() or task
+
     # Family Shared one-shot reminders are claimable by design. Recurring
     # reminders keep the existing non-claimable restriction until each
     # occurrence has its own claim identity.
@@ -1391,6 +1461,25 @@ def create_reminder(actor: ActorContext, task: str, due_local: str,
                 conn, rid, "CREATED", None, "OPEN", None, due_utc,
                 f"recipient={recipient}; destination={destination}; claimable={bool(claimable)}; delivery_class={delivery_class}"
             )
+
+            # When an assignment originates outside the assignee's own DM,
+            # push an immediate private acknowledgement. The due reminder will
+            # later use this same DM conversation.
+            if destination == "dm" and (
+                actor.conversation_type == "GROUP" or target_user != actor.user_id
+            ):
+                ack = (
+                    f"Reminder assigned to you: {task}. "
+                    f"I’ll remind you at {due_local}."
+                )
+                conn.execute(
+                    """INSERT INTO outbound_messages(
+                           outbound_id,source_message_id,conversation_id,kind,text_body,
+                           context_kind,context_id
+                       ) VALUES(?,?,?,'TEXT',?,'REMINDER_ASSIGNED',?)""",
+                    (str(uuid.uuid4()), actor.source_message_id, conversation_id, ack, rid),
+                )
+
             created.append({
                 "status": "created", "reminder_id": rid, "task": task, "due_at_utc": due_utc,
                 "timezone": actor.timezone, "recurrence_rule": recurrence_rule,
@@ -1678,15 +1767,10 @@ def reminder_history(actor: ActorContext, reminder_id: str | None = None,
 
 def _handoff_recipient_user(actor: ActorContext, recipient: str) -> str:
     value = str(recipient or "").strip().casefold()
-    if value in {"wife", "priya", "her"}:
-        return "USR_WIFE"
-    if value in {"husband", "him"}:
-        return "USR_HUSBAND"
-    if value in {"spouse", "partner"}:
-        return "USR_WIFE" if actor.user_id == "USR_HUSBAND" else "USR_HUSBAND"
-    if value in {"me", "self", "myself"}:
-        return actor.user_id
-    raise ValueError("recipient must be spouse, wife, husband, Priya, or me")
+    target = _reminder_recipient_aliases(actor).get(value)
+    if target:
+        return target
+    raise ValueError("recipient must be spouse, a configured household name, wife, husband, or me")
 
 
 def request_reminder_handoff(actor: ActorContext, reminder_id: str,
@@ -1935,9 +2019,7 @@ def claim_reminder_from_reaction(
             ).fetchone()
             if from_phone:
                 from_dm = from_phone.replace("+", "") + "@s.whatsapp.net"
-                name = str(accepter["display_name"] if accepter else "Your spouse").strip()
-                if name.casefold() == "wife":
-                    name = "Priya"
+                name = _household_display_name(actor.user_id)
                 conn.execute(
                     """INSERT INTO outbound_messages(
                            outbound_id,conversation_id,kind,text_body,context_kind,context_id
