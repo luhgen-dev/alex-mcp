@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.5.5
+Go-live repair release from the v0.5.4 live smoke and full independent audit.
+- Fixed the shared four-call orchestration bug: the final model call is answer-only, so a tool result can no longer be executed on the last round and then discarded behind a false "several tool steps" failure.
+- Correctly classifies `finance_report` and `planning_list_cash_pools` as read-only, preventing discovery suppression, false mutation claims and finance-report fallback to the household snapshot.
+- Hardened completed-attachment presentation so already delivered reports/files no longer say "shortly" or "couldn't finish" merely because the model exhausted the tool loop.
+- Added deterministic private group handoff for stash plurals, owner pool names and private-only receipt/note matches without widening Family Shared ACLs.
+- Added configurable household names/aliases (default Luhgen/Priya for this installation) so named reminder assignees resolve to the correct household user.
+- Explicitly assigned reminders now route to the assignee DM regardless of command location unless the user explicitly asks for the family group, and the assignee receives an immediate private acknowledgement in human local time.
+- Claimable Family Shared reminders keep atomic first-claim ownership, now send the successful claimant an immediate DM confirmation, preserve second-claim collision handling, and keep reaction removal non-releasing.
+- Restored natural emoji-only private memory capture for retainable statements while excluding trivial chatter and preserving higher-priority domains; the control emoji remains stripped from persisted content.
+- Restored plain natural leave read/cancel routing, named cash-pool balance reach, empty-bill terminal answers and whole-home status-card routing.
+- Added Home Assistant Companion actionable reminder notifications for Android and iPhone as an additional delivery/control surface over the same Alex reminder state machine: Acknowledge, Done, Snooze 10m, Claim, and handoff Accept/Decline.
+- HA notification actions use a durable local outbox, an outbound Home Assistant WebSocket subscription (no new inbound port), per-install signed action identifiers, idempotent HA event claiming, and the same atomic reminder claim/handoff functions used by WhatsApp.
+- Stale HA actions cannot reopen completed/cancelled reminders; phone delivery, human acknowledgement and completion remain distinct states.
+- Finance PDF visual redesign remains explicitly out of scope for this release and will be handled as a separate post-go-live side project.
+- Existing canonical finance data, receipt ACLs, stash atomicity/migration, memory isolation, reminder claim/handoff transactions and additive upgrade safety remain preserved.
+
+
 ## 0.5.4
 Live-smoke closeout release focused on the remaining routing, privacy, reporting, reminder-claim, stash and presentation regressions.
 - Fixed Family Shared reminder reaction binding at the WhatsApp/provider-message boundary, preserved atomic first-claim ownership, and added a natural collision reply when a second household member reacts after the reminder is already claimed.
