@@ -798,10 +798,13 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
                 _pick(tools, "planning_cash_status", "planning_allocate_cash_to_goal")
                 or _one(tools, "planning_allocate_cash_to_goal"),
             )
-        if re.search(
-            r"\b(?:what|which|show|list)\b.*\b(?:stash(?:es)?|cash\s+pools?)\b"
-            r"|\b(?:stash(?:es)?|cash\s+pools?)\b.*\b(?:have|exist|configured)\b",
-            text,
+        if (
+            re.search(
+                r"\b(?:what|which|show|list)\b.*\b(?:stash(?:es)?|cash\s+pools?)\b"
+                r"|\b(?:stash(?:es)?|cash\s+pools?)\b.*\b(?:have|exist|configured)\b",
+                text,
+            )
+            and not re.search(r"\b(?:balance|how much)\b", text)
         ):
             return result("tools", _one(tools, "planning_list_cash_pools"))
         if re.search(r"\b(?:create|make)\b.*\b(?:stash|cash pool)\b", text):
