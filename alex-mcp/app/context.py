@@ -27,6 +27,11 @@ class ActorContext:
     # When WhatsApp says the message was sent (UTC ISO). Used by the backend
     # to timestamp records instead of letting the model invent a clock time.
     received_at_utc: str = ""
+    # Deterministic read boundary derived once from the current trusted command.
+    # family is the safe default; private/all require an explicit current-turn signal.
+    read_scope: str = "family"
+    # True only for a Family Shared turn that must execute in the owner's DM.
+    private_handoff: bool = False
 
 
 _current_actor: ContextVar[ActorContext | None] = ContextVar("alex_actor", default=None)
