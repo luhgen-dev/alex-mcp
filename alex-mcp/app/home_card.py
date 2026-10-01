@@ -1,17 +1,37 @@
 from __future__ import annotations
 
 from io import BytesIO
+from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
-FONT = "/usr/share/fonts/ttf-dejavu/DejaVuSans.ttf"
-BOLD = "/usr/share/fonts/ttf-dejavu/DejaVuSans-Bold.ttf"
+_FONT_CANDIDATES = {
+    False: (
+        "/usr/share/fonts/ttf-dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+    ),
+    True: (
+        "/usr/share/fonts/ttf-dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
+    ),
+}
+
+
+def _font_path(bold: bool = False) -> str | None:
+    for candidate in _FONT_CANDIDATES[bool(bold)]:
+        if Path(candidate).is_file():
+            return candidate
+    name = "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf"
+    for candidate in Path("/usr/share/fonts").rglob(name):
+        if candidate.is_file():
+            return str(candidate)
+    return None
 
 
 def _font(size: int, bold: bool = False):
-    try:
-        return ImageFont.truetype(BOLD if bold else FONT, size)
-    except Exception:
-        return ImageFont.load_default()
+    path = _font_path(bold)
+    if path:
+        return ImageFont.truetype(path, size)
+    return ImageFont.load_default()
 
 
 def render(summary: dict, width: int = 1200, height: int = 720) -> bytes:
@@ -31,8 +51,20 @@ def render(summary: dict, width: int = 1200, height: int = 720) -> bytes:
     def rr(box, radius=22, fill=panel):
         d.rounded_rectangle(box, radius=radius, fill=fill)
 
-    def tx(x, y, value, size=16, fill=text, bold=False):
-        d.text((x, y), str(value), font=_font(size, bold), fill=fill)
+    def fit(value, max_width, size=16, bold=False):
+        value = str(value)
+        face = _font(size, bold)
+        if d.textlength(value, font=face) <= max_width:
+            return value
+        ellipsis = "…"
+        trimmed = value
+        while trimmed and d.textlength(trimmed + ellipsis, font=face) > max_width:
+            trimmed = trimmed[:-1]
+        return (trimmed.rstrip() + ellipsis) if trimmed else ellipsis
+
+    def tx(x, y, value, size=16, fill=text, bold=False, max_width=None):
+        shown = fit(value, max_width, size, bold) if max_width else str(value)
+        d.text((x, y), shown, font=_font(size, bold), fill=fill)
 
     def names(values, limit=2):
         rows = [str(v) for v in (values or []) if str(v).strip()]
@@ -91,7 +123,7 @@ def render(summary: dict, width: int = 1200, height: int = 720) -> bytes:
         if summary.get("unavailable"):
             rows.append("Unavailable: " + names(summary["unavailable"]))
         for idx, row in enumerate(rows[:4]):
-            tx(right_x+22, 248+idx*31, row, 13)
+            tx(right_x+22, 248+idx*31, row, 13, max_width=right_w-44)
     else:
         tx(right_x+22, 204, "Everything looks calm", 19, calm, True)
         tx(right_x+22, 246, "No open entries or unlocked locks detected.", 13, muted)
@@ -107,7 +139,7 @@ def render(summary: dict, width: int = 1200, height: int = 720) -> bytes:
     for idx, (name, value) in enumerate(active):
         y = 438 + idx*42
         tx(right_x+22, y, name, 12, amber if value != "None" else muted, True)
-        tx(right_x+116, y, value, 12, text if value != "None" else muted)
+        tx(right_x+116, y, value, 12, text if value != "None" else muted, max_width=right_w-138)
 
     tx(54, height-54, f"{int(summary.get('total_entities') or 0)} Home Assistant entities checked", 11, muted)
     if summary.get("unavailable"):
