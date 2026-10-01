@@ -57,7 +57,7 @@ class V044Base(unittest.TestCase):
                 "conversation_turns", "selection_sets", "media_selection_sets", "task_reminder_links",
                 "task_events", "tasks", "event_media_links",
                 "financial_event_corrections", "financial_events", "saved_items",
-                "media_objects", "inbound_messages",
+                "pending_items", "media_objects", "inbound_messages",
             ):
                 conn.execute(f"DELETE FROM {table}")
             conn.commit()
@@ -79,11 +79,11 @@ class V044Base(unittest.TestCase):
 
 # ---------------------------------------------------------------- Turn / voice
 class TurnTests(V044Base):
-    def test_voice_transcript_becomes_trusted_text(self):
+    def test_voice_transcript_is_not_trusted_command_text(self):
         lines = [media.VOICE_TRANSCRIPT_PREFIX + "what reminders do I have"]
         turn = ingress.build_turn({"audio_data": "x", "text": ""}, lines)
         self.assertEqual(turn["source"], "voice")
-        self.assertEqual(turn["trusted_text"], "what reminders do I have")
+        self.assertEqual(turn["trusted_text"], "")
         self.assertEqual(turn["document_lines"], [])
         self.assertFalse(turn["has_document_media"])
 
@@ -108,18 +108,16 @@ class TurnTests(V044Base):
         self.assertLess(abs((datetime.fromisoformat(future) - datetime.now(timezone.utc)).total_seconds()), 5)
         self.assertTrue(ingress._received_at_utc({"sent_at_ms": "junk"}))
 
-    def test_voice_gets_same_tools_as_text(self):
-        """Smoke: voice reminder query claimed 'no reminder access'."""
-        for phrase, must in (
-            ("what reminders do I have", "list_reminders"),
-            ("add milk to the shopping list", "add_shopping_item"),
-            ("turn on the hall light", "ha_control"),
+    def test_voice_transcript_does_not_route_mutating_tools(self):
+        for phrase in (
+            "what reminders do I have",
+            "add milk to the shopping list",
+            "turn on the hall light",
         ):
-            turn = ingress.build_turn({"audio_data": "x"}, [media.VOICE_TRANSCRIPT_PREFIX + phrase])
-            voice = _names(asyncio.run(brain._tool_specs(turn["trusted_text"], turn["document_lines"])))
-            typed = _names(asyncio.run(brain._tool_specs(phrase)))
-            self.assertIn(must, voice, phrase)
-            self.assertEqual(voice, typed, phrase)
+            turn = ingress.build_turn(
+                {"audio_data": "x"}, [media.VOICE_TRANSCRIPT_PREFIX + phrase]
+            )
+            self.assertEqual(turn["trusted_text"], "")
 
     def test_voice_candidate_selector_prefers_actionable_household_command(self):
         candidates = [
@@ -138,18 +136,12 @@ class TurnTests(V044Base):
         self.assertEqual(label, "local_ta")
         self.assertGreaterEqual(media._voice_intent_score(transcript), 2)
 
-    def test_live_smoke_voice_shopping_phrases_route_to_real_mutators(self):
+    def test_typed_multilingual_path_remains_available_after_voice_retirement(self):
         for phrase, expected in (
             ("Add test toothpaste to my shopping list", "add_shopping_item"),
             ("Mark test batteries as bought", "update_shopping_item"),
         ):
-            turn = ingress.build_turn(
-                {"audio_data": "x"},
-                [media.VOICE_TRANSCRIPT_PREFIX + phrase],
-            )
-            names = _names(asyncio.run(
-                brain._tool_specs(turn["trusted_text"], turn["document_lines"])
-            ))
+            names = _names(asyncio.run(brain._tool_specs(phrase)))
             self.assertIn(expected, names, phrase)
 
     def test_false_capability_and_language_drift_guards(self):
@@ -325,13 +317,21 @@ class TurnTests(V044Base):
             "sender_phone": HUSBAND, "text": "",
             "audio_data": base64.b64encode(b"voice").decode(), "audio_mime_type": "audio/ogg",
         }
-        with patch.object(media, "transcribe_audio", return_value="any reminders later"), \
-                patch.object(brain, "respond", fake_respond):
-            self.assertTrue(ingress.process(payload)["ok"])
-        self.assertIsNone(captured["quoted"])
-        self.assertEqual(captured["text"], "any reminders later")
-        self.assertEqual(captured["media"], [])
-        self.assertEqual(captured["actor"].source, "voice")
+        with patch.object(brain, "respond", fake_respond):
+            result = ingress.process(payload)
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["voice_pending"])
+        self.assertEqual(captured, {})
+        conn = db.connect()
+        try:
+            pending = conn.execute(
+                "SELECT * FROM pending_items WHERE source_message_id='v-rem'"
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertIsNotNone(pending)
+        self.assertEqual(pending["status"], "PENDING")
+        self.assertEqual(pending["kind"], "VOICE")
 
     def test_captionless_image_still_pairs_with_instruction(self):
         self.claim("t-inst", text="save the next picture as vinyl setup")
