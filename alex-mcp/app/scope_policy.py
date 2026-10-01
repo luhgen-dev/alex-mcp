@@ -20,18 +20,30 @@ _FAMILY_RE = re.compile(
 )
 
 
+def _is_emoji_codepoint(ch: str) -> bool:
+    code = ord(ch)
+    return (
+        0x1F000 <= code <= 0x1FAFF
+        or 0x2600 <= code <= 0x27BF
+        or 0x1F1E6 <= code <= 0x1F1FF
+        or 0x1F3FB <= code <= 0x1F3FF
+        or code in {0xFE0F, 0x20E3, 0x200D}
+    )
+
+
 def contains_emoji(text: str | None) -> bool:
     """Conservative stdlib-only emoji detector over current trusted text."""
-    for ch in str(text or ""):
-        code = ord(ch)
-        if (
-            0x1F000 <= code <= 0x1FAFF
-            or 0x2600 <= code <= 0x27BF
-            or 0x1F1E6 <= code <= 0x1F1FF
-            or code in {0xFE0F, 0x20E3}
-        ):
-            return True
-    return False
+    return any(_is_emoji_codepoint(ch) for ch in str(text or ""))
+
+
+def strip_control_emoji(text: str | None) -> str:
+    """Remove emoji used as ALEX's privacy shortcut from stored semantic text.
+
+    The current trusted command still retains the emoji for scope resolution;
+    this helper is only for persisted user-facing title/content fields.
+    """
+    value = "".join(ch for ch in str(text or "") if not _is_emoji_codepoint(ch))
+    return re.sub(r"[ \t]{2,}", " ", value).strip()
 
 
 def explicit_private(text: str | None) -> bool:
