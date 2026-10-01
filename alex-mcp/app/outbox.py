@@ -142,6 +142,30 @@ def _control_outbound(row, kind: str) -> bool:
     return ok
 
 
+def _reconcile_pending_item_markers(conn) -> None:
+    rows = conn.execute(
+        """SELECT o.*,p.status AS pending_status
+           FROM outbound_messages o
+           JOIN pending_items p ON p.item_id=o.context_id
+           WHERE o.context_kind='PENDING_ITEM'
+             AND (
+                p.status='PENDING'
+                OR (
+                    p.status IN ('RESOLVED','CANCELLED')
+                    AND (
+                        (o.job_reacted_at_utc IS NOT NULL AND o.job_reaction_cleared_at_utc IS NULL)
+                        OR (o.job_pinned_at_utc IS NOT NULL AND o.job_unpinned_at_utc IS NULL)
+                    )
+                )
+             )"""
+    ).fetchall()
+    for row in rows:
+        if row["pending_status"] == "PENDING":
+            _ensure_unresolved_markers(conn, row)
+        else:
+            _cleanup_resolved_markers(conn, row)
+
+
 def _reconcile_reminder_pins(conn) -> None:
     """Keep only unresolved, unclaimed fired Family reminders pinned."""
     rows = conn.execute(
@@ -169,8 +193,9 @@ def _reconcile_reminder_pins(conn) -> None:
 
 
 def _ensure_unresolved_markers(conn, row) -> None:
-    """A deferred document job is visibly unresolved until provider delivery."""
-    if row["kind"] != "DOCUMENT" or not row["source_message_id"]:
+    """Mark a managed unresolved source message with ⏳ + pin."""
+    managed = row["kind"] == "DOCUMENT" or row["context_kind"] == "PENDING_ITEM"
+    if not managed or not row["source_message_id"]:
         return
     now = _now()
     if not row["job_reacted_at_utc"]:
@@ -191,8 +216,9 @@ def _ensure_unresolved_markers(conn, row) -> None:
 
 
 def _cleanup_resolved_markers(conn, row) -> None:
-    """Remove managed ⏳/pin only after the document row is confirmed SENT."""
-    if row["kind"] != "DOCUMENT" or not row["source_message_id"]:
+    """Remove managed ⏳/pin only when the managed item is truly resolved."""
+    managed = row["kind"] == "DOCUMENT" or row["context_kind"] == "PENDING_ITEM"
+    if not managed or not row["source_message_id"]:
         return
     now = _now()
     if row["job_reacted_at_utc"] and not row["job_reaction_cleared_at_utc"]:
@@ -301,6 +327,10 @@ def sweep():
                     )
                     conn.commit()
                     continue
+
+            if row["context_kind"] == "PENDING_ITEM":
+                _ensure_unresolved_markers(conn, row)
+                row = _joined_row(conn, row["outbound_id"])
 
             try:
                 payload = _payload(row)
@@ -413,6 +443,7 @@ def sweep():
                         conn, _joined_row(conn, row["outbound_id"]), permanent=False
                     )
 
+        _reconcile_pending_item_markers(conn)
         _reconcile_reminder_pins(conn)
 
         # Restart reconciliation is exactly that: restart recovery. Normal
