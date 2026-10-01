@@ -2324,8 +2324,14 @@ def claim_reminder_from_reaction(
             conn.commit()
             return result
 
+        # Direct-message reminder reactions keep the existing explicit-text
+        # semantics. The claim/ack reaction contract applies to Family Shared.
+        if actor.conversation_type != "GROUP":
+            conn.rollback()
+            return {"status": "ignored_direct_reminder_reaction"}
+
         # The reminder has already fired. Under the current household contract,
-        # a reaction now means acknowledgement/handled, never a new claim.
+        # a group reaction now means acknowledgement/handled, never a new claim.
         reminder = conn.execute(
             """SELECT reminder_id,status,task_text,owner_id,claimed_by_user_id
                FROM reminders WHERE reminder_id=?""",
