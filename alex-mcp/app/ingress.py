@@ -341,7 +341,7 @@ def _private_group_handoff_requested(text: str) -> bool:
     # profile facts that have no meaningful shared interpretation.
     sensitive_read = readish and bool(re.search(
         r"\b(?:salary|paycheck|take[- ]home|ot rate|overtime rate|"
-        r"overtime pay|exact ot|bank balance|stash|cash\s+pool|cash\s+pools|"
+        r"overtime pay|exact ot|bank balance|stash(?:es)?|cash\s+pool|cash\s+pools|"
         r"my private (?:notes?|memory|data))\b",
         low,
     ))
@@ -353,6 +353,72 @@ def _private_group_handoff_requested(text: str) -> bool:
 
 def _dm_conversation_for_actor(actor) -> str:
     return actor.phone.replace("+", "") + "@s.whatsapp.net"
+
+
+def _private_group_match_available(actor, text: str) -> bool:
+    """Probe for a private-only receipt/note match without widening group ACLs.
+
+    Family Shared is checked first. Only when the same read has no shared match
+    do we probe the authenticated owner's private space, and only a boolean
+    escapes this helper.
+    """
+    if actor.conversation_type != "GROUP":
+        return False
+    low = str(text or "").casefold()
+    readish = bool(re.search(
+        r"\b(?:show|find|get|send|open|what|which|where|latest|recent|list|"
+        r"check|balance|how much|how many)\b",
+        low,
+    ))
+    if not readish:
+        return False
+    receiptish = bool(re.search(r"\b(?:receipt|receipts|invoice|invoices)\b", low))
+    savedish = bool(re.search(r"\b(?:note|notes|saved|memory|memories|remembered)\b", low))
+
+    # A user may refer to an inherently-private stash only by its configured
+    # name ("how much is in pocket cash?"). Recognize that name without
+    # exposing its balance or existence to the group response.
+    try:
+        conn = db.connect()
+        rows = conn.execute(
+            """SELECT name FROM alex_phase2_cash_pools
+               WHERE owner_user_id=? AND space_id=? AND status='ACTIVE'""",
+            (actor.user_id, actor.private_space),
+        ).fetchall()
+        conn.close()
+        for row in rows:
+            name = str(row["name"] or "").strip().casefold()
+            if name and re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", low):
+                return True
+    except Exception:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+    if not (receiptish or savedish):
+        return False
+
+    dm_actor = replace(
+        actor,
+        conversation_id=_dm_conversation_for_actor(actor),
+        conversation_type="DIRECT_DM",
+        allowed_spaces=(actor.private_space,),
+    )
+    try:
+        if receiptish:
+            shared = services.find_receipts(actor, query=text, limit=1)
+            if shared.get("matches"):
+                return False
+            private = services.find_receipts(dm_actor, query=text, limit=1)
+            return bool(private.get("matches"))
+        shared = services.search_saved_items(actor, query=text, limit=1)
+        if shared.get("matches"):
+            return False
+        private = services.search_saved_items(dm_actor, query=text, limit=1)
+        return bool(private.get("matches"))
+    except Exception:
+        return False
 
 
 def _error_report_command(text: str) -> tuple[bool, str]:
@@ -465,11 +531,39 @@ def process(payload: dict) -> dict:
                 str(payload.get("reaction_target_message_id") or ""),
                 str(payload.get("reaction_text") or ""),
             )
-            # First claim is intentionally quiet: the visible WhatsApp reaction
-            # itself is the acknowledgement. A later claimant should not
-            # silently wonder whether they now own the reminder, so tell them
-            # naturally that it is already being handled without changing
-            # ownership.
+            # A successful first claim moves responsibility into the claimant's
+            # DM immediately. The group stays quiet; the reaction itself remains
+            # the visible family-level signal.
+            if result.get("status") == "claimed":
+                task = str(result.get("task") or "this reminder").strip()
+                claim_text = (
+                    f"Got it — you’ve claimed “{task}”. "
+                    "I’ll follow up with you privately from here."
+                )
+                db.queue_outbound(
+                    _dm_conversation_for_actor(actor), "TEXT", text=claim_text,
+                    source_message_id=payload["message_id"],
+                    context_kind="REMINDER_CLAIM_CONFIRMED",
+                    context_id=result.get("reminder_id"),
+                )
+                try:
+                    import ha_mobile
+                    conn = db.connect()
+                    try:
+                        ha_mobile.queue_claim_confirmation(
+                            conn, actor.user_id, result.get("reminder_id"), task,
+                            event_key=f"wa-claim:{payload['message_id']}",
+                        )
+                        conn.commit()
+                    finally:
+                        conn.close()
+                except Exception:
+                    pass
+                result["claimant_notified"] = True
+
+            # A later claimant should not silently wonder whether they now own
+            # the reminder, so tell them naturally that it is already being
+            # handled without changing ownership.
             if (
                 result.get("status") == "already_claimed"
                 and result.get("claimed_by_user_id")
@@ -484,6 +578,14 @@ def process(payload: dict) -> dict:
                     actor.conversation_id, "TEXT", text=text,
                     source_message_id=payload["message_id"],
                 )
+                try:
+                    import ha_mobile
+                    ha_mobile.queue_info(
+                        actor.user_id, f"wa-claim-collision:{payload['message_id']}",
+                        text, result.get("reminder_id"),
+                    )
+                except Exception:
+                    pass
                 result["collision_reply"] = text
             db.finish_inbound(payload["message_id"], json.dumps(result, sort_keys=True))
             return {"ok": True, "reaction": result}
@@ -588,7 +690,10 @@ def process(payload: dict) -> dict:
         # model/tool turn, not a group answer followed by a second private retry.
         if (
             actor.conversation_type == "GROUP"
-            and _private_group_handoff_requested(turn["trusted_text"])
+            and (
+                _private_group_handoff_requested(turn["trusted_text"])
+                or _private_group_match_available(actor, turn["trusted_text"])
+            )
         ):
             dm_conversation = _dm_conversation_for_actor(actor)
             dm_actor = db.resolve_actor(

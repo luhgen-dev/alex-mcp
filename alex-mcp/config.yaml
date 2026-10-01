@@ -1,5 +1,5 @@
 name: "Alex MCP"
-version: "0.5.4"
+version: "0.5.5"
 slug: "alex_mcp"
 description: "MCP-first household assistant — natural WhatsApp conversation, deterministic tools, receipts, reminders and memory"
 arch:
@@ -25,6 +25,8 @@ options:
   openai_api_key: ""
   husband_phone: ""
   wife_phone: ""
+  husband_name: "Luhgen"
+  wife_name: "Priya"
   timezone: "Asia/Kuala_Lumpur"
   stt_provider: "auto"
   cloud_stt_rescue_enabled: false
@@ -43,6 +45,7 @@ options:
   account_aliases: []
   reminder_preferences: []
   presence_mappings: []
+  ha_notify_devices: []
 schema:
   ai_provider: "list(auto|grok|gemini|openai)"
   grok_model: str
@@ -54,6 +57,8 @@ schema:
   openai_api_key: password
   husband_phone: str
   wife_phone: str
+  husband_name: str
+  wife_name: str
   timezone: str
   stt_provider: "list(auto|local_whisper|xai|openai|gemini)"
   cloud_stt_rescue_enabled: bool
@@ -161,4 +166,9 @@ schema:
       person_entity: "str?"
       phone_tracker_entity: "str?"
       home_zone: str
+      active: bool
+  ha_notify_devices:
+    - id: str
+      owner: "list(husband|wife)"
+      notify_service: str
       active: bool

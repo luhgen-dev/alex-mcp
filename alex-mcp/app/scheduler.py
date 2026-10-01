@@ -13,6 +13,7 @@ from dateutil.rrule import rrulestr
 from db import connect, utc_now
 import runtime_clock
 import ha
+import ha_mobile
 import phase2_presence
 import phase2_monitor
 
@@ -119,7 +120,12 @@ def fire_due():
                 )
                 continue
 
-            _queue(conn, row, f"⏰ Reminder: {row['task_text']}", "REMINDER_INITIAL")
+            initial_text = f"⏰ Reminder: {row['task_text']}"
+            _queue(conn, row, initial_text, "REMINDER_INITIAL")
+            try:
+                ha_mobile.queue_due(conn, row, initial_text, "due")
+            except Exception:
+                pass
             previous_state = row["status"]
             recurrence = row["recurrence_rule"]
             if recurrence:
@@ -171,11 +177,16 @@ def fire_due():
             (now.isoformat(),),
         ).fetchall()
         for row in unclaimed_rows:
+            follow_text = f"↪️ Still unclaimed: {row['task_text']}"
             _queue(
                 conn, row,
-                f"↪️ Still unclaimed: {row['task_text']}",
+                follow_text,
                 "REMINDER_FOLLOWUP",
             )
+            try:
+                ha_mobile.queue_due(conn, row, follow_text, "unclaimed-followup")
+            except Exception:
+                pass
             conn.execute(
                 """UPDATE reminders
                    SET last_follow_up_at_utc=?,next_delivery_at_utc=NULL
@@ -212,11 +223,18 @@ def fire_due():
                     ),
                 )
                 continue
+            claimant_text = (
+                f"↪️ You claimed this and it is still outstanding: {row['task_text']}"
+            )
             _queue_to(
                 conn, claimant_conversation, row["reminder_id"],
-                f"↪️ You claimed this and it is still outstanding: {row['task_text']}",
+                claimant_text,
                 "REMINDER_CLAIMANT_FOLLOWUP",
             )
+            try:
+                ha_mobile.queue_due(conn, row, claimant_text, "claimant-followup")
+            except Exception:
+                pass
             later = (
                 now + timedelta(hours=max(1, int(row["follow_up_after_hours"] or 24)))
             ).isoformat()
@@ -241,11 +259,16 @@ def fire_due():
             (now.isoformat(),),
         ).fetchall()
         for row in resurface_rows:
+            resurface_text = f"↪️ Still outstanding with its claimant: {row['task_text']}"
             _queue(
                 conn, row,
-                f"↪️ Still outstanding with its claimant: {row['task_text']}",
+                resurface_text,
                 "REMINDER_FAMILY_RESURFACE",
             )
+            try:
+                ha_mobile.queue_due(conn, row, resurface_text, "family-resurface")
+            except Exception:
+                pass
             conn.execute(
                 """UPDATE reminders
                    SET family_resurfaced_at_utc=?,next_delivery_at_utc=NULL
@@ -284,7 +307,12 @@ def fire_due():
                     ((now + timedelta(minutes=15)).isoformat(), decision.get("reason"), row["reminder_id"]),
                 )
                 continue
-            _queue(conn, row, f"↪️ Follow-up: {row['task_text']}", "REMINDER_FOLLOWUP")
+            ack_follow_text = f"↪️ Follow-up: {row['task_text']}"
+            _queue(conn, row, ack_follow_text, "REMINDER_FOLLOWUP")
+            try:
+                ha_mobile.queue_due(conn, row, ack_follow_text, "ack-followup")
+            except Exception:
+                pass
             # Mark queued to prevent duplicate queueing. Outbox replaces this with
             # the actual delivered timestamp after transport success.
             conn.execute(

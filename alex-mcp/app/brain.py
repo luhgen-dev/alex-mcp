@@ -19,6 +19,7 @@ from context import ActorContext, use_actor, with_action_key
 from db import add_turn, connect, recent_turns, record_usage, current_month_ai_cost
 from mcp_server import mcp
 import phase2_intent
+import scope_policy
 
 SYSTEM_PROMPT = """You are Alex, one household assistant.
 
@@ -476,6 +477,23 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
     low = (text or "").casefold()
     force: set[str] = set()
     block: set[str] = set()
+
+    if _implicit_emoji_memory_save(text):
+        force.add("save_item")
+
+    leave_request = bool(
+        re.search(r"\bleave\b", low)
+        and not re.search(r"\bleave\s+(?:home|work|office)\b", low)
+        and (
+            re.search(r"\b(?:taking|take|on|book|record|save|add|delete|cancel|remove)\b.*\bleave\b", low)
+            or re.search(r"\bleave\b.*\b(?:today|tomorrow|yesterday|coming\s+up|upcoming|next|\d{1,2}(?:st|nd|rd|th)?|jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b", low)
+            or re.search(r"\b(?:coming\s+up|upcoming)\b.*\bleave\b", low)
+        )
+    )
+    if leave_request:
+        force |= {"list_leave_records", "set_leave_record"}
+        if re.search(r"\b(?:do\s+i\s+have|show|list|what|when|which|coming\s+up|upcoming)\b", low) and not re.search(r"\b(?:delete|cancel|remove|taking|take|book|record|save|add)\b", low):
+            block.add("set_leave_record")
 
     money = bool(re.search(r"\b(?:rm|myr|sgd)\s*\d|\b\d+(?:[.,]\d+)?\s*(?:rm|myr|sgd)\b", low))
     goal_contribution = bool(
@@ -974,6 +992,8 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
     low = text.casefold()
     selected: set[str] = set()
     has_media = bool(media_context)
+    if _implicit_emoji_memory_save(text):
+        selected.add("save_item")
 
     # Exact numbered conflict answers are intentionally bound to the latest
     # owner-scoped persisted ticket rather than reconstructed by the model.
@@ -1080,8 +1100,9 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
     if re.search(r"\b(?:light|switch|fan|thermostat|climate|media player|speaker|tv|television|home assistant|ac|aircon|air conditioner|home status|at home|turn on|turn off|switch on|switch off|state of)\b", low):
         selected |= HOME_READ_TOOLS
         if re.search(
-            r"\b(?:home|house)\b.*\b(?:report|card|image|picture)\b"
-            r"|\b(?:status|current home status)\b.*\b(?:card|image|picture)\b"
+            r"\b(?:home|house)\b.*\b(?:report|card|image|picture|status)\b"
+            r"|\b(?:status\s+of\s+(?:the\s+)?(?:home|house)|current\s+home\s+status|home\s+status)\b"
+            r"|\bhow(?:'s|\s+is)\s+(?:the\s+)?(?:home|house)\b"
             r"|\b(?:image|picture|card)\b.*\b(?:home|house)\b.*\bstatus\b",
             low,
         ):
@@ -1209,6 +1230,34 @@ _TRUSTED_MUTATION_RE = re.compile(
     r"spent|paid|bought|received|credited|came\s+in)\b",
     re.IGNORECASE,
 )
+def _implicit_emoji_memory_save(text: str) -> bool:
+    """Narrow emoji-as-private-memory shortcut for natural household notes.
+
+    Domain commands still win. Questions, tiny social chatter and explicit
+    action phrases are not converted into saved memories merely because they
+    contain an emoji.
+    """
+    value = str(text or "").strip()
+    if not value or not scope_policy.contains_emoji(value) or "?" in value:
+        return False
+    plain = scope_policy.strip_control_emoji(value)
+    words = re.findall(r"[A-Za-z0-9][A-Za-z0-9'_-]*", plain)
+    if len(words) < 3:
+        return False
+    if _pure_chat(plain) or _casual_chat(plain):
+        return False
+    if re.search(
+        r"\b(?:add|buy|shopping|grocery|remind|reminder|notify|turn|switch|"
+        r"spent|paid|expense|receipt|goal|stash|cash\s+pool|leave|appointment|"
+        r"meeting|task|plan|bill|roster|shift|snooze|cancel|delete|remove|"
+        r"update|change|send|show|find|get|list|what|when|where|why|who)\b",
+        plain,
+        re.IGNORECASE,
+    ):
+        return False
+    return True
+
+
 def _trusted_mutation_requested(text: str) -> bool:
     """Conservative mutation gate based only on trusted user-authored context.
 
@@ -1222,6 +1271,8 @@ def _trusted_mutation_requested(text: str) -> bool:
     value = (text or "").strip()
     if not value:
         return False
+    if _implicit_emoji_memory_save(value):
+        return True
     if re.search(
         r"\b(?:hypothetical(?:ly)?|what\s+would|how\s+would|how\s+you'd|"
         r"without\s+actually|just\s+explain)\b",
@@ -1757,7 +1808,8 @@ def _next_route_after_failure(routes: list[dict], current_index: int, info: dict
 
 
 def _completion_kwargs(route: dict, messages: list[dict], tools: list[dict] | None,
-                       actor: ActorContext | None = None) -> dict:
+                       actor: ActorContext | None = None, *,
+                       force_answer: bool = False) -> dict:
     kwargs = {
         "model": route["model"],
         "messages": messages,
@@ -1765,7 +1817,7 @@ def _completion_kwargs(route: dict, messages: list[dict], tools: list[dict] | No
     }
     if tools:
         kwargs["tools"] = tools
-        kwargs["tool_choice"] = "auto"
+        kwargs["tool_choice"] = "none" if force_answer else "auto"
     if route["provider"] == "grok" and actor is not None:
         kwargs["extra_headers"] = {
             "x-grok-conv-id": hashlib.sha256(
@@ -1860,14 +1912,22 @@ def _needs_exact_clock(user_text: str) -> bool:
 
 def _runtime_context(actor: ActorContext, user_text: str = "") -> str:
     now = runtime_clock.now_in(actor.timezone)
+    settings = get_settings()
     channel = "the Family Shared WhatsApp group" if actor.conversation_type == "GROUP" else "a private WhatsApp DM"
     clock = (
         f"current local datetime is {now.isoformat()}"
         if _needs_exact_clock(user_text)
         else f"current local date is {now.date().isoformat()}"
     )
+    authenticated_role = (
+        "husband" if actor.user_id == "USR_HUSBAND"
+        else "wife" if actor.user_id == "USR_WIFE"
+        else "household member"
+    )
     return (
         f"Runtime context: {clock}; timezone={actor.timezone}; conversation is {channel}. "
+        f"Household names: husband={settings.husband_name or 'Husband'}; "
+        f"wife={settings.wife_name or 'Wife'}; authenticated user is {authenticated_role}. "
         "Authenticated identity and privacy spaces are enforced below MCP and are not model-controlled. "
         "Never reveal private-space facts in the Family Shared group."
     )
@@ -1993,6 +2053,7 @@ def _action_key(actor: ActorContext, tool_name: str, args: dict, occurrence: int
 
 READ_ONLY_TOOLS = {
     "query_finances","list_pending_expenses","find_receipts","get_receipt",
+    "finance_report","planning_list_cash_pools",
     "find_media","get_media_original",
     "search_saved_items","get_saved_item","resolve_numbered_choice","list_reminders","reminder_history",
     "list_shopping_items","ha_find_entities","ha_get_state","ha_home_summary",
@@ -2203,6 +2264,7 @@ def _trace_turn(actor: ActorContext, trace: dict) -> None:
 _ATTACHMENT_RETRIEVAL_TOOLS = {
     "find_receipts", "get_receipt", "find_media", "get_media_original",
     "search_saved_items", "get_saved_item", "resolve_numbered_choice",
+    "finance_report", "report_snapshot", "report_export", "ha_home_report",
 }
 
 
@@ -2359,8 +2421,9 @@ _DELIVERY_CLAIM_RE = re.compile(
 
 
 _FUTURE_ATTACHMENT_RE = re.compile(
-    r"\b(?:queued(?:\s+for\s+delivery)?|will\s+be\s+sent|sent\s+shortly|"
-    r"arrive\s+shortly|on\s+its\s+way|will\s+arrive)\b",
+    r"\b(?:queued(?:\s+for\s+delivery)?|will\s+be\s+(?:sent|attached)|sent\s+shortly|"
+    r"attached\s+(?:through\s+)?shortly|attached\s+soon|arrive\s+shortly|"
+    r"on\s+its\s+way|will\s+arrive|being\s+sent|in\s+a\s+moment)\b",
     re.IGNORECASE,
 )
 
@@ -2373,11 +2436,15 @@ def _guard_delivery_claim(candidate: str, attachments: list[dict]) -> str:
         # reply just because one sentence says the attachment is "on its way".
         if _FUTURE_ATTACHMENT_RE.search(value):
             replacements = (
-                (r"\bwill\s+be\s+sent(?:\s+shortly)?\b", "is attached"),
+                (r"\bwill\s+be\s+(?:sent|attached)(?:\s+shortly)?\b", "is attached"),
                 (r"\bsent\s+shortly\b", "is attached"),
+                (r"\battached\s+(?:through\s+)?shortly\b", "attached"),
+                (r"\battached\s+soon\b", "attached"),
                 (r"\bwill\s+arrive\b", "is attached"),
                 (r"\barrive\s+shortly\b", "is attached"),
                 (r"\bqueued(?:\s+for\s+delivery)?\b", "attached"),
+                (r"\bbeing\s+sent\b", "attached"),
+                (r"\bin\s+a\s+moment\b", "now"),
                 (r"\bon\s+its\s+way\b", "attached"),
             )
             rewritten = value
@@ -2412,6 +2479,29 @@ def _guard_mutation_success(
         "I couldn't verify that change, so I won't claim it was completed. "
         f"Reason: {reason}."
     )
+
+
+def _owned_cash_pool_name_mentioned(actor: ActorContext, user_text: str) -> bool:
+    """Cheap owner-scoped hint for natural stash names such as 'pocket cash'."""
+    low = str(user_text or "").casefold()
+    if not low.strip() or actor.conversation_type == "GROUP":
+        return False
+    conn = connect()
+    try:
+        rows = conn.execute(
+            """SELECT name FROM alex_phase2_cash_pools
+               WHERE owner_user_id=? AND space_id=? AND status='ACTIVE'""",
+            (actor.user_id, actor.private_space),
+        ).fetchall()
+    except Exception:
+        return False
+    finally:
+        conn.close()
+    for row in rows:
+        name = str(row["name"] or "").strip().casefold()
+        if name and re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", low):
+            return True
+    return False
 
 
 async def respond(actor: ActorContext, user_text: str, media_context: list[str] | None = None,
@@ -2465,6 +2555,15 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
         user_text, media_context, quoted_context,
         prior_user_text=prior_user_text,
     )
+    if _owned_cash_pool_name_mentioned(actor, user_text):
+        forced_specs = await _tool_specs_for_names({
+            "planning_cash_pool_balance", "planning_list_cash_pools"
+        })
+        forced_names = {x["function"]["name"] for x in forced_specs}
+        tools = (
+            forced_specs
+            + [x for x in tools if x["function"]["name"] not in forced_names]
+        )[:TOOL_EXPOSURE_MAX]
     trace["exposed_tools"] = [x["function"]["name"] for x in tools] if tools else []
     routes = _provider_routes(
         settings, user_text=user_text, tools=tools,
@@ -2549,7 +2648,7 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
     language_retry_used = False
     mutation_ledger: list[dict] = []
 
-    for _ in range(MAX_MODEL_CALLS):
+    for call_index in range(MAX_MODEL_CALLS):
         # If the cheap model is genuinely looping through tools, escalate the
         # next reasoning step to the stronger Gemini model instead of spending
         # repeated Lite calls. Normal one-tool workflows never pay this cost.
@@ -2572,7 +2671,10 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
             try:
                 client = _client_for(route["provider"], settings)
                 response = client.chat.completions.create(
-                    **_completion_kwargs(route, messages, tools, actor)
+                    **_completion_kwargs(
+                        route, messages, tools, actor,
+                        force_answer=(call_index == MAX_MODEL_CALLS - 1),
+                    )
                 )
                 call_ms = int((time.monotonic() - call_started) * 1000)
                 active_route = route

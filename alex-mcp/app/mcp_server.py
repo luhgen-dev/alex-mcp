@@ -20,7 +20,7 @@ import scope_policy
 
 mcp = MCPServer(
     "Alex Household Tools",
-    version="0.5.4",
+    version="0.5.5",
     instructions="Deterministic household tools. Identity and permissions are injected by Alex and are never model-controlled.",
 )
 
@@ -163,7 +163,7 @@ def create_reminder(task: str, due_local: str, actor: Actor,
                     presence_aware: bool = False,
                     delivery_class: str = "routine",
                     follow_up_after_hours: int = 24) -> dict:
-    """Create a durable reminder. recipient chooses me/spouse/husband/wife/both. destination=dm sends to the intended person's DM regardless of command origin; destination=group sends one Family Shared group reminder. Set claimable=true only for a group reminder where any authorized household reaction should atomically claim responsibility."""
+    """Create a durable reminder. recipient accepts me/spouse/husband/wife/both or the configured household names. An explicitly named assignee is a DM reminder regardless of where the command was typed unless the user explicitly asks for the group. destination=group sends one Family Shared claimable group reminder."""
     return services.create_reminder(
         actor, task, due_local, recurrence_rule, shared, recipient, destination,
         claimable, presence_aware, delivery_class, follow_up_after_hours,
@@ -396,7 +396,7 @@ def set_leave_record(leave_date: str, actor: Actor, status: str = "PLANNED",
                      portion: str = "FULL", notes: str | None = None,
                      end_date: str | None = None,
                      leave_type: str = "ANNUAL_LEAVE") -> dict:
-    """Store ALEX's personal leave ledger. This is not an employer/HR submission. PLANNED/CONFIRMED do not count as historical absence; TAKEN materializes dated annual/medical leave into the work engine."""
+    """Store or cancel ALEX's personal leave ledger. This is not an employer/HR submission. Use status=CANCELLED when the user asks to delete/cancel/remove a leave record. PLANNED/CONFIRMED do not count as historical absence; TAKEN materializes dated annual/medical leave into the work engine."""
     return phase2.set_leave_record(
         actor, leave_date, status, portion, notes, end_date, leave_type
     )
@@ -1026,9 +1026,18 @@ def bills_list(actor: Actor, period: str | None = None,
     phase2_finance.refresh_obligation_states(
         effective_date, actor.phone, actor.conversation_type, "all"
     )
-    return {"obligations": phase2_finance.list_obligations(
+    obligations = phase2_finance.list_obligations(
         actor.phone, actor.conversation_type, "all", period
-    ), "as_of_date": effective_date}
+    )
+    return {
+        "obligations": obligations,
+        "as_of_date": effective_date,
+        "empty_means": (
+            "No recurring obligation is recorded for this query; tell the user that directly "
+            "instead of probing unrelated reminder or finance tools."
+            if not obligations else None
+        ),
+    }
 
 
 @mcp.tool()

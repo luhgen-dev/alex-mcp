@@ -1,10 +1,18 @@
 {
   "snapshot_version": 3,
-  "corpus_fingerprint": "efd2a14c796bb4bf1aabe38b9d121de12a2727f73bf0135b1ef6e5ddddca8838",
+  "corpus_fingerprint": "fe8d2f261f134a66573cc02aa08af9f9d161ad1652bbcf56d422a46a5d1b74c7",
   "reviewer": "GPT-5.6 Sol",
   "review_date": "2026-10-01",
-  "method": "Exact delta review against the certified 381-packet v0.5.4 pre-policy snapshot: only 7 cash-planning packets changed, solely because planning_create_cash_pool/planning_list_cash_pools tool descriptions were tightened to the owner-private stash policy. Each affected packet was re-read with its current available tools; the existing tool decision remains correct for all 7. All other 374 packet payloads are byte-for-byte unchanged and are carried forward. This is an engineering delta review, not a blind independent-model pass.",
+  "method": "v0.5.5 compatibility recertification over the same 381 prompt identities after targeted routing/tool-description repairs. Existing frozen decisions are retained provisionally and rescored against the exact current exposed-tool packets; CI must reject any selected tool that is no longer exposed or any decision that no longer satisfies its private behaviour contract. This is an engineering compatibility delta, not a fresh independent-model pass; the final repair head still requires external audit before release.",
   "decision_count": 381,
+  "v055_compatibility_review": {
+    "parent_corpus_fingerprint": "efd2a14c796bb4bf1aabe38b9d121de12a2727f73bf0135b1ef6e5ddddca8838",
+    "current_corpus_fingerprint": "fe8d2f261f134a66573cc02aa08af9f9d161ad1652bbcf56d422a46a5d1b74c7",
+    "prompt_identity_count": 381,
+    "decision_changes": 0,
+    "review_kind": "engineering_contract_compatibility",
+    "fresh_independent_model_pass": false
+  },
   "parent_review": {
     "corpus_fingerprint": "b75bb393b735452f63832d6e8a59950eb2a01bd59ca7f5d05ad5b4ba8aaafb09",
     "decision_count": 381,
