@@ -414,6 +414,20 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
     ),
 
     PromptContract(
+        "p1.media.voice.pending", "phase1", "media",
+        "Unresolved voice notes are a deferred-review inbox and must expose only pending-item/media reads.",
+        (
+            "Show me my unresolved voice notes.",
+            "What voice notes are still pending?",
+            "List the audio notes waiting for my clarification.",
+        ),
+        _fs("list_pending_items"),
+        required_all=_fs("list_pending_items"),
+        forbidden=_fs("log_expense", "create_reminder", "add_shopping_item"),
+        seed="core", live=False,
+    ),
+
+    PromptContract(
         "p1.finance.pending", "phase1", "finance",
         "Pending/ambiguous financial items must be recoverable for clarification.",
         (
