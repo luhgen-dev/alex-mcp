@@ -1908,10 +1908,15 @@ def claim_reminder_from_reaction(
             conn.rollback()
             return {"status": "closed", "reminder_id": reminder_id}
         if row["claimed_by_user_id"]:
+            display = conn.execute(
+                "SELECT display_name FROM users WHERE user_id=?",
+                (row["claimed_by_user_id"],),
+            ).fetchone()
             conn.rollback()
             return {
                 "status": "already_claimed", "reminder_id": reminder_id,
                 "claimed_by_user_id": row["claimed_by_user_id"],
+                "claimed_by_name": display["display_name"] if display else None,
                 "claimed_by_me": row["claimed_by_user_id"] == actor.user_id,
             }
         now = runtime_clock.now_utc()
@@ -1931,10 +1936,18 @@ def claim_reminder_from_reaction(
                 "SELECT claimed_by_user_id FROM reminders WHERE reminder_id=?",
                 (reminder_id,),
             ).fetchone()
+            display = (
+                conn.execute(
+                    "SELECT display_name FROM users WHERE user_id=?",
+                    (winner["claimed_by_user_id"],),
+                ).fetchone()
+                if winner and winner["claimed_by_user_id"] else None
+            )
             conn.rollback()
             return {
                 "status": "already_claimed", "reminder_id": reminder_id,
                 "claimed_by_user_id": winner["claimed_by_user_id"] if winner else None,
+                "claimed_by_name": display["display_name"] if display else None,
             }
         conn.execute(
             """INSERT INTO reminder_claim_events(
