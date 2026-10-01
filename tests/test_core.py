@@ -3464,6 +3464,7 @@ class AlexCoreTests(unittest.TestCase):
         self.assertIsNotNone(ack)
         self.assertEqual(ack["conversation_id"], "60111111111@s.whatsapp.net")
         self.assertIn("assigned to you", ack["text_body"].casefold())
+        self.assertIn("1st October 2026, 3.00PM", ack["text_body"])
 
     def test_v055_natural_emoji_memory_shortcut_is_narrow_and_private_capable(self):
         memory = {x["function"]["name"] for x in asyncio.run(
