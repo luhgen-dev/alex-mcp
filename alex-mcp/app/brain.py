@@ -1546,6 +1546,8 @@ async def _tool_specs(user_text: str, media_context: list[str] | None = None,
             wanted |= _select_tool_names(str(carried_intent), media_context)
         if quoted_context.get("financial_event"):
             wanted |= {"query_finances", "correct_expense", "confirm_expense", "list_pending_expenses"}
+        if quoted_context.get("report_context") or quoted_context.get("context_kind") == "REPORT":
+            wanted |= {"query_finances", "finance_report", "report_export"}
         if str(quoted_context.get("context_kind") or "").startswith("REMINDER"):
             wanted |= REMINDER_TOOLS
     if _money_only_reply(user_text):
@@ -1994,6 +1996,16 @@ def _quoted_context_message(quoted_context: dict | None) -> str | None:
         parts.append(
             "Captionless attachment paired locally to the same sender's recent instruction: "
             + recent_instruction[:1000]
+        )
+    report_context = quoted_context.get("report_context")
+    if isinstance(report_context, dict):
+        parts.append(
+            "Exact referenced report context: "
+            + json.dumps(report_context, ensure_ascii=False, separators=(",", ":"))
+        )
+        parts.append(
+            "When the user says this/that report, preserve this exact report specification "
+            "unless the current command explicitly asks for a different/full report."
         )
     event = quoted_context.get("financial_event")
     if isinstance(event, dict) and event.get("event_id"):
