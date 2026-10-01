@@ -1912,14 +1912,22 @@ def _needs_exact_clock(user_text: str) -> bool:
 
 def _runtime_context(actor: ActorContext, user_text: str = "") -> str:
     now = runtime_clock.now_in(actor.timezone)
+    settings = get_settings()
     channel = "the Family Shared WhatsApp group" if actor.conversation_type == "GROUP" else "a private WhatsApp DM"
     clock = (
         f"current local datetime is {now.isoformat()}"
         if _needs_exact_clock(user_text)
         else f"current local date is {now.date().isoformat()}"
     )
+    authenticated_role = (
+        "husband" if actor.user_id == "USR_HUSBAND"
+        else "wife" if actor.user_id == "USR_WIFE"
+        else "household member"
+    )
     return (
         f"Runtime context: {clock}; timezone={actor.timezone}; conversation is {channel}. "
+        f"Household names: husband={settings.husband_name or 'Husband'}; "
+        f"wife={settings.wife_name or 'Wife'}; authenticated user is {authenticated_role}. "
         "Authenticated identity and privacy spaces are enforced below MCP and are not model-controlled. "
         "Never reveal private-space facts in the Family Shared group."
     )
