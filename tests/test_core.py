@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import hashlib
 import os
 import sys
 import tempfile
@@ -2136,6 +2137,34 @@ class AlexCoreTests(unittest.TestCase):
         self.assertEqual(claimed["reaction"]["status"], "claimed")
         self.assertEqual(claimed["reaction"]["claimed_by_user_id"], "USR_WIFE")
 
+        collision = ingress.process({
+            "message_id": "reaction-entry-second",
+            "provider": "WHATSAPP",
+            "conversation_id": group_id,
+            "conversation_type": "GROUP",
+            "sender_phone": "+60111111111",
+            "event_kind": "REACTION",
+            "reaction_target_message_id": "wa-fired",
+            "reaction_text": "❤️",
+        })
+        self.assertEqual(collision["reaction"]["status"], "already_claimed")
+        self.assertEqual(collision["reaction"]["claimed_by_user_id"], "USR_WIFE")
+        self.assertIn("already picked this one up", collision["reaction"]["collision_reply"])
+        conn = db.connect()
+        try:
+            collision_post = conn.execute(
+                """SELECT text_body FROM outbound_messages
+                   WHERE source_message_id='reaction-entry-second'"""
+            ).fetchone()
+            owner = conn.execute(
+                "SELECT claimed_by_user_id FROM reminders WHERE reminder_id=?",
+                (reminder["reminder_id"],),
+            ).fetchone()["claimed_by_user_id"]
+        finally:
+            conn.close()
+        self.assertIsNotNone(collision_post)
+        self.assertEqual(owner, "USR_WIFE")
+
         removed = ingress.process({
             "message_id": "reaction-entry-remove",
             "provider": "WHATSAPP",
@@ -2160,6 +2189,51 @@ class AlexCoreTests(unittest.TestCase):
         finally:
             conn.close()
         self.assertEqual(error_posts, 0)
+
+    def test_v054_reaction_can_bind_stable_alex_provider_message_id(self):
+        group_id = "120363744444@g.us"
+        with open(os.path.join(TEST_DIR, "family_group.json"), "w", encoding="utf-8") as handle:
+            handle.write('{"group_jid":"%s"}' % group_id)
+        self.claim("stable-reaction-create", "+60111111111", "group reminder")
+        creator = with_action_key(
+            self.actor("stable-reaction-create", "+60111111111"),
+            "stable-reaction-action",
+        )
+        reminder = services.create_reminder(
+            creator, "stable reaction", "2026-10-01T18:00:00+08:00",
+            destination="group",
+        )
+        outbound_id = db.queue_outbound(
+            group_id, "TEXT", text="Reminder: stable reaction",
+            context_kind="REMINDER_INITIAL", context_id=reminder["reminder_id"],
+        )
+        conn = db.connect()
+        try:
+            conn.execute(
+                """UPDATE outbound_messages
+                   SET provider_message_id=NULL,delivery_status='SENT',
+                       delivered_at_utc=CURRENT_TIMESTAMP
+                   WHERE outbound_id=?""",
+                (outbound_id,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        stable_id = "ALEX" + hashlib.sha256(outbound_id.encode("utf-8")).hexdigest().upper()[:28]
+        db.claim_inbound({
+            "message_id": "stable-reaction-wife",
+            "provider": "WHATSAPP",
+            "conversation_id": group_id,
+            "conversation_type": "GROUP",
+            "sender_phone": "+60222222222",
+            "text": "",
+        })
+        wife = db.resolve_actor(
+            "+60222222222", group_id, "GROUP", "stable-reaction-wife", []
+        )
+        result = services.claim_reminder_from_reaction(wife, stable_id, "👍")
+        self.assertEqual(result["status"], "claimed")
+        self.assertEqual(result["claimed_by_user_id"], "USR_WIFE")
 
     def test_reminder_claim_handoff_transfers_only_after_recipient_reaction(self):
         group_id = "120363888888@g.us"
