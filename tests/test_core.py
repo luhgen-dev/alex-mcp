@@ -47,6 +47,7 @@ import brain
 import mcp_server
 import runtime_clock
 import scheduler
+import outbox
 from context import use_actor, with_action_key
 from config import Settings
 from mcp import Client
@@ -2342,6 +2343,20 @@ class AlexCoreTests(unittest.TestCase):
             conn.close()
         self.assertEqual(after, "USR_WIFE")
         self.assertEqual(status, "ACCEPTED")
+        conn = db.connect()
+        try:
+            notice = conn.execute(
+                """SELECT text_body FROM outbound_messages
+                   WHERE conversation_id='60111111111@s.whatsapp.net'
+                     AND context_kind='REMINDER_HANDOFF_ACCEPTED'
+                     AND context_id=?""",
+                (reminder["reminder_id"],),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertIsNotNone(notice)
+        self.assertIn("Priya has taken over", notice["text_body"])
+        self.assertIn("pick up parcel", notice["text_body"])
 
     def test_reminder_handoff_does_not_overwrite_pending_or_unreachable_recipient(self):
         # With no active recipient phone, ownership must remain untouched.
@@ -3004,6 +3019,183 @@ class AlexCoreTests(unittest.TestCase):
         height = int.from_bytes(payload[20:24], "big")
         self.assertGreater(width, height)
         self.assertGreaterEqual(width, 960)
+
+    def test_v054_postaudit_caption_only_shared_receipt_gets_in_group(self):
+        caption = "July TNB receipt - share with the family"
+        self.claim("caption-only-shared-receipt", "+60111111111", caption)
+        media_id = media.save_media(
+            "caption-only-shared-receipt", "IMAGE", "image/jpeg",
+            base64.b64encode(b"caption only receipt").decode(),
+        )
+        dm = with_action_key(
+            replace(
+                self.actor("caption-only-shared-receipt", "+60111111111", [media_id]),
+                trusted_text=caption,
+            ),
+            "caption-only-shared-receipt-action",
+        )
+        saved = services.save_item(dm, "TNB July", "electricity bill July")
+        self.assertEqual(saved["space"], "FAMILY_SHARED")
+        group = self.group_actor("caption-only-shared-receipt-group", "+60111111111")
+        found = services.find_receipts(group, query="tnb")["matches"]
+        self.assertTrue(any(row["media_id"] == media_id for row in found))
+        retrieved = services.get_receipt(group, media_id)
+        self.assertEqual(retrieved["status"], "found_saved_receipt")
+        self.assertEqual(retrieved["scope"], "family")
+
+    def test_v054_postaudit_period_change_stays_finance_report(self):
+        self.claim("period-change-report", "+60111111111", "show September finance report")
+        actor = self.actor("period-change-report", "+60111111111")
+        services.log_expense(
+            with_action_key(actor, "period-change-sep"), "September meal", 10,
+            "food", currency="MYR", event_date_local="2026-09-10T10:00:00+08:00",
+        )
+        services.log_expense(
+            with_action_key(actor, "period-change-aug"), "August meal", 20,
+            "food", currency="MYR", event_date_local="2026-08-10T10:00:00+08:00",
+        )
+        mcp_server.finance_report(actor, "2026-09")
+        exported = mcp_server.report_export("csv", actor, period="2026-08")
+        self.assertEqual(exported["source_report_kind"], "monthly_finance")
+        csv_text = open(exported["_attachments"][0]["path"], encoding="utf-8").read()
+        self.assertIn("August meal", csv_text)
+        self.assertNotIn("September meal", csv_text)
+
+    def test_v054_postaudit_same_turn_probe_does_not_replace_monthly_report(self):
+        self.claim("same-turn-report", "+60111111111", "show September finance report")
+        actor = self.actor("same-turn-report", "+60111111111")
+        services.log_expense(
+            with_action_key(actor, "same-turn-food"), "Lunch", 12,
+            "food", currency="MYR", event_date_local="2026-09-10T10:00:00+08:00",
+        )
+        services.log_expense(
+            with_action_key(actor, "same-turn-fuel"), "Shell petrol", 30,
+            "fuel", currency="MYR", event_date_local="2026-09-11T10:00:00+08:00",
+        )
+        mcp_server.finance_report(actor, "2026-09")
+        mcp_server.query_finances(
+            actor, start_date="2026-09-01", end_date="2026-09-30", category="food"
+        )
+        active = phase2_reports.load_active_report(actor.user_id, actor.conversation_id)
+        self.assertEqual(active["kind"], "monthly_finance")
+        exported = mcp_server.report_export("csv", actor)
+        csv_text = open(exported["_attachments"][0]["path"], encoding="utf-8").read()
+        self.assertIn("Lunch", csv_text)
+        self.assertIn("Shell petrol", csv_text)
+
+    def test_v054_postaudit_common_obligation_due_questions_keep_bills(self):
+        for phrase in (
+            "When is my credit card due?",
+            "When is the rent due?",
+            "When is my car loan due?",
+        ):
+            names = {x["function"]["name"] for x in asyncio.run(brain._tool_specs(phrase))}
+            self.assertIn("bills_list", names, (phrase, names))
+
+    def test_v054_postaudit_delivery_guard_preserves_compound_content(self):
+        value = (
+            "Logged RM20 petrol (Transport). Your September PDF is on its way, "
+            "and 2 items still need a category."
+        )
+        guarded = brain._guard_delivery_claim(value, [{"path": "/tmp/report.pdf"}])
+        self.assertIn("Logged RM20 petrol", guarded)
+        self.assertIn("2 items still need a category", guarded)
+        self.assertNotIn("on its way", guarded.casefold())
+        self.assertIn("attached", guarded.casefold())
+
+    def test_v054_postaudit_managed_job_reconcile_does_not_precede_normal_send(self):
+        self.claim("stuck-doc-source", "+60111111111", "send document")
+        conn = db.connect()
+        try:
+            conn.execute(
+                """INSERT INTO outbound_messages(
+                       outbound_id,source_message_id,conversation_id,kind,text_body,
+                       local_path,mime_type,delivery_status,attempt_count,last_error
+                   ) VALUES(
+                       'stuck-document','stuck-doc-source','60111111111@s.whatsapp.net',
+                       'DOCUMENT','doc','/tmp/missing.pdf','application/pdf','FAILED',3,'missing'
+                   )"""
+            )
+            conn.execute(
+                """INSERT INTO outbound_messages(
+                       outbound_id,conversation_id,kind,text_body,delivery_status
+                   ) VALUES(
+                       'normal-text', '60111111111@s.whatsapp.net','TEXT','hello','PENDING'
+                   )"""
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        calls = []
+        def fake_send(payload):
+            calls.append(payload.get("kind"))
+            return (payload.get("kind") == "text", "{}")
+        outbox._STARTUP_MANAGED_JOB_RECONCILED = False
+        with patch.object(outbox, "_send", side_effect=fake_send):
+            outbox.sweep()
+            first_sweep = list(calls)
+            outbox.sweep()
+        self.assertTrue(first_sweep)
+        self.assertEqual(first_sweep[0], "text")
+        self.assertEqual(calls.count("reaction"), first_sweep.count("reaction"))
+        self.assertEqual(calls.count("pin"), first_sweep.count("pin"))
+
+    def test_v054_postaudit_category_aliases_roll_up_food_and_drink(self):
+        self.claim("category-rollup", "+60111111111", "finance")
+        actor = self.actor("category-rollup", "+60111111111")
+        first = services.log_expense(
+            with_action_key(actor, "category-food"), "Lunch", 21.29,
+            "food", currency="MYR", event_date_local="2026-09-10T10:00:00+08:00",
+        )
+        second = services.log_expense(
+            with_action_key(actor, "category-food-drink"), "Coffee", 12.34,
+            "food", currency="MYR", event_date_local="2026-09-11T10:00:00+08:00",
+        )
+        conn = db.connect()
+        try:
+            conn.execute(
+                "UPDATE financial_events SET category='food_drink' WHERE event_id=?",
+                (second["event_id"],),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        result = services.query_finances(
+            actor, start_date="2026-09-01", end_date="2026-09-30",
+            include_all_records=True,
+        )
+        food = [row for row in result["category_totals"] if row["category"] == "food"]
+        self.assertEqual(len(food), 1)
+        self.assertAlmostEqual(food[0]["amount"], 33.63, places=2)
+        self.assertEqual(phase2_reports._human_category("food"), "Food & Drink")
+
+    def test_v054_postaudit_direct_nonhandoff_reaction_is_ignored(self):
+        self.claim("direct-reaction-create", "+60111111111", "remind me")
+        creator = with_action_key(
+            self.actor("direct-reaction-create", "+60111111111"),
+            "direct-reaction-create-action",
+        )
+        reminder = services.create_reminder(
+            creator, "personal task", "2026-10-02T10:00:00+08:00"
+        )
+        outbound_id = db.queue_outbound(
+            "60111111111@s.whatsapp.net", "TEXT", text="Reminder: personal task",
+            context_kind="REMINDER_INITIAL", context_id=reminder["reminder_id"],
+        )
+        conn = db.connect()
+        try:
+            conn.execute(
+                """UPDATE outbound_messages SET delivery_status='SENT',
+                   provider_message_id='wa-direct-reminder',delivered_at_utc=CURRENT_TIMESTAMP
+                   WHERE outbound_id=?""",
+                (outbound_id,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        actor = self.actor("direct-reaction-actor", "+60111111111")
+        result = services.claim_reminder_from_reaction(actor, "wa-direct-reminder", "👍")
+        self.assertEqual(result["status"], "ignored_direct_reminder_reaction")
 
     def actor_for_context(self):
         self.claim("context-policy", "+60111111111", "context")
