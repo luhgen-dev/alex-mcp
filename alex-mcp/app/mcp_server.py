@@ -778,11 +778,11 @@ def planning_allocate_cash_to_goal(amount: float, actor: Actor,
 def planning_create_cash_pool(name: str, actor: Actor, currency: str = "MYR",
                               shared: bool = False,
                               opening_balance: float | None = None) -> dict:
-    """Create a stash/cash pool. If the user says to create it with/put an amount in it, pass that amount as opening_balance so creation + funding are one atomic action."""
+    """Create the caller's private stash/cash pool. Stash is inherently private per household policy; shared is accepted only for backward-compatible tool calls and never widens visibility. If the user says to create it with/put an amount in it, pass that amount as opening_balance so creation + funding are one atomic action."""
     import runtime_clock
     return phase2_finance.create_cash_pool(
         name, actor.phone, actor.conversation_type,
-        scope_policy.visibility_for_new_write(actor, shared),
+        "private",
         currency, opening_balance,
         runtime_clock.today(actor.timezone).isoformat(),
         actor.source_message_id,
@@ -790,11 +790,11 @@ def planning_create_cash_pool(name: str, actor: Actor, currency: str = "MYR",
 
 
 @mcp.tool()
-def planning_list_cash_pools(actor: Actor, scope: str = "all") -> dict:
-    """List the authenticated user's active stash/cash pools and exact balances. scope may be all/family/private."""
+def planning_list_cash_pools(actor: Actor, scope: str = "private") -> dict:
+    """List the authenticated user's private active stash/cash pools and exact balances. Stash is never exposed as Family Shared."""
     return {
         "pools": phase2_finance.list_cash_pools(
-            actor.phone, actor.conversation_type, scope
+            actor.phone, actor.conversation_type, "private"
         )
     }
 
