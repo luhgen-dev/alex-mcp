@@ -81,7 +81,7 @@ Alex MCP is architecturally sound and its current CI is green, but the audit fou
 
 ## INTENTIONALLY NOT A BLOCKER
 
-- Alex voice replies: deliberately excluded by owner decision; voice input remains.
+- Alex voice replies: deliberately excluded by owner decision. As of v0.5.6, voice notes are preserved as a deferred private review inbox and never execute household commands until the user supplies typed clarification.
 - Needle: deliberately excluded because it has no unique role in this architecture.
 - Exact OT monetary formula: remains unknown until the owner supplies it; Alex must not infer it.
 - External live travel/search/Google Sheets/TV presentation: connector-dependent extensions, not required for the first MCP household-core smoke.
