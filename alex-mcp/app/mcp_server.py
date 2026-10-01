@@ -1279,8 +1279,13 @@ def report_snapshot(actor: Actor, period: str | None = None,
 
 @mcp.tool()
 def report_export(format: str, actor: Actor, period: str | None = None,
-                  include_raw_income: bool = False) -> dict:
-    """Export the active report to PDF/CSV/JSON from a freshly re-queried canonical dataset."""
+                  include_raw_income: bool = False,
+                  report_type: str | None = None) -> dict:
+    """Export PDF/CSV/JSON from the active canonical report.
+
+    report_type may be finance or snapshot when the user explicitly names the
+    report. Supplying a period never discards a matching active report context.
+    """
     import calendar
     import json
     import os
@@ -1295,13 +1300,40 @@ def report_export(format: str, actor: Actor, period: str | None = None,
     if include_raw_income and actor.conversation_type == "GROUP":
         raise PermissionError("raw private income cannot be exported from the family group")
 
+    requested_type = str(report_type or "").strip().casefold()
+    if requested_type not in {"", "finance", "snapshot"}:
+        raise ValueError("report_type must be finance or snapshot")
+
     active = (
         phase2_reports.load_active_report(actor.user_id, actor.conversation_id)
-        if period is None and not include_raw_income else None
+        if not include_raw_income else None
     )
-    report_kind = active["kind"] if active else "snapshot"
-    effective_period = (active.get("period") if active else None) or period
-    spec = (active.get("spec") or {}) if active else {}
+    active_kind = active.get("kind") if active else None
+    active_period = active.get("period") if active else None
+
+    if requested_type == "finance":
+        report_kind = (
+            active_kind
+            if active_kind in {"finance_query", "monthly_finance"}
+            else "monthly_finance"
+        )
+    elif requested_type == "snapshot":
+        report_kind = "snapshot"
+    elif active and (
+        period is None
+        or not active_period
+        or str(active_period) == str(period)
+    ):
+        # "Send that as PDF" and "send September as PDF" must preserve the
+        # report the user just saw when the period is the same.
+        report_kind = active_kind
+    else:
+        report_kind = "snapshot"
+
+    effective_period = period or active_period
+    spec = (active.get("spec") or {}) if active and report_kind == active_kind else {}
+    if report_kind == "monthly_finance" and requested_type == "finance":
+        spec = {**spec, "period": effective_period, "scope": spec.get("scope") or "all"}
 
     if report_kind in {"finance_query", "monthly_finance"}:
         if report_kind == "monthly_finance":
