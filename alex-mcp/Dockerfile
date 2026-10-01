@@ -24,6 +24,9 @@ RUN apk add --no-cache \
       font-dejavu \
       whisper.cpp
 
+RUN test -n "$(find /usr/share/fonts -type f -name 'DejaVuSans.ttf' -print -quit)" \
+ && test -n "$(find /usr/share/fonts -type f -name 'DejaVuSans-Bold.ttf' -print -quit)"
+
 WORKDIR /app
 
 COPY app/package.json ./
