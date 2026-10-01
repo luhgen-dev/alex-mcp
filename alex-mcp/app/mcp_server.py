@@ -10,6 +10,7 @@ from mcp.server.mcpserver import Resolve
 from mcp.server.mcpserver.exceptions import ToolError
 
 from context import ActorContext, current_actor
+import db
 import services
 import phase2
 import diagnostics
@@ -162,6 +163,12 @@ def find_media(actor: Actor, media_type: str = "all", query: str | None = None,
 def get_media_original(media_id: str, actor: Actor) -> dict:
     """Retrieve one authorized original media object, including the original voice-note audio."""
     return services.get_media_original(actor, media_id)
+
+
+@alex_tool()
+def list_pending_items(actor: Actor, kind: str | None = None, limit: int = 20) -> dict:
+    """List this owner's unresolved deferred items. Use kind=VOICE for unresolved voice notes."""
+    return {"items": db.list_pending_items(actor, kind, limit)}
 
 
 @alex_tool()
