@@ -2,3 +2,5 @@ mcp==2.2.0
 openai==3.19.2
 requests==2.34.2
 python-dateutil==2.9.0.post0
+
+Pillow==11.3.0
