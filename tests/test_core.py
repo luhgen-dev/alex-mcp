@@ -2181,15 +2181,21 @@ class AlexCoreTests(unittest.TestCase):
 
         conn = db.connect()
         try:
-            error_posts = conn.execute(
-                """SELECT COUNT(*) AS n FROM outbound_messages
+            reaction_posts = conn.execute(
+                """SELECT source_message_id,conversation_id,text_body,context_kind
+                   FROM outbound_messages
                    WHERE source_message_id IN (
                      'reaction-entry-ignore','reaction-entry-claim','reaction-entry-remove'
-                   )"""
-            ).fetchone()["n"]
+                   )
+                   ORDER BY rowid"""
+            ).fetchall()
         finally:
             conn.close()
-        self.assertEqual(error_posts, 0)
+        self.assertEqual(len(reaction_posts), 1)
+        self.assertEqual(reaction_posts[0]["source_message_id"], "reaction-entry-claim")
+        self.assertEqual(reaction_posts[0]["conversation_id"], "60222222222@s.whatsapp.net")
+        self.assertEqual(reaction_posts[0]["context_kind"], "REMINDER_CLAIM_CONFIRMED")
+        self.assertIn("claimed", reaction_posts[0]["text_body"].casefold())
 
     def test_v054_reaction_can_bind_stable_alex_provider_message_id(self):
         group_id = "120363744444@g.us"
@@ -3251,6 +3257,258 @@ class AlexCoreTests(unittest.TestCase):
         actor = self.actor("direct-reaction-actor", "+60111111111")
         result = services.claim_reminder_from_reaction(actor, "wa-direct-reminder", "👍")
         self.assertEqual(result["status"], "ignored_direct_reminder_reaction")
+
+    def test_v055_final_model_call_is_answer_only_and_does_not_execute_a_fourth_tool(self):
+        class FakeFunction:
+            def __init__(self, name, arguments="{}"):
+                self.name = name
+                self.arguments = arguments
+
+        class FakeCall:
+            def __init__(self, call_id, name):
+                self.id = call_id
+                self.function = FakeFunction(name)
+
+        class FakeMessage:
+            def __init__(self, content="", calls=None):
+                self.content = content
+                self.tool_calls = calls or []
+
+            def model_dump(self, exclude_none=True):
+                payload = {"role": "assistant", "content": self.content}
+                if self.tool_calls:
+                    payload["tool_calls"] = [
+                        {
+                            "id": call.id,
+                            "type": "function",
+                            "function": {
+                                "name": call.function.name,
+                                "arguments": call.function.arguments,
+                            },
+                        }
+                        for call in self.tool_calls
+                    ]
+                return payload
+
+        class FakeResponse:
+            def __init__(self, message):
+                self.choices = [type("Choice", (), {"message": message})()]
+                self.usage = None
+
+        class FakeCompletions:
+            def __init__(self):
+                self.calls = []
+
+            def create(self, **kwargs):
+                self.calls.append(kwargs)
+                n = len(self.calls)
+                if n <= 3:
+                    return FakeResponse(
+                        FakeMessage(calls=[FakeCall(f"call-{n}", "list_reminders")])
+                    )
+                # Regression target: the fourth and final model call must be
+                # answer-only, not another executable tool round.
+                self.assert_final(kwargs)
+                return FakeResponse(FakeMessage(content="Final answer from tool results."))
+
+            @staticmethod
+            def assert_final(kwargs):
+                if kwargs.get("tool_choice") != "none":
+                    raise AssertionError(f"final tool_choice was {kwargs.get('tool_choice')!r}")
+
+        fake_completions = FakeCompletions()
+        fake_client = type(
+            "FakeClient",
+            (),
+            {"chat": type("FakeChat", (), {"completions": fake_completions})()},
+        )()
+        executed = []
+
+        async def fake_call_mcp(actor, name, args, action_key):
+            executed.append(name)
+            return ({"status": "ok", "round": len(executed)}, [])
+
+        self.claim("v055-loop-budget", "+60111111111", "What reminders do I have?")
+        actor = self.actor("v055-loop-budget", "+60111111111")
+        route = {
+            "provider": "grok",
+            "model": "stub",
+            "reasoning_effort": "low",
+            "role": "manual",
+        }
+        with patch.object(brain, "_provider_routes", return_value=[route]), \
+             patch.object(brain, "_client_for", return_value=fake_client), \
+             patch.object(brain, "_call_mcp", new=fake_call_mcp):
+            reply, attachments = asyncio.run(
+                brain.respond(actor, "What reminders do I have?")
+            )
+        self.assertEqual(reply, "Final answer from tool results.")
+        self.assertEqual(attachments, [])
+        self.assertEqual(len(executed), 3)
+        self.assertEqual(
+            [call.get("tool_choice") for call in fake_completions.calls],
+            ["auto", "auto", "auto", "none"],
+        )
+
+    def test_v055_read_tools_are_not_misclassified_as_mutations(self):
+        self.assertFalse(brain._is_mutating_tool("planning_list_cash_pools"))
+        self.assertFalse(brain._is_mutating_tool("finance_report"))
+
+    def test_v055_attachment_completion_covers_live_wording_and_report_exports(self):
+        guarded = brain._guard_delivery_claim(
+            "I've generated the September report. It is attached through shortly.",
+            [{"path": "/tmp/report.csv"}],
+        )
+        self.assertNotIn("shortly", guarded.casefold())
+        self.assertIn("attached", guarded.casefold())
+        self.assertTrue(brain._attachment_request_finished({
+            "compound": False,
+            "tools_called": ["finance_report", "report_export"],
+        }))
+
+    def test_v055_stashes_plural_and_named_pool_reads_handoff_or_route_directly(self):
+        self.assertTrue(
+            ingress._private_group_handoff_requested("What stashes do I have?")
+        )
+        self.claim("v055-pool-create", "+60111111111", "Create pocket cash stash")
+        actor = replace(
+            self.actor("v055-pool-create", "+60111111111"),
+            trusted_text="Create pocket cash stash",
+        )
+        created = mcp_server.planning_create_cash_pool(
+            "pocket cash", actor, opening_balance=100
+        )
+        self.assertEqual(created["space"], "HUSBAND_PVT")
+        dm_actor = self.actor("v055-pool-create", "+60111111111")
+        self.assertTrue(
+            brain._owned_cash_pool_name_mentioned(
+                dm_actor, "How much do I have in pocket cash?"
+            )
+        )
+        group = self.group_actor("v055-pool-group", "+60111111111")
+        self.assertTrue(
+            ingress._private_group_match_available(
+                group, "How much do I have in pocket cash?"
+            )
+        )
+
+    def test_v055_private_note_group_miss_detects_only_private_match(self):
+        self.claim("v055-private-note", "+60111111111", "save this privately")
+        private_actor = with_action_key(
+            replace(
+                self.actor("v055-private-note", "+60111111111"),
+                trusted_text="save this privately",
+            ),
+            "v055-private-note-action",
+        )
+        saved = services.save_item(
+            private_actor, "v055 secret drawer note", "keys in blue drawer"
+        )
+        self.assertEqual(saved["space"], "HUSBAND_PVT")
+        group = self.group_actor("v055-private-note-group", "+60111111111")
+        self.assertTrue(
+            ingress._private_group_match_available(
+                group, "show me the v055 secret drawer note"
+            )
+        )
+        self.assertEqual(
+            services.search_saved_items(group, "v055 secret drawer note")["count"], 0
+        )
+
+    def test_v055_named_assignee_from_group_forces_dm_and_queues_immediate_ack(self):
+        group_id = "120363955555@g.us"
+        with open(os.path.join(TEST_DIR, "family_group.json"), "w", encoding="utf-8") as handle:
+            handle.write('{"group_jid":"%s"}' % group_id)
+        db.claim_inbound({
+            "message_id": "v055-assigned-reminder",
+            "provider": "WHATSAPP",
+            "conversation_id": group_id,
+            "conversation_type": "GROUP",
+            "sender_phone": "+60111111111",
+            "text": "remind Luhgen to take the parcel in 2 minutes",
+        })
+        group_actor = db.resolve_actor(
+            "+60111111111", group_id, "GROUP", "v055-assigned-reminder", []
+        )
+        group_actor = with_action_key(
+            replace(
+                group_actor,
+                trusted_text="remind Luhgen to take the parcel in 2 minutes",
+            ),
+            "v055-assigned-reminder-action",
+        )
+        reminder = services.create_reminder(
+            group_actor,
+            "Luhgen to take the parcel",
+            "2026-10-01T15:00:00+08:00",
+            recipient="me",
+            destination="group",
+        )
+        self.assertEqual(reminder["recipient_user_id"], "USR_HUSBAND")
+        self.assertEqual(reminder["destination"], "dm")
+        self.assertEqual(reminder["conversation_id"], "60111111111@s.whatsapp.net")
+        self.assertFalse(reminder["claimable"])
+        self.assertEqual(reminder["task"], "take the parcel")
+        conn = db.connect()
+        try:
+            ack = conn.execute(
+                """SELECT conversation_id,text_body,context_kind
+                   FROM outbound_messages
+                   WHERE context_kind='REMINDER_ASSIGNED' AND context_id=?""",
+                (reminder["reminder_id"],),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertIsNotNone(ack)
+        self.assertEqual(ack["conversation_id"], "60111111111@s.whatsapp.net")
+        self.assertIn("assigned to you", ack["text_body"].casefold())
+
+    def test_v055_natural_emoji_memory_shortcut_is_narrow_and_private_capable(self):
+        memory = {x["function"]["name"] for x in asyncio.run(
+            brain._tool_specs("Car keys are in the blue drawer 😂")
+        )}
+        self.assertIn("save_item", memory)
+        self.assertTrue(brain._trusted_mutation_requested(
+            "Car keys are in the blue drawer 😂"
+        ))
+
+        casual = {x["function"]["name"] for x in asyncio.run(
+            brain._tool_specs("Thanks 😂")
+        )}
+        self.assertNotIn("save_item", casual)
+
+        shopping = {x["function"]["name"] for x in asyncio.run(
+            brain._tool_specs("Add milk 🥛")
+        )}
+        self.assertIn("add_shopping_item", shopping)
+        self.assertNotIn("save_item", shopping)
+
+    def test_v055_plain_leave_read_and_cancel_are_reachable(self):
+        upcoming = {x["function"]["name"] for x in asyncio.run(
+            brain._tool_specs("Do I have any leave coming up?")
+        )}
+        self.assertIn("list_leave_records", upcoming)
+        delete = {x["function"]["name"] for x in asyncio.run(
+            brain._tool_specs("Delete my leave on 15 October 2026 for v054 test")
+        )}
+        self.assertIn("set_leave_record", delete)
+        self.assertIn("list_leave_records", delete)
+
+    def test_v055_whole_home_status_gets_card_but_single_device_stays_text(self):
+        whole = {x["function"]["name"] for x in asyncio.run(
+            brain._tool_specs("Show me my home status")
+        )}
+        self.assertIn("ha_home_report", whole)
+        single = {x["function"]["name"] for x in asyncio.run(
+            brain._tool_specs("Is the hall AC on?")
+        )}
+        self.assertNotIn("ha_home_report", single)
+
+    def test_v055_empty_bills_result_tells_model_to_stop_probing(self):
+        self.claim("v055-bills-empty", "+60111111111", "When is my car loan due?")
+        result = mcp_server.bills_list(self.actor("v055-bills-empty", "+60111111111"))
+        self.assertEqual(result["obligations"], [])
+        self.assertIn("no recurring obligation", result["empty_means"].casefold())
 
     def actor_for_context(self):
         self.claim("context-policy", "+60111111111", "context")
