@@ -571,6 +571,8 @@ CREATE TABLE IF NOT EXISTS ha_notification_outbox (
     next_attempt_at_utc TEXT,
     created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     delivered_at_utc TEXT,
+    received_at_utc TEXT,
+    received_device_id TEXT,
     FOREIGN KEY(user_id) REFERENCES users(user_id),
     FOREIGN KEY(reminder_id) REFERENCES reminders(reminder_id),
     FOREIGN KEY(handoff_id) REFERENCES reminder_handoffs(handoff_id)
