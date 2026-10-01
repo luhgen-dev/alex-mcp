@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.5.6
+Live-regression repair release after the full 1 October v0.5.5 WhatsApp regression and complete independent source audit.
+- Surfaced actionable MCP domain errors to the reasoning model instead of collapsing hundreds of normal validation/ambiguity failures into the same opaque tool error, eliminating blind retry loops.
+- Hard-enforced the fourth/final model round as answer-only in code and defensively ignores non-compliant final-round tool calls, while preserving the four-call cap.
+- Centralized read privacy around one normalized current-turn scope: ordinary reads are Family Shared; explicit private wording or any emoji selects the owner-private scope; Family Shared private intent hands off to the owner's DM without exposing private data in-group.
+- Closed DM bulk/exact read scope leaks across finance, saved memory, shopping, tasks, assets and profile-backed reads while keeping plain DM writes Family Shared by default.
+- Reworked Family Shared reminder claiming to the current owner contract: the setup message is claimable before due, first claim wins atomically, claimed reminders deliver at the original due time to the claimant DM, and reactions after a fired reminder acknowledge it rather than creating a late claim.
+- Added unresolved Family Shared reminder pin/unpin handling and preserved explicit claimant handoff/accept/decline semantics for later two-person Priya validation.
+- Added deterministic reminder date/time validation so missing exact times are clarified and weekday/date contradictions cannot be persisted (for example Saturday resolving to Sunday).
+- Made reminder success wording auditable so phrases such as “I've set”/“noted” cannot falsely claim an uncommitted mutation.
+- Repaired leave re-add after cancellation by safely reusing cancelled tombstones and preserving same-date update history; leave results now expose the previous state so replacement can be presented truthfully.
+- Fixed natural finance interrogatives such as “What did I spend RM6.50 on today?” so they reach ledger reads instead of the write-ambiguity canned clarification.
+- Preserved routed export tools when cash-pool hints are added, fixed compound report+cash requests, and made filtered finance exports an explicit supported path.
+- Added durable report reply context and deterministic swipe-reply binding, including provider-message fallback shared with reaction handling.
+- Grounded asset/warranty answers so unknown warranty expiry stays unknown and linked receipt/asset information can be synthesized without inventing a one-year warranty.
+- Improved single-goal detail routing and goal-name normalization without changing working bulk goal listing.
+- Made the Home Assistant Companion reminder bridge observable: missing device configuration and delivery errors are surfaced instead of hidden behind an unconditional “ready” message.
+- Retired voice-note transcription as a trusted command interface. Every voice note is preserved with provenance, placed in a durable pending-review inbox, acknowledged politely, marked unresolved with the existing ⏳/pin mechanism, and executed only after typed clarification; the original audio remains retrievable afterward.
+- Added pending-voice listing/retrieval contracts and kept multilingual typed English/Malay/Tamil/Tanglish reasoning intact.
+- Expanded v0.5.6 regression coverage for the live failures and refreshed the 384-packet GPT-5.6 Sol reasoning snapshot plus deterministic reasoning oracle.
+- Release gate at the repair head: core tests, structural self-test, Phase-3 stress, 136-contract/1135-variant offline certification with 0 failures, 384/384 real-AI reasoning snapshot, deterministic reasoning oracle, final parity architecture audit, WhatsApp bridge syntax, Home Assistant container/media build, and External Alex Lab all pass.
+
 ## 0.5.5
 Go-live repair release from the v0.5.4 live smoke and full independent audit.
 - Fixed the shared four-call orchestration bug: the final model call is answer-only, so a tool result can no longer be executed on the last round and then discarded behind a false "several tool steps" failure.
