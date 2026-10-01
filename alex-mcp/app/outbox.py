@@ -14,6 +14,7 @@ from db import connect
 
 EGRESS_URL = "http://127.0.0.1:5002/send"
 DOCUMENT_NOTICE_ATTEMPTS = 3
+_STARTUP_MANAGED_JOB_RECONCILED = False
 
 
 def _now():
@@ -226,9 +227,9 @@ def _reconcile_managed_jobs(conn) -> None:
 
 
 def sweep():
+    global _STARTUP_MANAGED_JOB_RECONCILED
     conn = connect()
     try:
-        _reconcile_managed_jobs(conn)
         now_iso = _now()
         rows = conn.execute(
             """SELECT o.*,i.sender_provider_jid AS source_sender_provider_jid,
@@ -347,6 +348,16 @@ def sweep():
                     _queue_document_notice(
                         conn, _joined_row(conn, row["outbound_id"]), permanent=False
                     )
+
+        # Restart reconciliation is exactly that: restart recovery. Normal
+        # document attempts already apply/clean their own markers above. Running
+        # this before every 0.5 s sweep can serially block reminders/text behind
+        # control-call timeouts when WhatsApp is unavailable.
+        if not _STARTUP_MANAGED_JOB_RECONCILED:
+            try:
+                _reconcile_managed_jobs(conn)
+            finally:
+                _STARTUP_MANAGED_JOB_RECONCILED = True
         conn.commit()
     finally:
         conn.close()
