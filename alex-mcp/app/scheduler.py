@@ -101,6 +101,18 @@ def _event(conn, reminder_id: str, event_type: str, previous_state: str | None,
     )
 
 
+def _queue_ha_due(conn, row, text: str, phase: str) -> int:
+    """Queue HA delivery without hiding configuration/runtime failures."""
+    try:
+        return int(ha_mobile.queue_due(conn, row, text, phase) or 0)
+    except Exception as exc:
+        print(
+            f"[Alex reminders] HA queue failed for {row['reminder_id']} ({phase}): {exc}",
+            flush=True,
+        )
+        return 0
+
+
 def fire_due():
     now = runtime_clock.now_utc()
     conn = connect()
@@ -128,10 +140,7 @@ def fire_due():
 
             initial_text = f"⏰ Reminder: {row['task_text']}"
             _queue(conn, row, initial_text, "REMINDER_INITIAL")
-            try:
-                ha_mobile.queue_due(conn, row, initial_text, "due")
-            except Exception:
-                pass
+            _queue_ha_due(conn, row, initial_text, "due")
             previous_state = row["status"]
             recurrence = row["recurrence_rule"]
             if recurrence:
@@ -189,10 +198,7 @@ def fire_due():
                 follow_text,
                 "REMINDER_FOLLOWUP",
             )
-            try:
-                ha_mobile.queue_due(conn, row, follow_text, "unclaimed-followup")
-            except Exception:
-                pass
+            _queue_ha_due(conn, row, follow_text, "unclaimed-followup")
             conn.execute(
                 """UPDATE reminders
                    SET last_follow_up_at_utc=?,next_delivery_at_utc=NULL
@@ -237,10 +243,7 @@ def fire_due():
                 claimant_text,
                 "REMINDER_CLAIMANT_FOLLOWUP",
             )
-            try:
-                ha_mobile.queue_due(conn, row, claimant_text, "claimant-followup")
-            except Exception:
-                pass
+            _queue_ha_due(conn, row, claimant_text, "claimant-followup")
             later = (
                 now + timedelta(hours=max(1, int(row["follow_up_after_hours"] or 24)))
             ).isoformat()
@@ -271,10 +274,7 @@ def fire_due():
                 resurface_text,
                 "REMINDER_FAMILY_RESURFACE",
             )
-            try:
-                ha_mobile.queue_due(conn, row, resurface_text, "family-resurface")
-            except Exception:
-                pass
+            _queue_ha_due(conn, row, resurface_text, "family-resurface")
             conn.execute(
                 """UPDATE reminders
                    SET family_resurfaced_at_utc=?,next_delivery_at_utc=NULL
@@ -315,10 +315,7 @@ def fire_due():
                 continue
             ack_follow_text = f"↪️ Follow-up: {row['task_text']}"
             _queue(conn, row, ack_follow_text, "REMINDER_FOLLOWUP")
-            try:
-                ha_mobile.queue_due(conn, row, ack_follow_text, "ack-followup")
-            except Exception:
-                pass
+            _queue_ha_due(conn, row, ack_follow_text, "ack-followup")
             # Mark queued to prevent duplicate queueing. Outbox replaces this with
             # the actual delivered timestamp after transport success.
             conn.execute(
