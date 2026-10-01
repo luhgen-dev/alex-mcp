@@ -20,6 +20,8 @@ class Settings:
     openai_api_key: str = ""
     husband_phone: str = ""
     wife_phone: str = ""
+    husband_name: str = "Luhgen"
+    wife_name: str = "Priya"
     timezone: str = "Asia/Kuala_Lumpur"
     stt_provider: str = "auto"
     cloud_stt_rescue_enabled: bool = False
