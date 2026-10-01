@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.5.4
+Live-smoke closeout release focused on the remaining routing, privacy, reporting, reminder-claim, stash and presentation regressions.
+- Fixed Family Shared reminder reaction binding at the WhatsApp/provider-message boundary, preserved atomic first-claim ownership, and added a natural collision reply when a second household member reacts after the reminder is already claimed.
+- Kept claimed shared reminders owned by the claimant and routed subsequent responsibility/follow-up to that person; reaction removal still never silently releases ownership.
+- Fixed over-broad group-to-DM privacy handoff. Ordinary Family Shared finance and receipt reads now stay in the group unless the user explicitly requests private data or uses the emoji privacy shortcut.
+- Made stored receipt scope authoritative: a receipt saved Family Shared from DM can be retrieved in the family group, while private saved/orphan media remains protected.
+- Tightened receipt-only search so generic saved images/documents do not pollute receipt results.
+- Preserved the emoji privacy shortcut as control metadata without storing the shortcut emoji as note/memory content.
+- Tightened saved-memory semantic fallback so a forgotten exact memory is not replaced by a loosely related note and then described as an exact match.
+- Fixed canonical finance report export context: PDF/CSV/JSON export now preserves the active finance report, including conversational follow-ups such as "send that as PDF", instead of silently falling back to the household planning snapshot.
+- Added deterministic cash-pool discovery, single-pool resolution and atomic "create stash with opening balance" support. Genuine legacy stash/cash-pool buckets are bridged into the Phase-2 pool engine without treating allowances/reserves as stash.
+- Improved natural leave and reminder-due routing while keeping leave in Alex's own ledger without inventing an employer/HR integration or leave entitlement.
+- Hid reminder UUID/state-machine/provider details from ordinary reminder-history presentation and added local human-readable diagnostic timestamps instead of raw UTC.
+- Replaced stale "queued/shortly/on its way" wording for already-attached successful files with present-tense delivery wording; genuinely unresolved document retries keep the durable deferred lifecycle.
+- Replaced the temporary terminal-style Home Status card with the locked deterministic premium renderer: landscape navy/charcoal layout, amber accents, two-column hierarchy and local Home Assistant state only.
+- Added/expanded regressions for live reaction binding, second-claim collisions, Family Shared receipt retrieval, stash listing/opening balance, report-export context, memory isolation, attachment wording, Home Status PNG generation and presentation boundaries.
+- Pre-release certification passed on the repair head: core tests, structural self-test, Phase-3 stress, 135-contract/1126-variant offline certification with 0 failures, 381-packet reasoning corpus with 0 routing gaps/forbidden exposure, refreshed GPT-5.6 Sol reasoning snapshot 381/381, deterministic reasoning oracle, final parity architecture audit, WhatsApp bridge syntax, Home Assistant container/media build, and External Alex Lab.
+
 ## 0.5.3
 Upgrade-safety hotfix for existing Home Assistant installations.
 - Fixed a startup migration ordering bug introduced in v0.5.2: an index on `leave_records.space_id` could be created before the new `space_id` column was added to an existing pre-v0.5.2 database, causing the add-on to exit during startup.
