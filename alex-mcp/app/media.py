@@ -828,10 +828,22 @@ def process_payload_media(payload: dict) -> tuple[list[str], list[str], list[dic
             context_lines.append("Text extracted from attached PDF:\n" + text[:12000])
 
     if payload.get("audio_data"):
-        mid = save_media(payload["message_id"], "AUDIO", payload.get("audio_mime_type") or "audio/ogg", payload["audio_data"])
+        # Voice is a deferred-review inbox, not a trusted command channel.
+        # Preserve the original audio/provenance without spending ASR tokens or
+        # allowing an unreliable transcript to trigger household mutations.
+        mid = save_media(
+            payload["message_id"], "AUDIO",
+            payload.get("audio_mime_type") or "audio/ogg",
+            payload["audio_data"],
+        )
         media_ids.append(mid)
-        text = transcribe_audio(mid)
-        if text:
-            context_lines.append(VOICE_TRANSCRIPT_PREFIX + text[:12000])
+        _update_transcript(
+            mid, "",
+            {
+                "mode": "deferred_voice_inbox",
+                "authoritative": False,
+                "command_execution": False,
+            },
+        )
 
     return media_ids, context_lines, vision_parts
