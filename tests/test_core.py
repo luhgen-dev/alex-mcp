@@ -31,6 +31,7 @@ import db
 import media
 import services
 import ha
+import ha_mobile
 import phase2
 import diagnostics
 import ingress
@@ -78,7 +79,7 @@ class AlexCoreTests(unittest.TestCase):
                 "alex_phase2_work_events", "alex_phase2_delegations",
                 "alex_profile_config_versions",
                 "tool_audit", "tool_execution_claims", "ai_usage", "diagnostic_runs", "monitor_notifications",
-                "outbound_messages", "conversation_turns", "selection_sets", "active_report_contexts",
+                "ha_notification_outbox", "outbound_messages", "conversation_turns", "selection_sets", "active_report_contexts",
                 "reminder_handoffs", "reminder_claim_events", "reminder_events",
                 "task_reminder_links", "task_events", "tasks",
                 "diary_reminder_links", "plan_diary_links", "schedule_conflicts", "diary_events", "plans",
@@ -3509,6 +3510,134 @@ class AlexCoreTests(unittest.TestCase):
         result = mcp_server.bills_list(self.actor("v055-bills-empty", "+60111111111"))
         self.assertEqual(result["obligations"], [])
         self.assertIn("no recurring obligation", result["empty_means"].casefold())
+
+
+    def test_v055_ha_action_tokens_are_signed_and_tamper_evident(self):
+        token = ha_mobile.action_token(
+            "DONE", "reminder", "reminder-123", "USR_HUSBAND"
+        )
+        parsed = ha_mobile.parse_action_token(token)
+        self.assertEqual(parsed["action"], "DONE")
+        self.assertEqual(parsed["target_id"], "reminder-123")
+        self.assertEqual(parsed["user_id"], "USR_HUSBAND")
+        self.assertIsNone(
+            ha_mobile.parse_action_token(token.replace("DONE", "ACK", 1))
+        )
+
+    def test_v055_ha_claimable_due_notification_offers_claim_to_both(self):
+        conn = db.connect()
+        settings = Settings(
+            husband_phone="+60111111111",
+            wife_phone="+60222222222",
+            husband_name="Luhgen",
+            wife_name="Priya",
+            ha_notify_devices=[
+                {"id": "h", "owner": "husband", "notify_service": "mobile_app_h", "active": True},
+                {"id": "w", "owner": "wife", "notify_service": "mobile_app_w", "active": True},
+            ],
+        )
+        try:
+            row = {
+                "reminder_id": "ha-claimable-1",
+                "task_text": "collect parcel",
+                "owner_id": "USR_HUSBAND",
+                "claimable": 1,
+                "claimed_by_user_id": None,
+            }
+            with patch.object(ha_mobile, "get_settings", return_value=settings):
+                queued = ha_mobile.queue_due(
+                    conn, row, "⏰ Reminder: collect parcel", "test-due"
+                )
+            conn.commit()
+            self.assertEqual(queued, 2)
+            rows = conn.execute(
+                """SELECT user_id,data_json FROM ha_notification_outbox
+                   WHERE reminder_id='ha-claimable-1'
+                   ORDER BY user_id"""
+            ).fetchall()
+            self.assertEqual([x["user_id"] for x in rows], ["USR_HUSBAND", "USR_WIFE"])
+            for item in rows:
+                data = json.loads(item["data_json"])
+                self.assertEqual(len(data["actions"]), 1)
+                parsed = ha_mobile.parse_action_token(data["actions"][0]["action"])
+                self.assertEqual(parsed["action"], "CLAIM")
+                self.assertEqual(parsed["user_id"], item["user_id"])
+        finally:
+            conn.close()
+
+    def test_v055_direct_ha_claim_uses_same_atomic_first_winner_rule(self):
+        group_id = "120363966666@g.us"
+        with open(os.path.join(TEST_DIR, "family_group.json"), "w", encoding="utf-8") as handle:
+            handle.write('{"group_jid":"%s"}' % group_id)
+        db.claim_inbound({
+            "message_id": "ha-claim-create",
+            "provider": "WHATSAPP",
+            "conversation_id": group_id,
+            "conversation_type": "GROUP",
+            "sender_phone": "+60111111111",
+            "text": "put a reminder in this group tomorrow: collect parcel",
+        })
+        group_actor = db.resolve_actor(
+            "+60111111111", group_id, "GROUP", "ha-claim-create", []
+        )
+        group_actor = with_action_key(
+            replace(
+                group_actor,
+                trusted_text="put a reminder in this group tomorrow: collect parcel",
+            ),
+            "ha-claim-create-action",
+        )
+        reminder = services.create_reminder(
+            group_actor, "collect parcel", "2026-10-02T15:00:00+08:00",
+            destination="group",
+        )
+        self.claim("ha-claim-h", "+60111111111", "claim")
+        self.claim("ha-claim-w", "+60222222222", "claim")
+        first = services.claim_reminder(
+            self.actor("ha-claim-h", "+60111111111"),
+            reminder["reminder_id"], source="HA_ACTION",
+        )
+        second = services.claim_reminder(
+            self.actor("ha-claim-w", "+60222222222"),
+            reminder["reminder_id"], source="HA_ACTION",
+        )
+        self.assertEqual(first["status"], "claimed")
+        self.assertEqual(first["claimed_by_user_id"], "USR_HUSBAND")
+        self.assertEqual(second["status"], "already_claimed")
+        self.assertEqual(second["claimed_by_user_id"], "USR_HUSBAND")
+
+    def test_v055_ha_action_event_updates_reminder_without_new_inbound_port(self):
+        self.claim("ha-action-create", "+60111111111", "remind me later")
+        actor = with_action_key(
+            replace(
+                self.actor("ha-action-create", "+60111111111"),
+                trusted_text="remind me later",
+            ),
+            "ha-action-create-key",
+        )
+        reminder = services.create_reminder(
+            actor, "take parcel", "2026-10-02T15:00:00+08:00"
+        )
+        token = ha_mobile.action_token(
+            "ACK", "reminder", reminder["reminder_id"], "USR_HUSBAND"
+        )
+        result = ha_mobile._process_action_event({
+            "event": {
+                "data": {"action": token},
+                "context": {"id": "ctx-ha-action-ack"},
+            }
+        })
+        self.assertEqual(result["state"], "ACK")
+        conn = db.connect()
+        try:
+            row = conn.execute(
+                "SELECT status FROM reminders WHERE reminder_id=?",
+                (reminder["reminder_id"],),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(row["status"], "ACK")
+
 
     def actor_for_context(self):
         self.claim("context-policy", "+60111111111", "context")
