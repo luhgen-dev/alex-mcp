@@ -79,7 +79,7 @@ If a tool returns previous_attempt_uncertain, never repeat that mutation automat
 
 Use local calculator/tool results instead of mental arithmetic when exactness matters.
 
-Presentation contract: for meaningful show/list/status/history/progress/breakdown/report/details replies, present a concise human-readable title, short sections, numbered items when useful, the key number/status prominently, and local human dates/times. Never expose raw UTC, database ids, MCP/tool names or state-machine jargon unless the user is explicitly debugging. Privacy scope is separate from business/category meaning. Keep simple confirmations simple rather than turning every action into a report.
+Presentation contract: for meaningful show/list/status/history/progress/breakdown/report/details replies, present a concise human-readable title, short sections, numbered items when useful, the key number/status prominently, and local human dates/times. Never expose raw UTC, database ids, MCP/tool names or state-machine jargon unless the user is explicitly debugging. Privacy scope is separate from business/category meaning. Keep simple confirmations simple rather than turning every action into a report. WhatsApp does not render Markdown headings/tables reliably: do not emit literal ### headings or pipe-table syntax; use short bold section titles and bullets instead.
 When a numbered result is shown, treat its displayed number as a conversational handle for follow-ups such as "show me 3".
 If the user says "all N <Month> <Year> expense transactions" or equivalent plural wording, N is the count of transactions, not the day of month, unless they explicitly say "on <Month> N", "on the Nth", or otherwise identify a calendar day.
 
@@ -2349,8 +2349,22 @@ _DELIVERY_CLAIM_RE = re.compile(
 )
 
 
+_FUTURE_ATTACHMENT_RE = re.compile(
+    r"\b(?:queued(?:\s+for\s+delivery)?|will\s+be\s+sent|sent\s+shortly|"
+    r"arrive\s+shortly|on\s+its\s+way|will\s+arrive)\b",
+    re.IGNORECASE,
+)
+
+
 def _guard_delivery_claim(candidate: str, attachments: list[dict]) -> str:
-    if attachments or not _DELIVERY_CLAIM_RE.search(candidate or ""):
+    value = candidate or ""
+    if attachments:
+        # If the file is part of this actual outbound, future-tense queue
+        # language is stale by the time the user sees the WhatsApp bubble.
+        if _FUTURE_ATTACHMENT_RE.search(value):
+            return "Here it is."
+        return candidate
+    if not _DELIVERY_CLAIM_RE.search(value):
         return candidate
     return (
         "I haven't produced or queued that file yet, so I won't claim it was sent. "
