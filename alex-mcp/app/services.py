@@ -2311,6 +2311,16 @@ def claim_reminder_from_reaction(
                 provider_message_id=provider_message_id,
                 reaction_text=reaction,
             )
+            if result.get("status") == "claimed":
+                # A pre-due claim changes ownership/routing, not the due time.
+                # Clear the old post-due follow-up timestamp so the original
+                # due alert still fires on time to the claimant's DM.
+                conn.execute(
+                    """UPDATE reminders SET next_delivery_at_utc=NULL
+                       WHERE reminder_id=?""",
+                    (reminder_id,),
+                )
+                result["next_claimant_follow_up_at_utc"] = None
             conn.commit()
             return result
 
