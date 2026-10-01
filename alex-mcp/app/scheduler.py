@@ -82,7 +82,13 @@ def _queue_to(conn, conversation_id: str, reminder_id: str,
 
 
 def _queue(conn, row, text: str, kind: str) -> None:
-    _queue_to(conn, row["conversation_id"], row["reminder_id"], text, kind)
+    conversation_id = row["conversation_id"]
+    claimed_by = row["claimed_by_user_id"] if "claimed_by_user_id" in row.keys() else None
+    if kind == "REMINDER_INITIAL" and claimed_by:
+        phone = _owner_phone(conn, str(claimed_by))
+        if phone:
+            conversation_id = phone.replace("+", "") + "@s.whatsapp.net"
+    _queue_to(conn, conversation_id, row["reminder_id"], text, kind)
 
 
 def _event(conn, reminder_id: str, event_type: str, previous_state: str | None,
