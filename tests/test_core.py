@@ -55,6 +55,7 @@ import outbox
 from context import use_actor, with_action_key
 from config import Settings
 from mcp import Client
+from mcp.server.mcpserver.exceptions import ToolError
 from mcp_server import mcp
 
 
@@ -2062,7 +2063,7 @@ class AlexCoreTests(unittest.TestCase):
         )
         self.assertEqual(mine["conversation_id"], "60111111111@s.whatsapp.net")
 
-        self.claim("group-dest", "+60111111111", "put reminder in group")
+        self.claim("group-dest", "+60111111111", "put reminder in group at 6pm")
         dm_actor = with_action_key(
             self.actor("group-dest", "+60111111111"), "group-dest-action"
         )
@@ -2251,11 +2252,11 @@ class AlexCoreTests(unittest.TestCase):
         with open(os.path.join(TEST_DIR, "family_group.json"), "w", encoding="utf-8") as handle:
             handle.write('{"group_jid":"%s"}' % group_id)
 
-        self.claim("handoff-create", "+60111111111", "put reminder in group")
+        self.claim("handoff-create", "+60111111111", "put reminder in group at 6pm")
         creator = with_action_key(
             replace(
                 self.actor("handoff-create", "+60111111111"),
-                trusted_text="put reminder in group",
+                trusted_text="put reminder in group at 6pm",
             ),
             "handoff-create-action",
         )
@@ -3062,7 +3063,7 @@ class AlexCoreTests(unittest.TestCase):
         self.assertTrue(any(x["name"] == "private policy stash" for x in private))
 
         group = self.group_actor("stash-private-policy-group", "+60111111111")
-        with self.assertRaises(PermissionError):
+        with self.assertRaisesRegex(ToolError, "Private Phase-2 data"):
             mcp_server.planning_list_cash_pools(group)
         self.assertTrue(
             ingress._private_group_handoff_requested("How much stash do I have?")
