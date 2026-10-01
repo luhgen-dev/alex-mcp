@@ -542,7 +542,10 @@ def _get_authorized_goal(conn, goal_id, sender_phone, conversation_type):
 
 
 def _normalized_ref(value):
-    return " ".join(re.findall(r"[a-z0-9]+", str(value or "").casefold()))
+    words = re.findall(r"[a-z0-9]+", str(value or "").casefold())
+    while words and words[0] in {"my", "our", "the"}:
+        words.pop(0)
+    return " ".join(words)
 
 
 def resolve_goal_reference(goal_id, goal_name, sender_phone,
