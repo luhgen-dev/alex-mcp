@@ -304,6 +304,7 @@ def build_turn(payload: dict, media_lines: list[str]) -> dict:
         source = "text"
     return {
         "trusted_text": trusted_text,
+        "read_scope": scope_policy.resolve_read_scope(trusted_text),
         "document_lines": document_lines,
         "source": source,
         "has_document_media": has_image or has_pdf,
@@ -333,7 +334,7 @@ def _private_group_handoff_requested(text: str) -> bool:
         low,
     ))
     explicit_private = scope_policy.explicit_private(text)
-    emoji_private_write = scope_policy.contains_emoji(text) and writeish
+    emoji_private = scope_policy.contains_emoji(text)
     # Do not infer that ordinary Family Shared finance/receipt reads are
     # private merely because they concern the authenticated sender. The group
     # actor is already structurally restricted to FAMILY_SHARED. Automatic DM
@@ -346,8 +347,7 @@ def _private_group_handoff_requested(text: str) -> bool:
         low,
     ))
     return (
-        (explicit_private and (readish or writeish))
-        or emoji_private_write
+        ((explicit_private or emoji_private) and (readish or writeish))
         or sensitive_read
     )
 
@@ -622,6 +622,11 @@ def process(payload: dict) -> dict:
             source=turn["source"],
             trusted_text=turn["trusted_text"],
             received_at_utc=turn["received_at_utc"],
+            read_scope=turn["read_scope"],
+            private_handoff=(
+                actor.conversation_type == "GROUP"
+                and turn["read_scope"] == "private"
+            ),
         )
         quoted_context = db.resolve_quoted_context(
             actor.conversation_id, payload.get("quoted_message_id"), actor.phone
@@ -692,7 +697,6 @@ def process(payload: dict) -> dict:
             actor.conversation_type == "GROUP"
             and (
                 _private_group_handoff_requested(turn["trusted_text"])
-                or _private_group_match_available(actor, turn["trusted_text"])
             )
         ):
             dm_conversation = _dm_conversation_for_actor(actor)
@@ -705,6 +709,8 @@ def process(payload: dict) -> dict:
                 source=turn["source"],
                 trusted_text=turn["trusted_text"],
                 received_at_utc=turn["received_at_utc"],
+                read_scope=turn["read_scope"],
+                private_handoff=False,
             )
             private_reply, private_attachments = asyncio.run(
                 brain.respond(
