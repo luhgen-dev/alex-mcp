@@ -3020,6 +3020,61 @@ class AlexCoreTests(unittest.TestCase):
         self.assertGreater(width, height)
         self.assertGreaterEqual(width, 960)
 
+    def test_v054_postaudit_stash_is_private_by_domain_and_upgrade_repairs_shared_pool(self):
+        self.claim("stash-private-policy", "+60111111111", "Create a stash with RM100")
+        actor = replace(
+            self.actor("stash-private-policy", "+60111111111"),
+            trusted_text="Create a stash with RM100",
+        )
+        created = mcp_server.planning_create_cash_pool(
+            "private policy stash", actor, opening_balance=100, shared=True
+        )
+        self.assertEqual(created["space"], "HUSBAND_PVT")
+        private = mcp_server.planning_list_cash_pools(actor)["pools"]
+        self.assertTrue(any(x["name"] == "private policy stash" for x in private))
+
+        group = self.group_actor("stash-private-policy-group", "+60111111111")
+        with self.assertRaises(PermissionError):
+            mcp_server.planning_list_cash_pools(group)
+        self.assertTrue(
+            ingress._private_group_handoff_requested("How much stash do I have?")
+        )
+
+        # Simulate a pool accidentally created Family Shared by the previous
+        # repair candidate, then rerun the additive upgrade repair.
+        conn = db.connect()
+        try:
+            conn.execute(
+                """UPDATE alex_phase2_cash_pools
+                   SET space_id='FAMILY_SHARED' WHERE pool_id=?""",
+                (created["pool_id"],),
+            )
+            conn.execute(
+                """UPDATE alex_phase2_cash_pool_adjustments
+                   SET space_id='FAMILY_SHARED' WHERE pool_id=?""",
+                (created["pool_id"],),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        phase2_finance.ensure_schema()
+        conn = db.connect()
+        try:
+            repaired = conn.execute(
+                """SELECT space_id FROM alex_phase2_cash_pools
+                   WHERE pool_id=?""",
+                (created["pool_id"],),
+            ).fetchone()
+            adjustment = conn.execute(
+                """SELECT space_id FROM alex_phase2_cash_pool_adjustments
+                   WHERE pool_id=? ORDER BY created_at_utc LIMIT 1""",
+                (created["pool_id"],),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(repaired["space_id"], "HUSBAND_PVT")
+        self.assertEqual(adjustment["space_id"], "HUSBAND_PVT")
+
     def test_v054_postaudit_caption_only_shared_receipt_gets_in_group(self):
         caption = "July TNB receipt - share with the family"
         self.claim("caption-only-shared-receipt", "+60111111111", caption)
