@@ -458,6 +458,22 @@ def _selection_context_for_offer(actor, reply: str, attachments: list[dict]) -> 
     )
 
 
+def _report_context_for_turn(actor) -> str | None:
+    """Snapshot the report spec produced by this exact inbound turn for replies."""
+    active = phase2_reports.load_active_report(actor.user_id, actor.conversation_id)
+    if not active:
+        return None
+    spec = dict(active.get("spec") or {})
+    if str(spec.get("source_message_id") or "") != str(actor.source_message_id or ""):
+        return None
+    payload = {
+        "kind": active.get("kind"),
+        "period": active.get("period"),
+        "spec": spec,
+    }
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))[:4000]
+
+
 def _created_claimable_reminder_id(actor) -> str | None:
     """Bind a group reminder setup reply to the reminder created by this turn."""
     if actor.conversation_type != "GROUP":
@@ -787,15 +803,19 @@ def process(payload: dict) -> dict:
             actor, reply, attachments
         )
         reminder_setup_id = _created_claimable_reminder_id(actor)
+        report_context = _report_context_for_turn(actor)
         if not attachments:
             context_kind = (
                 "SELECTION" if selection_context
                 else "REMINDER_SETUP" if reminder_setup_id
+                else "REPORT" if report_context
                 else None
             )
             context_id = (
                 f"{selection_context['kind']}:{selection_context['id']}"
-                if selection_context else reminder_setup_id
+                if selection_context
+                else reminder_setup_id if reminder_setup_id
+                else report_context
             )
             db.queue_outbound(
                 actor.conversation_id, "TEXT", text=reply,
