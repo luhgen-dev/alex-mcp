@@ -1104,12 +1104,24 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
     ),
     PromptContract(
         "p2.cash.pool.create", "phase2", "cash_planning",
-        "Stash creation must not allocate money automatically.",
+        "Stash creation may include an explicitly stated opening balance in the same atomic create action; it must never invent a funding event.",
         (
             "Create a stash called Holiday Buffer.",
             "Make me a cash pool named Holiday Buffer.",
+            "Create a new stash called v054 test stash and put RM100 in it.",
         ),
-        _fs("planning_create_cash_pool"), seed="core",
+        _fs("planning_create_cash_pool"),
+        forbidden=_fs("planning_record_cash", "planning_allocate_cash_to_pool"),
+        seed="core",
+    ),
+    PromptContract(
+        "p2.cash.pool.list", "phase2", "cash_planning",
+        "Configured stash/cash pools must be discoverable without knowing an internal id.",
+        (
+            "What stash or cash pools do I currently have?",
+            "Show me my cash pools.",
+        ),
+        _fs("planning_list_cash_pools"), seed="core", live=False,
     ),
     PromptContract(
         "p2.cash.pool.balance", "phase2", "cash_planning",

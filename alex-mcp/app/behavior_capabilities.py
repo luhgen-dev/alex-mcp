@@ -79,6 +79,7 @@ CAPABILITY_TO_TOOLS: dict[str, frozenset[str]] = {
     "cash.status": frozenset({"planning_cash_status"}),
     "cash.allocate.goal": frozenset({"planning_allocate_cash_to_goal"}),
     "cash.pool.create": frozenset({"planning_create_cash_pool"}),
+    "cash.pool.list": frozenset({"planning_list_cash_pools"}),
     "cash.pool.balance": frozenset({"planning_cash_pool_balance"}),
     "cash.pool.balance.declare": frozenset({"planning_declare_cash_pool_balance"}),
     "cash.pool.spend": frozenset({"planning_record_cash_pool_spend"}),

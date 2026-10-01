@@ -334,11 +334,15 @@ def _private_group_handoff_requested(text: str) -> bool:
     ))
     explicit_private = scope_policy.explicit_private(text)
     emoji_private_write = scope_policy.contains_emoji(text) and writeish
+    # Do not infer that ordinary Family Shared finance/receipt reads are
+    # private merely because they concern the authenticated sender. The group
+    # actor is already structurally restricted to FAMILY_SHARED. Automatic DM
+    # handoff is reserved for an explicit privacy signal or inherently private
+    # profile facts that have no meaningful shared interpretation.
     sensitive_read = readish and bool(re.search(
-        r"\b(?:salary|paycheck|take[- ]home|income|ot rate|overtime rate|"
-        r"overtime pay|exact ot|stash|cash pool|bank balance|"
-        r"(?:my\s+)?(?:expenses?|spending|transactions?|receipts?)|"
-        r"my saved (?:items?|memories?)|my private (?:notes?|memory|data))\b",
+        r"\b(?:salary|paycheck|take[- ]home|ot rate|overtime rate|"
+        r"overtime pay|exact ot|bank balance|stash|cash\s+pool|cash\s+pools|"
+        r"my private (?:notes?|memory|data))\b",
         low,
     ))
     return (
@@ -461,9 +465,26 @@ def process(payload: dict) -> dict:
                 str(payload.get("reaction_target_message_id") or ""),
                 str(payload.get("reaction_text") or ""),
             )
-            # Reactions are intentionally quiet: the visible WhatsApp reaction
-            # itself is the acknowledgement. No model call and no extra group
-            # chatter are required.
+            # First claim is intentionally quiet: the visible WhatsApp reaction
+            # itself is the acknowledgement. A later claimant should not
+            # silently wonder whether they now own the reminder, so tell them
+            # naturally that it is already being handled without changing
+            # ownership.
+            if (
+                result.get("status") == "already_claimed"
+                and result.get("claimed_by_user_id")
+                and result.get("claimed_by_user_id") != actor.user_id
+                and actor.conversation_type == "GROUP"
+            ):
+                winner = str(result.get("claimed_by_name") or "").strip()
+                if not winner or winner.casefold() in {"husband", "wife"}:
+                    winner = "your spouse"
+                text = f"{winner} has already picked this one up, so you don’t need to worry about it 👍"
+                db.queue_outbound(
+                    actor.conversation_id, "TEXT", text=text,
+                    source_message_id=payload["message_id"],
+                )
+                result["collision_reply"] = text
             db.finish_inbound(payload["message_id"], json.dumps(result, sort_keys=True))
             return {"ok": True, "reaction": result}
 

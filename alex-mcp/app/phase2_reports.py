@@ -163,7 +163,10 @@ def text_pdf(lines, title="ALEX Report"):
 
 
 def _human_category(value):
-    raw = str(value or "uncategorised").replace("_", " ").strip()
+    canonical = str(value or "uncategorised").strip().casefold().replace(" ", "_")
+    if canonical == "food":
+        return "Food & Drink"
+    raw = canonical.replace("_", " ").strip()
     return " & ".join(part.strip().title() for part in raw.split("&"))
 
 

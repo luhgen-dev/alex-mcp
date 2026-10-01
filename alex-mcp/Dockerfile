@@ -1,7 +1,7 @@
 ARG BUILD_FROM=ghcr.io/home-assistant/base:3.24
 FROM $BUILD_FROM
 
-ARG BUILD_VERSION=0.5.3
+ARG BUILD_VERSION=0.5.4
 ARG BUILD_ARCH=amd64
 
 LABEL \
@@ -21,7 +21,11 @@ RUN apk add --no-cache \
       tesseract-ocr-data-msa \
       tesseract-ocr-data-tam \
       poppler-utils \
+      font-dejavu \
       whisper.cpp
+
+RUN test -n "$(find /usr/share/fonts -type f -name 'DejaVuSans.ttf' -print -quit)" \
+ && test -n "$(find /usr/share/fonts -type f -name 'DejaVuSans-Bold.ttf' -print -quit)"
 
 WORKDIR /app
 

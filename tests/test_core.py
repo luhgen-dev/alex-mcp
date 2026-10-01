@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import hashlib
 import os
 import sys
 import tempfile
@@ -41,10 +42,12 @@ import phase2_delegation
 import phase2_monitor
 import phase2_presence
 import phase2_reports
+import phase2_home
 import brain
 import mcp_server
 import runtime_clock
 import scheduler
+import outbox
 from context import use_actor, with_action_key
 from config import Settings
 from mcp import Client
@@ -2135,6 +2138,34 @@ class AlexCoreTests(unittest.TestCase):
         self.assertEqual(claimed["reaction"]["status"], "claimed")
         self.assertEqual(claimed["reaction"]["claimed_by_user_id"], "USR_WIFE")
 
+        collision = ingress.process({
+            "message_id": "reaction-entry-second",
+            "provider": "WHATSAPP",
+            "conversation_id": group_id,
+            "conversation_type": "GROUP",
+            "sender_phone": "+60111111111",
+            "event_kind": "REACTION",
+            "reaction_target_message_id": "wa-fired",
+            "reaction_text": "❤️",
+        })
+        self.assertEqual(collision["reaction"]["status"], "already_claimed")
+        self.assertEqual(collision["reaction"]["claimed_by_user_id"], "USR_WIFE")
+        self.assertIn("already picked this one up", collision["reaction"]["collision_reply"])
+        conn = db.connect()
+        try:
+            collision_post = conn.execute(
+                """SELECT text_body FROM outbound_messages
+                   WHERE source_message_id='reaction-entry-second'"""
+            ).fetchone()
+            owner = conn.execute(
+                "SELECT claimed_by_user_id FROM reminders WHERE reminder_id=?",
+                (reminder["reminder_id"],),
+            ).fetchone()["claimed_by_user_id"]
+        finally:
+            conn.close()
+        self.assertIsNotNone(collision_post)
+        self.assertEqual(owner, "USR_WIFE")
+
         removed = ingress.process({
             "message_id": "reaction-entry-remove",
             "provider": "WHATSAPP",
@@ -2159,6 +2190,51 @@ class AlexCoreTests(unittest.TestCase):
         finally:
             conn.close()
         self.assertEqual(error_posts, 0)
+
+    def test_v054_reaction_can_bind_stable_alex_provider_message_id(self):
+        group_id = "120363744444@g.us"
+        with open(os.path.join(TEST_DIR, "family_group.json"), "w", encoding="utf-8") as handle:
+            handle.write('{"group_jid":"%s"}' % group_id)
+        self.claim("stable-reaction-create", "+60111111111", "group reminder")
+        creator = with_action_key(
+            self.actor("stable-reaction-create", "+60111111111"),
+            "stable-reaction-action",
+        )
+        reminder = services.create_reminder(
+            creator, "stable reaction", "2026-10-01T18:00:00+08:00",
+            destination="group",
+        )
+        outbound_id = db.queue_outbound(
+            group_id, "TEXT", text="Reminder: stable reaction",
+            context_kind="REMINDER_INITIAL", context_id=reminder["reminder_id"],
+        )
+        conn = db.connect()
+        try:
+            conn.execute(
+                """UPDATE outbound_messages
+                   SET provider_message_id=NULL,delivery_status='SENT',
+                       delivered_at_utc=CURRENT_TIMESTAMP
+                   WHERE outbound_id=?""",
+                (outbound_id,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        stable_id = "ALEX" + hashlib.sha256(outbound_id.encode("utf-8")).hexdigest().upper()[:28]
+        db.claim_inbound({
+            "message_id": "stable-reaction-wife",
+            "provider": "WHATSAPP",
+            "conversation_id": group_id,
+            "conversation_type": "GROUP",
+            "sender_phone": "+60222222222",
+            "text": "",
+        })
+        wife = db.resolve_actor(
+            "+60222222222", group_id, "GROUP", "stable-reaction-wife", []
+        )
+        result = services.claim_reminder_from_reaction(wife, stable_id, "👍")
+        self.assertEqual(result["status"], "claimed")
+        self.assertEqual(result["claimed_by_user_id"], "USR_WIFE")
 
     def test_reminder_claim_handoff_transfers_only_after_recipient_reaction(self):
         group_id = "120363888888@g.us"
@@ -2267,6 +2343,20 @@ class AlexCoreTests(unittest.TestCase):
             conn.close()
         self.assertEqual(after, "USR_WIFE")
         self.assertEqual(status, "ACCEPTED")
+        conn = db.connect()
+        try:
+            notice = conn.execute(
+                """SELECT text_body FROM outbound_messages
+                   WHERE conversation_id='60111111111@s.whatsapp.net'
+                     AND context_kind='REMINDER_HANDOFF_ACCEPTED'
+                     AND context_id=?""",
+                (reminder["reminder_id"],),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertIsNotNone(notice)
+        self.assertIn("Priya has taken over", notice["text_body"])
+        self.assertIn("pick up parcel", notice["text_body"])
 
     def test_reminder_handoff_does_not_overwrite_pending_or_unreachable_recipient(self):
         # With no active recipient phone, ownership must remain untouched.
@@ -2775,6 +2865,392 @@ class AlexCoreTests(unittest.TestCase):
         )
         self.assertIn("won't claim", guarded)
         self.assertNotIn("I've updated", guarded)
+
+    def test_v054_group_handoff_only_for_explicit_private_or_sensitive_profile(self):
+        self.assertFalse(ingress._private_group_handoff_requested("show me the latest expenses"))
+        self.assertFalse(ingress._private_group_handoff_requested("show me the receipt for our blender"))
+        self.assertTrue(ingress._private_group_handoff_requested("how much did I spend privately this month?"))
+        self.assertTrue(ingress._private_group_handoff_requested("show me my salary"))
+        self.assertTrue(ingress._private_group_handoff_requested("save this privately: test note"))
+
+    def test_v054_shared_saved_receipt_is_retrievable_from_family_group(self):
+        self.claim("shared-receipt-v054", "+60111111111", "Alex, save this as the receipt for our Philips blender.")
+        media_id = media.save_media(
+            "shared-receipt-v054", "IMAGE", "image/jpeg",
+            base64.b64encode(b"mock receipt").decode(),
+        )
+        media._update_text(media_id, "ocr_text", "SENHENG TAX INVOICE PHILIPS BLENDER")
+        dm = with_action_key(
+            replace(
+                self.actor("shared-receipt-v054", "+60111111111", [media_id]),
+                trusted_text="Alex, save this as the receipt for our Philips blender.",
+            ),
+            "shared-receipt-v054-action",
+        )
+        saved = services.save_item(
+            dm, "receipt for our Philips blender",
+            "Senheng receipt for our Philips blender"
+        )
+        self.assertEqual(saved["space"], "FAMILY_SHARED")
+
+        group = self.group_actor("shared-receipt-v054-group", "+60111111111")
+        found = services.find_receipts(group, query="our Philips blender")["matches"]
+        match = next(x for x in found if x["media_id"] == media_id)
+        self.assertEqual(match["scope"], "family")
+        retrieved = services.get_receipt(group, media_id)
+        self.assertEqual(retrieved["status"], "found_saved_receipt")
+        self.assertEqual(retrieved["scope"], "family")
+
+    def test_v054_private_receipt_search_excludes_generic_saved_media(self):
+        self.claim("generic-media-v054", "+60111111111", "Save this as v054 image memory test privately")
+        media_id = media.save_media(
+            "generic-media-v054", "IMAGE", "image/jpeg",
+            base64.b64encode(b"generic image").decode(),
+        )
+        media._update_text(media_id, "ocr_text", "ordinary picture no document")
+        actor = with_action_key(
+            replace(
+                self.actor("generic-media-v054", "+60111111111", [media_id]),
+                trusted_text="Save this as v054 image memory test privately",
+            ),
+            "generic-media-v054-action",
+        )
+        services.save_item(actor, "v054 image memory test", "ordinary saved picture")
+        found = services.find_receipts(actor, scope="private")["matches"]
+        self.assertFalse(any(x["media_id"] == media_id for x in found))
+
+    def test_v054_deleted_memory_does_not_fall_back_to_partial_word_match(self):
+        self.claim("memory-a-v054", "+60111111111", "Remember v054 memory test phrase is blue lantern")
+        a = with_action_key(
+            replace(self.actor("memory-a-v054", "+60111111111"),
+                    trusted_text="Remember v054 memory test phrase is blue lantern"),
+            "memory-a-v054-action",
+        )
+        saved = services.save_item(a, "v054 memory test phrase", "blue lantern")
+        self.claim("memory-b-v054", "+60111111111", "Save v054 normal scope test")
+        b = with_action_key(
+            replace(self.actor("memory-b-v054", "+60111111111"),
+                    trusted_text="Save v054 normal scope test"),
+            "memory-b-v054-action",
+        )
+        services.save_item(b, "v054 normal scope test", "v054 normal scope test")
+        services.remove_saved_item(a, saved["item_id"])
+        result = services.search_saved_items(a, "v054 memory test phrase")
+        self.assertEqual(result["count"], 0)
+
+    def test_v054_emoji_privacy_control_is_not_persisted_in_saved_note(self):
+        text = "Save this note: v054 emoji scope test 😂"
+        self.claim("emoji-content-v054", "+60111111111", text)
+        actor = with_action_key(
+            replace(self.actor("emoji-content-v054", "+60111111111"), trusted_text=text),
+            "emoji-content-v054-action",
+        )
+        result = services.save_item(actor, "v054 emoji scope test 😂", "v054 emoji scope test 😂")
+        self.assertEqual(result["space"], "HUSBAND_PVT")
+        found = services.search_saved_items(actor, "v054 emoji scope test")["matches"]
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0]["title"], "v054 emoji scope test")
+        self.assertEqual(found[0]["content"], "v054 emoji scope test")
+
+    def test_v054_report_export_period_preserves_active_finance_context(self):
+        self.claim("finance-v054", "+60111111111", "show September 2026 finance report")
+        actor = self.actor("finance-v054", "+60111111111")
+        services.log_expense(
+            with_action_key(actor, "finance-v054-expense"),
+            "v054 test expense", 12.34, "food", currency="MYR",
+            event_date_local="2026-09-30T10:00:00+08:00",
+        )
+        report = mcp_server.finance_report(actor, "2026-09")
+        self.assertEqual(report["report_type"], "monthly_finance")
+        exported = mcp_server.report_export("csv", actor, period="2026-09")
+        self.assertEqual(exported["source_report_kind"], "monthly_finance")
+        self.assertGreaterEqual(exported["record_count"], 1)
+        csv_text = open(exported["_attachments"][0]["path"], encoding="utf-8").read()
+        self.assertIn("v054 test expense", csv_text)
+
+    def test_v054_stash_create_opening_balance_list_and_spend(self):
+        created = phase2_finance.create_cash_pool(
+            "v054 test stash", "+60111111111", visibility="private",
+            opening_balance=100, event_date="2026-10-01",
+            source_message_id="stash-create-v054",
+        )
+        self.assertEqual(created["balance"], 100.0)
+        pools = phase2_finance.list_cash_pools(
+            "+60111111111", requested_scope="private"
+        )
+        row = next(x for x in pools if x["name"] == "v054 test stash")
+        self.assertEqual(row["balance"], 100.0)
+        resolved = phase2_finance.resolve_cash_pool_reference(
+            None, "v054 test stash", "+60111111111"
+        )
+        spent = phase2_finance.record_cash_pool_spend(
+            resolved, 20, "2026-10-01", "+60111111111",
+            category="food", source_message_id="stash-spend-v054",
+        )
+        self.assertEqual(spent["balance"], 80.0)
+
+    def test_v054_smoke_phrases_route_to_required_tools(self):
+        cases = {
+            "I'm on annual leave on 6 October 2026. Save that.": {"set_leave_record"},
+            "When is v053 reaction test due?": {"list_reminders", "reminder_history"},
+            "What stash or cash pools do I currently have?": {"planning_list_cash_pools"},
+            "Create a new stash called v054 test stash and put RM100 in it.": {"planning_create_cash_pool"},
+            "Generate my September 2026 finance report as PDF.": {"finance_report", "report_export"},
+        }
+        for phrase, required in cases.items():
+            names = {x["function"]["name"] for x in asyncio.run(brain._tool_specs(phrase))}
+            self.assertTrue(required <= names, (phrase, names))
+
+    def test_v054_home_card_is_landscape_premium_png(self):
+        payload = phase2_home.render_home_report_png({
+            "status": "ATTENTION",
+            "attention_count": 2,
+            "total_entities": 42,
+            "people_home": ["Husband"],
+            "lights_on": ["Hall Pendant"],
+            "open_entries": ["Kitchen Door"],
+            "unlocked": [],
+            "climate_active": ["Hall AC"],
+            "media_playing": [],
+            "unavailable": ["TV"],
+        })
+        self.assertTrue(payload.startswith(bytes.fromhex("89504e470d0a1a0a")))
+        width = int.from_bytes(payload[16:20], "big")
+        height = int.from_bytes(payload[20:24], "big")
+        self.assertGreater(width, height)
+        self.assertGreaterEqual(width, 960)
+
+    def test_v054_postaudit_stash_is_private_by_domain_and_upgrade_repairs_shared_pool(self):
+        self.claim("stash-private-policy", "+60111111111", "Create a stash with RM100")
+        actor = replace(
+            self.actor("stash-private-policy", "+60111111111"),
+            trusted_text="Create a stash with RM100",
+        )
+        created = mcp_server.planning_create_cash_pool(
+            "private policy stash", actor, opening_balance=100, shared=True
+        )
+        self.assertEqual(created["space"], "HUSBAND_PVT")
+        private = mcp_server.planning_list_cash_pools(actor)["pools"]
+        self.assertTrue(any(x["name"] == "private policy stash" for x in private))
+
+        group = self.group_actor("stash-private-policy-group", "+60111111111")
+        with self.assertRaises(PermissionError):
+            mcp_server.planning_list_cash_pools(group)
+        self.assertTrue(
+            ingress._private_group_handoff_requested("How much stash do I have?")
+        )
+
+        # Simulate a pool accidentally created Family Shared by the previous
+        # repair candidate, then rerun the additive upgrade repair.
+        conn = db.connect()
+        try:
+            conn.execute(
+                """UPDATE alex_phase2_cash_pools
+                   SET space_id='FAMILY_SHARED' WHERE pool_id=?""",
+                (created["pool_id"],),
+            )
+            conn.execute(
+                """UPDATE alex_phase2_cash_pool_adjustments
+                   SET space_id='FAMILY_SHARED' WHERE pool_id=?""",
+                (created["pool_id"],),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        phase2_finance.ensure_schema()
+        conn = db.connect()
+        try:
+            repaired = conn.execute(
+                """SELECT space_id FROM alex_phase2_cash_pools
+                   WHERE pool_id=?""",
+                (created["pool_id"],),
+            ).fetchone()
+            adjustment = conn.execute(
+                """SELECT space_id FROM alex_phase2_cash_pool_adjustments
+                   WHERE pool_id=? ORDER BY created_at_utc LIMIT 1""",
+                (created["pool_id"],),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(repaired["space_id"], "HUSBAND_PVT")
+        self.assertEqual(adjustment["space_id"], "HUSBAND_PVT")
+
+    def test_v054_postaudit_caption_only_shared_receipt_gets_in_group(self):
+        caption = "July TNB receipt - share with the family"
+        self.claim("caption-only-shared-receipt", "+60111111111", caption)
+        media_id = media.save_media(
+            "caption-only-shared-receipt", "IMAGE", "image/jpeg",
+            base64.b64encode(b"caption only receipt").decode(),
+        )
+        dm = with_action_key(
+            replace(
+                self.actor("caption-only-shared-receipt", "+60111111111", [media_id]),
+                trusted_text=caption,
+            ),
+            "caption-only-shared-receipt-action",
+        )
+        saved = services.save_item(dm, "TNB July", "electricity bill July")
+        self.assertEqual(saved["space"], "FAMILY_SHARED")
+        group = self.group_actor("caption-only-shared-receipt-group", "+60111111111")
+        found = services.find_receipts(group, query="tnb")["matches"]
+        self.assertTrue(any(row["media_id"] == media_id for row in found))
+        retrieved = services.get_receipt(group, media_id)
+        self.assertEqual(retrieved["status"], "found_saved_receipt")
+        self.assertEqual(retrieved["scope"], "family")
+
+    def test_v054_postaudit_period_change_stays_finance_report(self):
+        self.claim("period-change-report", "+60111111111", "show September finance report")
+        actor = self.actor("period-change-report", "+60111111111")
+        services.log_expense(
+            with_action_key(actor, "period-change-sep"), "September meal", 10,
+            "food", currency="MYR", event_date_local="2026-09-10T10:00:00+08:00",
+        )
+        services.log_expense(
+            with_action_key(actor, "period-change-aug"), "August meal", 20,
+            "food", currency="MYR", event_date_local="2026-08-10T10:00:00+08:00",
+        )
+        mcp_server.finance_report(actor, "2026-09")
+        exported = mcp_server.report_export("csv", actor, period="2026-08")
+        self.assertEqual(exported["source_report_kind"], "monthly_finance")
+        csv_text = open(exported["_attachments"][0]["path"], encoding="utf-8").read()
+        self.assertIn("August meal", csv_text)
+        self.assertNotIn("September meal", csv_text)
+
+    def test_v054_postaudit_same_turn_probe_does_not_replace_monthly_report(self):
+        self.claim("same-turn-report", "+60111111111", "show September finance report")
+        actor = self.actor("same-turn-report", "+60111111111")
+        services.log_expense(
+            with_action_key(actor, "same-turn-food"), "Lunch", 12,
+            "food", currency="MYR", event_date_local="2026-09-10T10:00:00+08:00",
+        )
+        services.log_expense(
+            with_action_key(actor, "same-turn-fuel"), "Shell petrol", 30,
+            "fuel", currency="MYR", event_date_local="2026-09-11T10:00:00+08:00",
+        )
+        mcp_server.finance_report(actor, "2026-09")
+        mcp_server.query_finances(
+            actor, start_date="2026-09-01", end_date="2026-09-30", category="food"
+        )
+        active = phase2_reports.load_active_report(actor.user_id, actor.conversation_id)
+        self.assertEqual(active["kind"], "monthly_finance")
+        exported = mcp_server.report_export("csv", actor)
+        csv_text = open(exported["_attachments"][0]["path"], encoding="utf-8").read()
+        self.assertIn("Lunch", csv_text)
+        self.assertIn("Shell petrol", csv_text)
+
+    def test_v054_postaudit_common_obligation_due_questions_keep_bills(self):
+        for phrase in (
+            "When is my credit card due?",
+            "When is the rent due?",
+            "When is my car loan due?",
+        ):
+            names = {x["function"]["name"] for x in asyncio.run(brain._tool_specs(phrase))}
+            self.assertIn("bills_list", names, (phrase, names))
+
+    def test_v054_postaudit_delivery_guard_preserves_compound_content(self):
+        value = (
+            "Logged RM20 petrol (Transport). Your September PDF is on its way, "
+            "and 2 items still need a category."
+        )
+        guarded = brain._guard_delivery_claim(value, [{"path": "/tmp/report.pdf"}])
+        self.assertIn("Logged RM20 petrol", guarded)
+        self.assertIn("2 items still need a category", guarded)
+        self.assertNotIn("on its way", guarded.casefold())
+        self.assertIn("attached", guarded.casefold())
+
+    def test_v054_postaudit_managed_job_reconcile_does_not_precede_normal_send(self):
+        self.claim("stuck-doc-source", "+60111111111", "send document")
+        conn = db.connect()
+        try:
+            conn.execute(
+                """INSERT INTO outbound_messages(
+                       outbound_id,source_message_id,conversation_id,kind,text_body,
+                       local_path,mime_type,delivery_status,attempt_count,last_error
+                   ) VALUES(
+                       'stuck-document','stuck-doc-source','60111111111@s.whatsapp.net',
+                       'DOCUMENT','doc','/tmp/missing.pdf','application/pdf','FAILED',3,'missing'
+                   )"""
+            )
+            conn.execute(
+                """INSERT INTO outbound_messages(
+                       outbound_id,conversation_id,kind,text_body,delivery_status
+                   ) VALUES(
+                       'normal-text', '60111111111@s.whatsapp.net','TEXT','hello','PENDING'
+                   )"""
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        calls = []
+        def fake_send(payload):
+            calls.append(payload.get("kind"))
+            return (payload.get("kind") == "text", "{}")
+        outbox._STARTUP_MANAGED_JOB_RECONCILED = False
+        with patch.object(outbox, "_send", side_effect=fake_send):
+            outbox.sweep()
+            first_sweep = list(calls)
+            outbox.sweep()
+        self.assertTrue(first_sweep)
+        self.assertEqual(first_sweep[0], "text")
+        self.assertEqual(calls.count("reaction"), first_sweep.count("reaction"))
+        self.assertEqual(calls.count("pin"), first_sweep.count("pin"))
+
+    def test_v054_postaudit_category_aliases_roll_up_food_and_drink(self):
+        self.claim("category-rollup", "+60111111111", "finance")
+        actor = self.actor("category-rollup", "+60111111111")
+        first = services.log_expense(
+            with_action_key(actor, "category-food"), "Lunch", 21.29,
+            "food", currency="MYR", event_date_local="2026-09-10T10:00:00+08:00",
+        )
+        second = services.log_expense(
+            with_action_key(actor, "category-food-drink"), "Coffee", 12.34,
+            "food", currency="MYR", event_date_local="2026-09-11T10:00:00+08:00",
+        )
+        conn = db.connect()
+        try:
+            conn.execute(
+                "UPDATE financial_events SET category='food_drink' WHERE event_id=?",
+                (second["event_id"],),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        result = services.query_finances(
+            actor, start_date="2026-09-01", end_date="2026-09-30",
+            include_all_records=True,
+        )
+        food = [row for row in result["category_totals"] if row["category"] == "food"]
+        self.assertEqual(len(food), 1)
+        self.assertAlmostEqual(food[0]["amount"], 33.63, places=2)
+        self.assertEqual(phase2_reports._human_category("food"), "Food & Drink")
+
+    def test_v054_postaudit_direct_nonhandoff_reaction_is_ignored(self):
+        self.claim("direct-reaction-create", "+60111111111", "remind me")
+        creator = with_action_key(
+            self.actor("direct-reaction-create", "+60111111111"),
+            "direct-reaction-create-action",
+        )
+        reminder = services.create_reminder(
+            creator, "personal task", "2026-10-02T10:00:00+08:00"
+        )
+        outbound_id = db.queue_outbound(
+            "60111111111@s.whatsapp.net", "TEXT", text="Reminder: personal task",
+            context_kind="REMINDER_INITIAL", context_id=reminder["reminder_id"],
+        )
+        conn = db.connect()
+        try:
+            conn.execute(
+                """UPDATE outbound_messages SET delivery_status='SENT',
+                   provider_message_id='wa-direct-reminder',delivered_at_utc=CURRENT_TIMESTAMP
+                   WHERE outbound_id=?""",
+                (outbound_id,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        actor = self.actor("direct-reaction-actor", "+60111111111")
+        result = services.claim_reminder_from_reaction(actor, "wa-direct-reminder", "👍")
+        self.assertEqual(result["status"], "ignored_direct_reminder_reaction")
 
     def actor_for_context(self):
         self.claim("context-policy", "+60111111111", "context")

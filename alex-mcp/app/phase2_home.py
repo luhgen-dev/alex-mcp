@@ -269,34 +269,7 @@ def _png_bytes(canvas):
     )
 
 
-def render_home_report_png(summary, width=800, height=480):
-    """Render a simple deterministic local PNG status card."""
-    width = max(480, int(width))
-    height = max(320, int(height))
-    canvas = _canvas(width, height)
-    _rect(canvas, 0, 0, width, 72, (30,30,34))
-    _text(canvas, 28, 24, "ALEX HOME STATUS", 3, (245,245,245), 30)
-
-    status = summary.get("status", "OK")
-    status_rgb = (225,235,225) if status == "OK" else (245,225,210)
-    _rect(canvas, 28, 92, width-56, 58, status_rgb)
-    _text(
-        canvas, 48, 111,
-        f"STATUS {status}   ATTENTION {summary.get('attention_count',0)}",
-        2, (30,30,30), 54)
-
-    lines = [
-        f"PEOPLE HOME {len(summary.get('people_home',[]))}",
-        f"LIGHTS ON {len(summary.get('lights_on',[]))}",
-        f"OPEN ENTRIES {len(summary.get('open_entries',[]))}",
-        f"UNLOCKED {len(summary.get('unlocked',[]))}",
-        f"CLIMATE ACTIVE {len(summary.get('climate_active',[]))}",
-        f"MEDIA PLAYING {len(summary.get('media_playing',[]))}",
-        f"UNAVAILABLE {len(summary.get('unavailable',[]))}",
-    ]
-    y = 182
-    for line in lines:
-        _text(canvas, 48, y, line, 2, (40,40,40), 52)
-        y += 36
-
-    return _png_bytes(canvas)
+def render_home_report_png(summary, width=1200, height=720):
+    """Render the locked premium deterministic local Home Status card."""
+    import home_card
+    return home_card.render(summary, width=width, height=height)

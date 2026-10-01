@@ -20,7 +20,7 @@ import scope_policy
 
 mcp = MCPServer(
     "Alex Household Tools",
-    version="0.5.3",
+    version="0.5.4",
     instructions="Deterministic household tools. Identity and permissions are injected by Alex and are never model-controlled.",
 )
 
@@ -57,18 +57,27 @@ def query_finances(actor: Actor, start_date: str | None = None, end_date: str | 
     result = services.query_finances(
         actor, start_date, end_date, category, search, currency, limit, scope, source
     )
-    phase2_reports.remember_active_report(
-        actor.user_id, actor.conversation_id, "finance_query", result,
-        period=(
-            start_date[:7] if start_date and end_date and start_date[:7] == end_date[:7]
-            else None
-        ),
-        spec={
-            "start_date": start_date, "end_date": end_date, "category": category,
-            "search": search, "currency": currency, "limit": limit,
-            "scope": scope, "source": source,
-        },
+    active = phase2_reports.load_active_report(actor.user_id, actor.conversation_id)
+    active_spec = (active.get("spec") or {}) if active else {}
+    preserve_presented_monthly = bool(
+        active
+        and active.get("kind") == "monthly_finance"
+        and active_spec.get("source_message_id") == actor.source_message_id
     )
+    if not preserve_presented_monthly:
+        phase2_reports.remember_active_report(
+            actor.user_id, actor.conversation_id, "finance_query", result,
+            period=(
+                start_date[:7] if start_date and end_date and start_date[:7] == end_date[:7]
+                else None
+            ),
+            spec={
+                "start_date": start_date, "end_date": end_date, "category": category,
+                "search": search, "currency": currency, "limit": limit,
+                "scope": scope, "source": source,
+                "source_message_id": actor.source_message_id,
+            },
+        )
     return result
 
 
@@ -181,8 +190,24 @@ def update_reminder(reminder_id: str, actor: Actor, status: str = "open",
 @mcp.tool()
 def reminder_history(actor: Actor, reminder_id: str | None = None,
                      limit: int = 50) -> dict:
-    """Read durable reminder lifecycle history. Omit reminder_id for recent aggregate history across authorized reminders; per-reminder output also includes claim/release history."""
-    return services.reminder_history(actor, reminder_id, limit)
+    """Read user-facing reminder history with local times and no database/provider internals."""
+    raw = services.reminder_history(actor, reminder_id, limit)
+    claims = []
+    for row in raw.get("claim_history", []):
+        who = "You" if row.get("actor_user_id") == actor.user_id else "Your spouse"
+        claims.append({
+            "who": who,
+            "action": str(row.get("event_type") or "").replace("_", " ").title(),
+            "time_local": row.get("created_local"),
+        })
+    return {
+        "display": raw.get("display") or {},
+        "claims": claims,
+        "presentation_rule": (
+            "Present this naturally using local times. Never expose UUIDs, raw "
+            "state codes, provider ids, egress jargon or UTC."
+        ),
+    }
 
 
 @mcp.tool()
@@ -518,8 +543,19 @@ def system_health(actor: Actor, hours: int = 24) -> dict:
 
 @mcp.tool()
 def recent_failures(actor: Actor, hours: int = 24, limit: int = 20) -> dict:
-    """Explain recent observed Alex failures from durable logs/audits. Return observed facts only, not invented causes."""
-    return diagnostics.recent_failures(actor, hours, limit)
+    """Explain recent observed Alex failures using local human timestamps and observed facts only."""
+    raw = diagnostics.recent_failures(actor, hours, limit)
+    return {
+        "window_hours": raw["window_hours"],
+        "failures": raw.get("display_failures", []),
+        "counts": {
+            "inbound": len(raw.get("inbound_failures", [])),
+            "outbound": len(raw.get("outbound_failures", [])),
+            "tools": len(raw.get("tool_failures", [])),
+        },
+        "common_cause_established": raw.get("common_cause_established", False),
+        "interpretation_rule": raw.get("interpretation_rule"),
+    }
 
 
 @mcp.tool()
@@ -740,13 +776,27 @@ def planning_allocate_cash_to_goal(amount: float, actor: Actor,
 
 @mcp.tool()
 def planning_create_cash_pool(name: str, actor: Actor, currency: str = "MYR",
-                              shared: bool = False) -> dict:
-    """Create a stash/cash pool without allocating any money into it."""
+                              shared: bool = False,
+                              opening_balance: float | None = None) -> dict:
+    """Create the caller's private stash/cash pool. Stash is inherently private per household policy; shared is accepted only for backward-compatible tool calls and never widens visibility. If the user says to create it with/put an amount in it, pass that amount as opening_balance so creation + funding are one atomic action."""
+    import runtime_clock
     return phase2_finance.create_cash_pool(
         name, actor.phone, actor.conversation_type,
-        scope_policy.visibility_for_new_write(actor, shared),
-        currency,
+        "private",
+        currency, opening_balance,
+        runtime_clock.today(actor.timezone).isoformat(),
+        actor.source_message_id,
     )
+
+
+@mcp.tool()
+def planning_list_cash_pools(actor: Actor, scope: str = "private") -> dict:
+    """List the authenticated user's private active stash/cash pools and exact balances. Stash is never exposed as Family Shared."""
+    return {
+        "pools": phase2_finance.list_cash_pools(
+            actor.phone, actor.conversation_type, "private"
+        )
+    }
 
 
 @mcp.tool()
@@ -1255,7 +1305,11 @@ def finance_report(actor: Actor, period: str | None = None,
     )
     phase2_reports.remember_active_report(
         actor.user_id, actor.conversation_id, "monthly_finance", result,
-        period=effective_period, spec={"period": effective_period, "scope": scope},
+        period=effective_period,
+        spec={
+            "period": effective_period, "scope": scope,
+            "source_message_id": actor.source_message_id,
+        },
     )
     return result
 
@@ -1279,8 +1333,13 @@ def report_snapshot(actor: Actor, period: str | None = None,
 
 @mcp.tool()
 def report_export(format: str, actor: Actor, period: str | None = None,
-                  include_raw_income: bool = False) -> dict:
-    """Export the active report to PDF/CSV/JSON from a freshly re-queried canonical dataset."""
+                  include_raw_income: bool = False,
+                  report_type: str | None = None) -> dict:
+    """Export PDF/CSV/JSON from the active canonical report.
+
+    report_type may be finance or snapshot when the user explicitly names the
+    report. Supplying a period never discards a matching active report context.
+    """
     import calendar
     import json
     import os
@@ -1295,13 +1354,57 @@ def report_export(format: str, actor: Actor, period: str | None = None,
     if include_raw_income and actor.conversation_type == "GROUP":
         raise PermissionError("raw private income cannot be exported from the family group")
 
+    requested_type = str(report_type or "").strip().casefold()
+    if requested_type not in {"", "finance", "snapshot"}:
+        raise ValueError("report_type must be finance or snapshot")
+
     active = (
         phase2_reports.load_active_report(actor.user_id, actor.conversation_id)
-        if period is None and not include_raw_income else None
+        if not include_raw_income else None
     )
-    report_kind = active["kind"] if active else "snapshot"
-    effective_period = (active.get("period") if active else None) or period
-    spec = (active.get("spec") or {}) if active else {}
+    active_kind = active.get("kind") if active else None
+    active_period = active.get("period") if active else None
+
+    period_changed = bool(
+        active and period and active_period and str(active_period) != str(period)
+    )
+    active_is_finance = active_kind in {"finance_query", "monthly_finance"}
+
+    if requested_type == "finance":
+        report_kind = (
+            "monthly_finance"
+            if period_changed or not active_is_finance
+            else active_kind
+        )
+    elif requested_type == "snapshot":
+        report_kind = "snapshot"
+    elif active_is_finance and period_changed:
+        # A finance context stays a finance context when the user changes only
+        # the month ("send August as CSV" after viewing September).
+        report_kind = "monthly_finance"
+    elif active and (
+        period is None
+        or not active_period
+        or str(active_period) == str(period)
+    ):
+        # "Send that as PDF" and "send September as PDF" preserve the report
+        # the user just saw when the period is the same.
+        report_kind = active_kind
+    else:
+        report_kind = "snapshot"
+
+    effective_period = period or active_period
+    spec = (active.get("spec") or {}) if active and report_kind == active_kind else {}
+    if report_kind == "monthly_finance":
+        spec = {
+            **spec,
+            "period": effective_period,
+            "scope": (
+                ((active.get("spec") or {}).get("scope") if active else None)
+                or spec.get("scope")
+                or "all"
+            ),
+        }
 
     if report_kind in {"finance_query", "monthly_finance"}:
         if report_kind == "monthly_finance":

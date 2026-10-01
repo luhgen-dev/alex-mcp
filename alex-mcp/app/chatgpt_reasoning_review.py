@@ -25,7 +25,7 @@ import human_ai_lab
 
 # Frozen deterministic regression corpus. Any prompt/tool-surface change
 # invalidates this oracle until its regression expectations are reviewed.
-REVIEWED_CORPUS_FINGERPRINT = "fb1f56c6dc24afd91e4ea2e3617c1e2c7b2d1e67aa75e3b5f665947acdae660f"
+REVIEWED_CORPUS_FINGERPRINT = "efd2a14c796bb4bf1aabe38b9d121de12a2727f73bf0135b1ef6e5ddddca8838"
 
 
 def _low(value: str) -> str:
@@ -798,6 +798,15 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
                 _pick(tools, "planning_cash_status", "planning_allocate_cash_to_goal")
                 or _one(tools, "planning_allocate_cash_to_goal"),
             )
+        if (
+            re.search(
+                r"\b(?:what|which|show|list)\b.*\b(?:stash(?:es)?|cash\s+pools?)\b"
+                r"|\b(?:stash(?:es)?|cash\s+pools?)\b.*\b(?:have|exist|configured)\b",
+                text,
+            )
+            and not re.search(r"\b(?:balance|how much)\b", text)
+        ):
+            return result("tools", _one(tools, "planning_list_cash_pools"))
         if re.search(r"\b(?:create|make)\b.*\b(?:stash|cash pool)\b", text):
             return result("tools", _one(tools, "planning_create_cash_pool"))
         if re.search(

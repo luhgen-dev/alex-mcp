@@ -229,6 +229,21 @@ async function isReplyToAlex(message) {
   return jidMatchesSelf(ctx.participant || ctx.remoteJid || '', selfIds);
 }
 
+async function stripAlexMentionText(message, text) {
+  // The @Alex token is a wake signal, not semantic user content. Remove only
+  // mentions that resolve to Alex itself; spouse/other-user mentions remain.
+  const ctx = extractContextInfo(message);
+  const selfIds = selfIdentityUsers();
+  let value = String(text || '');
+  if (!ctx || !selfIds.size || !Array.isArray(ctx.mentionedJid)) return value.trim();
+  for (const jid of ctx.mentionedJid) {
+    if (!(await jidMatchesSelf(jid, selfIds))) continue;
+    const token = '@' + jidUser(jid);
+    if (token.length > 1) value = value.split(token).join(' ');
+  }
+  return value.replace(/\s{2,}/g, ' ').trim();
+}
+
 function detectMedia(message) {
   const m = unwrapMessage(message);
   if (!m) return { type: null, node: null };
@@ -301,6 +316,7 @@ async function forwardReactionEvent(targetKey, reaction) {
   }
 
   const reactionKey = reaction && reaction.key ? reaction.key : {};
+  if (reactionKey.fromMe) return;
   let rawSenderJid = reactionKey.participant || reactionKey.remoteJid || '';
   if (!rawSenderJid || rawSenderJid.endsWith('@g.us')) return;
   const senderJid = await resolveSenderJid(null, rawSenderJid);
@@ -347,7 +363,7 @@ async function handleIncoming(message) {
   const senderPhone = cleanNumber(senderJid.split('@')[0].split(':')[0]);
   if (!isWhitelisted(senderPhone)) return;
 
-  const rawText = extractText(message).trim();
+  let rawText = extractText(message).trim();
 
   if (isGroup && /^alex\s+set\s+family\s+group$/i.test(rawText)) {
     setFamilyGroupJid(remoteJid);
@@ -365,6 +381,7 @@ async function handleIncoming(message) {
     // Family Shared is intentionally opt-in per message: Alex responds only
     // when explicitly @mentioned or when someone swipe-replies to Alex.
     if (!(await isAlexMentioned(message)) && !(await isReplyToAlex(message))) return;
+    rawText = await stripAlexMentionText(message, rawText);
   }
 
   const media = detectMedia(message);
