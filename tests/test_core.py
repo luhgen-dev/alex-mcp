@@ -2776,6 +2776,160 @@ class AlexCoreTests(unittest.TestCase):
         self.assertIn("won't claim", guarded)
         self.assertNotIn("I've updated", guarded)
 
+    def test_v054_group_handoff_only_for_explicit_private_or_sensitive_profile(self):
+        self.assertFalse(ingress._private_group_handoff_requested("show me the latest expenses"))
+        self.assertFalse(ingress._private_group_handoff_requested("show me the receipt for our blender"))
+        self.assertTrue(ingress._private_group_handoff_requested("how much did I spend privately this month?"))
+        self.assertTrue(ingress._private_group_handoff_requested("show me my salary"))
+        self.assertTrue(ingress._private_group_handoff_requested("save this privately: test note"))
+
+    def test_v054_shared_saved_receipt_is_retrievable_from_family_group(self):
+        self.claim("shared-receipt-v054", "+60111111111", "Alex, save this as the receipt for our Philips blender.")
+        media_id = media.save_media(
+            "shared-receipt-v054", "IMAGE", "image/jpeg",
+            base64.b64encode(b"mock receipt").decode(),
+            ocr_text="SENHENG TAX INVOICE PHILIPS BLENDER",
+        )
+        dm = with_action_key(
+            replace(
+                self.actor("shared-receipt-v054", "+60111111111", [media_id]),
+                trusted_text="Alex, save this as the receipt for our Philips blender.",
+            ),
+            "shared-receipt-v054-action",
+        )
+        saved = services.save_item(
+            dm, "receipt for our Philips blender",
+            "Senheng receipt for our Philips blender"
+        )
+        self.assertEqual(saved["space"], "FAMILY_SHARED")
+
+        group = self.group_actor("shared-receipt-v054-group", "+60111111111")
+        found = services.find_receipts(group, query="our Philips blender")["matches"]
+        match = next(x for x in found if x["media_id"] == media_id)
+        self.assertEqual(match["scope"], "family")
+        retrieved = services.get_receipt(group, media_id)
+        self.assertEqual(retrieved["status"], "found_saved_receipt")
+        self.assertEqual(retrieved["scope"], "family")
+
+    def test_v054_private_receipt_search_excludes_generic_saved_media(self):
+        self.claim("generic-media-v054", "+60111111111", "Save this as v054 image memory test privately")
+        media_id = media.save_media(
+            "generic-media-v054", "IMAGE", "image/jpeg",
+            base64.b64encode(b"generic image").decode(),
+            ocr_text="ordinary picture no invoice",
+        )
+        actor = with_action_key(
+            replace(
+                self.actor("generic-media-v054", "+60111111111", [media_id]),
+                trusted_text="Save this as v054 image memory test privately",
+            ),
+            "generic-media-v054-action",
+        )
+        services.save_item(actor, "v054 image memory test", "ordinary saved picture")
+        found = services.find_receipts(actor, scope="private")["matches"]
+        self.assertFalse(any(x["media_id"] == media_id for x in found))
+
+    def test_v054_deleted_memory_does_not_fall_back_to_partial_word_match(self):
+        self.claim("memory-a-v054", "+60111111111", "Remember v054 memory test phrase is blue lantern")
+        a = with_action_key(
+            replace(self.actor("memory-a-v054", "+60111111111"),
+                    trusted_text="Remember v054 memory test phrase is blue lantern"),
+            "memory-a-v054-action",
+        )
+        saved = services.save_item(a, "v054 memory test phrase", "blue lantern")
+        self.claim("memory-b-v054", "+60111111111", "Save v054 normal scope test")
+        b = with_action_key(
+            replace(self.actor("memory-b-v054", "+60111111111"),
+                    trusted_text="Save v054 normal scope test"),
+            "memory-b-v054-action",
+        )
+        services.save_item(b, "v054 normal scope test", "v054 normal scope test")
+        services.remove_saved_item(a, saved["item_id"])
+        result = services.search_saved_items(a, "v054 memory test phrase")
+        self.assertEqual(result["count"], 0)
+
+    def test_v054_emoji_privacy_control_is_not_persisted_in_saved_note(self):
+        text = "Save this note: v054 emoji scope test 😂"
+        self.claim("emoji-content-v054", "+60111111111", text)
+        actor = with_action_key(
+            replace(self.actor("emoji-content-v054", "+60111111111"), trusted_text=text),
+            "emoji-content-v054-action",
+        )
+        result = services.save_item(actor, "v054 emoji scope test 😂", "v054 emoji scope test 😂")
+        self.assertEqual(result["space"], "HUSBAND_PVT")
+        found = services.search_saved_items(actor, "v054 emoji scope test")["matches"]
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0]["title"], "v054 emoji scope test")
+        self.assertEqual(found[0]["content"], "v054 emoji scope test")
+
+    def test_v054_report_export_period_preserves_active_finance_context(self):
+        self.claim("finance-v054", "+60111111111", "show September 2026 finance report")
+        actor = self.actor("finance-v054", "+60111111111")
+        services.log_expense(
+            with_action_key(actor, "finance-v054-expense"),
+            "v054 test expense", 12.34, "food", currency="MYR",
+            event_date_local="2026-09-30T10:00:00+08:00",
+        )
+        report = mcp_server.finance_report(actor, "2026-09")
+        self.assertEqual(report["report_type"], "monthly_finance")
+        exported = mcp_server.report_export("csv", actor, period="2026-09")
+        self.assertEqual(exported["source_report_kind"], "monthly_finance")
+        self.assertGreaterEqual(exported["record_count"], 1)
+        csv_text = open(exported["_attachments"][0]["path"], encoding="utf-8").read()
+        self.assertIn("v054 test expense", csv_text)
+
+    def test_v054_stash_create_opening_balance_list_and_spend(self):
+        created = phase2_finance.create_cash_pool(
+            "v054 test stash", "+60111111111", visibility="private",
+            opening_balance=100, event_date="2026-10-01",
+            source_message_id="stash-create-v054",
+        )
+        self.assertEqual(created["balance"], 100.0)
+        pools = phase2_finance.list_cash_pools(
+            "+60111111111", requested_scope="private"
+        )
+        row = next(x for x in pools if x["name"] == "v054 test stash")
+        self.assertEqual(row["balance"], 100.0)
+        resolved = phase2_finance.resolve_cash_pool_reference(
+            None, "v054 test stash", "+60111111111"
+        )
+        spent = phase2_finance.record_cash_pool_spend(
+            resolved, 20, "2026-10-01", "+60111111111",
+            category="food", source_message_id="stash-spend-v054",
+        )
+        self.assertEqual(spent["balance"], 80.0)
+
+    def test_v054_smoke_phrases_route_to_required_tools(self):
+        cases = {
+            "I'm on annual leave on 6 October 2026. Save that.": {"set_leave_record"},
+            "When is v053 reaction test due?": {"list_reminders", "reminder_history"},
+            "What stash or cash pools do I currently have?": {"planning_list_cash_pools"},
+            "Create a new stash called v054 test stash and put RM100 in it.": {"planning_create_cash_pool"},
+            "Generate my September 2026 finance report as PDF.": {"finance_report", "report_export"},
+        }
+        for phrase, required in cases.items():
+            names = {x["function"]["name"] for x in asyncio.run(brain._tool_specs(phrase))}
+            self.assertTrue(required <= names, (phrase, names))
+
+    def test_v054_home_card_is_landscape_premium_png(self):
+        payload = phase2_home.render_home_report_png({
+            "status": "ATTENTION",
+            "attention_count": 2,
+            "total_entities": 42,
+            "people_home": ["Husband"],
+            "lights_on": ["Hall Pendant"],
+            "open_entries": ["Kitchen Door"],
+            "unlocked": [],
+            "climate_active": ["Hall AC"],
+            "media_playing": [],
+            "unavailable": ["TV"],
+        })
+        self.assertTrue(payload.startswith(b"\\x89PNG\\r\\n\\x1a\\n"))
+        width = int.from_bytes(payload[16:20], "big")
+        height = int.from_bytes(payload[20:24], "big")
+        self.assertGreater(width, height)
+        self.assertGreaterEqual(width, 960)
+
     def actor_for_context(self):
         self.claim("context-policy", "+60111111111", "context")
         return self.actor("context-policy", "+60111111111")
