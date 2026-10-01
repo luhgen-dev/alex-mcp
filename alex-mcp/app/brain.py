@@ -2481,6 +2481,29 @@ def _guard_mutation_success(
     )
 
 
+def _owned_cash_pool_name_mentioned(actor: ActorContext, user_text: str) -> bool:
+    """Cheap owner-scoped hint for natural stash names such as 'pocket cash'."""
+    low = str(user_text or "").casefold()
+    if not low.strip() or actor.conversation_type == "GROUP":
+        return False
+    conn = connect()
+    try:
+        rows = conn.execute(
+            """SELECT name FROM alex_phase2_cash_pools
+               WHERE owner_user_id=? AND space_id=? AND status='ACTIVE'""",
+            (actor.user_id, actor.private_space),
+        ).fetchall()
+    except Exception:
+        return False
+    finally:
+        conn.close()
+    for row in rows:
+        name = str(row["name"] or "").strip().casefold()
+        if name and re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", low):
+            return True
+    return False
+
+
 async def respond(actor: ActorContext, user_text: str, media_context: list[str] | None = None,
                   vision_parts: list[dict] | None = None,
                   quoted_context: dict | None = None) -> tuple[str, list[dict]]:
@@ -2532,6 +2555,15 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
         user_text, media_context, quoted_context,
         prior_user_text=prior_user_text,
     )
+    if _owned_cash_pool_name_mentioned(actor, user_text):
+        forced_specs = await _tool_specs_for_names({
+            "planning_cash_pool_balance", "planning_list_cash_pools"
+        })
+        forced_names = {x["function"]["name"] for x in forced_specs}
+        tools = (
+            forced_specs
+            + [x for x in tools if x["function"]["name"] not in forced_names]
+        )[:TOOL_EXPOSURE_MAX]
     trace["exposed_tools"] = [x["function"]["name"] for x in tools] if tools else []
     routes = _provider_routes(
         settings, user_text=user_text, tools=tools,
