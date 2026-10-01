@@ -2556,23 +2556,22 @@ class AlexCoreTests(unittest.TestCase):
             destination="group", claimable=True, follow_up_after_hours=1,
         )
 
-        # Simulate initial group delivery, then claim it by wife.
-        out_id = db.queue_outbound(
-            group_id, "TEXT", text="⏰ Reminder: collect parcel",
-            context_kind="REMINDER_INITIAL", context_id=reminder["reminder_id"],
+        # Claim before the due time from a bound setup message.
+        setup_id = db.queue_outbound(
+            group_id, "TEXT", text="Reminder created: collect parcel",
+            context_kind="REMINDER_SETUP", context_id=reminder["reminder_id"],
         )
         conn = db.connect()
         try:
             conn.execute(
                 """UPDATE outbound_messages
-                   SET provider_message_id='wa-claim-due',delivery_status='SENT',
-                       delivered_at_utc='2026-09-30T10:00:00+00:00'
+                   SET provider_message_id='wa-claim-setup',delivery_status='SENT',
+                       delivered_at_utc='2026-09-30T09:50:00+00:00'
                    WHERE outbound_id=?""",
-                (out_id,),
+                (setup_id,),
             )
             conn.execute(
-                """UPDATE reminders
-                   SET status='DUE',due_at_utc='2026-09-30T10:00:00+00:00'
+                """UPDATE reminders SET due_at_utc='2026-09-30T10:00:00+00:00'
                    WHERE reminder_id=?""",
                 (reminder["reminder_id"],),
             )
@@ -2593,12 +2592,31 @@ class AlexCoreTests(unittest.TestCase):
         )
         with patch.object(
             runtime_clock, "now_utc",
-            return_value=datetime(2026, 9, 30, 10, 5, tzinfo=timezone.utc),
+            return_value=datetime(2026, 9, 30, 9, 55, tzinfo=timezone.utc),
         ):
             claimed = services.claim_reminder_from_reaction(
-                wife, "wa-claim-due", "✅"
+                wife, "wa-claim-setup", "✅"
             )
         self.assertEqual(claimed["status"], "claimed")
+
+        # At due time the initial reminder must go to the claimant DM, not group.
+        with patch.object(
+            runtime_clock, "now_utc",
+            return_value=datetime(2026, 9, 30, 10, 1, tzinfo=timezone.utc),
+        ):
+            scheduler.fire_due()
+        conn = db.connect()
+        try:
+            initial = conn.execute(
+                """SELECT conversation_id,context_kind FROM outbound_messages
+                   WHERE context_id=? AND context_kind='REMINDER_INITIAL'
+                   ORDER BY rowid DESC LIMIT 1""",
+                (reminder["reminder_id"],),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertIsNotNone(initial)
+        self.assertEqual(initial["conversation_id"], "60222222222@s.whatsapp.net")
 
         with patch.object(
             runtime_clock, "now_utc",
