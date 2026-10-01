@@ -62,13 +62,25 @@ SCOPE_ONLY_CATEGORIES = {
 }
 
 
+CATEGORY_ALIASES = {
+    "food_drink": "food",
+    "food_and_drink": "food",
+    "food_&_drink": "food",
+    "dining": "food",
+    "meals": "food",
+    "petrol": "fuel",
+    "gasoline": "fuel",
+    "transportation": "transport",
+}
+
+
 def _clean_category(value: str | None) -> str | None:
     if not value:
         return None
     cleaned = str(value).strip().lower().replace(" ", "_")[:80]
     if cleaned in GENERIC_CATEGORIES or cleaned in SCOPE_ONLY_CATEGORIES:
         return None
-    return cleaned
+    return CATEGORY_ALIASES.get(cleaned, cleaned)
 
 
 def _routing_keyword_matches(keyword: str, text: str) -> bool:
@@ -702,9 +714,10 @@ def get_receipt(actor: ActorContext, media_id: str) -> dict:
             }
 
         saved = conn.execute(
-            f"""SELECT m.*,s.title,s.content,s.space_id
+            f"""SELECT m.*,s.title,s.content,s.space_id,i.raw_text AS caption
                 FROM media_objects m
                 JOIN saved_items s ON s.media_id=m.media_id
+                JOIN inbound_messages i ON i.message_id=m.source_message_id
                 WHERE m.media_id=? AND s.space_id IN ({marks})
                   AND m.media_type IN ('IMAGE','PDF')
                   AND (
@@ -712,6 +725,8 @@ def get_receipt(actor: ActorContext, media_id: str) -> dict:
                       OR LOWER(COALESCE(s.title,'')) LIKE '%invoice%'
                       OR LOWER(COALESCE(s.content,'')) LIKE '%receipt%'
                       OR LOWER(COALESCE(s.content,'')) LIKE '%invoice%'
+                      OR LOWER(COALESCE(i.raw_text,'')) LIKE '%receipt%'
+                      OR LOWER(COALESCE(i.raw_text,'')) LIKE '%invoice%'
                   )
                 ORDER BY s.created_at_utc DESC LIMIT 1""",
             [media_id] + spaces,
@@ -1786,7 +1801,7 @@ def claim_reminder_from_reaction(
                          'REMINDER_CLAIMANT_FOLLOWUP','REMINDER_FAMILY_RESURFACE',
                          'REMINDER_HANDOFF'
                      )
-                   ORDER BY delivered_at_utc DESC,created_at_utc DESC LIMIT 50""",
+                   ORDER BY delivered_at_utc DESC,created_at_utc DESC""",
                 (actor.conversation_id,),
             ).fetchall()
             wanted = str(provider_message_id or "")
@@ -1799,6 +1814,30 @@ def claim_reminder_from_reaction(
                 if wanted and wanted in {str(candidate["provider_message_id"] or ""), expected}:
                     outbound = candidate
                     break
+            if not outbound and actor.conversation_type != "GROUP":
+                # WhatsApp may surface an established DM as a LID rather than
+                # the phone JID used when Alex sent the handoff. Bind only a
+                # handoff addressed to this authenticated user and only by the
+                # exact deterministic/provider message id.
+                handoff_candidates = conn.execute(
+                    """SELECT o.outbound_id,o.context_kind,o.context_id,o.provider_message_id
+                       FROM outbound_messages o
+                       JOIN reminder_handoffs h ON h.handoff_id=o.context_id
+                       WHERE o.delivery_status='SENT'
+                         AND o.context_kind='REMINDER_HANDOFF'
+                         AND h.to_user_id=? AND h.status='PENDING'
+                       ORDER BY o.delivered_at_utc DESC,o.created_at_utc DESC""",
+                    (actor.user_id,),
+                ).fetchall()
+                for candidate in handoff_candidates:
+                    expected = (
+                        "ALEX"
+                        + hashlib.sha256(str(candidate["outbound_id"]).encode("utf-8"))
+                        .hexdigest().upper()[:28]
+                    )
+                    if wanted and wanted in {str(candidate["provider_message_id"] or ""), expected}:
+                        outbound = candidate
+                        break
         if not outbound or not outbound["context_id"]:
             conn.rollback()
             return {"status": "not_a_reminder_message"}
@@ -1819,7 +1858,7 @@ def claim_reminder_from_reaction(
                 conn.rollback()
                 raise PermissionError("this reminder handoff was not addressed to you")
             reminder = conn.execute(
-                """SELECT reminder_id,status,claimed_by_user_id,follow_up_after_hours
+                """SELECT reminder_id,task_text,status,claimed_by_user_id,follow_up_after_hours
                    FROM reminders WHERE reminder_id=?""",
                 (handoff["reminder_id"],),
             ).fetchone()
@@ -1875,17 +1914,38 @@ def claim_reminder_from_reaction(
                     f"handoff accepted from {handoff['from_user_id']}",
                 ),
             )
+            from_phone = _active_user_phone(conn, handoff["from_user_id"])
+            accepter = conn.execute(
+                "SELECT display_name FROM users WHERE user_id=?",
+                (actor.user_id,),
+            ).fetchone()
+            if from_phone:
+                from_dm = from_phone.replace("+", "") + "@s.whatsapp.net"
+                name = str(accepter["display_name"] if accepter else "Your spouse").strip()
+                if name.casefold() == "wife":
+                    name = "Priya"
+                conn.execute(
+                    """INSERT INTO outbound_messages(
+                           outbound_id,conversation_id,kind,text_body,context_kind,context_id
+                       ) VALUES(?,?,'TEXT',?,'REMINDER_HANDOFF_ACCEPTED',?)""",
+                    (
+                        str(uuid.uuid4()), from_dm,
+                        f"{name} has taken over: {reminder['task_text']}",
+                        reminder["reminder_id"],
+                    ),
+                )
             conn.commit()
             return {
                 "status": "handoff_accepted",
                 "reminder_id": reminder["reminder_id"],
                 "claimed_by_user_id": actor.user_id,
                 "from_user_id": handoff["from_user_id"],
+                "claimant_notified": bool(from_phone),
             }
 
         if actor.conversation_type != "GROUP":
             conn.rollback()
-            raise PermissionError("family reminder claims are accepted only in the family group")
+            return {"status": "ignored_direct_reminder_reaction"}
         reminder_id = outbound["context_id"]
         row = conn.execute(
             """SELECT reminder_id,task_text,status,space_id,claimable,
