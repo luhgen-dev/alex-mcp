@@ -34,6 +34,7 @@ import services
 import ha
 import ha_mobile
 import phase2
+import phase2_intent
 import diagnostics
 import ingress
 import profile_config
