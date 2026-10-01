@@ -1,4 +1,4 @@
-"""Central write-scope policy for ALEX household mutations.
+"""Central privacy/scope policy for ALEX household reads and writes.
 
 Only the current user-authored trusted_text may influence the emoji/private
 shortcut. OCR, quoted context, prior turns, reactions and Alex output are never
@@ -15,7 +15,14 @@ _PRIVATE_RE = re.compile(
 )
 _FAMILY_RE = re.compile(
     r"\b(?:family\s+shared|shared\s+with\s+(?:the\s+)?family|"
-    r"share\s+with\s+(?:the\s+)?family)\b",
+    r"share\s+with\s+(?:the\s+)?family|shared\s+only|family\s+only)\b",
+    re.IGNORECASE,
+)
+_ALL_RE = re.compile(
+    r"(?:\ball\b|\beverything\b|\bboth\b).*\b(?:private|personal)\b.*\b(?:shared|family)\b"
+    r"|(?:\ball\b|\beverything\b|\bboth\b).*\b(?:shared|family)\b.*\b(?:private|personal)\b"
+    r"|\b(?:shared|family)\s+(?:and|plus)\s+(?:private|personal)\b"
+    r"|\b(?:private|personal)\s+(?:and|plus)\s+(?:shared|family)\b",
     re.IGNORECASE,
 )
 
@@ -52,6 +59,66 @@ def explicit_private(text: str | None) -> bool:
 
 def explicit_family(text: str | None) -> bool:
     return bool(_FAMILY_RE.search(str(text or "")))
+
+
+def resolve_read_scope(text: str | None) -> str:
+    """Resolve the current trusted read intent once.
+
+    Locked policy: ordinary reads are FAMILY_SHARED, explicit private wording
+    or any emoji means owner-private, and all-spaces reads require an explicit
+    request for both/shared+private. A bare word like "all" never widens scope.
+    """
+    value = str(text or "")
+    if _ALL_RE.search(value):
+        return "all"
+    if explicit_private(value) or contains_emoji(value):
+        return "private"
+    if explicit_family(value):
+        return "family"
+    return "family"
+
+
+def read_spaces(actor, requested_scope: str | None = None) -> list[str]:
+    """Return the spaces a read may use; model arguments may never widen policy."""
+    policy = str(getattr(actor, "read_scope", "family") or "family").strip().casefold()
+    requested = str(requested_scope or "").strip().casefold()
+    allowed = list(getattr(actor, "allowed_spaces", ()) or ())
+
+    if getattr(actor, "conversation_type", "") == "GROUP":
+        if policy == "private":
+            raise PermissionError("private scope must be handed to the owner's DM")
+        if "FAMILY_SHARED" not in allowed:
+            raise PermissionError("family scope is not accessible in this conversation")
+        return ["FAMILY_SHARED"]
+
+    if policy == "private":
+        private_space = getattr(actor, "private_space", "")
+        if private_space not in allowed:
+            raise PermissionError("private scope is not accessible in this conversation")
+        return [private_space]
+
+    if policy == "family":
+        if "FAMILY_SHARED" not in allowed:
+            raise PermissionError("family scope is not accessible in this conversation")
+        return ["FAMILY_SHARED"]
+
+    if policy != "all":
+        raise ValueError("read scope must be family, private, or all")
+
+    # An explicitly-authorized all-spaces turn may be narrowed by the model,
+    # but the model cannot widen family/private turns because those returned above.
+    if requested in {"family", "shared", "family_shared"}:
+        if "FAMILY_SHARED" not in allowed:
+            raise PermissionError("family scope is not accessible in this conversation")
+        return ["FAMILY_SHARED"]
+    if requested in {"private", "personal", "my"}:
+        private_space = getattr(actor, "private_space", "")
+        if private_space not in allowed:
+            raise PermissionError("private scope is not accessible in this conversation")
+        return [private_space]
+    if requested not in {"", "all", "visible", "accessible"}:
+        raise ValueError("scope must be all, family, or private")
+    return allowed
 
 
 def resolve_new_write_space(actor, requested_shared: bool | None = None,
