@@ -5,7 +5,7 @@ import json
 import re
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import runtime_clock
@@ -1281,6 +1281,14 @@ def _trusted_mutation_requested(text: str) -> bool:
     ):
         return False
     probe = _NEGATED_ACTION_PHRASE_RE.sub(" ", value)
+    if re.search(r"\b(?:remind|schedule)\b", probe, re.IGNORECASE):
+        return True
+    if re.search(
+        r"\b(?:i(?:'m|\s+am)|we(?:'re|\s+are))\s+(?:taking\s+)?(?:full[- ]?day\s+|half[- ]?day\s+|morning\s+|afternoon\s+)?(?:annual\s+|medical\s+)?leave\b",
+        probe,
+        re.IGNORECASE,
+    ):
+        return True
     return bool(_TRUSTED_MUTATION_RE.search(probe))
 
 
@@ -1915,9 +1923,13 @@ def _runtime_context(actor: ActorContext, user_text: str = "") -> str:
     settings = get_settings()
     channel = "the Family Shared WhatsApp group" if actor.conversation_type == "GROUP" else "a private WhatsApp DM"
     clock = (
-        f"current local datetime is {now.isoformat()}"
+        f"current local datetime is {now.isoformat()} ({now.strftime('%A')})"
         if _needs_exact_clock(user_text)
-        else f"current local date is {now.date().isoformat()}"
+        else f"current local date is {now.date().isoformat()} ({now.strftime('%A')})"
+    )
+    next_days = ", ".join(
+        f"{(now + timedelta(days=i)).strftime('%a')} {(now + timedelta(days=i)).date().isoformat()}"
+        for i in range(7)
     )
     authenticated_role = (
         "husband" if actor.user_id == "USR_HUSBAND"
@@ -1925,7 +1937,7 @@ def _runtime_context(actor: ActorContext, user_text: str = "") -> str:
         else "household member"
     )
     return (
-        f"Runtime context: {clock}; timezone={actor.timezone}; conversation is {channel}. "
+        f"Runtime context: {clock}; next 7 local dates: {next_days}; timezone={actor.timezone}; conversation is {channel}. "
         f"Household names: husband={settings.husband_name or 'Husband'}; "
         f"wife={settings.wife_name or 'Wife'}; authenticated user is {authenticated_role}. "
         "Authenticated identity and privacy spaces are enforced below MCP and are not model-controlled. "
@@ -2367,10 +2379,11 @@ def _validated_rewrite(original: str, rewritten: str) -> str | None:
 _SUCCESS_CLAIM_RE = re.compile(
     r"\b(?:done|successfully|i(?:'ve| have)\s+(?:updated|saved|corrected|"
     r"rescheduled|recorded|contributed|added|changed|created|completed|cancelled|"
-    r"canceled|renamed|snoozed|deferred|removed|marked)|"
+    r"canceled|renamed|snoozed|deferred|removed|marked|set|scheduled|logged|noted)|"
     r"(?:has|have|was|were)\s+(?:been\s+)?(?:updated|saved|corrected|"
     r"rescheduled|recorded|added|changed|created|completed|cancelled|canceled|"
-    r"renamed|snoozed|deferred|removed|marked))\b",
+    r"renamed|snoozed|deferred|removed|marked|set|scheduled|logged|noted))\b|"
+    r"\b(?:noted|i(?:'ve| have)\s+made\s+a\s+note|i(?:'ll| will)\s+remind)\b",
     re.IGNORECASE,
 )
 _SUCCESS_NEGATION_RE = re.compile(
