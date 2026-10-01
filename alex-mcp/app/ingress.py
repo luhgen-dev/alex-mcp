@@ -663,9 +663,45 @@ def process(payload: dict) -> dict:
                 and turn["read_scope"] == "private"
             ),
         )
+        if payload.get("audio_data"):
+            audio_id = next(
+                (
+                    mid for mid in media_ids
+                    if (media.get_media(mid) or {}).get("media_type") == "AUDIO"
+                ),
+                None,
+            )
+            pending = db.create_pending_item(
+                actor, "VOICE", audio_id,
+                note="Original WhatsApp voice note saved for typed clarification.",
+            )
+            reply = (
+                "I’ve saved this voice note for review. I don’t reliably act on "
+                "voice messages, so please type what you want me to do when you "
+                "have time. I’ll keep this pending until then."
+            )
+            db.queue_outbound(
+                actor.conversation_id, "TEXT", text=reply,
+                source_message_id=actor.source_message_id,
+                context_kind="PENDING_ITEM",
+                context_id=pending["item_id"],
+            )
+            db.finish_inbound(actor.source_message_id, reply)
+            return {"ok": True, "voice_pending": True, "pending_item_id": pending["item_id"]}
+
         quoted_context = db.resolve_quoted_context(
             actor.conversation_id, payload.get("quoted_message_id"), actor.phone
         )
+        pending_item = db.pending_item_for_reference(actor, quoted_context)
+        if pending_item:
+            quoted_context = dict(quoted_context or {})
+            quoted_context["pending_item"] = {
+                "item_id": pending_item["item_id"],
+                "kind": pending_item["kind"],
+                "media_id": pending_item["media_id"],
+                "source_message_id": pending_item["source_message_id"],
+            }
+
         # Orphan-attachment pairing applies ONLY to a genuinely captionless
         # image/PDF. Voice notes are the user's own words and must never
         # inherit an earlier, unrelated text instruction (v0.4.3 vinyl leak).
@@ -790,6 +826,10 @@ def process(payload: dict) -> dict:
                 actor.conversation_id, "TEXT", text=group_reply,
                 source_message_id=actor.source_message_id,
             )
+            if pending_item and turn["trusted_text"].strip():
+                db.resolve_pending_item(
+                    pending_item["item_id"], actor.user_id, actor.source_message_id
+                )
             db.finish_inbound(actor.source_message_id, group_reply)
             return {"ok": True, "private_handoff": True}
 
@@ -840,6 +880,10 @@ def process(payload: dict) -> dict:
                     source_message_id=actor.source_message_id,
                 )
                 first_attachment = False
+        if pending_item and turn["trusted_text"].strip():
+            db.resolve_pending_item(
+                pending_item["item_id"], actor.user_id, actor.source_message_id
+            )
         db.finish_inbound(actor.source_message_id, reply)
         return {"ok": True}
     except media.VoiceTranscriptionUncertain as exc:
