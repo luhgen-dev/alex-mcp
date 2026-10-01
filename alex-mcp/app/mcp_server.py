@@ -57,18 +57,27 @@ def query_finances(actor: Actor, start_date: str | None = None, end_date: str | 
     result = services.query_finances(
         actor, start_date, end_date, category, search, currency, limit, scope, source
     )
-    phase2_reports.remember_active_report(
-        actor.user_id, actor.conversation_id, "finance_query", result,
-        period=(
-            start_date[:7] if start_date and end_date and start_date[:7] == end_date[:7]
-            else None
-        ),
-        spec={
-            "start_date": start_date, "end_date": end_date, "category": category,
-            "search": search, "currency": currency, "limit": limit,
-            "scope": scope, "source": source,
-        },
+    active = phase2_reports.load_active_report(actor.user_id, actor.conversation_id)
+    active_spec = (active.get("spec") or {}) if active else {}
+    preserve_presented_monthly = bool(
+        active
+        and active.get("kind") == "monthly_finance"
+        and active_spec.get("source_message_id") == actor.source_message_id
     )
+    if not preserve_presented_monthly:
+        phase2_reports.remember_active_report(
+            actor.user_id, actor.conversation_id, "finance_query", result,
+            period=(
+                start_date[:7] if start_date and end_date and start_date[:7] == end_date[:7]
+                else None
+            ),
+            spec={
+                "start_date": start_date, "end_date": end_date, "category": category,
+                "search": search, "currency": currency, "limit": limit,
+                "scope": scope, "source": source,
+                "source_message_id": actor.source_message_id,
+            },
+        )
     return result
 
 
@@ -1296,7 +1305,11 @@ def finance_report(actor: Actor, period: str | None = None,
     )
     phase2_reports.remember_active_report(
         actor.user_id, actor.conversation_id, "monthly_finance", result,
-        period=effective_period, spec={"period": effective_period, "scope": scope},
+        period=effective_period,
+        spec={
+            "period": effective_period, "scope": scope,
+            "source_message_id": actor.source_message_id,
+        },
     )
     return result
 
@@ -1352,29 +1365,46 @@ def report_export(format: str, actor: Actor, period: str | None = None,
     active_kind = active.get("kind") if active else None
     active_period = active.get("period") if active else None
 
+    period_changed = bool(
+        active and period and active_period and str(active_period) != str(period)
+    )
+    active_is_finance = active_kind in {"finance_query", "monthly_finance"}
+
     if requested_type == "finance":
         report_kind = (
-            active_kind
-            if active_kind in {"finance_query", "monthly_finance"}
-            else "monthly_finance"
+            "monthly_finance"
+            if period_changed or not active_is_finance
+            else active_kind
         )
     elif requested_type == "snapshot":
         report_kind = "snapshot"
+    elif active_is_finance and period_changed:
+        # A finance context stays a finance context when the user changes only
+        # the month ("send August as CSV" after viewing September).
+        report_kind = "monthly_finance"
     elif active and (
         period is None
         or not active_period
         or str(active_period) == str(period)
     ):
-        # "Send that as PDF" and "send September as PDF" must preserve the
-        # report the user just saw when the period is the same.
+        # "Send that as PDF" and "send September as PDF" preserve the report
+        # the user just saw when the period is the same.
         report_kind = active_kind
     else:
         report_kind = "snapshot"
 
     effective_period = period or active_period
     spec = (active.get("spec") or {}) if active and report_kind == active_kind else {}
-    if report_kind == "monthly_finance" and requested_type == "finance":
-        spec = {**spec, "period": effective_period, "scope": spec.get("scope") or "all"}
+    if report_kind == "monthly_finance":
+        spec = {
+            **spec,
+            "period": effective_period,
+            "scope": (
+                ((active.get("spec") or {}).get("scope") if active else None)
+                or spec.get("scope")
+                or "all"
+            ),
+        }
 
     if report_kind in {"finance_query", "monthly_finance"}:
         if report_kind == "monthly_finance":
