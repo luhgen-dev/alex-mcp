@@ -1479,6 +1479,16 @@ def create_reminder(actor: ActorContext, task: str, due_local: str,
                        ) VALUES(?,?,?,'TEXT',?,'REMINDER_ASSIGNED',?)""",
                     (str(uuid.uuid4()), actor.source_message_id, conversation_id, ack, rid),
                 )
+                try:
+                    import ha_mobile
+                    ha_mobile.queue_assigned_ack(
+                        conn, target_user, rid, task, due_local
+                    )
+                except Exception:
+                    # Phone notifications are an additional delivery surface;
+                    # a misconfigured device must never prevent the durable
+                    # WhatsApp reminder from being created.
+                    pass
 
             created.append({
                 "status": "created", "reminder_id": rid, "task": task, "due_at_utc": due_utc,
