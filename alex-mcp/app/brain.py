@@ -816,6 +816,13 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         block |= {"log_expense", "confirm_expense", "correct_expense"}
     if re.search(r"\b(?:what am i saving towards|show my goals|list .*goals|what goals)\b", low):
         force.add("planning_list_goals")
+    if re.search(
+        r"\b(?:how much more|how much (?:is )?left|remaining|progress|details?)\b"
+        r".*\b(?:goal|fund|savings?)\b"
+        r"|\b(?:goal|fund|savings?)\b.*\b(?:progress|remaining|details?)\b",
+        low,
+    ):
+        force.add("planning_goal_progress")
     if re.search(r"\b(?:compare .*salary|salary .*different|normal salary|configured salary)\b", low):
         force.add("planning_compare_salary")
     if re.search(r"\b(?:safe monthly baseline|fixed income .*locked commitments|locked commitments.*fixed income)\b", low):
