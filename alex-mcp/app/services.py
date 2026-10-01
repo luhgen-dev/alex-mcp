@@ -2324,6 +2324,35 @@ def claim_reminder_from_reaction(
             conn.commit()
             return result
 
+        # Compatibility for any already-bound early reminder card: if it is
+        # still OPEN it is necessarily pre-due from the state machine's point
+        # of view, so a Family Shared reaction may claim it. Normal scheduler
+        # delivery sets DUE before REMINDER_INITIAL is sent, so live post-due
+        # reactions still fall through to ACK below.
+        early = conn.execute(
+            """SELECT status FROM reminders WHERE reminder_id=?""",
+            (reminder_id,),
+        ).fetchone()
+        if (
+            actor.conversation_type == "GROUP"
+            and early
+            and early["status"] == "OPEN"
+        ):
+            result = _claim_reminder_tx(
+                conn, actor, reminder_id,
+                source="WHATSAPP_REACTION",
+                provider_message_id=provider_message_id,
+                reaction_text=reaction,
+            )
+            if result.get("status") == "claimed":
+                conn.execute(
+                    "UPDATE reminders SET next_delivery_at_utc=NULL WHERE reminder_id=?",
+                    (reminder_id,),
+                )
+                result["next_claimant_follow_up_at_utc"] = None
+            conn.commit()
+            return result
+
         # Direct-message reminder reactions keep the existing explicit-text
         # semantics. The claim/ack reaction contract applies to Family Shared.
         if actor.conversation_type != "GROUP":
