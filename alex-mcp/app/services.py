@@ -1365,6 +1365,23 @@ def _record_reminder_event(conn, reminder_id: str, event_type: str,
     )
 
 
+def _friendly_reminder_time(due_utc: str, tz_name: str) -> str:
+    try:
+        parsed = datetime.fromisoformat(str(due_utc).replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        local = parsed.astimezone(ZoneInfo(tz_name))
+        day = local.day
+        suffix = "th" if 10 <= day % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
+        hour = local.strftime("%I").lstrip("0") or "12"
+        return (
+            f"{day}{suffix} {local.strftime('%B %Y')}, "
+            f"{hour}.{local.strftime('%M')}{local.strftime('%p')}"
+        )
+    except Exception:
+        return str(due_utc)
+
+
 def create_reminder(actor: ActorContext, task: str, due_local: str,
                     recurrence_rule: str | None = None, shared: bool = False,
                     recipient: str = "me", destination: str = "dm",
@@ -1468,9 +1485,10 @@ def create_reminder(actor: ActorContext, task: str, due_local: str,
             if destination == "dm" and (
                 actor.conversation_type == "GROUP" or target_user != actor.user_id
             ):
+                friendly_due = _friendly_reminder_time(due_utc, actor.timezone)
                 ack = (
                     f"Reminder assigned to you: {task}. "
-                    f"I’ll remind you at {due_local}."
+                    f"I’ll remind you at {friendly_due}."
                 )
                 conn.execute(
                     """INSERT INTO outbound_messages(
@@ -1482,7 +1500,7 @@ def create_reminder(actor: ActorContext, task: str, due_local: str,
                 try:
                     import ha_mobile
                     ha_mobile.queue_assigned_ack(
-                        conn, target_user, rid, task, due_local
+                        conn, target_user, rid, task, friendly_due
                     )
                 except Exception:
                     # Phone notifications are an additional delivery surface;
