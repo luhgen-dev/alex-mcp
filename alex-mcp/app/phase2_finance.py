@@ -245,6 +245,61 @@ def ensure_schema(conn=None):
             FROM alex_phase2_goals
         """)
 
+        # Stash/cash pools are an inherently private money domain. Repair any
+        # earlier Family Shared pools before legacy bridging so an upgrade
+        # cannot leave a personal stash visible in the household group.
+        shared_pools = conn.execute(
+            """SELECT pool_id,owner_user_id,name,status
+               FROM alex_phase2_cash_pools
+               WHERE space_id='FAMILY_SHARED'"""
+        ).fetchall()
+        for shared_pool in shared_pools:
+            private_space = (
+                "HUSBAND_PVT"
+                if shared_pool["owner_user_id"] == "USR_HUSBAND"
+                else "WIFE_PVT"
+            )
+            duplicate = conn.execute(
+                """SELECT pool_id FROM alex_phase2_cash_pools
+                   WHERE owner_user_id=? AND space_id=?
+                     AND LOWER(TRIM(name))=LOWER(TRIM(?))
+                     AND status='ACTIVE' AND pool_id<>?
+                   ORDER BY created_at_utc LIMIT 1""",
+                (
+                    shared_pool["owner_user_id"], private_space,
+                    shared_pool["name"], shared_pool["pool_id"],
+                ),
+            ).fetchone()
+            if duplicate and shared_pool["status"] == "ACTIVE":
+                # Merge the accidentally shared pool into the existing private
+                # pool while preserving every allocation/adjustment row.
+                conn.execute(
+                    """UPDATE alex_phase2_cash_pool_allocations
+                       SET pool_id=? WHERE pool_id=?""",
+                    (duplicate["pool_id"], shared_pool["pool_id"]),
+                )
+                conn.execute(
+                    """UPDATE alex_phase2_cash_pool_adjustments
+                       SET pool_id=?,space_id=? WHERE pool_id=?""",
+                    (duplicate["pool_id"], private_space, shared_pool["pool_id"]),
+                )
+                conn.execute(
+                    """UPDATE alex_phase2_cash_pools
+                       SET status='CLOSED' WHERE pool_id=?""",
+                    (shared_pool["pool_id"],),
+                )
+            else:
+                conn.execute(
+                    """UPDATE alex_phase2_cash_pools
+                       SET space_id=? WHERE pool_id=?""",
+                    (private_space, shared_pool["pool_id"]),
+                )
+                conn.execute(
+                    """UPDATE alex_phase2_cash_pool_adjustments
+                       SET space_id=? WHERE pool_id=?""",
+                    (private_space, shared_pool["pool_id"]),
+                )
+
         # Bridge only genuine legacy stash/cash-pool buckets into the Phase-2
         # pool engine. Allowances/reserves remain separate concepts. Matching
         # owner+space+name makes this migration idempotent.
@@ -260,12 +315,17 @@ def ensure_schema(conn=None):
                 legacy_name = str(legacy["bucket_name"] or "").strip()
                 if not re.search(r"\b(?:stash|cash\s*pool|buffer)\b", legacy_name, re.I):
                     continue
+                private_space = (
+                    "HUSBAND_PVT"
+                    if legacy["owner_id"] == "USR_HUSBAND"
+                    else "WIFE_PVT"
+                )
                 existing = conn.execute(
                     """SELECT pool_id FROM alex_phase2_cash_pools
                        WHERE owner_user_id=? AND space_id=?
                          AND LOWER(TRIM(name))=LOWER(TRIM(?))
                          AND status='ACTIVE' LIMIT 1""",
-                    (legacy["owner_id"], legacy["space_id"], legacy_name),
+                    (legacy["owner_id"], private_space, legacy_name),
                 ).fetchone()
                 if existing:
                     continue
@@ -275,7 +335,7 @@ def ensure_schema(conn=None):
                            pool_id,space_id,owner_user_id,name,currency
                        ) VALUES(?,?,?,?,?)""",
                     (
-                        pool_id, legacy["space_id"], legacy["owner_id"],
+                        pool_id, private_space, legacy["owner_id"],
                         legacy_name, str(legacy["currency"] or "MYR").upper(),
                     ),
                 )
@@ -287,7 +347,7 @@ def ensure_schema(conn=None):
                                adjustment_kind,event_date,note,source_message_id
                            ) VALUES(?,?,?,?,?,'OPENING_BALANCE',?,?,?)""",
                         (
-                            str(uuid.uuid4()), pool_id, legacy["space_id"],
+                            str(uuid.uuid4()), pool_id, private_space,
                             legacy["owner_id"], amount_minor,
                             runtime_clock.today().isoformat(),
                             "Migrated from legacy stash bucket",
