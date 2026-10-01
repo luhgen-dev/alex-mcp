@@ -3537,13 +3537,21 @@ class AlexCoreTests(unittest.TestCase):
             ],
         )
         try:
-            row = {
-                "reminder_id": "ha-claimable-1",
-                "task_text": "collect parcel",
-                "owner_id": "USR_HUSBAND",
-                "claimable": 1,
-                "claimed_by_user_id": None,
-            }
+            conn.execute(
+                """INSERT INTO reminders(
+                       reminder_id,action_key,owner_id,space_id,conversation_id,
+                       task_text,due_at_utc,timezone_name,claimable
+                   ) VALUES(?,?,?,?,?,?,?,?,1)""",
+                (
+                    "ha-claimable-1", "ha-claimable-action", "USR_HUSBAND",
+                    "FAMILY_SHARED", "120363900000@g.us", "collect parcel",
+                    "2026-10-02T07:00:00+00:00", "Asia/Kuala_Lumpur",
+                ),
+            )
+            conn.commit()
+            row = conn.execute(
+                "SELECT * FROM reminders WHERE reminder_id='ha-claimable-1'"
+            ).fetchone()
             with patch.object(ha_mobile, "get_settings", return_value=settings):
                 queued = ha_mobile.queue_due(
                     conn, row, "⏰ Reminder: collect parcel", "test-due"
@@ -3637,6 +3645,41 @@ class AlexCoreTests(unittest.TestCase):
         finally:
             conn.close()
         self.assertEqual(row["status"], "ACK")
+
+
+
+    def test_v055_stale_ha_action_cannot_reopen_completed_reminder(self):
+        self.claim("ha-stale-create", "+60111111111", "remind me later")
+        actor = with_action_key(
+            replace(
+                self.actor("ha-stale-create", "+60111111111"),
+                trusted_text="remind me later",
+            ),
+            "ha-stale-create-key",
+        )
+        reminder = services.create_reminder(
+            actor, "closed task", "2026-10-02T16:00:00+08:00"
+        )
+        services.update_reminder(actor, reminder["reminder_id"], status="complete")
+        token = ha_mobile.action_token(
+            "ACK", "reminder", reminder["reminder_id"], "USR_HUSBAND"
+        )
+        result = ha_mobile._process_action_event({
+            "event": {
+                "data": {"action": token},
+                "context": {"id": "ctx-ha-stale-ack"},
+            }
+        })
+        self.assertEqual(result["status"], "closed")
+        conn = db.connect()
+        try:
+            row = conn.execute(
+                "SELECT status FROM reminders WHERE reminder_id=?",
+                (reminder["reminder_id"],),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(row["status"], "COMP")
 
 
     def actor_for_context(self):
