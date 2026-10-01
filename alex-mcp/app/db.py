@@ -523,6 +523,13 @@ def resolve_quoted_context(conversation_id: str, quoted_message_id: str | None,
                 "context_kind": row["context_kind"],
                 "context_id": row["context_id"],
             }
+            if row["context_kind"] == "REPORT" and row["context_id"]:
+                try:
+                    report_context = json.loads(row["context_id"])
+                except (TypeError, json.JSONDecodeError):
+                    report_context = None
+                if isinstance(report_context, dict):
+                    result["report_context"] = report_context
             if row["source_message_id"]:
                 events = conn.execute(
                     """SELECT event_id,status,event_type,amount_minor,currency,description,category
