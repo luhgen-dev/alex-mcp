@@ -104,3 +104,23 @@ Persistent data lives under the app's `/data` volume:
 - `models/` (local Whisper model cache)
 
 Original household media and their selected transcripts/OCR are retained intentionally for provenance and later retrieval; Alex does not silently prune them. Plan storage capacity accordingly and take a full Home Assistant backup before upgrading or migrating the app.
+
+## Home Assistant actionable reminder notifications
+
+Alex can mirror reminder alerts into the Home Assistant Companion app on Android and iPhone. Home Assistant is an extra delivery/control surface only: the Alex reminder row remains the single source of truth.
+
+Configure **ha_notify_devices** with one entry per household phone:
+
+- **id** — a short local label such as `luhgen_phone`
+- **owner** — `husband` or `wife`
+- **notify_service** — the Home Assistant notify service without the `notify.` prefix, for example `mobile_app_galaxy_s26_ultra`
+- **active** — true/false
+
+Assigned reminders can produce an immediate phone acknowledgement and the due notification exposes **Acknowledge**, **Done** and **Snooze 10m**. Claimable Family Shared reminders expose **Claim**. Reminder handoff requests expose **Accept** and **Decline**.
+
+Buttons on Android/iPhone and WhatsApp reactions converge on the same atomic Alex reminder state. Notification delivery alone never means the person acknowledged or completed the reminder.
+
+The Companion action bridge connects outbound to Home Assistant's WebSocket API; it does not open a new inbound port. Action identifiers are signed with an install-local secret stored under `/data`, and Home Assistant event IDs are claimed idempotently before any reminder state change is applied.
+
+If no `ha_notify_devices` entries are configured, normal WhatsApp reminders continue unchanged.
+
