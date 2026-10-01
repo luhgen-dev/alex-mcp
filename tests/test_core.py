@@ -35,6 +35,7 @@ import ha
 import ha_mobile
 import phase2
 import phase2_intent
+import scope_policy
 import diagnostics
 import ingress
 import profile_config
@@ -3316,8 +3317,10 @@ class AlexCoreTests(unittest.TestCase):
 
             @staticmethod
             def assert_final(kwargs):
-                if kwargs.get("tool_choice") != "none":
-                    raise AssertionError(f"final tool_choice was {kwargs.get('tool_choice')!r}")
+                if "tools" in kwargs or "tool_choice" in kwargs:
+                    raise AssertionError(
+                        "final answer call must not expose tools or tool_choice"
+                    )
 
         fake_completions = FakeCompletions()
         fake_client = type(
@@ -3350,7 +3353,7 @@ class AlexCoreTests(unittest.TestCase):
         self.assertEqual(len(executed), 3)
         self.assertEqual(
             [call.get("tool_choice") for call in fake_completions.calls],
-            ["auto", "auto", "auto", "none"],
+            ["auto", "auto", "auto", None],
         )
 
     def test_v055_read_tools_are_not_misclassified_as_mutations(self):
