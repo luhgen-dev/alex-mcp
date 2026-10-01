@@ -637,6 +637,105 @@ def resolve_recent_instruction_context(conversation_id: str, sender_phone: str,
         conn.close()
 
 
+def create_pending_item(actor: ActorContext, kind: str, media_id: str | None = None,
+                        note: str | None = None) -> dict:
+    item_kind = str(kind or "OTHER").strip().upper()[:40]
+    conn = connect()
+    try:
+        existing = conn.execute(
+            """SELECT * FROM pending_items WHERE source_message_id=? AND kind=? LIMIT 1""",
+            (actor.source_message_id, item_kind),
+        ).fetchone()
+        if existing:
+            return dict(existing)
+        item_id = str(uuid.uuid4())
+        conn.execute(
+            """INSERT INTO pending_items(
+                   item_id,kind,owner_id,conversation_id,source_message_id,media_id,note
+               ) VALUES(?,?,?,?,?,?,?)""",
+            (
+                item_id, item_kind, actor.user_id, actor.conversation_id,
+                actor.source_message_id, media_id, note,
+            ),
+        )
+        conn.commit()
+        row = conn.execute("SELECT * FROM pending_items WHERE item_id=?", (item_id,)).fetchone()
+        return dict(row)
+    finally:
+        conn.close()
+
+
+def pending_item_for_reference(actor: ActorContext, quoted_context: dict | None) -> dict | None:
+    if not quoted_context:
+        return None
+    item_id = None
+    if quoted_context.get("context_kind") == "PENDING_ITEM":
+        item_id = str(quoted_context.get("context_id") or "") or None
+    source_message_id = str(quoted_context.get("source_message_id") or "") or None
+    media_id = str(quoted_context.get("quoted_media_id") or "") or None
+    conn = connect()
+    try:
+        clauses = ["owner_id=?", "status='PENDING'"]
+        args: list = [actor.user_id]
+        if item_id:
+            clauses.append("item_id=?")
+            args.append(item_id)
+        elif media_id:
+            clauses.append("media_id=?")
+            args.append(media_id)
+        elif source_message_id:
+            clauses.append("source_message_id=?")
+            args.append(source_message_id)
+        else:
+            return None
+        row = conn.execute(
+            "SELECT * FROM pending_items WHERE " + " AND ".join(clauses)
+            + " ORDER BY created_at_utc DESC LIMIT 1",
+            args,
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def resolve_pending_item(item_id: str, owner_id: str, resolution_message_id: str) -> bool:
+    conn = connect()
+    try:
+        cur = conn.execute(
+            """UPDATE pending_items SET status='RESOLVED',resolved_at_utc=?,resolution_message_id=?
+               WHERE item_id=? AND owner_id=? AND status='PENDING'""",
+            (utc_now(), resolution_message_id, item_id, owner_id),
+        )
+        conn.commit()
+        return cur.rowcount == 1
+    finally:
+        conn.close()
+
+
+def list_pending_items(actor: ActorContext, kind: str | None = None, limit: int = 20) -> list[dict]:
+    if actor.conversation_type == "GROUP":
+        raise PermissionError("Pending personal items are available only in the owner's DM")
+    conn = connect()
+    try:
+        where = ["p.owner_id=?", "p.status='PENDING'"]
+        args: list = [actor.user_id]
+        if kind:
+            where.append("p.kind=?")
+            args.append(str(kind).strip().upper())
+        rows = conn.execute(
+            """SELECT p.item_id,p.kind,p.source_message_id,p.media_id,p.created_at_utc,
+                      m.media_type,m.mime_type
+               FROM pending_items p
+               LEFT JOIN media_objects m ON m.media_id=p.media_id
+               WHERE """ + " AND ".join(where)
+            + " ORDER BY p.created_at_utc DESC LIMIT ?",
+            args + [max(1, min(100, int(limit)))],
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
 def current_month_ai_cost(provider: str | None = None) -> float:
     conn = connect()
     try:
