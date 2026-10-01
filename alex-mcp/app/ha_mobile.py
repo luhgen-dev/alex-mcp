@@ -184,13 +184,19 @@ def queue_due(conn, row, message: str, phase: str = "due") -> int:
     claimed = row["claimed_by_user_id"] if "claimed_by_user_id" in row.keys() else None
     claimable = bool(int(row["claimable"] or 0))
     if claimable and not claimed:
+        # Claiming is a pre-due ownership action on the WhatsApp setup message.
+        # Once due, the shared reminder stays shared; phone actions acknowledge
+        # or complete it instead of creating a late claim.
         total = 0
         for user_id in ("USR_HUSBAND", "USR_WIFE"):
             total += _queue(
-                conn, user_id, f"{phase}:{reminder_id}:claim",
+                conn, user_id, f"{phase}:{reminder_id}:shared-due",
                 message,
                 reminder_id=reminder_id, tag=f"alex-reminder-{reminder_id}",
-                actions=[("CLAIM", "Claim", "reminder", reminder_id)],
+                actions=[
+                    ("ACK", "Acknowledge", "reminder", reminder_id),
+                    ("DONE", "Done", "reminder", reminder_id),
+                ],
             )
         return total
     target = str(claimed or row["owner_id"])
