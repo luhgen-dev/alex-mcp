@@ -366,7 +366,8 @@ def _private_group_match_available(actor, text: str) -> bool:
         return False
     low = str(text or "").casefold()
     readish = bool(re.search(
-        r"\b(?:show|find|get|send|open|what|which|where|latest|recent|list)\b",
+        r"\b(?:show|find|get|send|open|what|which|where|latest|recent|list|"
+        r"check|balance|how much|how many)\b",
         low,
     ))
     if not readish:
