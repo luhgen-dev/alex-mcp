@@ -244,6 +244,56 @@ def ensure_schema(conn=None):
                    'baseline history backfill'
             FROM alex_phase2_goals
         """)
+
+        # Bridge only genuine legacy stash/cash-pool buckets into the Phase-2
+        # pool engine. Allowances/reserves remain separate concepts. Matching
+        # owner+space+name makes this migration idempotent.
+        legacy_table = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='money_buckets'"
+        ).fetchone()
+        if legacy_table:
+            legacy_rows = conn.execute(
+                """SELECT bucket_id,owner_id,space_id,bucket_name,amount_minor,currency,notes
+                   FROM money_buckets"""
+            ).fetchall()
+            for legacy in legacy_rows:
+                legacy_name = str(legacy["bucket_name"] or "").strip()
+                if not re.search(r"\b(?:stash|cash\s*pool|buffer)\b", legacy_name, re.I):
+                    continue
+                existing = conn.execute(
+                    """SELECT pool_id FROM alex_phase2_cash_pools
+                       WHERE owner_user_id=? AND space_id=?
+                         AND LOWER(TRIM(name))=LOWER(TRIM(?))
+                         AND status='ACTIVE' LIMIT 1""",
+                    (legacy["owner_id"], legacy["space_id"], legacy_name),
+                ).fetchone()
+                if existing:
+                    continue
+                pool_id = str(uuid.uuid4())
+                conn.execute(
+                    """INSERT INTO alex_phase2_cash_pools(
+                           pool_id,space_id,owner_user_id,name,currency
+                       ) VALUES(?,?,?,?,?)""",
+                    (
+                        pool_id, legacy["space_id"], legacy["owner_id"],
+                        legacy_name, str(legacy["currency"] or "MYR").upper(),
+                    ),
+                )
+                amount_minor = int(legacy["amount_minor"] or 0)
+                if amount_minor:
+                    conn.execute(
+                        """INSERT INTO alex_phase2_cash_pool_adjustments(
+                               adjustment_id,pool_id,space_id,owner_user_id,amount_minor,
+                               adjustment_kind,event_date,note,source_message_id
+                           ) VALUES(?,?,?,?,?,'OPENING_BALANCE',?,?,?)""",
+                        (
+                            str(uuid.uuid4()), pool_id, legacy["space_id"],
+                            legacy["owner_id"], amount_minor,
+                            runtime_clock.today().isoformat(),
+                            "Migrated from legacy stash bucket",
+                            "legacy-money-bucket:" + str(legacy["bucket_id"]),
+                        ),
+                    )
         if own:
             conn.commit()
     finally:
@@ -573,9 +623,6 @@ def resolve_cash_pool_reference(pool_id, pool_name, sender_phone,
         user_id, private_space, shared = _context(
             conn, sender_phone, conversation_type
         )
-        wanted = _normalized_ref(pool_name)
-        if not wanted:
-            raise ValueError("Provide pool_id or pool_name.")
         if conversation_type == "GROUP":
             clause, args = "space_id='FAMILY_SHARED'", []
         elif shared:
@@ -587,6 +634,14 @@ def resolve_cash_pool_reference(pool_id, pool_name, sender_phone,
             + clause + " ORDER BY name",
             args,
         ).fetchall()
+        wanted = _normalized_ref(pool_name)
+        if not wanted:
+            if len(rows) == 1:
+                return rows[0]["pool_id"]
+            if not rows:
+                raise ValueError("No authorized stash or cash pool is configured.")
+            names = ", ".join(row["name"] for row in rows[:8])
+            raise ValueError("More than one stash/cash pool exists; ask which one: " + names)
         exact = [
             row for row in rows if _normalized_ref(row["name"]) == wanted
         ]
@@ -603,7 +658,6 @@ def resolve_cash_pool_reference(pool_id, pool_name, sender_phone,
         raise ValueError("Cash-pool name is ambiguous; ask which one: " + names)
     finally:
         conn.close()
-
 
 def resolve_reserve_reference(reserve_id, reserve_name, sender_phone,
                               conversation_type="DIRECT_DM"):
@@ -924,28 +978,137 @@ def _allocated_cash_minor(conn, cash_event_id):
 
 
 def create_cash_pool(name, sender_phone, conversation_type="DIRECT_DM",
-                     visibility="private", currency="MYR"):
+                     visibility="private", currency="MYR",
+                     opening_balance=None, event_date=None,
+                     source_message_id=None):
+    """Create one stash/cash pool, optionally with an atomic opening balance."""
     if not str(name or "").strip():
         raise ValueError("Cash pool name is required")
     currency = str(currency or "MYR").upper()
     if currency not in ("MYR", "SGD"):
         raise ValueError("Currency must be MYR or SGD")
+    target_minor = _minor(opening_balance) if opening_balance is not None else None
+    effective_date = date.fromisoformat(
+        str(event_date or runtime_clock.today().isoformat())[:10]
+    )
     ensure_schema()
     conn = tools.get_db()
     try:
+        conn.execute("BEGIN IMMEDIATE")
         user_id, space_id = _space_for(
-            conn, sender_phone, conversation_type, visibility)
-        ident = str(uuid.uuid4())
-        conn.execute("""
-            INSERT INTO alex_phase2_cash_pools(
-                pool_id,space_id,owner_user_id,name,currency
-            ) VALUES (?,?,?,?,?)
-        """, (ident, space_id, user_id, str(name).strip(), currency))
+            conn, sender_phone, conversation_type, visibility
+        )
+        exact = conn.execute(
+            """SELECT * FROM alex_phase2_cash_pools
+               WHERE owner_user_id=? AND space_id=? AND status='ACTIVE'
+                 AND LOWER(TRIM(name))=LOWER(TRIM(?))
+               ORDER BY created_at_utc LIMIT 2""",
+            (user_id, space_id, str(name).strip()),
+        ).fetchall()
+        if len(exact) > 1:
+            raise ValueError("More than one active cash pool already has that name.")
+        created = not exact
+        if exact:
+            ident = exact[0]["pool_id"]
+        else:
+            ident = str(uuid.uuid4())
+            conn.execute(
+                """INSERT INTO alex_phase2_cash_pools(
+                    pool_id,space_id,owner_user_id,name,currency
+                ) VALUES (?,?,?,?,?)""",
+                (ident, space_id, user_id, str(name).strip(), currency),
+            )
+
+        allocated = int(conn.execute(
+            """SELECT COALESCE(SUM(amount_minor),0) AS total
+               FROM alex_phase2_cash_pool_allocations WHERE pool_id=?""",
+            (ident,),
+        ).fetchone()["total"] or 0)
+        adjusted = int(conn.execute(
+            """SELECT COALESCE(SUM(amount_minor),0) AS total
+               FROM alex_phase2_cash_pool_adjustments WHERE pool_id=?""",
+            (ident,),
+        ).fetchone()["total"] or 0)
+        current = allocated + adjusted
+
+        opening_applied = False
+        if target_minor is not None:
+            if current == target_minor:
+                pass
+            elif current == 0:
+                if target_minor:
+                    conn.execute(
+                        """INSERT INTO alex_phase2_cash_pool_adjustments(
+                               adjustment_id,pool_id,space_id,owner_user_id,amount_minor,
+                               adjustment_kind,event_date,note,source_message_id
+                           ) VALUES(?,?,?,?,?,'OPENING_BALANCE',?,'Opening balance',?)""",
+                        (
+                            str(uuid.uuid4()), ident, space_id, user_id, target_minor,
+                            effective_date.isoformat(), source_message_id,
+                        ),
+                    )
+                current = target_minor
+                opening_applied = True
+            else:
+                # "Create X with RM100" must never silently overwrite an
+                # already-funded pool of the same name.
+                conn.rollback()
+                return {
+                    "status": "already_exists_with_balance",
+                    "pool_id": ident, "name": str(name).strip(),
+                    "balance": _money(current), "currency": exact[0]["currency"],
+                    "space": space_id,
+                }
+
         conn.commit()
-        return {"pool_id": ident, "name": str(name).strip(), "space": space_id}
+        return {
+            "status": "created" if created else "already_exists",
+            "pool_id": ident, "name": str(name).strip(), "space": space_id,
+            "balance": _money(current), "currency": currency,
+            "opening_balance_applied": opening_applied,
+        }
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
+
+def list_cash_pools(sender_phone, conversation_type="DIRECT_DM",
+                    requested_scope="all"):
+    """List authorized active stash/cash pools with deterministic balances."""
+    ensure_schema()
+    conn = tools.get_db()
+    try:
+        _user_id, _private_space, clause, args = _authorized_space_clause(
+            conn, sender_phone, conversation_type, requested_scope
+        )
+        rows = conn.execute(
+            """SELECT * FROM alex_phase2_cash_pools
+               WHERE status='ACTIVE' AND """ + clause + " ORDER BY name",
+            args,
+        ).fetchall()
+        result = []
+        for row in rows:
+            allocated = int(conn.execute(
+                """SELECT COALESCE(SUM(amount_minor),0) AS total
+                   FROM alex_phase2_cash_pool_allocations WHERE pool_id=?""",
+                (row["pool_id"],),
+            ).fetchone()["total"] or 0)
+            adjusted = int(conn.execute(
+                """SELECT COALESCE(SUM(amount_minor),0) AS total
+                   FROM alex_phase2_cash_pool_adjustments WHERE pool_id=?""",
+                (row["pool_id"],),
+            ).fetchone()["total"] or 0)
+            result.append({
+                "pool_id": row["pool_id"], "name": row["name"],
+                "balance": _money(allocated + adjusted),
+                "currency": row["currency"],
+                "scope": "family" if row["space_id"] == "FAMILY_SHARED" else "private",
+            })
+        return result
+    finally:
+        conn.close()
 
 def _get_authorized_pool(conn, pool_id, sender_phone, conversation_type):
     user_id, private_space, shared = _context(conn, sender_phone, conversation_type)
