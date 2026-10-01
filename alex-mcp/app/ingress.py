@@ -373,6 +373,28 @@ def _private_group_match_available(actor, text: str) -> bool:
         return False
     receiptish = bool(re.search(r"\b(?:receipt|receipts|invoice|invoices)\b", low))
     savedish = bool(re.search(r"\b(?:note|notes|saved|memory|memories|remembered)\b", low))
+
+    # A user may refer to an inherently-private stash only by its configured
+    # name ("how much is in pocket cash?"). Recognize that name without
+    # exposing its balance or existence to the group response.
+    try:
+        conn = db.connect()
+        rows = conn.execute(
+            """SELECT name FROM alex_phase2_cash_pools
+               WHERE owner_user_id=? AND space_id=? AND status='ACTIVE'""",
+            (actor.user_id, actor.private_space),
+        ).fetchall()
+        conn.close()
+        for row in rows:
+            name = str(row["name"] or "").strip().casefold()
+            if name and re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", low):
+                return True
+    except Exception:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
     if not (receiptish or savedish):
         return False
 
