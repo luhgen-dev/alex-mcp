@@ -377,12 +377,22 @@ def query_finances(actor: ActorContext, start_date: str | None = None, end_date:
                 GROUP BY event_type,currency""",
             params,
         ).fetchall()
+        category_expr = """CASE
+            WHEN LOWER(REPLACE(COALESCE(category,''),' ','_')) IN
+                 ('food_drink','food_and_drink','food_&_drink','dining','meals')
+              THEN 'food'
+            WHEN LOWER(REPLACE(COALESCE(category,''),' ','_')) IN ('petrol','gasoline')
+              THEN 'fuel'
+            WHEN LOWER(REPLACE(COALESCE(category,''),' ','_'))='transportation'
+              THEN 'transport'
+            ELSE COALESCE(NULLIF(LOWER(category),''),'uncategorised')
+        END"""
         category_rows = conn.execute(
-            f"""SELECT COALESCE(NULLIF(category,''),'uncategorised') AS category,
+            f"""SELECT {category_expr} AS category,
                        currency,COALESCE(SUM(amount_minor),0) AS total_minor,COUNT(*) AS n
                 FROM financial_events
                 WHERE {where} AND event_type='Expense'
-                GROUP BY category,currency
+                GROUP BY {category_expr},currency
                 ORDER BY total_minor DESC,category""",
             params,
         ).fetchall()
@@ -398,6 +408,10 @@ def query_finances(actor: ActorContext, start_date: str | None = None, end_date:
             row_sql += " LIMIT ?"
             row_params.append(max(1, min(100, int(limit))))
         rows = [dict(r) for r in conn.execute(row_sql, row_params).fetchall()]
+        for row in rows:
+            canonical = _clean_category(row.get("category"))
+            if canonical:
+                row["category"] = canonical
     finally:
         conn.close()
 
