@@ -156,27 +156,81 @@ def set_leave_record(actor: ActorContext, leave_date: str, status: str = "PLANNE
             return {"status": "already_applied", **dict(existing_action)}
 
         marks = ",".join("?" for _ in actor.allowed_spaces)
-        row = conn.execute(
+        active_row = conn.execute(
             f"""SELECT * FROM leave_records
                 WHERE owner_id=? AND leave_date=? AND status!='CANCELLED'
                   AND space_id IN ({marks})
                 ORDER BY updated_at_utc DESC LIMIT 1""",
             [actor.user_id, start_d.isoformat()] + list(actor.allowed_spaces),
         ).fetchone()
+        target_row = conn.execute(
+            f"""SELECT * FROM leave_records
+                WHERE owner_id=? AND leave_date=? AND portion=?
+                  AND space_id IN ({marks})
+                ORDER BY updated_at_utc DESC LIMIT 1""",
+            [actor.user_id, start_d.isoformat(), portion] + list(actor.allowed_spaces),
+        ).fetchone()
+        previous = (
+            {
+                "portion": active_row["portion"],
+                "status": active_row["status"],
+                "leave_type": active_row["leave_type"],
+                "end_date": active_row["end_date"],
+            }
+            if active_row else None
+        )
 
-        if row and row["status"] == "TAKEN" and state != "TAKEN":
+        if active_row and active_row["status"] == "TAKEN" and state != "TAKEN":
             raise ValueError(
                 "Taken leave is historical fact; correct the underlying work record "
                 "rather than silently reverting it."
             )
 
-        if row:
-            leave_id = row["leave_id"]
-            space = row["space_id"]
+        if state == "CANCELLED":
+            if not active_row:
+                raise ValueError("No active leave record exists on that date to cancel.")
+            leave_id = active_row["leave_id"]
+            space = active_row["space_id"]
             conn.execute(
-                """UPDATE leave_records SET status=?,end_date=?,leave_type=?,portion=?,notes=?,
+                """UPDATE leave_records SET status='CANCELLED',notes=?,
                    updated_at_utc=? WHERE leave_id=?""",
-                (state, end_d.isoformat(), kind, portion, notes, utc_now(), leave_id),
+                (notes, utc_now(), leave_id),
+            )
+        elif (
+            target_row
+            and target_row["status"] == "CANCELLED"
+            and (not active_row or target_row["leave_id"] != active_row["leave_id"])
+        ):
+            # Reuse the cancelled tombstone for the desired portion instead of
+            # colliding with UNIQUE(owner_id,leave_date,portion). If another
+            # portion is currently active, cancel that row in the same
+            # transaction. This preserves both historical rows without delete.
+            leave_id = target_row["leave_id"]
+            space = target_row["space_id"]
+            if active_row and active_row["leave_id"] != leave_id:
+                conn.execute(
+                    """UPDATE leave_records SET status='CANCELLED',
+                       updated_at_utc=? WHERE leave_id=?""",
+                    (utc_now(), active_row["leave_id"]),
+                )
+            conn.execute(
+                """UPDATE leave_records SET action_key=?,status=?,end_date=?,
+                   leave_type=?,notes=?,updated_at_utc=? WHERE leave_id=?""",
+                (
+                    actor.action_key, state, end_d.isoformat(), kind, notes,
+                    utc_now(), leave_id,
+                ),
+            )
+        elif active_row:
+            leave_id = active_row["leave_id"]
+            space = active_row["space_id"]
+            conn.execute(
+                """UPDATE leave_records SET action_key=?,status=?,end_date=?,leave_type=?,
+                   portion=?,notes=?,updated_at_utc=? WHERE leave_id=?""",
+                (
+                    actor.action_key, state, end_d.isoformat(), kind, portion,
+                    notes, utc_now(), leave_id,
+                ),
             )
         else:
             leave_id = str(uuid.uuid4())
@@ -223,6 +277,7 @@ def set_leave_record(actor: ActorContext, leave_date: str, status: str = "PLANNE
             "leave_date": start_d.isoformat(), "end_date": end_d.isoformat(),
             "leave_type": kind, "portion": portion, "state": state,
             "space": space, "materialized_days": materialized,
+            "previous": previous,
         }
     except Exception:
         conn.rollback()
