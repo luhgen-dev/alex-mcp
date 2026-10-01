@@ -203,6 +203,20 @@ def system_health(actor, hours: int = 24) -> dict:
             "SELECT COUNT(*) FROM tool_audit WHERE status='ERROR' AND created_at_utc>=?",
             (cutoff,),
         ).fetchone()[0]
+        ha_pending = conn.execute(
+            "SELECT COUNT(*) FROM ha_notification_outbox WHERE delivery_status='PENDING'"
+        ).fetchone()[0]
+        ha_failed = conn.execute(
+            """SELECT COUNT(*) FROM ha_notification_outbox
+               WHERE delivery_status='FAILED' AND created_at_utc>=?""",
+            (cutoff,),
+        ).fetchone()[0]
+        ha_last_error = conn.execute(
+            """SELECT last_error,notify_service,created_at_utc
+               FROM ha_notification_outbox
+               WHERE last_error IS NOT NULL AND TRIM(last_error)<>''
+               ORDER BY created_at_utc DESC,rowid DESC LIMIT 1"""
+        ).fetchone()
         usage = conn.execute(
             """SELECT COUNT(DISTINCT COALESCE(source_message_id,usage_id)) AS interactions,
                       COALESCE(SUM(model_calls),0) AS model_calls,
@@ -271,6 +285,23 @@ def system_health(actor, hours: int = 24) -> dict:
                 "pending_outbound": int(pending_outbound),
                 "failed_outbound": int(failed_outbound),
                 "tool_errors": int(tool_errors),
+                "ha_companion": {
+                    "configured_devices": len(settings.ha_notify_devices or []),
+                    "pending_notifications": int(ha_pending),
+                    "failed_notifications": int(ha_failed),
+                    "latest_error": (
+                        {
+                            "notify_service": ha_last_error["notify_service"],
+                            "error": str(ha_last_error["last_error"])[:500],
+                            "created_at_utc": ha_last_error["created_at_utc"],
+                        }
+                        if ha_last_error else None
+                    ),
+                    "note": (
+                        "Configured-device count is local configuration only; "
+                        "delivery is proven by outbox SENT/receipt evidence."
+                    ),
+                },
                 "ai_interactions": int(usage["interactions"] or 0),
                 "model_calls": int(usage["model_calls"] or 0),
                 "input_tokens": int(usage["input_tokens"] or 0),
