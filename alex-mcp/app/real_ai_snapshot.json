@@ -1,185 +1,71 @@
 {
   "snapshot_version": 3,
-  "corpus_fingerprint": "fb1f56c6dc24afd91e4ea2e3617c1e2c7b2d1e67aa75e3b5f665947acdae660f",
+  "corpus_fingerprint": "b75bb393b735452f63832d6e8a59950eb2a01bd59ca7f5d05ad5b4ba8aaafb09",
   "reviewer": "GPT-5.6 Sol",
   "review_date": "2026-10-01",
-  "method": "Exact public-corpus delta review against the certified v0.5.1 reasoning snapshot: 157 existing public packets changed. The prior selected tools were revalidated against the new exposed tool sets and remained available for all 157; 7 newly-added public packets were explicitly reviewed. Unchanged prior engineering-delta decisions are carried as ancestor_engineering_review. This is an engineering delta review, not a blind independent-model pass.",
-  "decision_count": 378,
+  "method": "Exact public-corpus delta review against the certified 378-packet v0.5.2 snapshot: 47 existing public packets changed only in exposed tool descriptions/surfaces and were revalidated against the current tools; 3 newly-added cash-pool packets were explicitly reviewed. Unchanged prior delta-review decisions are carried as ancestor_engineering_review. This is an engineering delta review, not a blind independent-model pass.",
+  "decision_count": 381,
   "parent_review": {
-    "corpus_fingerprint": "a71c3d1887bb02a4a6015df2795fe9759b7093f9aa8de0b9afae3c12bea27bf7",
-    "decision_count": 372,
+    "corpus_fingerprint": "fb1f56c6dc24afd91e4ea2e3617c1e2c7b2d1e67aa75e3b5f665947acdae660f",
+    "decision_count": 378,
     "independent_model_pass": false,
-    "carried_forward_unchanged": 190,
-    "ancestor_engineering_review_carried": 24
+    "carried_forward_unchanged": 162,
+    "ancestor_engineering_review_carried": 169
   },
   "delta_review": {
-    "changed_existing": 157,
-    "newly_added": 7,
+    "changed_existing": 47,
+    "newly_added": 3,
     "reviewed_packet_ids": [
-      "hai-00f79cab41e54e4aa7",
-      "hai-0475ca0c435d157048",
-      "hai-068f6ff4b0ea286f7a",
-      "hai-076a989534b13928b4",
-      "hai-0dcf45f0f5b0e367c6",
-      "hai-0fd25c3705c6a5eb96",
-      "hai-1375f80d7af0b9291f",
-      "hai-14785314aff35ed3d0",
-      "hai-16ca3079b99fa9b08f",
-      "hai-18f010bcbbc11593dd",
-      "hai-19abd2160436d1f839",
-      "hai-1a6a75497923009617",
-      "hai-1b06a12419e608b9bd",
-      "hai-1b95502078e3692c49",
-      "hai-1f29753636c5569085",
-      "hai-22d5e99f90d4f39b00",
-      "hai-23dda30b7ebc3db1da",
-      "hai-293bb16b05def223ae",
-      "hai-2c50b93718fb4e3ad4",
-      "hai-2c9dc9deba477e3550",
-      "hai-2cbc878d271a74b1f5",
-      "hai-2e024a0333594b5c24",
-      "hai-2f821538a16e6150e0",
-      "hai-2f992c81334843b9be",
-      "hai-320b6d6f3c56a590ae",
-      "hai-33b6478c3dd76605bf",
-      "hai-367587587bdad96190",
-      "hai-38020599287cc10513",
-      "hai-3a7427492f609c59b4",
-      "hai-3b137b7d95937db409",
-      "hai-3fc312a5cc63f6e71c",
-      "hai-408e5ad6eb090d9eb4",
-      "hai-41010e0fb5b92d38f0",
-      "hai-413641312a5af7e5a3",
-      "hai-428edb3f541a98b92f",
-      "hai-430f9825cf1415c98c",
-      "hai-45c2bb0295b7dd43f8",
-      "hai-47207ee4b43145a1ab",
-      "hai-47cec5bafd96ee474e",
-      "hai-47ebc23cb8383d178c",
-      "hai-48095b10023cca227f",
-      "hai-496fadd043a620205b",
-      "hai-4ac81c96baa58fb66c",
-      "hai-4d4d93f321fe804080",
-      "hai-4da453669086deadfe",
-      "hai-4f41a4cffdac231060",
-      "hai-515b0a7f466902ccd9",
-      "hai-51728261ab0e3adfde",
-      "hai-519d8088711a7a02c0",
-      "hai-522ee8c720c03c1666",
-      "hai-56cb2c064c5faad53d",
-      "hai-5a8707d14e61f9392b",
-      "hai-5b0e5bf343e30e577c",
-      "hai-5beaa49621c6fae2c8",
-      "hai-5ea1a54d25eda02935",
-      "hai-5eaebd003d80354849",
-      "hai-60a00f15795172e4b9",
-      "hai-62461f1d2480b9018b",
-      "hai-66725bcb9186436190",
-      "hai-67cc9abde97b9547d4",
-      "hai-68205abb6105a3d389",
-      "hai-68f6bafb9598b125a7",
-      "hai-699382030fc1811ac5",
-      "hai-6b45d73b224044c2cb",
-      "hai-6c165c6be81822a6f1",
-      "hai-6cf6ab177330b2b7a2",
-      "hai-6da98a13773c69bc4b",
-      "hai-6f36efcd75e0a48bbf",
-      "hai-72b7c5ac49574f6483",
-      "hai-748fd39ac3a6f126df",
-      "hai-76cecdb340edf130a8",
-      "hai-7715b86564feaf97f7",
-      "hai-77baf1c2b3559900a2",
-      "hai-77ce71a612d3c1eb6f",
-      "hai-7894a4a87345ae4e9d",
-      "hai-7a1b0de8c5bc673282",
-      "hai-7a2acc000068abd1a1",
-      "hai-7c0dcf3b8372d9e394",
-      "hai-7d74ae1b8bad9b680e",
-      "hai-7daaeaee1101ac14b7",
-      "hai-825956a34ae53e9e9c",
-      "hai-83d00549b325a20789",
-      "hai-8503799cd1ef51a7f5",
-      "hai-87ac618f26946e8a00",
-      "hai-8896c7ce6ecd60aa52",
-      "hai-889e3893bc872094c6",
-      "hai-8ab0d8296df60b3cae",
-      "hai-8b2b4bcf465e7fa8a6",
-      "hai-8c29e2e55f8172c15a",
-      "hai-8e262b7f518890fa6e",
-      "hai-8ed2daa6d2881737f4",
-      "hai-8f0d8dff8890aa2cfc",
-      "hai-91808059bc0f262314",
-      "hai-929a99ba23242e5374",
-      "hai-95cb48754b56c477f3",
-      "hai-98faba17788a088e49",
-      "hai-990d2f1dff136f5844",
-      "hai-9bf172edbe01ccb7d7",
-      "hai-9eb3c37121a2f6b5d4",
-      "hai-a12b4e6856934ed28c",
-      "hai-a2ba9a16fcc6b2394d",
-      "hai-a81383f0057c119a5d",
-      "hai-a84c9f02253defc7cc",
-      "hai-a86cc38b5e4dd21f63",
-      "hai-af8c3b091c2b65e6b5",
-      "hai-b2a0a662e49dd005f0",
-      "hai-b5b945e6e3dd36268a",
-      "hai-b850206d4a270a39de",
-      "hai-bec8ceb4296bf82755",
-      "hai-bee52ef2eb5398c873",
-      "hai-c146137b0e8e4e1764",
-      "hai-c1f9ff29f665bf2ad4",
-      "hai-c410da727c4f327dae",
-      "hai-c70ec891626599fc81",
-      "hai-c800b489c3360d5d3b",
-      "hai-c8b1201104666e78ac",
-      "hai-cc734d594f80f82add",
-      "hai-cd755ccde0d0354da6",
-      "hai-cfb0373537a5a39bc3",
-      "hai-d15dbaeed1aefdb961",
-      "hai-d2068df48478c2e39e",
-      "hai-d2fcdc910de19290e3",
-      "hai-d3140eb696eeec8b63",
-      "hai-d61ca2d952bc858183",
-      "hai-d7940f85500fb08ea7",
-      "hai-d8473ffe253c77a4d6",
-      "hai-d8733153ef7389c192",
-      "hai-d876fba6e5c73e48c2",
-      "hai-d95d202a99cc4e073f",
-      "hai-d9a3fc1da45144d898",
-      "hai-d9bb4b14d0a865274e",
-      "hai-db91940f8199e9d8a2",
-      "hai-dd7326b6e6c54b90bf",
-      "hai-de45a92c577d0be6c1",
-      "hai-de6782d2f5a42eda80",
-      "hai-e1e67d71050270a783",
-      "hai-e25990319fd2bef626",
-      "hai-e3dda9caad17a8037b",
-      "hai-e66a2dac349618a775",
-      "hai-e73b10724da86ed4f0",
-      "hai-e8a5d5bd30b9706bd0",
-      "hai-eb96e65529b8a2c2f1",
-      "hai-ebdff19df4ccd622fa",
-      "hai-eda5f0b838b39fa335",
-      "hai-ee251bf8fe7ae209d9",
-      "hai-ef3c5b3f2717d7c381",
-      "hai-f0fc36c4d94407ab24",
-      "hai-f3f84ad412b76d77df",
-      "hai-f456b233cd8cc06657",
-      "hai-f6326bd872d6d5098c",
-      "hai-f6b83ee303f6080577",
-      "hai-f8ce1e4f28917e6d12",
-      "hai-f972e359daeebb5802",
-      "hai-faa7b1f70646474099",
-      "hai-fd0680f2fd46225ad4",
-      "hai-ff619bee0360f74e2a",
-      "hai-fff961b52147355b38",
-      "hai-cfee23ada9dd2830eb",
-      "hai-765c566859d8ff3c2e",
+      "hai-01dc5ea60526c48f7f",
+      "hai-0c65fb13f0e9e0b4b6",
+      "hai-0dcdc53282c60dab2f",
+      "hai-1132626487d11af553",
       "hai-184d75013a3080f56e",
-      "hai-291e075f91afa67ba7",
-      "hai-c4b13ea2074f1f5b86",
+      "hai-1a805369128ccc85b6",
+      "hai-1b06a12419e608b9bd",
+      "hai-2e2308e72026d9bd1e",
+      "hai-39b4c31b87510a2745",
+      "hai-408e5ad6eb090d9eb4",
+      "hai-4c347ea90cd43c041c",
+      "hai-5181f8231a680f05f5",
+      "hai-532b6ed042bbbbef33",
+      "hai-5d6b462a37e1c1e8ff",
+      "hai-6427578009fc2fe33b",
+      "hai-646475a2377de6afab",
+      "hai-6b45d73b224044c2cb",
+      "hai-6da98a13773c69bc4b",
+      "hai-71300323a628d49dc9",
       "hai-7b56ea9d8a14de3907",
-      "hai-a872edbc88f9d2b9e8"
+      "hai-8665ac290f17712270",
+      "hai-8f0d8dff8890aa2cfc",
+      "hai-8f6f39c657135f731c",
+      "hai-915b5b3c81616a372d",
+      "hai-98faba17788a088e49",
+      "hai-992d78ca03cb69820e",
+      "hai-9fc0bbe70ba951e90b",
+      "hai-add791cb98e82db731",
+      "hai-af8c3b091c2b65e6b5",
+      "hai-b57a289dec8dd3f028",
+      "hai-baa5b89a05dff33367",
+      "hai-bbb49eada66faa8445",
+      "hai-bbcfe0b3f2d3fb0069",
+      "hai-c46b0a80a4aa17041b",
+      "hai-c4b13ea2074f1f5b86",
+      "hai-c9fb693dc08b2e3321",
+      "hai-cdffb2c96602c20858",
+      "hai-cfee23ada9dd2830eb",
+      "hai-d6eeeff50f4294fe8c",
+      "hai-dd7326b6e6c54b90bf",
+      "hai-e66a2dac349618a775",
+      "hai-f0a066252299f1b0ce",
+      "hai-f47c7e08de24cc532f",
+      "hai-f972e359daeebb5802",
+      "hai-f995683065b81ebd91",
+      "hai-fa6fcc6b184de1c822",
+      "hai-ff619bee0360f74e2a",
+      "hai-8204d2b3225f91a1ca",
+      "hai-8c4625f124552f9d95",
+      "hai-bec55f4593a861adda"
     ]
   },
   "decisions_by_packet_id": {
@@ -189,7 +75,7 @@
         "query_finances"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-4f41a4cffdac231060": {
       "decision": "tools",
@@ -197,7 +83,7 @@
         "query_finances"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-5beaa49621c6fae2c8": {
       "decision": "tools",
@@ -205,7 +91,7 @@
         "query_finances"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-66725bcb9186436190": {
       "decision": "tools",
@@ -213,7 +99,7 @@
         "query_finances"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-bfeafbeb735ca95ca3": {
       "decision": "tools",
@@ -229,7 +115,7 @@
         "query_finances"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-c410da727c4f327dae": {
       "decision": "tools",
@@ -237,7 +123,7 @@
         "query_finances"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-c1f9ff29f665bf2ad4": {
       "decision": "tools",
@@ -245,7 +131,7 @@
         "query_finances"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-68205abb6105a3d389": {
       "decision": "tools",
@@ -253,7 +139,7 @@
         "query_finances"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-8b2b4bcf465e7fa8a6": {
       "decision": "tools",
@@ -261,7 +147,7 @@
         "query_finances"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-c0d46574b54d91b256": {
       "decision": "tools",
@@ -277,7 +163,7 @@
         "query_finances"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-23dda30b7ebc3db1da": {
       "decision": "tools",
@@ -285,7 +171,7 @@
         "query_finances"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-db91940f8199e9d8a2": {
       "decision": "tools",
@@ -293,7 +179,7 @@
         "query_finances"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-d9bb4b14d0a865274e": {
       "decision": "tools",
@@ -301,7 +187,7 @@
         "query_finances"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-825956a34ae53e9e9c": {
       "decision": "tools",
@@ -309,7 +195,7 @@
         "query_finances"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-95cb48754b56c477f3": {
       "decision": "tools",
@@ -317,7 +203,7 @@
         "query_finances"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-77baf1c2b3559900a2": {
       "decision": "tools",
@@ -325,7 +211,7 @@
         "log_expense"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-068f6ff4b0ea286f7a": {
       "decision": "tools",
@@ -333,7 +219,7 @@
         "log_expense"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-47cec5bafd96ee474e": {
       "decision": "tools",
@@ -341,7 +227,7 @@
         "log_expense"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-7715b86564feaf97f7": {
       "decision": "tools",
@@ -349,7 +235,7 @@
         "log_expense"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-1375f80d7af0b9291f": {
       "decision": "tools",
@@ -358,7 +244,7 @@
         "get_receipt"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-72b7c5ac49574f6483": {
       "decision": "tools",
@@ -367,7 +253,7 @@
         "get_receipt"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-d95d202a99cc4e073f": {
       "decision": "tools",
@@ -376,7 +262,7 @@
         "get_receipt"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-515b0a7f466902ccd9": {
       "decision": "tools",
@@ -385,7 +271,7 @@
         "get_receipt"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-2e024a0333594b5c24": {
       "decision": "tools",
@@ -393,7 +279,7 @@
         "log_expense"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-2c50b93718fb4e3ad4": {
       "decision": "tools",
@@ -401,7 +287,7 @@
         "log_expense"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-de6782d2f5a42eda80": {
       "decision": "tools",
@@ -409,7 +295,7 @@
         "log_expense"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-6b45d73b224044c2cb": {
       "decision": "tools",
@@ -425,7 +311,7 @@
         "save_item"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-519d8088711a7a02c0": {
       "decision": "tools",
@@ -433,7 +319,7 @@
         "save_item"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-01dc5ea60526c48f7f": {
       "decision": "tools",
@@ -441,7 +327,7 @@
         "list_reminders"
       ],
       "reply_language": "en",
-      "provenance": "parent_independent_model"
+      "provenance": "delta_engineering_review"
     },
     "hai-afdcc56d9769d6c05f": {
       "decision": "tools",
@@ -457,7 +343,7 @@
         "list_reminders"
       ],
       "reply_language": "en",
-      "provenance": "parent_independent_model"
+      "provenance": "delta_engineering_review"
     },
     "hai-bbb49eada66faa8445": {
       "decision": "tools",
@@ -465,7 +351,7 @@
         "list_reminders"
       ],
       "reply_language": "en",
-      "provenance": "parent_independent_model"
+      "provenance": "delta_engineering_review"
     },
     "hai-bbcfe0b3f2d3fb0069": {
       "decision": "tools",
@@ -473,7 +359,7 @@
         "list_reminders"
       ],
       "reply_language": "en",
-      "provenance": "parent_independent_model"
+      "provenance": "delta_engineering_review"
     },
     "hai-c9fb693dc08b2e3321": {
       "decision": "tools",
@@ -481,7 +367,7 @@
         "list_reminders"
       ],
       "reply_language": "en",
-      "provenance": "parent_independent_model"
+      "provenance": "delta_engineering_review"
     },
     "hai-8537f11b2cc3e51f79": {
       "decision": "tools",
@@ -497,7 +383,7 @@
         "list_reminders"
       ],
       "reply_language": "en",
-      "provenance": "parent_independent_model"
+      "provenance": "delta_engineering_review"
     },
     "hai-915b5b3c81616a372d": {
       "decision": "tools",
@@ -505,7 +391,7 @@
         "list_reminders"
       ],
       "reply_language": "en",
-      "provenance": "parent_independent_model"
+      "provenance": "delta_engineering_review"
     },
     "hai-5d6b462a37e1c1e8ff": {
       "decision": "tools",
@@ -513,7 +399,7 @@
         "list_reminders"
       ],
       "reply_language": "en",
-      "provenance": "parent_independent_model"
+      "provenance": "delta_engineering_review"
     },
     "hai-2b85619c767e746ce3": {
       "decision": "tools",
@@ -529,7 +415,7 @@
         "list_reminders"
       ],
       "reply_language": "en",
-      "provenance": "parent_independent_model"
+      "provenance": "delta_engineering_review"
     },
     "hai-4c347ea90cd43c041c": {
       "decision": "tools",
@@ -537,7 +423,7 @@
         "list_reminders"
       ],
       "reply_language": "en",
-      "provenance": "parent_independent_model"
+      "provenance": "delta_engineering_review"
     },
     "hai-222a12b77ea428a4f6": {
       "decision": "tools",
@@ -553,7 +439,7 @@
         "list_reminders"
       ],
       "reply_language": "en",
-      "provenance": "parent_independent_model"
+      "provenance": "delta_engineering_review"
     },
     "hai-9fc0bbe70ba951e90b": {
       "decision": "tools",
@@ -561,7 +447,7 @@
         "list_reminders"
       ],
       "reply_language": "en",
-      "provenance": "parent_independent_model"
+      "provenance": "delta_engineering_review"
     },
     "hai-532b6ed042bbbbef33": {
       "decision": "tools",
@@ -569,7 +455,7 @@
         "create_reminder"
       ],
       "reply_language": "en",
-      "provenance": "parent_independent_model"
+      "provenance": "delta_engineering_review"
     },
     "hai-646475a2377de6afab": {
       "decision": "tools",
@@ -577,7 +463,7 @@
         "create_reminder"
       ],
       "reply_language": "en",
-      "provenance": "parent_independent_model"
+      "provenance": "delta_engineering_review"
     },
     "hai-f995683065b81ebd91": {
       "decision": "tools",
@@ -585,7 +471,7 @@
         "create_reminder"
       ],
       "reply_language": "en",
-      "provenance": "parent_independent_model"
+      "provenance": "delta_engineering_review"
     },
     "hai-8f6f39c657135f731c": {
       "decision": "tools",
@@ -593,7 +479,7 @@
         "create_reminder"
       ],
       "reply_language": "en",
-      "provenance": "parent_independent_model"
+      "provenance": "delta_engineering_review"
     },
     "hai-2d92764e39a9411fae": {
       "decision": "tools",
@@ -663,7 +549,7 @@
       "decision": "clarify",
       "tools": [],
       "reply_language": "en",
-      "provenance": "parent_independent_model"
+      "provenance": "delta_engineering_review"
     },
     "hai-e458c67cbac253ee56": {
       "decision": "clarify",
@@ -842,7 +728,7 @@
         "list_pending_expenses"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-cd755ccde0d0354da6": {
       "decision": "tools",
@@ -850,7 +736,7 @@
         "list_pending_expenses"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-d8473ffe253c77a4d6": {
       "decision": "tools",
@@ -858,7 +744,7 @@
         "list_pending_expenses"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-00f79cab41e54e4aa7": {
       "decision": "tools",
@@ -867,7 +753,7 @@
         "list_pending_expenses"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-40c7f64a096772f05e": {
       "decision": "tools",
@@ -885,7 +771,7 @@
         "query_finances"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-5b0e5bf343e30e577c": {
       "decision": "tools",
@@ -894,7 +780,7 @@
         "query_finances"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-7c0dcf3b8372d9e394": {
       "decision": "tools",
@@ -903,7 +789,7 @@
         "query_finances"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-da3e878b595310e8bc": {
       "decision": "tools",
@@ -954,7 +840,7 @@
         "update_reminder"
       ],
       "reply_language": "en",
-      "provenance": "parent_independent_model"
+      "provenance": "delta_engineering_review"
     },
     "hai-2e2308e72026d9bd1e": {
       "decision": "tools",
@@ -963,7 +849,7 @@
         "update_reminder"
       ],
       "reply_language": "en",
-      "provenance": "parent_independent_model"
+      "provenance": "delta_engineering_review"
     },
     "hai-0dcdc53282c60dab2f": {
       "decision": "tools",
@@ -972,7 +858,7 @@
         "update_reminder"
       ],
       "reply_language": "en",
-      "provenance": "parent_independent_model"
+      "provenance": "delta_engineering_review"
     },
     "hai-6427578009fc2fe33b": {
       "decision": "tools",
@@ -980,7 +866,7 @@
         "reminder_history"
       ],
       "reply_language": "en",
-      "provenance": "parent_independent_model"
+      "provenance": "delta_engineering_review"
     },
     "hai-c46b0a80a4aa17041b": {
       "decision": "tools",
@@ -988,7 +874,7 @@
         "reminder_history"
       ],
       "reply_language": "en",
-      "provenance": "parent_independent_model"
+      "provenance": "delta_engineering_review"
     },
     "hai-295116734f0d628ee5": {
       "decision": "tools",
@@ -1135,7 +1021,7 @@
         "list_plans"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-14785314aff35ed3d0": {
       "decision": "tools",
@@ -1143,7 +1029,7 @@
         "list_plans"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-149a4c1e70f7bc0715": {
       "decision": "tools",
@@ -1168,7 +1054,7 @@
         "update_plan"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-16ca3079b99fa9b08f": {
       "decision": "tools",
@@ -1177,7 +1063,7 @@
         "update_plan"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-0dcf45f0f5b0e367c6": {
       "decision": "tools",
@@ -1186,7 +1072,7 @@
         "update_plan"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-f0fc36c4d94407ab24": {
       "decision": "tools",
@@ -1195,7 +1081,7 @@
         "update_plan"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-a84c9f02253defc7cc": {
       "decision": "tools",
@@ -1204,7 +1090,7 @@
         "update_plan"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-748fd39ac3a6f126df": {
       "decision": "tools",
@@ -1213,7 +1099,7 @@
         "update_plan"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-b353659dc585233bac": {
       "decision": "tools",
@@ -1253,7 +1139,7 @@
         "planning_goal_progress"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-d61ca2d952bc858183": {
       "decision": "tools",
@@ -1261,7 +1147,7 @@
         "planning_create_goal"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-f3f84ad412b76d77df": {
       "decision": "tools",
@@ -1269,7 +1155,7 @@
         "planning_create_goal"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-4d4d93f321fe804080": {
       "decision": "tools",
@@ -1277,7 +1163,7 @@
         "planning_create_goal"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-0475ca0c435d157048": {
       "decision": "tools",
@@ -1285,7 +1171,7 @@
         "planning_create_goal"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-496fadd043a620205b": {
       "decision": "tools",
@@ -1293,7 +1179,7 @@
         "planning_create_goal"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-8503799cd1ef51a7f5": {
       "decision": "tools",
@@ -1301,7 +1187,7 @@
         "work_schedule"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-293bb16b05def223ae": {
       "decision": "tools",
@@ -1309,7 +1195,7 @@
         "work_schedule"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-7d74ae1b8bad9b680e": {
       "decision": "tools",
@@ -1317,7 +1203,7 @@
         "work_schedule"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-1b95502078e3692c49": {
       "decision": "tools",
@@ -1325,7 +1211,7 @@
         "work_schedule"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-8ab0d8296df60b3cae": {
       "decision": "tools",
@@ -1333,7 +1219,7 @@
         "bills_list"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-3a7427492f609c59b4": {
       "decision": "tools",
@@ -1341,7 +1227,7 @@
         "bills_list"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-33b6478c3dd76605bf": {
       "decision": "tools",
@@ -1349,7 +1235,7 @@
         "bills_list"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-bee52ef2eb5398c873": {
       "decision": "tools",
@@ -1357,7 +1243,7 @@
         "bills_list"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-45c2bb0295b7dd43f8": {
       "decision": "tools",
@@ -1365,7 +1251,7 @@
         "create_task"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-990d2f1dff136f5844": {
       "decision": "tools",
@@ -1373,7 +1259,7 @@
         "create_task"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-83d00549b325a20789": {
       "decision": "tools",
@@ -1381,7 +1267,7 @@
         "create_task"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-eda5f0b838b39fa335": {
       "decision": "tools",
@@ -1389,7 +1275,7 @@
         "list_tasks"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-ee251bf8fe7ae209d9": {
       "decision": "tools",
@@ -1397,7 +1283,7 @@
         "list_tasks"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-d15dbaeed1aefdb961": {
       "decision": "tools",
@@ -1405,7 +1291,7 @@
         "list_tasks"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-eb96e65529b8a2c2f1": {
       "decision": "tools",
@@ -1414,7 +1300,7 @@
         "update_task"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-ef3c5b3f2717d7c381": {
       "decision": "tools",
@@ -1423,7 +1309,7 @@
         "update_task"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-51728261ab0e3adfde": {
       "decision": "tools",
@@ -1432,7 +1318,7 @@
         "list_tasks"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-2c9dc9deba477e3550": {
       "decision": "tools",
@@ -1441,7 +1327,7 @@
         "list_tasks"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-cc734d594f80f82add": {
       "decision": "tools",
@@ -1450,7 +1336,7 @@
         "reopen_task"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-2f992c81334843b9be": {
       "decision": "tools",
@@ -1459,7 +1345,7 @@
         "reopen_task"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-77ce71a612d3c1eb6f": {
       "decision": "tools",
@@ -1468,7 +1354,7 @@
         "list_tasks"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-b2a0a662e49dd005f0": {
       "decision": "tools",
@@ -1477,7 +1363,7 @@
         "list_tasks"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-001ea3e2366ac38c2e": {
       "decision": "tools",
@@ -1517,7 +1403,7 @@
         "planning_allocate_cash_to_goal"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-f6326bd872d6d5098c": {
       "decision": "tools",
@@ -1525,7 +1411,7 @@
         "planning_allocate_cash_to_goal"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-d2de5093009f02457c": {
       "decision": "tools",
@@ -1557,7 +1443,7 @@
         "set_leave_record"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-8e262b7f518890fa6e": {
       "decision": "tools",
@@ -1565,7 +1451,7 @@
         "set_leave_record"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-38020599287cc10513": {
       "decision": "tools",
@@ -1573,7 +1459,7 @@
         "set_leave_record"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-9eb3c37121a2f6b5d4": {
       "decision": "tools",
@@ -1581,7 +1467,7 @@
         "list_leave_records"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-e2d0b28d787481c134": {
       "decision": "tools",
@@ -1597,7 +1483,7 @@
         "work_leave_balance"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-68f6bafb9598b125a7": {
       "decision": "tools",
@@ -1605,7 +1491,7 @@
         "work_leave_balance"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-2e2dbff7fe4c930aa7": {
       "decision": "tools",
@@ -1621,7 +1507,7 @@
         "work_ot_status"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-e8a5d5bd30b9706bd0": {
       "decision": "tools",
@@ -1629,7 +1515,7 @@
         "work_ot_status"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-87ac618f26946e8a00": {
       "decision": "tools",
@@ -1637,7 +1523,7 @@
         "work_ot_status"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-cf193d7a96a50ceab6": {
       "decision": "tools",
@@ -1693,7 +1579,7 @@
         "recent_failures"
       ],
       "reply_language": "en",
-      "provenance": "parent_independent_model"
+      "provenance": "delta_engineering_review"
     },
     "hai-1132626487d11af553": {
       "decision": "tools",
@@ -1701,7 +1587,7 @@
         "recent_failures"
       ],
       "reply_language": "en",
-      "provenance": "parent_independent_model"
+      "provenance": "delta_engineering_review"
     },
     "hai-b57a289dec8dd3f028": {
       "decision": "tools",
@@ -1709,7 +1595,7 @@
         "system_health"
       ],
       "reply_language": "en",
-      "provenance": "parent_independent_model"
+      "provenance": "delta_engineering_review"
     },
     "hai-e9184355da62603e46": {
       "decision": "tools",
@@ -1933,7 +1819,7 @@
         "create_plan"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-91808059bc0f262314": {
       "decision": "tools",
@@ -1941,7 +1827,7 @@
         "create_plan"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-699382030fc1811ac5": {
       "decision": "tools",
@@ -1949,7 +1835,7 @@
         "create_plan"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-2cbc878d271a74b1f5": {
       "decision": "tools",
@@ -1957,7 +1843,7 @@
         "confirm_plan"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-f8ce1e4f28917e6d12": {
       "decision": "tools",
@@ -1965,7 +1851,7 @@
         "confirm_plan"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-fd0680f2fd46225ad4": {
       "decision": "tools",
@@ -1973,7 +1859,7 @@
         "confirm_plan"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-7daaeaee1101ac14b7": {
       "decision": "tools",
@@ -1981,7 +1867,7 @@
         "share_plan"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-1f29753636c5569085": {
       "decision": "tools",
@@ -1989,7 +1875,7 @@
         "share_plan"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-1868fb2bd375bad072": {
       "decision": "tools",
@@ -2029,7 +1915,7 @@
         "planning_lock_goal"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-b5b945e6e3dd36268a": {
       "decision": "tools",
@@ -2037,7 +1923,7 @@
         "planning_lock_goal"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-e25990319fd2bef626": {
       "decision": "tools",
@@ -2045,7 +1931,7 @@
         "planning_reopen_goal"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-1a6a75497923009617": {
       "decision": "tools",
@@ -2053,7 +1939,7 @@
         "planning_reopen_goal"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-d9a3fc1da45144d898": {
       "decision": "tools",
@@ -2061,7 +1947,7 @@
         "planning_change_goal_baseline"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-7894a4a87345ae4e9d": {
       "decision": "tools",
@@ -2069,7 +1955,7 @@
         "planning_change_goal_baseline"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-889e3893bc872094c6": {
       "decision": "tools",
@@ -2077,7 +1963,7 @@
         "planning_set_period_target"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-6c165c6be81822a6f1": {
       "decision": "tools",
@@ -2085,7 +1971,7 @@
         "planning_set_period_target"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-2f2340f4d5081aa71d": {
       "decision": "tools",
@@ -2101,7 +1987,7 @@
         "planning_record_goal_contribution"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-6f36efcd75e0a48bbf": {
       "decision": "tools",
@@ -2109,7 +1995,7 @@
         "planning_goal_deviation"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-5a8707d14e61f9392b": {
       "decision": "tools",
@@ -2117,7 +2003,7 @@
         "planning_goal_deviation"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-19abd2160436d1f839": {
       "decision": "tools",
@@ -2125,7 +2011,7 @@
         "planning_compare_salary"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-b2b48b5d49c6f14977": {
       "decision": "tools",
@@ -2141,7 +2027,7 @@
         "planning_match_goal_alias"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-47207ee4b43145a1ab": {
       "decision": "tools",
@@ -2149,7 +2035,7 @@
         "planning_match_goal_alias"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-c146137b0e8e4e1764": {
       "decision": "tools",
@@ -2157,7 +2043,7 @@
         "planning_goal_projection"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-c8b1201104666e78ac": {
       "decision": "tools",
@@ -2165,7 +2051,7 @@
         "planning_goal_projection"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-47ebc23cb8383d178c": {
       "decision": "tools",
@@ -2173,7 +2059,7 @@
         "planning_cash_status"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-60113c99504263c704": {
       "decision": "tools",
@@ -2221,7 +2107,7 @@
         "planning_allocate_cash_to_pool"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-501f999fda9b76d024": {
       "decision": "tools",
@@ -2277,7 +2163,7 @@
         "planning_baseline"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-dea79fc7d7b8d443e9": {
       "decision": "tools",
@@ -2317,7 +2203,7 @@
         "planning_brief"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-4da453669086deadfe": {
       "decision": "tools",
@@ -2325,7 +2211,7 @@
         "planning_brief"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-0a142a5304231bfe63": {
       "decision": "tools",
@@ -2367,7 +2253,7 @@
         "bills_defer"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-d2068df48478c2e39e": {
       "decision": "tools",
@@ -2375,7 +2261,7 @@
         "bills_defer"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-d876fba6e5c73e48c2": {
       "decision": "tools",
@@ -2383,7 +2269,7 @@
         "bills_confirm_unpaid"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-320b6d6f3c56a590ae": {
       "decision": "tools",
@@ -2391,7 +2277,7 @@
         "bills_confirm_unpaid"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-cfb0373537a5a39bc3": {
       "decision": "tools",
@@ -2399,7 +2285,7 @@
         "work_record_event"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-62461f1d2480b9018b": {
       "decision": "tools",
@@ -2407,7 +2293,7 @@
         "work_record_event"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-e73b10724da86ed4f0": {
       "decision": "tools",
@@ -2415,7 +2301,7 @@
         "work_departure_plan"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-2f821538a16e6150e0": {
       "decision": "tools",
@@ -2423,7 +2309,7 @@
         "work_departure_plan"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-fac028c71f3ff2ae28": {
       "decision": "tools",
@@ -2463,7 +2349,7 @@
         "monitor_delegate"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-076a989534b13928b4": {
       "decision": "tools",
@@ -2471,7 +2357,7 @@
         "monitor_delegate"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-56cb2c064c5faad53d": {
       "decision": "tools",
@@ -2479,7 +2365,7 @@
         "monitor_cancel"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-f456b233cd8cc06657": {
       "decision": "tools",
@@ -2487,7 +2373,7 @@
         "monitor_cancel"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-7795f1ec87f6d6c346": {
       "decision": "tools",
@@ -2527,7 +2413,7 @@
         "ha_draft_automation"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-516675a3b47fc7d334": {
       "decision": "tools",
@@ -2633,7 +2519,7 @@
         "create_reminder"
       ],
       "reply_language": "en",
-      "provenance": "parent_independent_model"
+      "provenance": "delta_engineering_review"
     },
     "hai-c7bfff03c58707676b": {
       "decision": "tools",
@@ -2657,7 +2543,7 @@
         "create_reminder"
       ],
       "reply_language": "en",
-      "provenance": "parent_independent_model"
+      "provenance": "delta_engineering_review"
     },
     "hai-0c65fb13f0e9e0b4b6": {
       "decision": "tools",
@@ -2665,7 +2551,7 @@
         "create_reminder"
       ],
       "reply_language": "en",
-      "provenance": "parent_independent_model"
+      "provenance": "delta_engineering_review"
     },
     "hai-d8639db70facd66031": {
       "decision": "tools",
@@ -2690,7 +2576,7 @@
         "log_expense"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-d8446d203b505d7b97": {
       "decision": "tools",
@@ -2723,7 +2609,7 @@
         "get_agenda_range"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-3b137b7d95937db409": {
       "decision": "tools",
@@ -2731,7 +2617,7 @@
         "find_receipts"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-e1e67d71050270a783": {
       "decision": "tools",
@@ -2740,7 +2626,7 @@
         "get_receipt"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-bec8ceb4296bf82755": {
       "decision": "tools",
@@ -2748,7 +2634,7 @@
         "get_receipt"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-dcaef2a42fb7e990bf": {
       "decision": "tools",
@@ -2822,7 +2708,7 @@
         "create_plan"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-430f9825cf1415c98c": {
       "decision": "tools",
@@ -2831,7 +2717,7 @@
         "update_plan"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-a86cc38b5e4dd21f63": {
       "decision": "tools",
@@ -2839,7 +2725,7 @@
         "list_plans"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-5eaebd003d80354849": {
       "decision": "tools",
@@ -2847,7 +2733,7 @@
         "create_plan"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-8896c7ce6ecd60aa52": {
       "decision": "tools",
@@ -2856,7 +2742,7 @@
         "update_plan"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-a12b4e6856934ed28c": {
       "decision": "tools",
@@ -2864,7 +2750,7 @@
         "list_plans"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-f6b83ee303f6080577": {
       "decision": "tools",
@@ -2872,7 +2758,7 @@
         "planning_create_goal"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-60a00f15795172e4b9": {
       "decision": "tools",
@@ -2880,7 +2766,7 @@
         "planning_goal_progress"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-522ee8c720c03c1666": {
       "decision": "tools",
@@ -2888,7 +2774,7 @@
         "log_expense"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-48095b10023cca227f": {
       "decision": "tools",
@@ -2897,7 +2783,7 @@
         "query_finances"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-41010e0fb5b92d38f0": {
       "decision": "tools",
@@ -2905,7 +2791,7 @@
         "log_expense"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-e3dda9caad17a8037b": {
       "decision": "tools",
@@ -2913,7 +2799,7 @@
         "log_expense"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-d755f7d6f0776156ea": {
       "decision": "tools",
@@ -2985,7 +2871,7 @@
         "list_reminders"
       ],
       "reply_language": "en",
-      "provenance": "ancestor_engineering_review"
+      "provenance": "delta_engineering_review"
     },
     "hai-8665ac290f17712270": {
       "decision": "tools",
@@ -2993,7 +2879,7 @@
         "list_reminders"
       ],
       "reply_language": "en",
-      "provenance": "ancestor_engineering_review"
+      "provenance": "delta_engineering_review"
     },
     "hai-e1668ef5363fae6f8d": {
       "decision": "tools",
@@ -3017,7 +2903,7 @@
         "ha_draft_automation"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-0993135dba7af09a6f": {
       "decision": "tools",
@@ -3052,7 +2938,7 @@
         "work_departure_plan"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-ebdff19df4ccd622fa": {
       "decision": "tools",
@@ -3061,7 +2947,7 @@
         "work_departure_plan"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-3f705f38ea60cc3372": {
       "decision": "tools",
@@ -3088,7 +2974,7 @@
         "release_reminder_claim"
       ],
       "reply_language": "en",
-      "provenance": "ancestor_engineering_review"
+      "provenance": "delta_engineering_review"
     },
     "hai-5181f8231a680f05f5": {
       "decision": "tools",
@@ -3097,7 +2983,7 @@
         "release_reminder_claim"
       ],
       "reply_language": "en",
-      "provenance": "ancestor_engineering_review"
+      "provenance": "delta_engineering_review"
     },
     "hai-de45a92c577d0be6c1": {
       "decision": "tools",
@@ -3105,7 +2991,7 @@
         "set_leave_record"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-4604d3cc3a95f30356": {
       "decision": "tools",
@@ -3169,7 +3055,7 @@
         "planning_cash_outflow"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-ce9b18306fdef204c5": {
       "decision": "tools",
@@ -3221,7 +3107,7 @@
         "handoff_reminder_claim"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-184d75013a3080f56e": {
       "decision": "tools",
@@ -3237,7 +3123,7 @@
         "work_record_event"
       ],
       "reply_language": "en",
-      "provenance": "delta_engineering_review"
+      "provenance": "ancestor_engineering_review"
     },
     "hai-c4b13ea2074f1f5b86": {
       "decision": "tools",
@@ -3259,6 +3145,30 @@
       "decision": "tools",
       "tools": [
         "finance_report"
+      ],
+      "reply_language": "en",
+      "provenance": "ancestor_engineering_review"
+    },
+    "hai-8204d2b3225f91a1ca": {
+      "decision": "tools",
+      "tools": [
+        "planning_list_cash_pools"
+      ],
+      "reply_language": "en",
+      "provenance": "delta_engineering_review"
+    },
+    "hai-8c4625f124552f9d95": {
+      "decision": "tools",
+      "tools": [
+        "planning_list_cash_pools"
+      ],
+      "reply_language": "en",
+      "provenance": "delta_engineering_review"
+    },
+    "hai-bec55f4593a861adda": {
+      "decision": "tools",
+      "tools": [
+        "planning_create_cash_pool"
       ],
       "reply_language": "en",
       "provenance": "delta_engineering_review"
