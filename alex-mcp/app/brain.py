@@ -2560,10 +2560,29 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
             "planning_cash_pool_balance", "planning_list_cash_pools"
         })
         forced_names = {x["function"]["name"] for x in forced_specs}
-        tools = (
-            forced_specs
-            + [x for x in tools if x["function"]["name"] not in forced_names]
-        )[:TOOL_EXPOSURE_MAX]
+        merged = [x for x in tools if x["function"]["name"] not in forced_names]
+        # Deterministic hints must never evict domain tools already selected by
+        # routing (live v0.5.5 dropped report_export here). Prefer replacing a
+        # generic discovery/fallback slot; if none exists, temporarily exceed
+        # the six-tool schema target rather than deleting a required tool.
+        replaceable = {
+            DISCOVERY_TOOL_NAME, "search_saved_items", "get_saved_item",
+            "list_reminders", "list_shopping_items", "get_agenda_range",
+        }
+        for spec in forced_specs:
+            if len(merged) < TOOL_EXPOSURE_MAX:
+                merged.append(spec)
+                continue
+            idx = next(
+                (i for i in range(len(merged) - 1, -1, -1)
+                 if merged[i]["function"]["name"] in replaceable),
+                None,
+            )
+            if idx is None:
+                merged.append(spec)
+            else:
+                merged[idx] = spec
+        tools = merged
     trace["exposed_tools"] = [x["function"]["name"] for x in tools] if tools else []
     routes = _provider_routes(
         settings, user_text=user_text, tools=tools,
@@ -2649,6 +2668,7 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
     mutation_ledger: list[dict] = []
 
     for call_index in range(MAX_MODEL_CALLS):
+        final_answer_call = call_index == MAX_MODEL_CALLS - 1
         # If the cheap model is genuinely looping through tools, escalate the
         # next reasoning step to the stronger Gemini model instead of spending
         # repeated Lite calls. Normal one-tool workflows never pay this cost.
@@ -2670,10 +2690,14 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
             call_started = time.monotonic()
             try:
                 client = _client_for(route["provider"], settings)
+                # The final round is enforced in code, not merely requested:
+                # no tool schema is supplied at all. This keeps the four-call
+                # cap while making it impossible for a compliant provider to
+                # start work that Alex has no fifth round to consume.
                 response = client.chat.completions.create(
                     **_completion_kwargs(
-                        route, messages, tools, actor,
-                        force_answer=(call_index == MAX_MODEL_CALLS - 1),
+                        route, messages, None if final_answer_call else tools, actor,
+                        force_answer=final_answer_call,
                     )
                 )
                 call_ms = int((time.monotonic() - call_started) * 1000)
@@ -2711,6 +2735,11 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
 
         msg = response.choices[0].message
         calls = getattr(msg, "tool_calls", None) or []
+        if final_answer_call and calls:
+            # Defensive guard for non-compliant providers/fallback adapters.
+            # Never execute a tool returned after the answer-only boundary.
+            trace["routes"].append("final_answer:tool_calls_ignored")
+            calls = []
         _accumulate_usage(
             usage_by_route, active_route, getattr(response, "usage", None),
             call_ms, had_tool_calls=bool(calls),
@@ -2726,6 +2755,7 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
             # capability statement to the household.
             if (
                 tools
+                and not final_answer_call
                 and not capability_retry_used
                 and not any(
                     str(name) != DISCOVERY_TOOL_NAME
