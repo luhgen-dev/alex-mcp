@@ -1568,7 +1568,7 @@ def update_reminder(actor: ActorContext, reminder_id: str, status: str = "open",
     conn = connect()
     try:
         row = conn.execute(
-            f"""SELECT reminder_id,status,due_at_utc,owner_id,claimable,
+            f"""SELECT reminder_id,status,due_at_utc,owner_id,task_text,claimable,
                        claimed_by_user_id,claimed_at_utc
                 FROM reminders
                 WHERE reminder_id=? AND space_id IN ({marks})""",
@@ -1638,6 +1638,20 @@ def update_reminder(actor: ActorContext, reminder_id: str, status: str = "open",
             event_map[resolved],
             previous_state, resolved, previous_due, new_due, snooze_note,
         )
+        if resolved in {"ACK", "COMP", "CANC"} or snooze_note:
+            try:
+                import ha_mobile
+                notify_user = str(row["claimed_by_user_id"] or row["owner_id"])
+                ha_mobile.queue_state(
+                    conn, notify_user, reminder_id, row["task_text"],
+                    "OPEN" if snooze_note else resolved,
+                    event_key=(
+                        f"state:{reminder_id}:{resolved}:"
+                        f"{actor.source_message_id or utc_now()}"
+                    ),
+                )
+            except Exception:
+                pass
         conn.commit()
         return {"status": "updated", "reminder_id": reminder_id, "state": resolved,
                 "due_at_utc": new_due}
