@@ -534,8 +534,19 @@ def system_health(actor: Actor, hours: int = 24) -> dict:
 
 @mcp.tool()
 def recent_failures(actor: Actor, hours: int = 24, limit: int = 20) -> dict:
-    """Explain recent observed Alex failures from durable logs/audits. Return observed facts only, not invented causes."""
-    return diagnostics.recent_failures(actor, hours, limit)
+    """Explain recent observed Alex failures using local human timestamps and observed facts only."""
+    raw = diagnostics.recent_failures(actor, hours, limit)
+    return {
+        "window_hours": raw["window_hours"],
+        "failures": raw.get("display_failures", []),
+        "counts": {
+            "inbound": len(raw.get("inbound_failures", [])),
+            "outbound": len(raw.get("outbound_failures", [])),
+            "tools": len(raw.get("tool_failures", [])),
+        },
+        "common_cause_established": raw.get("common_cause_established", False),
+        "interpretation_rule": raw.get("interpretation_rule"),
+    }
 
 
 @mcp.tool()
