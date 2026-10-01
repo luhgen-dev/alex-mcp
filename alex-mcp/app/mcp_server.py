@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 from typing import Annotated
+from functools import wraps
+import inspect
+import sqlite3
 
 from mcp.server import MCPServer
 from mcp.server.mcpserver import Resolve
+from mcp.server.mcpserver.exceptions import ToolError
 
 from context import ActorContext, current_actor
 import services
@@ -32,7 +36,44 @@ async def authenticated_actor() -> ActorContext:
 Actor = Annotated[ActorContext, Resolve(authenticated_actor)]
 
 
-@mcp.tool()
+_DOMAIN_TOOL_ERRORS = (ValueError, PermissionError, LookupError, sqlite3.IntegrityError)
+
+
+def alex_tool(*tool_args, **tool_kwargs):
+    """Register a tool while preserving actionable domain errors for the model.
+
+    MCP 2.2 masks unexpected exceptions. Household/domain errors are expected
+    conversational outcomes (ambiguous name, private-in-group, not configured,
+    constraint conflict), so surface only these known classes as ToolError.
+    Unexpected crashes remain masked by the SDK.
+    """
+    register = mcp.tool(*tool_args, **tool_kwargs)
+
+    def decorator(fn):
+        if inspect.iscoroutinefunction(fn):
+            @wraps(fn)
+            async def wrapped(*args, **kwargs):
+                try:
+                    return await fn(*args, **kwargs)
+                except ToolError:
+                    raise
+                except _DOMAIN_TOOL_ERRORS as exc:
+                    raise ToolError(str(exc)) from exc
+        else:
+            @wraps(fn)
+            def wrapped(*args, **kwargs):
+                try:
+                    return fn(*args, **kwargs)
+                except ToolError:
+                    raise
+                except _DOMAIN_TOOL_ERRORS as exc:
+                    raise ToolError(str(exc)) from exc
+        return register(wrapped)
+
+    return decorator
+
+
+@alex_tool()
 def log_expense(description: str, actor: Actor, amount: float | None = None,
                 category: str | None = None, currency: str | None = None,
                 event_date_local: str | None = None, reference: str | None = None,
@@ -41,14 +82,14 @@ def log_expense(description: str, actor: Actor, amount: float | None = None,
     return services.log_expense(actor, description, amount, category, currency, event_date_local, reference, event_type)
 
 
-@mcp.tool()
+@alex_tool()
 def confirm_expense(event_id: str, actor: Actor, approve: bool = True,
                     category: str | None = None, amount: float | None = None) -> dict:
     """Confirm or reject a pending money record after the user supplies missing information or approval."""
     return services.confirm_expense(actor, event_id, approve, category, amount)
 
 
-@mcp.tool()
+@alex_tool()
 def query_finances(actor: Actor, start_date: str | None = None, end_date: str | None = None,
                    category: str | None = None, search: str | None = None,
                    currency: str | None = None, limit: int = 20,
@@ -81,13 +122,13 @@ def query_finances(actor: Actor, start_date: str | None = None, end_date: str | 
     return result
 
 
-@mcp.tool()
+@alex_tool()
 def list_pending_expenses(actor: Actor, limit: int = 10) -> dict:
     """List unresolved money records when the user is answering a previous clarification."""
     return services.list_pending_expenses(actor, limit)
 
 
-@mcp.tool()
+@alex_tool()
 def correct_expense(event_id: str, actor: Actor, amount: float | None = None,
                     description: str | None = None, category: str | None = None,
                     event_date_local: str | None = None, reason: str | None = None) -> dict:
@@ -95,7 +136,7 @@ def correct_expense(event_id: str, actor: Actor, amount: float | None = None,
     return services.correct_expense(actor, event_id, amount, description, category, event_date_local, reason)
 
 
-@mcp.tool()
+@alex_tool()
 def find_receipts(actor: Actor, query: str | None = None, amount: float | None = None,
                   start_date: str | None = None, end_date: str | None = None, limit: int = 10,
                   scope: str | None = None) -> dict:
@@ -103,13 +144,13 @@ def find_receipts(actor: Actor, query: str | None = None, amount: float | None =
     return services.find_receipts(actor, query, amount, start_date, end_date, limit, scope)
 
 
-@mcp.tool()
+@alex_tool()
 def get_receipt(media_id: str, actor: Actor) -> dict:
     """Retrieve one original receipt previously found by find_receipts so Alex can send the actual image/document back."""
     return services.get_receipt(actor, media_id)
 
 
-@mcp.tool()
+@alex_tool()
 def find_media(actor: Actor, media_type: str = "all", query: str | None = None,
                start_date: str | None = None, end_date: str | None = None,
                limit: int = 10) -> dict:
@@ -117,45 +158,45 @@ def find_media(actor: Actor, media_type: str = "all", query: str | None = None,
     return services.find_media(actor, media_type, query, start_date, end_date, limit)
 
 
-@mcp.tool()
+@alex_tool()
 def get_media_original(media_id: str, actor: Actor) -> dict:
     """Retrieve one authorized original media object, including the original voice-note audio."""
     return services.get_media_original(actor, media_id)
 
 
-@mcp.tool()
+@alex_tool()
 def save_item(title: str, content: str, actor: Actor, tags: str | None = None,
               shared: bool = False) -> dict:
     """Explicitly remember something the user asked Alex to save. This is separate from automatic receipt retention."""
     return services.save_item(actor, title, content, tags, shared)
 
 
-@mcp.tool()
+@alex_tool()
 def search_saved_items(actor: Actor, query: str | None = None, limit: int = 10,
                        kind: str | None = None) -> dict:
     """Search or browse things the user explicitly asked Alex to save/remember. Leave query empty to list everything saved (newest first). kind may be picture, document or note (e.g. "what pictures did I save" -> kind=picture, no query). Results are numbered; the user can then say "show 2". Use get_saved_item to send an original."""
     return services.search_saved_items(actor, query, limit, kind)
 
 
-@mcp.tool()
+@alex_tool()
 def get_saved_item(item_id: str, actor: Actor) -> dict:
     """Retrieve one explicitly saved item, including its original attachment when it had one."""
     return services.get_saved_item(actor, item_id)
 
 
-@mcp.tool()
+@alex_tool()
 def remove_saved_item(item_id: str, actor: Actor) -> dict:
     """Soft-remove an explicit saved-memory index while retaining original archived media evidence."""
     return services.remove_saved_item(actor, item_id)
 
 
-@mcp.tool()
+@alex_tool()
 def resolve_numbered_choice(choice: int, actor: Actor) -> dict:
     """Resolve the newest unexpired numbered receipt, saved-memory, or original-media list to the exact original item."""
     return services.resolve_numbered_choice(actor, choice)
 
 
-@mcp.tool()
+@alex_tool()
 def create_reminder(task: str, due_local: str, actor: Actor,
                     recurrence_rule: str | None = None, shared: bool = False,
                     recipient: str = "me", destination: str = "dm",
@@ -170,13 +211,13 @@ def create_reminder(task: str, due_local: str, actor: Actor,
     )
 
 
-@mcp.tool()
+@alex_tool()
 def list_reminders(actor: Actor, include_completed: bool = False, limit: int = 20) -> dict:
     """List upcoming/open reminders from spaces this user is allowed to see."""
     return services.list_reminders(actor, include_completed, limit)
 
 
-@mcp.tool()
+@alex_tool()
 def update_reminder(reminder_id: str, actor: Actor, status: str = "open",
                     new_due_local: str | None = None,
                     snooze_minutes: int | None = None,
@@ -187,7 +228,7 @@ def update_reminder(reminder_id: str, actor: Actor, status: str = "open",
     )
 
 
-@mcp.tool()
+@alex_tool()
 def reminder_history(actor: Actor, reminder_id: str | None = None,
                      limit: int = 50) -> dict:
     """Read user-facing reminder history with local times and no database/provider internals."""
@@ -210,19 +251,19 @@ def reminder_history(actor: Actor, reminder_id: str | None = None,
     }
 
 
-@mcp.tool()
+@alex_tool()
 def handoff_reminder_claim(reminder_id: str, recipient: str, actor: Actor) -> dict:
     """Ask a household member such as Priya/spouse to accept your claimed Family Shared reminder. You remain claimant until they react to the DM request."""
     return services.request_reminder_handoff(actor, reminder_id, recipient)
 
 
-@mcp.tool()
+@alex_tool()
 def release_reminder_claim(reminder_id: str, actor: Actor) -> dict:
     """Explicitly release a claimable family reminder after the claimant says they cannot do it / release it. Removing a WhatsApp reaction never releases ownership."""
     return services.release_reminder_claim(actor, reminder_id)
 
 
-@mcp.tool()
+@alex_tool()
 def create_task(title: str, actor: Actor, notes: str | None = None,
                 assignee: str = "unassigned", shared: bool = False,
                 due_local: str | None = None, plan_id: str | None = None,
@@ -233,14 +274,14 @@ def create_task(title: str, actor: Actor, notes: str | None = None,
     )
 
 
-@mcp.tool()
+@alex_tool()
 def list_tasks(actor: Actor, status: str = "open",
                plan_id: str | None = None, limit: int = 50) -> dict:
     """List authorized tasks. status may be open, done, cancelled, or all; plan_id optionally narrows to one accessible plan."""
     return phase2.list_tasks(actor, status, plan_id, limit)
 
 
-@mcp.tool()
+@alex_tool()
 def update_task(task_id: str, actor: Actor, title: str | None = None,
                 notes: str | None = None, due_local: str | None = None,
                 assignee: str | None = None, plan_id: str | None = None,
@@ -251,25 +292,25 @@ def update_task(task_id: str, actor: Actor, title: str | None = None,
     )
 
 
-@mcp.tool()
+@alex_tool()
 def complete_task(task_id: str, actor: Actor) -> dict:
     """Mark an OPEN task DONE while preserving its lifecycle history and linked plan/reminder state."""
     return phase2.complete_task(actor, task_id)
 
 
-@mcp.tool()
+@alex_tool()
 def reopen_task(task_id: str, actor: Actor) -> dict:
     """Explicitly reopen a DONE task back to OPEN while preserving lifecycle history."""
     return phase2.reopen_task(actor, task_id)
 
 
-@mcp.tool()
+@alex_tool()
 def cancel_task(task_id: str, actor: Actor) -> dict:
     """Cancel a task without deleting or changing any linked plan or reminder."""
     return phase2.cancel_task(actor, task_id)
 
 
-@mcp.tool()
+@alex_tool()
 def set_goal(name: str, actor: Actor, target_amount: float | None = None,
              current_amount: float | None = None, currency: str = "MYR",
              target_date: str | None = None, notes: str | None = None,
@@ -278,40 +319,40 @@ def set_goal(name: str, actor: Actor, target_amount: float | None = None,
     return services.set_goal(actor, name, target_amount, current_amount, currency, target_date, notes, shared)
 
 
-@mcp.tool()
+@alex_tool()
 def list_goals(actor: Actor) -> dict:
     """Read active goals available to the authenticated user."""
     return services.list_goals(actor)
 
 
-@mcp.tool()
+@alex_tool()
 def get_leave_balance(actor: Actor) -> dict:
     """Read the user's stored leave balance and as-of date. Never invent a balance when unknown."""
     return services.get_leave(actor)
 
 
-@mcp.tool()
+@alex_tool()
 def set_leave_balance(balance_days: float, actor: Actor, as_of_date: str | None = None,
                       notes: str | None = None) -> dict:
     """Store/update leave balance only when the user explicitly provides the value."""
     return services.set_leave(actor, balance_days, as_of_date, notes)
 
 
-@mcp.tool()
+@alex_tool()
 def add_shopping_item(item: str, actor: Actor, quantity: str | None = None,
                       notes: str | None = None, shared: bool = True) -> dict:
     """Add an item to the shopping list. Shared household list is the default; use shared=false only when the user clearly asks for a private list."""
     return services.add_shopping_item(actor, item, quantity, notes, shared)
 
 
-@mcp.tool()
+@alex_tool()
 def list_shopping_items(actor: Actor, include_purchased: bool = False, limit: int = 50,
                         scope: str | None = None) -> dict:
     """List shopping items visible to the authenticated household user. scope may be all, family, or private."""
     return services.list_shopping_items(actor, include_purchased, limit, scope)
 
 
-@mcp.tool()
+@alex_tool()
 def update_shopping_item(item_id: str, actor: Actor, status: str | None = None,
                          quantity: str | None = None, notes: str | None = None,
                          item: str | None = None) -> dict:
@@ -319,21 +360,21 @@ def update_shopping_item(item_id: str, actor: Actor, status: str | None = None,
     return services.update_shopping_item(actor, item_id, status, quantity, notes, item)
 
 
-@mcp.tool()
+@alex_tool()
 def ha_find_entities(query: str, actor: Actor, domain: str | None = None, limit: int = 20) -> dict:
     """Find actual Home Assistant entity IDs by friendly name/entity id before answering or acting. Read-only."""
     import ha
     return ha.find_entities(query, domain, limit)
 
 
-@mcp.tool()
+@alex_tool()
 def ha_get_state(entity_id: str, actor: Actor) -> dict:
     """Read the current state and attributes of one exact Home Assistant entity."""
     import ha
     return ha.get_state(entity_id)
 
 
-@mcp.tool()
+@alex_tool()
 def ha_home_summary(actor: Actor) -> dict:
     """Read Home Assistant states and produce a deterministic privacy-safe whole-home status summary."""
     import ha
@@ -341,7 +382,7 @@ def ha_home_summary(actor: Actor) -> dict:
     return phase2_home.summarize_home(rows)
 
 
-@mcp.tool()
+@alex_tool()
 def ha_home_report(actor: Actor) -> dict:
     """Render a deterministic local PNG whole-home status card and return it as a WhatsApp image attachment."""
     from pathlib import Path
@@ -361,7 +402,7 @@ def ha_home_report(actor: Actor) -> dict:
     }
 
 
-@mcp.tool()
+@alex_tool()
 def ha_draft_automation(name: str, trigger_yaml: str, action_yaml: str, actor: Actor,
                         condition_yaml: str | None = None) -> dict:
     """Return a draft Home Assistant automation proposal only. It never deploys or edits HA configuration."""
@@ -369,14 +410,14 @@ def ha_draft_automation(name: str, trigger_yaml: str, action_yaml: str, actor: A
     return ha.draft_automation(name, trigger_yaml, action_yaml, condition_yaml)
 
 
-@mcp.tool()
+@alex_tool()
 def ha_control(entity_id: str, action: str, actor: Actor, value: float | None = None) -> dict:
     """Perform an explicitly requested low-risk Home Assistant action on lights, switches, fans, climate or media players, then verify state. Sensitive domains are rejected by the backend."""
     import ha
     return ha.control(entity_id, action, value)
 
 
-@mcp.tool()
+@alex_tool()
 def set_work_roster(work_date: str, shift_name: str, actor: Actor,
                     start_local: str | None = None, end_local: str | None = None,
                     notes: str | None = None, status: str = "CONFIRMED") -> dict:
@@ -384,14 +425,14 @@ def set_work_roster(work_date: str, shift_name: str, actor: Actor,
     return phase2.set_work_roster(actor, work_date, shift_name, start_local, end_local, notes, status)
 
 
-@mcp.tool()
+@alex_tool()
 def list_work_roster(actor: Actor, start_date: str | None = None,
                      end_date: str | None = None, limit: int = 60) -> dict:
     """Read only the authenticated user's work roster."""
     return phase2.list_work_roster(actor, start_date, end_date, limit)
 
 
-@mcp.tool()
+@alex_tool()
 def set_leave_record(leave_date: str, actor: Actor, status: str = "PLANNED",
                      portion: str = "FULL", notes: str | None = None,
                      end_date: str | None = None,
@@ -402,14 +443,14 @@ def set_leave_record(leave_date: str, actor: Actor, status: str = "PLANNED",
     )
 
 
-@mcp.tool()
+@alex_tool()
 def list_leave_records(actor: Actor, start_date: str | None = None,
                        end_date: str | None = None, include_cancelled: bool = False) -> dict:
     """Read the authenticated user's planned/confirmed/taken leave records."""
     return phase2.list_leave_records(actor, start_date, end_date, include_cancelled)
 
 
-@mcp.tool()
+@alex_tool()
 def create_plan(title: str, actor: Actor, start_local: str | None = None,
                 end_local: str | None = None, notes: str | None = None,
                 shared: bool = False, locked: bool = False,
@@ -420,13 +461,13 @@ def create_plan(title: str, actor: Actor, start_local: str | None = None,
     )
 
 
-@mcp.tool()
+@alex_tool()
 def list_plans(actor: Actor, include_cancelled: bool = False, limit: int = 50) -> dict:
     """List accessible draft/locked plans."""
     return phase2.list_plans(actor, include_cancelled, limit)
 
 
-@mcp.tool()
+@alex_tool()
 def update_plan(actor: Actor, plan_id: str | None = None,
                 plan_name: str | None = None, status: str | None = None,
                 title: str | None = None, start_local: str | None = None,
@@ -436,7 +477,7 @@ def update_plan(actor: Actor, plan_id: str | None = None,
     return phase2.update_plan(actor, resolved, status, title, start_local, end_local, notes)
 
 
-@mcp.tool()
+@alex_tool()
 def confirm_plan(actor: Actor, plan_id: str | None = None,
                  plan_name: str | None = None, add_to_diary: bool = True,
                  reminder_minutes_before: int | None = None,
@@ -448,13 +489,13 @@ def confirm_plan(actor: Actor, plan_id: str | None = None,
     )
 
 
-@mcp.tool()
+@alex_tool()
 def share_plan(plan_id: str, actor: Actor, shared_notes: str | None = None) -> dict:
     """Publish a private plan as a separate FAMILY_SHARED copy. Private notes are never copied automatically; provide shared_notes only when the owner explicitly wants those family-safe notes shared."""
     return phase2.share_plan(actor, plan_id, shared_notes)
 
 
-@mcp.tool()
+@alex_tool()
 def add_diary_event(title: str, start_local: str, actor: Actor,
                     end_local: str | None = None, notes: str | None = None,
                     shared: bool = False, reminder_minutes_before: int | None = None,
@@ -467,21 +508,21 @@ def add_diary_event(title: str, start_local: str, actor: Actor,
     )
 
 
-@mcp.tool()
+@alex_tool()
 def resolve_diary_conflict(conflict_id: str, choice: int, actor: Actor,
                            reminder_recipient: str = "me") -> dict:
     """Resolve a diary-vs-work conflict: 1=add event + PLANNED leave, 2=add event and keep clash, 3=cancel."""
     return phase2.resolve_diary_conflict(actor, conflict_id, choice, reminder_recipient)
 
 
-@mcp.tool()
+@alex_tool()
 def resolve_latest_diary_conflict(choice: int, actor: Actor,
                                   reminder_recipient: str = "me") -> dict:
     """Resolve the latest unexpired owner-scoped diary conflict ticket. This is the safe handler for a later bare '1', '2' or '3' reply."""
     return phase2.resolve_latest_diary_conflict(actor, choice, reminder_recipient)
 
 
-@mcp.tool()
+@alex_tool()
 def update_diary_event(diary_id: str, actor: Actor, status: str | None = None,
                        start_local: str | None = None, end_local: str | None = None,
                        title: str | None = None, notes: str | None = None,
@@ -492,35 +533,35 @@ def update_diary_event(diary_id: str, actor: Actor, status: str | None = None,
     )
 
 
-@mcp.tool()
+@alex_tool()
 def get_agenda(start_date: str, end_date: str, actor: Actor,
                include_plans: bool = True) -> dict:
     """Combined read-only agenda. Use returned start_local/end_local/due_local fields for user-facing times; stored *_utc fields are internal evidence."""
     return phase2.get_agenda(actor, start_date, end_date, include_plans)
 
 
-@mcp.tool()
+@alex_tool()
 def get_agenda_range(phrase: str, actor: Actor, reference_date: str | None = None,
                      include_plans: bool = True) -> dict:
     """Resolve natural dates/ranges deterministically and return the combined agenda. Use returned local-time fields for replies."""
     return phase2.get_agenda_range(actor, phrase, reference_date, include_plans)
 
 
-@mcp.tool()
+@alex_tool()
 def check_my_availability(start_local: str, actor: Actor,
                           end_local: str | None = None) -> dict:
     """Owner-only private availability check. Rejected in the family group and never publishable there."""
     return phase2.check_my_availability(actor, start_local, end_local)
 
 
-@mcp.tool()
+@alex_tool()
 def check_spouse_availability(start_local: str, actor: Actor,
                               end_local: str | None = None) -> dict:
     """Check only shared spouse commitments. Private spouse roster/Diary is never read; if no shared clash exists, returns private_check_required."""
     return phase2.check_spouse_availability(actor, start_local, end_local)
 
 
-@mcp.tool()
+@alex_tool()
 def set_cashflow_baseline(currency: str, actor: Actor, guaranteed_income: float = 0,
                           fixed_commitments: float = 0, locked_allocations: float = 0,
                           reserves: float = 0, notes: str | None = None) -> dict:
@@ -529,19 +570,19 @@ def set_cashflow_baseline(currency: str, actor: Actor, guaranteed_income: float 
                                         locked_allocations, reserves, notes)
 
 
-@mcp.tool()
+@alex_tool()
 def get_cashflow_baseline(currency: str, actor: Actor) -> dict:
     """Read the user's deterministic cash-flow baseline without recommending allowance changes."""
     return phase2.get_cashflow_baseline(actor, currency)
 
 
-@mcp.tool()
+@alex_tool()
 def system_health(actor: Actor, hours: int = 24) -> dict:
     """Read sanitized Alex health/diagnostic facts: DB, failed messages, outbound queue, tool errors and usage. No secrets."""
     return diagnostics.system_health(actor, hours)
 
 
-@mcp.tool()
+@alex_tool()
 def recent_failures(actor: Actor, hours: int = 24, limit: int = 20) -> dict:
     """Explain recent observed Alex failures using local human timestamps and observed facts only."""
     raw = diagnostics.recent_failures(actor, hours, limit)
@@ -558,7 +599,7 @@ def recent_failures(actor: Actor, hours: int = 24, limit: int = 20) -> dict:
     }
 
 
-@mcp.tool()
+@alex_tool()
 def planning_create_goal(name: str, target_amount: float, actor: Actor,
                          baseline_monthly: float = 0,
                          currency: str = "MYR", target_date: str | None = None,
@@ -571,7 +612,7 @@ def planning_create_goal(name: str, target_amount: float, actor: Actor,
     )
 
 
-@mcp.tool()
+@alex_tool()
 def planning_update_goal_target(new_target_amount: float, actor: Actor,
                                 goal_id: str | None = None,
                                 goal_name: str | None = None) -> dict:
@@ -584,7 +625,7 @@ def planning_update_goal_target(new_target_amount: float, actor: Actor,
     )
 
 
-@mcp.tool()
+@alex_tool()
 def planning_lock_goal(actor: Actor, goal_id: str | None = None,
                        goal_name: str | None = None) -> dict:
     """Lock/activate one draft goal after explicit owner approval. Provide either goal_id from a prior result or its natural goal_name; Alex resolves names conservatively."""
@@ -596,7 +637,7 @@ def planning_lock_goal(actor: Actor, goal_id: str | None = None,
     )
 
 
-@mcp.tool()
+@alex_tool()
 def planning_reopen_goal(actor: Actor, goal_id: str | None = None,
                          goal_name: str | None = None) -> dict:
     """Reopen one eligible goal only after explicit owner instruction. goal_name may be used instead of an opaque id."""
@@ -608,7 +649,7 @@ def planning_reopen_goal(actor: Actor, goal_id: str | None = None,
     )
 
 
-@mcp.tool()
+@alex_tool()
 def planning_set_period_target(amount: float, actor: Actor,
                                goal_id: str | None = None,
                                goal_name: str | None = None,
@@ -626,7 +667,7 @@ def planning_set_period_target(amount: float, actor: Actor,
     )
 
 
-@mcp.tool()
+@alex_tool()
 def planning_change_goal_baseline(new_monthly_amount: float, actor: Actor,
                                   goal_id: str | None = None,
                                   goal_name: str | None = None,
@@ -642,7 +683,7 @@ def planning_change_goal_baseline(new_monthly_amount: float, actor: Actor,
     )
 
 
-@mcp.tool()
+@alex_tool()
 def planning_record_goal_contribution(amount: float, actor: Actor,
                                       goal_id: str | None = None,
                                       goal_name: str | None = None,
@@ -665,7 +706,7 @@ def planning_record_goal_contribution(amount: float, actor: Actor,
     )
 
 
-@mcp.tool()
+@alex_tool()
 def planning_goal_progress(actor: Actor, goal_id: str | None = None,
                            goal_name: str | None = None) -> dict:
     """Read goal target, actual funding, remaining amount and recurring baseline. Natural goal_name is accepted."""
@@ -677,7 +718,7 @@ def planning_goal_progress(actor: Actor, goal_id: str | None = None,
     )
 
 
-@mcp.tool()
+@alex_tool()
 def planning_goal_deviation(actor: Actor, goal_id: str | None = None,
                             goal_name: str | None = None,
                             actual_amount: float | None = None,
@@ -694,7 +735,7 @@ def planning_goal_deviation(actor: Actor, goal_id: str | None = None,
     )
 
 
-@mcp.tool()
+@alex_tool()
 def planning_record_cash(event_type: str, amount: float, actor: Actor,
                          event_date: str | None = None,
                          currency: str = "MYR", description: str | None = None,
@@ -709,7 +750,7 @@ def planning_record_cash(event_type: str, amount: float, actor: Actor,
     )
 
 
-@mcp.tool()
+@alex_tool()
 def planning_compare_salary(actor: Actor, cash_event_id: str | None = None,
                             event_date: str | None = None,
                             amount: float | None = None) -> dict:
@@ -724,7 +765,7 @@ def planning_compare_salary(actor: Actor, cash_event_id: str | None = None,
     )
 
 
-@mcp.tool()
+@alex_tool()
 def planning_match_goal_alias(alias_text: str, actor: Actor) -> dict:
     """Conservatively resolve a configured non-sensitive account alias to one authorized goal."""
     return phase2_finance.resolve_goal_from_alias(
@@ -732,7 +773,7 @@ def planning_match_goal_alias(alias_text: str, actor: Actor) -> dict:
     )
 
 
-@mcp.tool()
+@alex_tool()
 def planning_cash_status(actor: Actor, cash_event_id: str | None = None,
                          event_type: str | None = None,
                          event_date: str | None = None,
@@ -749,7 +790,7 @@ def planning_cash_status(actor: Actor, cash_event_id: str | None = None,
     )
 
 
-@mcp.tool()
+@alex_tool()
 def planning_allocate_cash_to_goal(amount: float, actor: Actor,
                                    cash_event_id: str | None = None,
                                    cash_event_type: str | None = None,
@@ -774,7 +815,7 @@ def planning_allocate_cash_to_goal(amount: float, actor: Actor,
     )
 
 
-@mcp.tool()
+@alex_tool()
 def planning_create_cash_pool(name: str, actor: Actor, currency: str = "MYR",
                               shared: bool = False,
                               opening_balance: float | None = None) -> dict:
@@ -789,7 +830,7 @@ def planning_create_cash_pool(name: str, actor: Actor, currency: str = "MYR",
     )
 
 
-@mcp.tool()
+@alex_tool()
 def planning_list_cash_pools(actor: Actor, scope: str = "private") -> dict:
     """List the authenticated user's private active stash/cash pools and exact balances. Stash is never exposed as Family Shared."""
     return {
@@ -799,7 +840,7 @@ def planning_list_cash_pools(actor: Actor, scope: str = "private") -> dict:
     }
 
 
-@mcp.tool()
+@alex_tool()
 def planning_cash_pool_balance(actor: Actor, pool_id: str | None = None,
                                pool_name: str | None = None) -> dict:
     """Read the exact balance of one authorized stash/cash pool. Natural pool_name is accepted instead of an opaque id."""
@@ -811,7 +852,7 @@ def planning_cash_pool_balance(actor: Actor, pool_id: str | None = None,
     )
 
 
-@mcp.tool()
+@alex_tool()
 def planning_declare_cash_pool_balance(amount: float, actor: Actor,
                                        pool_id: str | None = None,
                                        pool_name: str | None = None,
@@ -829,7 +870,7 @@ def planning_declare_cash_pool_balance(amount: float, actor: Actor,
     )
 
 
-@mcp.tool()
+@alex_tool()
 def planning_record_cash_pool_spend(amount: float, actor: Actor,
                                     pool_id: str | None = None,
                                     pool_name: str | None = None,
@@ -849,7 +890,7 @@ def planning_record_cash_pool_spend(amount: float, actor: Actor,
     )
 
 
-@mcp.tool()
+@alex_tool()
 def planning_allocate_cash_to_pool(amount: float, actor: Actor,
                                    cash_event_id: str | None = None,
                                    cash_event_type: str | None = None,
@@ -873,7 +914,7 @@ def planning_allocate_cash_to_pool(amount: float, actor: Actor,
     )
 
 
-@mcp.tool()
+@alex_tool()
 def planning_add_reserve(name: str, monthly_amount: float, actor: Actor,
                          currency: str = "MYR", shared: bool = False) -> dict:
     """Add an explicit monthly reserve/allowance to the baseline only because the user asked to reserve it."""
@@ -884,7 +925,7 @@ def planning_add_reserve(name: str, monthly_amount: float, actor: Actor,
     )
 
 
-@mcp.tool()
+@alex_tool()
 def planning_update_reserve(actor: Actor, reserve_id: str | None = None,
                             reserve_name: str | None = None,
                             monthly_amount: float | None = None,
@@ -900,7 +941,7 @@ def planning_update_reserve(actor: Actor, reserve_id: str | None = None,
     )
 
 
-@mcp.tool()
+@alex_tool()
 def planning_list_reserves(actor: Actor, include_inactive: bool = False) -> dict:
     """List authorized explicit planning reserves/allowances."""
     return {"reserves": phase2_finance.list_plan_reserves(
@@ -908,7 +949,7 @@ def planning_list_reserves(actor: Actor, include_inactive: bool = False) -> dict
     )}
 
 
-@mcp.tool()
+@alex_tool()
 def planning_baseline(actor: Actor, currency: str = "MYR",
                       reveal_inputs: bool = False) -> dict:
     """Read deterministic baseline capacity. Raw private income is included in output only when the owner explicitly asks to reveal it."""
@@ -917,7 +958,7 @@ def planning_baseline(actor: Actor, currency: str = "MYR",
     )
 
 
-@mcp.tool()
+@alex_tool()
 def planning_income_outlook(actor: Actor, period: str | None = None,
                             currency: str = "MYR",
                             reveal_sources: bool = False) -> dict:
@@ -930,7 +971,7 @@ def planning_income_outlook(actor: Actor, period: str | None = None,
     )
 
 
-@mcp.tool()
+@alex_tool()
 def planning_goal_projection(actor: Actor, goal_id: str | None = None,
                              goal_name: str | None = None,
                              from_period: str | None = None) -> dict:
@@ -943,7 +984,7 @@ def planning_goal_projection(actor: Actor, goal_id: str | None = None,
     )
 
 
-@mcp.tool()
+@alex_tool()
 def planning_cash_outflow(actor: Actor, period: str | None = None,
                           currency: str = "MYR") -> dict:
     """Read actual monthly cash outflow in separate sections: consumption/expenses, goal-savings contributions, and internal stash movements. Internal stash allocations are shown but excluded from the outflow total to prevent double counting."""
@@ -978,7 +1019,7 @@ def planning_cash_outflow(actor: Actor, period: str | None = None,
     }
 
 
-@mcp.tool()
+@alex_tool()
 def planning_cashflow(actor: Actor, period: str | None = None,
                       currency: str = "MYR") -> dict:
     """Read a dated monthly forecast. Omitted period means the current local month. OT/variable income remains separate from guaranteed baseline."""
@@ -989,7 +1030,7 @@ def planning_cashflow(actor: Actor, period: str | None = None,
     )
 
 
-@mcp.tool()
+@alex_tool()
 def planning_brief(actor: Actor, currency: str = "MYR") -> dict:
     """Read a privacy-scoped baseline planning brief. Does not recommend allowance changes."""
     return phase2_finance.planning_brief(
@@ -997,7 +1038,7 @@ def planning_brief(actor: Actor, currency: str = "MYR") -> dict:
     )
 
 
-@mcp.tool()
+@alex_tool()
 def planning_list_goals(actor: Actor) -> dict:
     """List authorized advanced goals and their current plan state."""
     return {"goals": phase2_finance.list_goals(
@@ -1005,7 +1046,7 @@ def planning_list_goals(actor: Actor) -> dict:
     )}
 
 
-@mcp.tool()
+@alex_tool()
 def bills_list(actor: Actor, period: str | None = None,
                as_of_date: str | None = None) -> dict:
     """List recurring obligations. If period is omitted, materialize the current and next local month so 'coming up' does not falsely return empty."""
@@ -1040,7 +1081,7 @@ def bills_list(actor: Actor, period: str | None = None,
     }
 
 
-@mcp.tool()
+@alex_tool()
 def bills_match_payment(label: str, amount: float, event_date: str, actor: Actor) -> dict:
     """Conservatively match payment/receipt facts to exactly one authorized recurring obligation. Ambiguous matches are returned, never guessed."""
     return phase2_finance.resolve_obligation_from_evidence(
@@ -1048,7 +1089,7 @@ def bills_match_payment(label: str, amount: float, event_date: str, actor: Actor
     )
 
 
-@mcp.tool()
+@alex_tool()
 def bills_record_payment(instance_id: str, amount: float, actor: Actor,
                          note: str | None = None) -> dict:
     """Record an actual payment against one exact obligation instance; supports partial payment."""
@@ -1057,7 +1098,7 @@ def bills_record_payment(instance_id: str, amount: float, actor: Actor,
     )
 
 
-@mcp.tool()
+@alex_tool()
 def bills_defer(instance_id: str, new_due_date: str, actor: Actor,
                 note: str | None = None) -> dict:
     """Defer one exact obligation; history remains intact."""
@@ -1066,7 +1107,7 @@ def bills_defer(instance_id: str, new_due_date: str, actor: Actor,
     )
 
 
-@mcp.tool()
+@alex_tool()
 def bills_confirm_unpaid(instance_id: str, actor: Actor, note: str | None = None) -> dict:
     """Mark one obligation explicitly confirmed unpaid. Missing evidence alone never means unpaid."""
     return phase2_finance.confirm_obligation_unpaid(
@@ -1074,7 +1115,7 @@ def bills_confirm_unpaid(instance_id: str, actor: Actor, note: str | None = None
     )
 
 
-@mcp.tool()
+@alex_tool()
 def work_schedule(start_date: str, end_date: str, actor: Actor) -> dict:
     """Read repeating roster and shift exceptions. OT is included only when its separate policy is configured."""
     try:
@@ -1089,13 +1130,13 @@ def work_schedule(start_date: str, end_date: str, actor: Actor) -> dict:
         raise
 
 
-@mcp.tool()
+@alex_tool()
 def work_day(on_date: str, actor: Actor) -> dict:
     """Read a natural historical/current work-day brief without inventing attendance."""
     return phase2_work.historical_work_day(on_date, actor.phone, actor.conversation_type)
 
 
-@mcp.tool()
+@alex_tool()
 def work_record_event(event_type: str, event_date: str, actor: Actor,
                       shift_code: str | None = None, start_time: str | None = None,
                       end_time: str | None = None, hours: float | None = None,
@@ -1111,19 +1152,19 @@ def work_record_event(event_type: str, event_date: str, actor: Actor,
     )
 
 
-@mcp.tool()
+@alex_tool()
 def work_ot_status(on_date: str, actor: Actor) -> dict:
     """Read explicit/default OT state; offered/pending are never treated as worked income."""
     return phase2_work.ot_status_for_date(on_date, actor.phone, actor.conversation_type)
 
 
-@mcp.tool()
+@alex_tool()
 def work_leave_balance(leave_id: str, actor: Actor, as_of_date: str | None = None) -> dict:
     """Read annual/medical leave from configured snapshot plus later TAKEN/recorded events."""
     return phase2_work.leave_balance(leave_id, actor.phone, actor.conversation_type, as_of_date)
 
 
-@mcp.tool()
+@alex_tool()
 def work_departure_plan(on_date: str, actor: Actor, travel_minutes: int | None = None,
                         prep_minutes: int = 30, arrival_buffer_minutes: int = 10) -> dict:
     """Calculate leave-home/alarm candidates from real roster plus supplied travel duration. Never invent route time or create an alarm."""
@@ -1133,7 +1174,7 @@ def work_departure_plan(on_date: str, actor: Actor, travel_minutes: int | None =
     )
 
 
-@mcp.tool()
+@alex_tool()
 def asset_create(name: str, actor: Actor, category: str | None = None,
                  brand: str | None = None, model: str | None = None,
                  serial_number: str | None = None, purchase_date: str | None = None,
@@ -1147,7 +1188,7 @@ def asset_create(name: str, actor: Actor, category: str | None = None,
     )
 
 
-@mcp.tool()
+@alex_tool()
 def asset_update(actor: Actor, asset_id: str | None = None,
                  asset_name: str | None = None, name: str | None = None,
                  category: str | None = None, brand: str | None = None,
@@ -1166,7 +1207,7 @@ def asset_update(actor: Actor, asset_id: str | None = None,
     )
 
 
-@mcp.tool()
+@alex_tool()
 def asset_link_document(document_type: str, actor: Actor,
                         asset_id: str | None = None,
                         asset_name: str | None = None,
@@ -1192,7 +1233,7 @@ def asset_link_document(document_type: str, actor: Actor,
     )
 
 
-@mcp.tool()
+@alex_tool()
 def asset_list(actor: Actor, include_documents: bool = False) -> dict:
     """List authorized household/private assets without leaking another person's private assets."""
     return {"assets": phase2_library.list_assets(
@@ -1200,7 +1241,7 @@ def asset_list(actor: Actor, include_documents: bool = False) -> dict:
     )}
 
 
-@mcp.tool()
+@alex_tool()
 def warranty_expiring(actor: Actor, within_days: int = 90,
                       as_of_date: str | None = None) -> dict:
     """Find warranties expiring in a deterministic window. Omitted as_of_date means today locally; a vague 'warranties I should know about' uses the next 90 days."""
@@ -1211,7 +1252,7 @@ def warranty_expiring(actor: Actor, within_days: int = 90,
     )}
 
 
-@mcp.tool()
+@alex_tool()
 def monitor_home_state(entity_id: str, target_state: str, actor: Actor,
                        shared: bool = False) -> dict:
     """Create a one-shot Home Assistant state monitor after an explicit request such as 'tell me when Hall AC turns on'. Resolve the exact entity first; this tool does not control the device."""
@@ -1255,7 +1296,7 @@ def monitor_home_state(entity_id: str, target_state: str, actor: Actor,
     }
 
 
-@mcp.tool()
+@alex_tool()
 def monitor_delegate(delegation_type: str, subject: str, actor: Actor,
                      shared: bool = False) -> dict:
     """Enable one proactive monitor only after an explicit user instruction. Quiet by default otherwise."""
@@ -1267,7 +1308,7 @@ def monitor_delegate(delegation_type: str, subject: str, actor: Actor,
     )
 
 
-@mcp.tool()
+@alex_tool()
 def monitor_list(actor: Actor, delegation_type: str | None = None) -> dict:
     """List active user-authorized proactive monitoring delegations."""
     return {"delegations": phase2_delegation.active_delegations(
@@ -1275,7 +1316,7 @@ def monitor_list(actor: Actor, delegation_type: str | None = None) -> dict:
     )}
 
 
-@mcp.tool()
+@alex_tool()
 def monitor_cancel(delegation_id: str, actor: Actor) -> dict:
     """Cancel one explicit monitoring delegation."""
     return phase2_delegation.close_delegation(
@@ -1283,7 +1324,7 @@ def monitor_cancel(delegation_id: str, actor: Actor) -> dict:
     )
 
 
-@mcp.tool()
+@alex_tool()
 def finance_report(actor: Actor, period: str | None = None,
                    scope: str = "all") -> dict:
     """Build the canonical monthly finance report from the full ledger. This is actual financial activity, not the household planning snapshot."""
@@ -1323,7 +1364,7 @@ def finance_report(actor: Actor, period: str | None = None,
     return result
 
 
-@mcp.tool()
+@alex_tool()
 def report_snapshot(actor: Actor, period: str | None = None,
                     include_raw_income: bool = False) -> dict:
     """Build the broader household/planning overview (goals, obligations, assets and leave). Use finance_report for actual monthly ledger activity."""
@@ -1340,7 +1381,7 @@ def report_snapshot(actor: Actor, period: str | None = None,
     return result
 
 
-@mcp.tool()
+@alex_tool()
 def report_export(format: str, actor: Actor, period: str | None = None,
                   include_raw_income: bool = False,
                   report_type: str | None = None) -> dict:
@@ -1505,7 +1546,7 @@ def report_export(format: str, actor: Actor, period: str | None = None,
     }
 
 
-@mcp.tool()
+@alex_tool()
 def report_payload(target: str, actor: Actor, period: str | None = None) -> dict:
     """Return a privacy-safe structured payload for a future Google Sheets or TV handoff; this tool never uploads externally."""
     target_name = (target or "").strip().lower()
@@ -1520,20 +1561,20 @@ def report_payload(target: str, actor: Actor, period: str | None = None) -> dict
     raise ValueError("target must be google_sheets or tv")
 
 
-@mcp.tool()
+@alex_tool()
 def calculate(expression: str) -> dict:
     """Perform exact local arithmetic instead of estimating in language."""
     return services.calculate(expression)
 
 
-@mcp.tool()
+@alex_tool()
 def set_money_bucket(name: str, amount: float, actor: Actor, currency: str = "MYR",
                      notes: str | None = None, shared: bool = False) -> dict:
     """Set a named allowance, allocation, stash or planning bucket to the exact amount the user supplied. Never invent or increase it without instruction."""
     return services.set_money_bucket(actor, name, amount, currency, notes, shared)
 
 
-@mcp.tool()
+@alex_tool()
 def list_money_buckets(actor: Actor) -> dict:
     """Read the user's current named allowances, allocations and stash amounts for planning."""
     return services.list_money_buckets(actor)
