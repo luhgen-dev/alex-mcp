@@ -121,7 +121,11 @@ def _queue(
 ) -> int:
     count = 0
     for cfg in _device_configs(user_id):
-        data: dict = {}
+        notification_id = str(uuid.uuid4())
+        data: dict = {
+            "confirmation": True,
+            "alex_notification_id": notification_id,
+        }
         if tag:
             data["tag"] = tag
         if actions:
@@ -140,7 +144,7 @@ def _queue(
                    title,message,data_json
                ) VALUES(?,?,?,?,?,?,?,?,?)""",
             (
-                str(uuid.uuid4()), unique, user_id, service, reminder_id, handoff_id,
+                notification_id, unique, user_id, service, reminder_id, handoff_id,
                 title[:160], str(message or "")[:1000],
                 json.dumps(data, ensure_ascii=False, separators=(",", ":")),
             ),
@@ -312,6 +316,32 @@ def _display_name(user_id: str) -> str:
     return "Your spouse"
 
 
+def _process_received_event(event: dict) -> dict:
+    """Record phone receipt separately from Home Assistant service acceptance."""
+    payload = event.get("event") or {}
+    data = payload.get("data") or {}
+    notification_id = str(data.get("alex_notification_id") or "").strip()
+    if not notification_id:
+        return {"status": "ignored_untracked_receipt"}
+    device_id = str(data.get("device_id") or "").strip()[:200] or None
+    conn = db.connect()
+    try:
+        cur = conn.execute(
+            """UPDATE ha_notification_outbox
+               SET received_at_utc=COALESCE(received_at_utc,?),
+                   received_device_id=COALESCE(received_device_id,?)
+               WHERE notification_id=?""",
+            (runtime_clock.utc_iso(), device_id, notification_id),
+        )
+        conn.commit()
+        return {
+            "status": "received" if cur.rowcount else "unknown_notification",
+            "notification_id": notification_id,
+        }
+    finally:
+        conn.close()
+
+
 def _process_action_event(event: dict) -> dict:
     payload = event.get("event") or {}
     data = payload.get("data") or {}
@@ -436,6 +466,11 @@ def _listen_once() -> None:
             "type": "subscribe_events",
             "event_type": "mobile_app_notification_action",
         }))
+        ws.send(json.dumps({
+            "id": 2,
+            "type": "subscribe_events",
+            "event_type": "mobile_app_notification_received",
+        }))
         while True:
             raw = ws.recv()
             if not raw:
@@ -443,9 +478,13 @@ def _listen_once() -> None:
             message = json.loads(raw)
             if message.get("type") == "event":
                 try:
-                    _process_action_event(message)
+                    event_type = str((message.get("event") or {}).get("event_type") or "")
+                    if event_type == "mobile_app_notification_action":
+                        _process_action_event(message)
+                    elif event_type == "mobile_app_notification_received":
+                        _process_received_event(message)
                 except Exception as exc:
-                    print(f"[Alex HA mobile] action error: {exc}", flush=True)
+                    print(f"[Alex HA mobile] event error: {exc}", flush=True)
     finally:
         try:
             ws.close()
