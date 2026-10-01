@@ -1862,6 +1862,264 @@ def request_reminder_handoff(actor: ActorContext, reminder_id: str,
         conn.close()
 
 
+def _claim_reminder_tx(
+    conn, actor: ActorContext, reminder_id: str, *,
+    source: str, provider_message_id: str | None = None,
+    reaction_text: str | None = None,
+) -> dict:
+    """Atomic first-claim core shared by WhatsApp reactions and HA actions."""
+    if "FAMILY_SHARED" not in actor.allowed_spaces:
+        raise PermissionError("reminder not accessible to this household user")
+    row = conn.execute(
+        """SELECT reminder_id,task_text,status,space_id,claimable,
+                  claimed_by_user_id,follow_up_after_hours
+           FROM reminders WHERE reminder_id=?""",
+        (reminder_id,),
+    ).fetchone()
+    if not row or row["space_id"] != "FAMILY_SHARED":
+        raise PermissionError("reminder not accessible from Family Shared")
+    if not int(row["claimable"] or 0):
+        return {"status": "not_claimable", "reminder_id": reminder_id}
+    if row["status"] in {"COMP", "CANC"}:
+        return {"status": "closed", "reminder_id": reminder_id}
+    if row["claimed_by_user_id"]:
+        winner = str(row["claimed_by_user_id"])
+        return {
+            "status": "already_claimed", "reminder_id": reminder_id,
+            "claimed_by_user_id": winner,
+            "claimed_by_name": _household_display_name(winner),
+            "claimed_by_me": winner == actor.user_id,
+        }
+
+    now = runtime_clock.now_utc()
+    follow_hours = max(1, int(row["follow_up_after_hours"] or 24))
+    next_delivery = (now + timedelta(hours=follow_hours)).isoformat()
+    updated = conn.execute(
+        """UPDATE reminders
+           SET claimed_by_user_id=?,claimed_at_utc=?,
+               claimant_follow_up_at_utc=NULL,family_resurfaced_at_utc=NULL,
+               next_delivery_at_utc=?
+           WHERE reminder_id=? AND claimed_by_user_id IS NULL
+             AND claimable=1 AND status NOT IN ('COMP','CANC')""",
+        (actor.user_id, now.isoformat(), next_delivery, reminder_id),
+    )
+    if updated.rowcount != 1:
+        winner = conn.execute(
+            "SELECT claimed_by_user_id FROM reminders WHERE reminder_id=?",
+            (reminder_id,),
+        ).fetchone()
+        winner_id = str(winner["claimed_by_user_id"]) if winner and winner["claimed_by_user_id"] else None
+        return {
+            "status": "already_claimed", "reminder_id": reminder_id,
+            "claimed_by_user_id": winner_id,
+            "claimed_by_name": _household_display_name(winner_id) if winner_id else None,
+            "claimed_by_me": winner_id == actor.user_id,
+        }
+    conn.execute(
+        """INSERT INTO reminder_claim_events(
+               claim_event_id,reminder_id,actor_user_id,event_type,
+               provider_message_id,reaction_text,note
+           ) VALUES(?,?,?,?,?,?,?)""",
+        (
+            str(uuid.uuid4()), reminder_id, actor.user_id, "CLAIMED",
+            provider_message_id, str(reaction_text or "")[:32],
+            f"{source}: first valid claim won atomically",
+        ),
+    )
+    return {
+        "status": "claimed", "reminder_id": reminder_id,
+        "task": row["task_text"], "claimed_by_user_id": actor.user_id,
+        "next_claimant_follow_up_at_utc": next_delivery,
+    }
+
+
+def claim_reminder(actor: ActorContext, reminder_id: str, source: str = "DIRECT") -> dict:
+    """Claim a Family Shared reminder through a trusted non-WhatsApp control surface."""
+    conn = connect()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        result = _claim_reminder_tx(
+            conn, actor, reminder_id, source=str(source or "DIRECT")
+        )
+        conn.commit()
+        return result
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def _accept_reminder_handoff_tx(
+    conn, actor: ActorContext, handoff_id: str, *,
+    source: str, provider_message_id: str | None = None,
+    reaction_text: str | None = None,
+) -> dict:
+    handoff = conn.execute(
+        "SELECT * FROM reminder_handoffs WHERE handoff_id=?",
+        (handoff_id,),
+    ).fetchone()
+    if not handoff or handoff["status"] != "PENDING":
+        return {"status": "handoff_not_pending"}
+    if handoff["to_user_id"] != actor.user_id:
+        raise PermissionError("this reminder handoff was not addressed to you")
+    reminder = conn.execute(
+        """SELECT reminder_id,task_text,status,claimed_by_user_id,follow_up_after_hours
+           FROM reminders WHERE reminder_id=?""",
+        (handoff["reminder_id"],),
+    ).fetchone()
+    if not reminder or reminder["status"] in {"COMP", "CANC"}:
+        conn.execute(
+            """UPDATE reminder_handoffs SET status='CANCELLED',cancelled_at_utc=?
+               WHERE handoff_id=? AND status='PENDING'""",
+            (utc_now(), handoff_id),
+        )
+        return {"status": "closed", "reminder_id": handoff["reminder_id"]}
+    if reminder["claimed_by_user_id"] != handoff["from_user_id"]:
+        return {
+            "status": "claimant_changed",
+            "reminder_id": handoff["reminder_id"],
+            "claimant_unchanged": True,
+        }
+
+    now = runtime_clock.now_utc()
+    next_delivery = (
+        now + timedelta(hours=max(1, int(reminder["follow_up_after_hours"] or 24)))
+    ).isoformat()
+    updated = conn.execute(
+        """UPDATE reminders
+           SET claimed_by_user_id=?,claimed_at_utc=?,
+               claimant_follow_up_at_utc=NULL,family_resurfaced_at_utc=NULL,
+               next_delivery_at_utc=?
+           WHERE reminder_id=? AND claimed_by_user_id=?
+             AND status NOT IN ('COMP','CANC')""",
+        (
+            actor.user_id, now.isoformat(), next_delivery,
+            reminder["reminder_id"], handoff["from_user_id"],
+        ),
+    )
+    if updated.rowcount != 1:
+        return {"status": "claimant_changed", "reminder_id": reminder["reminder_id"]}
+    conn.execute(
+        """UPDATE reminder_handoffs
+           SET status='ACCEPTED',accepted_at_utc=?
+           WHERE handoff_id=? AND status='PENDING'""",
+        (now.isoformat(), handoff_id),
+    )
+    conn.execute(
+        """INSERT INTO reminder_claim_events(
+               claim_event_id,reminder_id,actor_user_id,event_type,
+               provider_message_id,reaction_text,note
+           ) VALUES(?,?,?,?,?,?,?)""",
+        (
+            str(uuid.uuid4()), reminder["reminder_id"], actor.user_id, "CLAIMED",
+            provider_message_id, str(reaction_text or "")[:32],
+            f"{source}: handoff accepted from {handoff['from_user_id']}",
+        ),
+    )
+    from_phone = _active_user_phone(conn, handoff["from_user_id"])
+    if from_phone:
+        from_dm = from_phone.replace("+", "") + "@s.whatsapp.net"
+        name = _household_display_name(actor.user_id)
+        conn.execute(
+            """INSERT INTO outbound_messages(
+                   outbound_id,conversation_id,kind,text_body,context_kind,context_id
+               ) VALUES(?,?,'TEXT',?,'REMINDER_HANDOFF_ACCEPTED',?)""",
+            (
+                str(uuid.uuid4()), from_dm,
+                f"{name} has taken over: {reminder['task_text']}",
+                reminder["reminder_id"],
+            ),
+        )
+    try:
+        import ha_mobile
+        ha_mobile.queue_claim_confirmation(
+            conn, actor.user_id, reminder["reminder_id"], reminder["task_text"],
+            event_key=f"handoff-accepted:{handoff_id}",
+        )
+    except Exception:
+        pass
+    return {
+        "status": "handoff_accepted",
+        "reminder_id": reminder["reminder_id"],
+        "claimed_by_user_id": actor.user_id,
+        "from_user_id": handoff["from_user_id"],
+        "claimant_notified": bool(from_phone),
+    }
+
+
+def accept_reminder_handoff(
+    actor: ActorContext, handoff_id: str, source: str = "DIRECT"
+) -> dict:
+    conn = connect()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        result = _accept_reminder_handoff_tx(
+            conn, actor, handoff_id, source=str(source or "DIRECT")
+        )
+        conn.commit()
+        return result
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def decline_reminder_handoff(actor: ActorContext, handoff_id: str) -> dict:
+    """Decline a pending handoff without changing the current claimant."""
+    conn = connect()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        handoff = conn.execute(
+            "SELECT * FROM reminder_handoffs WHERE handoff_id=?",
+            (handoff_id,),
+        ).fetchone()
+        if not handoff or handoff["status"] != "PENDING":
+            conn.rollback()
+            return {"status": "handoff_not_pending"}
+        if handoff["to_user_id"] != actor.user_id:
+            conn.rollback()
+            raise PermissionError("this reminder handoff was not addressed to you")
+        reminder = conn.execute(
+            "SELECT reminder_id,task_text FROM reminders WHERE reminder_id=?",
+            (handoff["reminder_id"],),
+        ).fetchone()
+        now = utc_now()
+        conn.execute(
+            """UPDATE reminder_handoffs
+               SET status='CANCELLED',cancelled_at_utc=?
+               WHERE handoff_id=? AND status='PENDING'""",
+            (now, handoff_id),
+        )
+        from_phone = _active_user_phone(conn, handoff["from_user_id"])
+        if from_phone and reminder:
+            from_dm = from_phone.replace("+", "") + "@s.whatsapp.net"
+            name = _household_display_name(actor.user_id)
+            conn.execute(
+                """INSERT INTO outbound_messages(
+                       outbound_id,conversation_id,kind,text_body,context_kind,context_id
+                   ) VALUES(?,?,'TEXT',?,'REMINDER_HANDOFF_DECLINED',?)""",
+                (
+                    str(uuid.uuid4()), from_dm,
+                    f"{name} declined the handoff: {reminder['task_text']}",
+                    reminder["reminder_id"],
+                ),
+            )
+        conn.commit()
+        return {
+            "status": "handoff_declined",
+            "handoff_id": handoff_id,
+            "reminder_id": handoff["reminder_id"],
+            "claimant_unchanged": True,
+        }
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 def claim_reminder_from_reaction(
     actor: ActorContext, provider_message_id: str, reaction_text: str | None
 ) -> dict:
@@ -1885,11 +2143,6 @@ def claim_reminder_from_reaction(
             (actor.conversation_id, provider_message_id),
         ).fetchone()
         if not outbound:
-            # Baileys is asked to use a stable ALEX message id for every
-            # outbound. Some live reaction events refer to that deterministic
-            # key even when the provider-returned id was absent/different.
-            # Resolve only among delivered reminder messages in this exact
-            # conversation; never broaden by text or timing.
             candidates = conn.execute(
                 """SELECT outbound_id,context_kind,context_id,provider_message_id
                    FROM outbound_messages
@@ -1913,10 +2166,6 @@ def claim_reminder_from_reaction(
                     outbound = candidate
                     break
             if not outbound and actor.conversation_type != "GROUP":
-                # WhatsApp may surface an established DM as a LID rather than
-                # the phone JID used when Alex sent the handoff. Bind only a
-                # handoff addressed to this authenticated user and only by the
-                # exact deterministic/provider message id.
                 handoff_candidates = conn.execute(
                     """SELECT o.outbound_id,o.context_kind,o.context_id,o.provider_message_id
                        FROM outbound_messages o
@@ -1944,183 +2193,32 @@ def claim_reminder_from_reaction(
             if actor.conversation_type == "GROUP":
                 conn.rollback()
                 return {"status": "not_a_reminder_message"}
-            handoff = conn.execute(
-                """SELECT * FROM reminder_handoffs
-                   WHERE handoff_id=?""",
-                (outbound["context_id"],),
-            ).fetchone()
-            if not handoff or handoff["status"] != "PENDING":
-                conn.rollback()
-                return {"status": "handoff_not_pending"}
-            if handoff["to_user_id"] != actor.user_id:
-                conn.rollback()
-                raise PermissionError("this reminder handoff was not addressed to you")
-            reminder = conn.execute(
-                """SELECT reminder_id,task_text,status,claimed_by_user_id,follow_up_after_hours
-                   FROM reminders WHERE reminder_id=?""",
-                (handoff["reminder_id"],),
-            ).fetchone()
-            if not reminder or reminder["status"] in {"COMP", "CANC"}:
-                conn.execute(
-                    """UPDATE reminder_handoffs SET status='CANCELLED',cancelled_at_utc=?
-                       WHERE handoff_id=? AND status='PENDING'""",
-                    (utc_now(), handoff["handoff_id"]),
-                )
-                conn.commit()
-                return {"status": "closed", "reminder_id": handoff["reminder_id"]}
-            if reminder["claimed_by_user_id"] != handoff["from_user_id"]:
-                conn.rollback()
-                return {
-                    "status": "claimant_changed",
-                    "reminder_id": handoff["reminder_id"],
-                    "claimant_unchanged": True,
-                }
-
-            now = runtime_clock.now_utc()
-            next_delivery = (
-                now + timedelta(hours=max(1, int(reminder["follow_up_after_hours"] or 24)))
-            ).isoformat()
-            updated = conn.execute(
-                """UPDATE reminders
-                   SET claimed_by_user_id=?,claimed_at_utc=?,
-                       claimant_follow_up_at_utc=NULL,family_resurfaced_at_utc=NULL,
-                       next_delivery_at_utc=?
-                   WHERE reminder_id=? AND claimed_by_user_id=?
-                     AND status NOT IN ('COMP','CANC')""",
-                (
-                    actor.user_id, now.isoformat(), next_delivery,
-                    reminder["reminder_id"], handoff["from_user_id"],
-                ),
+            result = _accept_reminder_handoff_tx(
+                conn, actor, str(outbound["context_id"]),
+                source="WHATSAPP_REACTION",
+                provider_message_id=provider_message_id,
+                reaction_text=reaction,
             )
-            if updated.rowcount != 1:
-                conn.rollback()
-                return {"status": "claimant_changed", "reminder_id": reminder["reminder_id"]}
-            conn.execute(
-                """UPDATE reminder_handoffs
-                   SET status='ACCEPTED',accepted_at_utc=?
-                   WHERE handoff_id=? AND status='PENDING'""",
-                (now.isoformat(), handoff["handoff_id"]),
-            )
-            conn.execute(
-                """INSERT INTO reminder_claim_events(
-                       claim_event_id,reminder_id,actor_user_id,event_type,
-                       provider_message_id,reaction_text,note
-                   ) VALUES(?,?,?,?,?,?,?)""",
-                (
-                    str(uuid.uuid4()), reminder["reminder_id"], actor.user_id, "CLAIMED",
-                    provider_message_id, reaction[:32],
-                    f"handoff accepted from {handoff['from_user_id']}",
-                ),
-            )
-            from_phone = _active_user_phone(conn, handoff["from_user_id"])
-            accepter = conn.execute(
-                "SELECT display_name FROM users WHERE user_id=?",
-                (actor.user_id,),
-            ).fetchone()
-            if from_phone:
-                from_dm = from_phone.replace("+", "") + "@s.whatsapp.net"
-                name = _household_display_name(actor.user_id)
-                conn.execute(
-                    """INSERT INTO outbound_messages(
-                           outbound_id,conversation_id,kind,text_body,context_kind,context_id
-                       ) VALUES(?,?,'TEXT',?,'REMINDER_HANDOFF_ACCEPTED',?)""",
-                    (
-                        str(uuid.uuid4()), from_dm,
-                        f"{name} has taken over: {reminder['task_text']}",
-                        reminder["reminder_id"],
-                    ),
-                )
             conn.commit()
-            return {
-                "status": "handoff_accepted",
-                "reminder_id": reminder["reminder_id"],
-                "claimed_by_user_id": actor.user_id,
-                "from_user_id": handoff["from_user_id"],
-                "claimant_notified": bool(from_phone),
-            }
+            return result
 
         if actor.conversation_type != "GROUP":
             conn.rollback()
             return {"status": "ignored_direct_reminder_reaction"}
-        reminder_id = outbound["context_id"]
-        row = conn.execute(
-            """SELECT reminder_id,task_text,status,space_id,claimable,
-                      claimed_by_user_id,follow_up_after_hours
-               FROM reminders WHERE reminder_id=?""",
-            (reminder_id,),
-        ).fetchone()
-        if not row or row["space_id"] != "FAMILY_SHARED":
-            conn.rollback()
-            raise PermissionError("reminder not accessible from the family group")
-        if not int(row["claimable"] or 0):
-            conn.rollback()
-            return {"status": "not_claimable", "reminder_id": reminder_id}
-        if row["status"] in {"COMP", "CANC"}:
-            conn.rollback()
-            return {"status": "closed", "reminder_id": reminder_id}
-        if row["claimed_by_user_id"]:
-            display = conn.execute(
-                "SELECT display_name FROM users WHERE user_id=?",
-                (row["claimed_by_user_id"],),
-            ).fetchone()
-            conn.rollback()
-            return {
-                "status": "already_claimed", "reminder_id": reminder_id,
-                "claimed_by_user_id": row["claimed_by_user_id"],
-                "claimed_by_name": display["display_name"] if display else None,
-                "claimed_by_me": row["claimed_by_user_id"] == actor.user_id,
-            }
-        now = runtime_clock.now_utc()
-        follow_hours = max(1, int(row["follow_up_after_hours"] or 24))
-        next_delivery = (now + timedelta(hours=follow_hours)).isoformat()
-        updated = conn.execute(
-            """UPDATE reminders
-               SET claimed_by_user_id=?,claimed_at_utc=?,
-                   claimant_follow_up_at_utc=NULL,family_resurfaced_at_utc=NULL,
-                   next_delivery_at_utc=?
-               WHERE reminder_id=? AND claimed_by_user_id IS NULL
-                 AND claimable=1 AND status NOT IN ('COMP','CANC')""",
-            (actor.user_id, now.isoformat(), next_delivery, reminder_id),
-        )
-        if updated.rowcount != 1:
-            winner = conn.execute(
-                "SELECT claimed_by_user_id FROM reminders WHERE reminder_id=?",
-                (reminder_id,),
-            ).fetchone()
-            display = (
-                conn.execute(
-                    "SELECT display_name FROM users WHERE user_id=?",
-                    (winner["claimed_by_user_id"],),
-                ).fetchone()
-                if winner and winner["claimed_by_user_id"] else None
-            )
-            conn.rollback()
-            return {
-                "status": "already_claimed", "reminder_id": reminder_id,
-                "claimed_by_user_id": winner["claimed_by_user_id"] if winner else None,
-                "claimed_by_name": display["display_name"] if display else None,
-            }
-        conn.execute(
-            """INSERT INTO reminder_claim_events(
-                   claim_event_id,reminder_id,actor_user_id,event_type,
-                   provider_message_id,reaction_text,note
-               ) VALUES(?,?,?,?,?,?,?)""",
-            (
-                str(uuid.uuid4()), reminder_id, actor.user_id, "CLAIMED",
-                provider_message_id, reaction[:32], "first valid reaction won atomically",
-            ),
+        result = _claim_reminder_tx(
+            conn, actor, str(outbound["context_id"]),
+            source="WHATSAPP_REACTION",
+            provider_message_id=provider_message_id,
+            reaction_text=reaction,
         )
         conn.commit()
-        return {
-            "status": "claimed", "reminder_id": reminder_id,
-            "task": row["task_text"], "claimed_by_user_id": actor.user_id,
-            "next_claimant_follow_up_at_utc": next_delivery,
-        }
+        return result
     except Exception:
         conn.rollback()
         raise
     finally:
         conn.close()
+
 
 def release_reminder_claim(actor: ActorContext, reminder_id: str) -> dict:
     """Release a claim explicitly; deleting the reaction never releases it."""
