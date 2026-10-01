@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sqlite3
@@ -491,6 +492,28 @@ def resolve_quoted_context(conversation_id: str, quoted_message_id: str | None,
                ORDER BY delivered_at_utc DESC,created_at_utc DESC LIMIT 1""",
             (conversation_id, quoted_message_id),
         ).fetchone()
+        if not row:
+            # WhatsApp/Baileys can quote Alex's deterministic bridge ID rather
+            # than the provider_message_id stored after delivery. Use the same
+            # deterministic fallback as reaction binding.
+            candidates = conn.execute(
+                """SELECT outbound_id,source_message_id,text_body,context_kind,context_id,
+                          provider_message_id
+                   FROM outbound_messages
+                   WHERE conversation_id=? AND delivery_status='SENT'
+                   ORDER BY delivered_at_utc DESC,created_at_utc DESC LIMIT 100""",
+                (conversation_id,),
+            ).fetchall()
+            wanted = str(quoted_message_id or "")
+            for candidate in candidates:
+                expected = (
+                    "ALEX"
+                    + hashlib.sha256(str(candidate["outbound_id"]).encode("utf-8"))
+                    .hexdigest().upper()[:28]
+                )
+                if wanted and wanted in {str(candidate["provider_message_id"] or ""), expected}:
+                    row = candidate
+                    break
         if row:
             result = {
                 "quoted_alex_text": row["text_body"] or "",
@@ -530,11 +553,25 @@ def resolve_quoted_context(conversation_id: str, quoted_message_id: str | None,
                    WHERE message_id=? AND conversation_id=? AND sender_phone=? LIMIT 1""",
                 (quoted_message_id, conversation_id, normalize_phone(sender_phone)),
             ).fetchone()
-            if user_row and str(user_row["raw_text"] or "").strip():
-                return {
-                    "quoted_user_text": str(user_row["raw_text"]).strip()[:2000],
-                    "source_message_id": user_row["message_id"],
-                }
+            if user_row:
+                raw_text = str(user_row["raw_text"] or "").strip()
+                if raw_text:
+                    return {
+                        "quoted_user_text": raw_text[:2000],
+                        "source_message_id": user_row["message_id"],
+                    }
+                media_row = conn.execute(
+                    """SELECT media_id,media_type FROM media_objects
+                       WHERE source_message_id=? ORDER BY created_at_utc DESC LIMIT 1""",
+                    (user_row["message_id"],),
+                ).fetchone()
+                if media_row:
+                    return {
+                        "quoted_user_text": "",
+                        "source_message_id": user_row["message_id"],
+                        "quoted_media_id": media_row["media_id"],
+                        "quoted_media_type": media_row["media_type"],
+                    }
         return None
     finally:
         conn.close()
