@@ -41,6 +41,7 @@ import phase2_delegation
 import phase2_monitor
 import phase2_presence
 import phase2_reports
+import phase2_home
 import brain
 import mcp_server
 import runtime_clock
@@ -2788,8 +2789,8 @@ class AlexCoreTests(unittest.TestCase):
         media_id = media.save_media(
             "shared-receipt-v054", "IMAGE", "image/jpeg",
             base64.b64encode(b"mock receipt").decode(),
-            ocr_text="SENHENG TAX INVOICE PHILIPS BLENDER",
         )
+        media._update_text(media_id, "ocr_text", "SENHENG TAX INVOICE PHILIPS BLENDER")
         dm = with_action_key(
             replace(
                 self.actor("shared-receipt-v054", "+60111111111", [media_id]),
@@ -2816,8 +2817,8 @@ class AlexCoreTests(unittest.TestCase):
         media_id = media.save_media(
             "generic-media-v054", "IMAGE", "image/jpeg",
             base64.b64encode(b"generic image").decode(),
-            ocr_text="ordinary picture no invoice",
         )
+        media._update_text(media_id, "ocr_text", "ordinary picture no document")
         actor = with_action_key(
             replace(
                 self.actor("generic-media-v054", "+60111111111", [media_id]),
