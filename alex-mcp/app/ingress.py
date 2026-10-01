@@ -18,6 +18,7 @@ import brain
 import db
 import media
 import services
+import phase2_reports
 import scope_policy
 import diagnostics
 from config import DATA_DIR
