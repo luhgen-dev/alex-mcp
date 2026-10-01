@@ -45,6 +45,7 @@ options:
   account_aliases: []
   reminder_preferences: []
   presence_mappings: []
+  ha_notify_devices: []
 schema:
   ai_provider: "list(auto|grok|gemini|openai)"
   grok_model: str
@@ -165,4 +166,9 @@ schema:
       person_entity: "str?"
       phone_tracker_entity: "str?"
       home_zone: str
+      active: bool
+  ha_notify_devices:
+    - id: str
+      owner: "list(husband|wife)"
+      notify_service: str
       active: bool
