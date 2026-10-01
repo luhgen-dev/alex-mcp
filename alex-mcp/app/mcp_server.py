@@ -1326,8 +1326,13 @@ def monitor_cancel(delegation_id: str, actor: Actor) -> dict:
 
 @alex_tool()
 def finance_report(actor: Actor, period: str | None = None,
-                   scope: str = "all") -> dict:
-    """Build the canonical monthly finance report from the full ledger. This is actual financial activity, not the household planning snapshot."""
+                   scope: str = "all", category: str | None = None,
+                   search: str | None = None) -> dict:
+    """Build a monthly finance report from actual ledger activity.
+
+    category/search are optional explicit filters. Omit both for the full
+    monthly report. Privacy scope is bounded by the trusted current command.
+    """
     import calendar
     import runtime_clock
 
@@ -1341,6 +1346,7 @@ def finance_report(actor: Actor, period: str | None = None,
     end_date = f"{year:04d}-{month:02d}-{last_day:02d}"
     ledger = services.query_finances(
         actor, start_date=start_date, end_date=end_date,
+        category=category, search=search,
         scope=scope, include_all_records=True,
     )
     try:
@@ -1358,6 +1364,7 @@ def finance_report(actor: Actor, period: str | None = None,
         period=effective_period,
         spec={
             "period": effective_period, "scope": scope,
+            "category": category, "search": search,
             "source_message_id": actor.source_message_id,
         },
     )
@@ -1384,11 +1391,17 @@ def report_snapshot(actor: Actor, period: str | None = None,
 @alex_tool()
 def report_export(format: str, actor: Actor, period: str | None = None,
                   include_raw_income: bool = False,
-                  report_type: str | None = None) -> dict:
+                  report_type: str | None = None,
+                  category: str | None = None,
+                  search: str | None = None,
+                  scope: str | None = None,
+                  full_report: bool = False) -> dict:
     """Export PDF/CSV/JSON from the active canonical report.
 
     report_type may be finance or snapshot when the user explicitly names the
-    report. Supplying a period never discards a matching active report context.
+    report. category/search/scope express explicit finance filters. Explicit
+    filters override active context; full_report clears active finance filters.
+    Supplying only a period preserves a matching active report context.
     """
     import calendar
     import json
@@ -1445,6 +1458,22 @@ def report_export(format: str, actor: Actor, period: str | None = None,
 
     effective_period = period or active_period
     spec = (active.get("spec") or {}) if active and report_kind == active_kind else {}
+    explicit_filter = any(value is not None for value in (category, search, scope))
+    if full_report:
+        spec = {
+            "period": effective_period,
+            "scope": scope or "all",
+        }
+        report_kind = "monthly_finance"
+    elif explicit_filter:
+        report_kind = "finance_query"
+        spec = {
+            **spec,
+            "period": effective_period,
+            "scope": scope if scope is not None else spec.get("scope"),
+            "category": category if category is not None else spec.get("category"),
+            "search": search if search is not None else spec.get("search"),
+        }
     if report_kind == "monthly_finance":
         spec = {
             **spec,
@@ -1467,6 +1496,7 @@ def report_export(format: str, actor: Actor, period: str | None = None,
             end_date = f"{year:04d}-{month:02d}-{calendar.monthrange(year, month)[1]:02d}"
             ledger = services.query_finances(
                 actor, start_date=start_date, end_date=end_date,
+                category=spec.get("category"), search=spec.get("search"),
                 scope=scope, include_all_records=True,
             )
         else:
