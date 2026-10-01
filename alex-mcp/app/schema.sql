@@ -552,7 +552,32 @@ CREATE TABLE IF NOT EXISTS outbound_messages (
     FOREIGN KEY(source_message_id) REFERENCES inbound_messages(message_id)
 );
 
+
 CREATE INDEX IF NOT EXISTS idx_outbound_pending ON outbound_messages(delivery_status, created_at_utc);
+
+CREATE TABLE IF NOT EXISTS ha_notification_outbox (
+    notification_id TEXT PRIMARY KEY,
+    event_key TEXT NOT NULL UNIQUE,
+    user_id TEXT NOT NULL,
+    notify_service TEXT NOT NULL,
+    reminder_id TEXT,
+    handoff_id TEXT,
+    title TEXT,
+    message TEXT NOT NULL,
+    data_json TEXT,
+    delivery_status TEXT NOT NULL CHECK(delivery_status IN ('PENDING','SENT','FAILED')) DEFAULT 'PENDING',
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    next_attempt_at_utc TEXT,
+    created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    delivered_at_utc TEXT,
+    FOREIGN KEY(user_id) REFERENCES users(user_id),
+    FOREIGN KEY(reminder_id) REFERENCES reminders(reminder_id),
+    FOREIGN KEY(handoff_id) REFERENCES reminder_handoffs(handoff_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ha_notification_pending
+ON ha_notification_outbox(delivery_status,next_attempt_at_utc,created_at_utc);
 
 CREATE TABLE IF NOT EXISTS tool_execution_claims (
     action_key TEXT PRIMARY KEY,
