@@ -21,6 +21,7 @@ RUN apk add --no-cache \
       tesseract-ocr-data-msa \
       tesseract-ocr-data-tam \
       poppler-utils \
+      font-dejavu \
       whisper.cpp
 
 WORKDIR /app
