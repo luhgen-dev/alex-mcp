@@ -45,6 +45,37 @@ def _request(method: str, path: str, payload: dict | None = None):
     return response.json()
 
 
+def notify_mobile(service_name: str, message: str, title: str | None = None,
+                  data: dict | None = None) -> dict:
+    """Send one Home Assistant Companion notification through a configured notify service."""
+    service = str(service_name or "").strip()
+    if service.startswith("notify."):
+        service = service.split(".", 1)[1]
+    if not re.fullmatch(r"[a-z0-9_]+", service):
+        raise ValueError("notify_service must be a Home Assistant notify service name")
+    payload = {"message": str(message or "")}
+    if title:
+        payload["title"] = str(title)
+    if data:
+        payload["data"] = dict(data)
+    result = _request("POST", f"/services/notify/{service}", payload)
+    return {"status": "sent_to_home_assistant", "service": service, "result": result}
+
+
+def websocket_url() -> str:
+    override = os.environ.get("ALEX_HA_WS_URL", "").strip()
+    if override:
+        return override
+    base = BASE_URL
+    if base.endswith("/api"):
+        base = base[:-4]
+    if base.startswith("https://"):
+        base = "wss://" + base[len("https://"):]
+    elif base.startswith("http://"):
+        base = "ws://" + base[len("http://"):]
+    return base.rstrip("/") + "/websocket"
+
+
 def list_states() -> list[dict]:
     """Return normalized HA snapshots for deterministic local summarizers."""
     rows = _request("GET", "/states") or []
