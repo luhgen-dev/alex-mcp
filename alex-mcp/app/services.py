@@ -2219,7 +2219,7 @@ def claim_reminder_from_reaction(
                FROM outbound_messages
                WHERE conversation_id=? AND provider_message_id=?
                  AND context_kind IN (
-                     'REMINDER_INITIAL','REMINDER_FOLLOWUP',
+                     'REMINDER_SETUP','REMINDER_INITIAL','REMINDER_FOLLOWUP',
                      'REMINDER_CLAIMANT_FOLLOWUP','REMINDER_FAMILY_RESURFACE',
                      'REMINDER_HANDOFF'
                  )
@@ -2232,7 +2232,7 @@ def claim_reminder_from_reaction(
                    FROM outbound_messages
                    WHERE conversation_id=? AND delivery_status='SENT'
                      AND context_kind IN (
-                         'REMINDER_INITIAL','REMINDER_FOLLOWUP',
+                         'REMINDER_SETUP','REMINDER_INITIAL','REMINDER_FOLLOWUP',
                          'REMINDER_CLAIMANT_FOLLOWUP','REMINDER_FAMILY_RESURFACE',
                          'REMINDER_HANDOFF'
                      )
@@ -2286,17 +2286,75 @@ def claim_reminder_from_reaction(
             conn.commit()
             return result
 
-        if actor.conversation_type != "GROUP":
+        reminder_id = str(outbound["context_id"])
+        context_kind = str(outbound["context_kind"] or "")
+        if context_kind == "REMINDER_SETUP":
+            if actor.conversation_type != "GROUP":
+                conn.rollback()
+                return {"status": "ignored_direct_reminder_reaction"}
+            reminder = conn.execute(
+                """SELECT due_at_utc,status FROM reminders WHERE reminder_id=?""",
+                (reminder_id,),
+            ).fetchone()
+            if not reminder:
+                conn.rollback()
+                return {"status": "not_a_reminder_message"}
+            due = datetime.fromisoformat(str(reminder["due_at_utc"]).replace("Z", "+00:00"))
+            if due.tzinfo is None:
+                due = due.replace(tzinfo=timezone.utc)
+            if runtime_clock.now_utc() >= due:
+                conn.rollback()
+                return {"status": "too_late_to_claim", "reminder_id": reminder_id}
+            result = _claim_reminder_tx(
+                conn, actor, reminder_id,
+                source="WHATSAPP_REACTION",
+                provider_message_id=provider_message_id,
+                reaction_text=reaction,
+            )
+            conn.commit()
+            return result
+
+        # The reminder has already fired. Under the current household contract,
+        # a reaction now means acknowledgement/handled, never a new claim.
+        reminder = conn.execute(
+            """SELECT reminder_id,status,task_text,owner_id,claimed_by_user_id
+               FROM reminders WHERE reminder_id=?""",
+            (reminder_id,),
+        ).fetchone()
+        if not reminder:
             conn.rollback()
-            return {"status": "ignored_direct_reminder_reaction"}
-        result = _claim_reminder_tx(
-            conn, actor, str(outbound["context_id"]),
-            source="WHATSAPP_REACTION",
-            provider_message_id=provider_message_id,
-            reaction_text=reaction,
+            return {"status": "not_a_reminder_message"}
+        if reminder["status"] in {"COMP", "CANC"}:
+            conn.rollback()
+            return {"status": "closed", "reminder_id": reminder_id}
+        if reminder["status"] == "ACK":
+            conn.rollback()
+            return {"status": "already_acknowledged", "reminder_id": reminder_id}
+        previous_state = reminder["status"]
+        acknowledged = utc_now()
+        conn.execute(
+            """UPDATE reminders SET status='ACK',acknowledged_at_utc=?,
+               next_delivery_at_utc=NULL,defer_reason=NULL WHERE reminder_id=?""",
+            (acknowledged, reminder_id),
         )
+        _record_reminder_event(
+            conn, reminder_id, "ACKNOWLEDGED", previous_state, "ACK",
+            note="WhatsApp reaction after reminder delivery",
+        )
+        try:
+            import ha_mobile
+            notify_user = str(reminder["claimed_by_user_id"] or reminder["owner_id"])
+            ha_mobile.queue_state(
+                conn, notify_user, reminder_id, reminder["task_text"], "ACK",
+                event_key=f"wa-ack:{provider_message_id}",
+            )
+        except Exception:
+            pass
         conn.commit()
-        return result
+        return {
+            "status": "acknowledged", "reminder_id": reminder_id,
+            "state": "ACK", "task": reminder["task_text"],
+        }
     except Exception:
         conn.rollback()
         raise
