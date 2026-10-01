@@ -634,12 +634,6 @@ def find_receipts(actor: ActorContext, query: str | None = None, amount: float |
                               )
                               AND NOT EXISTS (
                                   SELECT 1 FROM saved_items s WHERE s.media_id=m.media_id
-                              )
-                              AND (
-                                  LOWER(COALESCE(i.raw_text,'')) LIKE '%receipt%'
-                                  OR LOWER(COALESCE(i.raw_text,'')) LIKE '%invoice%'
-                                  OR LOWER(COALESCE(i.raw_text,'')) LIKE '%payment%'
-                                  OR LOWER(COALESCE(i.raw_text,'')) LIKE '%transfer%'
                               )"""
             orphan_params: list = [actor.phone]
             if start_date:
@@ -1003,6 +997,7 @@ _SAVED_GENERIC_WORDS = {
     "pictures", "picture", "photos", "photo", "images", "image", "pics", "pic",
     "documents", "document", "docs", "doc", "files", "file", "notes", "note",
     "privately", "private", "memory", "memories", "later", "about",
+    "is", "are", "was", "were",
 }
 _SAVED_KIND_ALIASES = {
     "picture": "IMAGE", "pictures": "IMAGE", "photo": "IMAGE", "image": "IMAGE", "images": "IMAGE",
