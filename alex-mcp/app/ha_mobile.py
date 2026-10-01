@@ -68,6 +68,23 @@ def _device_configs(user_id: str) -> list[dict]:
     return out
 
 
+def configured_device_summary() -> dict:
+    """Observed HA Companion configuration only; no delivery claim."""
+    devices = []
+    for user_id in ("USR_HUSBAND", "USR_WIFE"):
+        for cfg in _device_configs(user_id):
+            devices.append({
+                "user_id": user_id,
+                "id": cfg["id"],
+                "notify_service": cfg["notify_service"],
+            })
+    return {
+        "enabled": bool(devices),
+        "count": len(devices),
+        "devices": devices,
+    }
+
+
 def _sign(action: str, target_kind: str, target_id: str, user_id: str) -> str:
     body = "|".join((action, target_kind, target_id, user_id))
     return hmac.new(_secret(), body.encode("utf-8"), hashlib.sha256).hexdigest()[:16]
@@ -502,8 +519,19 @@ def _listener_loop() -> None:
 
 
 def run_forever() -> None:
-    threading.Thread(target=_listener_loop, daemon=True).start()
-    print("[Alex HA mobile] actionable reminder bridge ready", flush=True)
+    summary = configured_device_summary()
+    if summary["enabled"]:
+        threading.Thread(target=_listener_loop, daemon=True).start()
+        services = ", ".join(x["notify_service"] for x in summary["devices"])
+        print(
+            f"[Alex HA mobile] actionable reminders enabled for {summary['count']} device(s): {services}",
+            flush=True,
+        )
+    else:
+        print(
+            "[Alex HA mobile] actionable reminders disabled — 0 Companion notify devices configured",
+            flush=True,
+        )
     while True:
         try:
             sweep()
