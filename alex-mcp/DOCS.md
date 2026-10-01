@@ -59,13 +59,28 @@ Changing Auto ↔ Grok ↔ Gemini ↔ OpenAI is an app setting. The MCP tools an
 
 ## Voice notes
 
-Voice notes are transcribed before the conversational model sees the request. With `stt_provider=auto`, Alex uses **local multilingual Whisper first**. This uses no AI API tokens and is the preferred path for Tamil/English/Tanglish voice notes.
+As of **0.5.6**, voice notes are a safe deferred-review inbox, not a trusted command interface.
 
-Short commands are guarded against auto-language drift. Alex can compare automatic, English and Tamil local decodes. A voice command that appears to mutate household state is accepted from local STT only when independent local decoding passes substantially agree; otherwise Alex asks you to resend/type rather than risking the wrong action.
+When Alex receives a voice note it:
 
-With `stt_provider=auto`, cloud STT rescue is attempted only when **`cloud_stt_rescue_enabled=true`** and local decoding is still not trustworthy. Enabling it means the complete voice-note audio may be sent to a configured STT-capable provider (Gemini first, then OpenAI/xAI as configured). Leave it off to keep Auto voice transcription entirely local. Alex records the chosen ASR path and confidence metadata locally for diagnostics without exposing transcript text in health reports.
+- preserves the original audio and WhatsApp provenance locally;
+- acknowledges the message without executing finance/reminder/diary/task/home actions from speech;
+- creates a private pending item for the authenticated sender;
+- keeps the item visibly unresolved with the managed ⏳/pin lifecycle;
+- asks the user to type the intended instruction when convenient.
 
-The default local model is `base`. It downloads automatically on the first voice note, is verified against the published whisper.cpp checksum, and is then kept under persistent `/data/models`. A corrupt or unexpected cached model is rejected and re-downloaded. First use can therefore take longer than later voice notes. You can select `small` in Configuration later if you want to trade more storage/RAM for harder multilingual transcription.
+You can later swipe-reply to the original voice note or Alex's pending acknowledgement and type the clarification. Alex binds that typed instruction to the saved voice item, processes the typed request normally, marks the pending item resolved, and clears the managed unresolved markers. The original audio remains retrievable for provenance.
+
+You can also ask naturally:
+
+- "Show me my unresolved voice notes."
+- "What voice notes are still pending?"
+- "List my recent voice notes."
+- "Send me the original voice note again."
+
+Typed language remains fully model-assisted: English, Malay, Tamil, Tanglish/transliteration and natural mixtures are still accepted. Alex continues to reply in English unless another output language is explicitly requested.
+
+Legacy STT configuration fields remain accepted for upgrade compatibility, but normal 0.5.6 voice-note command execution does not depend on transcription and does not upload the audio to an AI provider.
 
 Alex replies in text only.
 

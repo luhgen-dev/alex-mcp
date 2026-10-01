@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sqlite3
@@ -491,6 +492,28 @@ def resolve_quoted_context(conversation_id: str, quoted_message_id: str | None,
                ORDER BY delivered_at_utc DESC,created_at_utc DESC LIMIT 1""",
             (conversation_id, quoted_message_id),
         ).fetchone()
+        if not row:
+            # WhatsApp/Baileys can quote Alex's deterministic bridge ID rather
+            # than the provider_message_id stored after delivery. Use the same
+            # deterministic fallback as reaction binding.
+            candidates = conn.execute(
+                """SELECT outbound_id,source_message_id,text_body,context_kind,context_id,
+                          provider_message_id
+                   FROM outbound_messages
+                   WHERE conversation_id=? AND delivery_status='SENT'
+                   ORDER BY delivered_at_utc DESC,created_at_utc DESC LIMIT 100""",
+                (conversation_id,),
+            ).fetchall()
+            wanted = str(quoted_message_id or "")
+            for candidate in candidates:
+                expected = (
+                    "ALEX"
+                    + hashlib.sha256(str(candidate["outbound_id"]).encode("utf-8"))
+                    .hexdigest().upper()[:28]
+                )
+                if wanted and wanted in {str(candidate["provider_message_id"] or ""), expected}:
+                    row = candidate
+                    break
         if row:
             result = {
                 "quoted_alex_text": row["text_body"] or "",
@@ -500,6 +523,13 @@ def resolve_quoted_context(conversation_id: str, quoted_message_id: str | None,
                 "context_kind": row["context_kind"],
                 "context_id": row["context_id"],
             }
+            if row["context_kind"] == "REPORT" and row["context_id"]:
+                try:
+                    report_context = json.loads(row["context_id"])
+                except (TypeError, json.JSONDecodeError):
+                    report_context = None
+                if isinstance(report_context, dict):
+                    result["report_context"] = report_context
             if row["source_message_id"]:
                 events = conn.execute(
                     """SELECT event_id,status,event_type,amount_minor,currency,description,category
@@ -530,11 +560,25 @@ def resolve_quoted_context(conversation_id: str, quoted_message_id: str | None,
                    WHERE message_id=? AND conversation_id=? AND sender_phone=? LIMIT 1""",
                 (quoted_message_id, conversation_id, normalize_phone(sender_phone)),
             ).fetchone()
-            if user_row and str(user_row["raw_text"] or "").strip():
-                return {
-                    "quoted_user_text": str(user_row["raw_text"]).strip()[:2000],
-                    "source_message_id": user_row["message_id"],
-                }
+            if user_row:
+                raw_text = str(user_row["raw_text"] or "").strip()
+                if raw_text:
+                    return {
+                        "quoted_user_text": raw_text[:2000],
+                        "source_message_id": user_row["message_id"],
+                    }
+                media_row = conn.execute(
+                    """SELECT media_id,media_type FROM media_objects
+                       WHERE source_message_id=? ORDER BY created_at_utc DESC LIMIT 1""",
+                    (user_row["message_id"],),
+                ).fetchone()
+                if media_row:
+                    return {
+                        "quoted_user_text": "",
+                        "source_message_id": user_row["message_id"],
+                        "quoted_media_id": media_row["media_id"],
+                        "quoted_media_type": media_row["media_type"],
+                    }
         return None
     finally:
         conn.close()
@@ -589,6 +633,105 @@ def resolve_recent_instruction_context(conversation_id: str, sender_phone: str,
             "source_message_id": row["message_id"],
             "pairing": "same_sender_recent_instruction",
         }
+    finally:
+        conn.close()
+
+
+def create_pending_item(actor: ActorContext, kind: str, media_id: str | None = None,
+                        note: str | None = None) -> dict:
+    item_kind = str(kind or "OTHER").strip().upper()[:40]
+    conn = connect()
+    try:
+        existing = conn.execute(
+            """SELECT * FROM pending_items WHERE source_message_id=? AND kind=? LIMIT 1""",
+            (actor.source_message_id, item_kind),
+        ).fetchone()
+        if existing:
+            return dict(existing)
+        item_id = str(uuid.uuid4())
+        conn.execute(
+            """INSERT INTO pending_items(
+                   item_id,kind,owner_id,conversation_id,source_message_id,media_id,note
+               ) VALUES(?,?,?,?,?,?,?)""",
+            (
+                item_id, item_kind, actor.user_id, actor.conversation_id,
+                actor.source_message_id, media_id, note,
+            ),
+        )
+        conn.commit()
+        row = conn.execute("SELECT * FROM pending_items WHERE item_id=?", (item_id,)).fetchone()
+        return dict(row)
+    finally:
+        conn.close()
+
+
+def pending_item_for_reference(actor: ActorContext, quoted_context: dict | None) -> dict | None:
+    if not quoted_context:
+        return None
+    item_id = None
+    if quoted_context.get("context_kind") == "PENDING_ITEM":
+        item_id = str(quoted_context.get("context_id") or "") or None
+    source_message_id = str(quoted_context.get("source_message_id") or "") or None
+    media_id = str(quoted_context.get("quoted_media_id") or "") or None
+    conn = connect()
+    try:
+        clauses = ["owner_id=?", "status='PENDING'"]
+        args: list = [actor.user_id]
+        if item_id:
+            clauses.append("item_id=?")
+            args.append(item_id)
+        elif media_id:
+            clauses.append("media_id=?")
+            args.append(media_id)
+        elif source_message_id:
+            clauses.append("source_message_id=?")
+            args.append(source_message_id)
+        else:
+            return None
+        row = conn.execute(
+            "SELECT * FROM pending_items WHERE " + " AND ".join(clauses)
+            + " ORDER BY created_at_utc DESC LIMIT 1",
+            args,
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def resolve_pending_item(item_id: str, owner_id: str, resolution_message_id: str) -> bool:
+    conn = connect()
+    try:
+        cur = conn.execute(
+            """UPDATE pending_items SET status='RESOLVED',resolved_at_utc=?,resolution_message_id=?
+               WHERE item_id=? AND owner_id=? AND status='PENDING'""",
+            (utc_now(), resolution_message_id, item_id, owner_id),
+        )
+        conn.commit()
+        return cur.rowcount == 1
+    finally:
+        conn.close()
+
+
+def list_pending_items(actor: ActorContext, kind: str | None = None, limit: int = 20) -> list[dict]:
+    if actor.conversation_type == "GROUP":
+        raise PermissionError("Pending personal items are available only in the owner's DM")
+    conn = connect()
+    try:
+        where = ["p.owner_id=?", "p.status='PENDING'"]
+        args: list = [actor.user_id]
+        if kind:
+            where.append("p.kind=?")
+            args.append(str(kind).strip().upper())
+        rows = conn.execute(
+            """SELECT p.item_id,p.kind,p.source_message_id,p.media_id,p.created_at_utc,
+                      m.media_type,m.mime_type
+               FROM pending_items p
+               LEFT JOIN media_objects m ON m.media_id=p.media_id
+               WHERE """ + " AND ".join(where)
+            + " ORDER BY p.created_at_utc DESC LIMIT ?",
+            args + [max(1, min(100, int(limit)))],
+        ).fetchall()
+        return [dict(row) for row in rows]
     finally:
         conn.close()
 

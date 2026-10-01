@@ -16,6 +16,8 @@ from pathlib import Path
 
 import compat_tools as tools
 from config import DATA_DIR
+import scope_policy
+from context import current_actor
 
 ROLE_MAP = {
     "husband": ("USR_HUSBAND", "HUSBAND_PVT"),
@@ -522,7 +524,10 @@ def authorized_records(sender_phone, conversation_type, kind=None,
     try:
         user_id, private_space = tools.resolve_user_and_space(
             conn, sender_phone, conversation_type)
-        scope = str(requested_scope or "all").lower()
+        try:
+            scope = scope_policy.effective_read_scope(current_actor(), requested_scope)
+        except RuntimeError:
+            scope = str(requested_scope or "all").lower()
         clauses = ["valid_to_utc IS NULL"]
         args = []
         if kind:
@@ -573,7 +578,10 @@ def authorized_records_as_of(sender_phone, conversation_type, at_utc,
     try:
         user_id, private_space = tools.resolve_user_and_space(
             conn, sender_phone, conversation_type)
-        scope = str(requested_scope or "all").lower()
+        try:
+            scope = scope_policy.effective_read_scope(current_actor(), requested_scope)
+        except RuntimeError:
+            scope = str(requested_scope or "all").lower()
         clauses = [
             "datetime(valid_from_utc) <= datetime(?)",
             "(valid_to_utc IS NULL OR datetime(valid_to_utc) > datetime(?))",

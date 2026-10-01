@@ -10,6 +10,8 @@ import re
 from datetime import date, timedelta
 
 import compat_tools as tools
+import scope_policy
+from context import current_actor
 
 
 SCHEMA = """
@@ -273,7 +275,10 @@ def list_assets(sender_phone, conversation_type="DIRECT_DM",
     try:
         user_id, private_space, shared = _ctx(
             conn, sender_phone, conversation_type)
-        scope = str(requested_scope or "all").lower()
+        try:
+            scope = scope_policy.effective_read_scope(current_actor(), requested_scope)
+        except RuntimeError:
+            scope = str(requested_scope or "all").lower()
         if conversation_type == "GROUP":
             if scope == "private":
                 raise PermissionError("Private assets cannot be shown in the family group")

@@ -128,9 +128,74 @@ def _control(row, kind: str, emoji: str | None = None) -> bool:
     return ok
 
 
+def _control_outbound(row, kind: str) -> bool:
+    """Pin/unpin a message Alex itself sent, using its provider or deterministic ID."""
+    target = str(row["provider_message_id"] or "") or _whatsapp_message_id(row["outbound_id"])
+    if not target:
+        return False
+    payload = {
+        "to": row["conversation_id"],
+        "kind": kind,
+        "target_message_id": target,
+    }
+    ok, _detail = _send(payload)
+    return ok
+
+
+def _reconcile_pending_item_markers(conn) -> None:
+    rows = conn.execute(
+        """SELECT o.*,p.status AS pending_status
+           FROM outbound_messages o
+           JOIN pending_items p ON p.item_id=o.context_id
+           WHERE o.context_kind='PENDING_ITEM'
+             AND (
+                p.status='PENDING'
+                OR (
+                    p.status IN ('RESOLVED','CANCELLED')
+                    AND (
+                        (o.job_reacted_at_utc IS NOT NULL AND o.job_reaction_cleared_at_utc IS NULL)
+                        OR (o.job_pinned_at_utc IS NOT NULL AND o.job_unpinned_at_utc IS NULL)
+                    )
+                )
+             )"""
+    ).fetchall()
+    for row in rows:
+        if row["pending_status"] == "PENDING":
+            _ensure_unresolved_markers(conn, row)
+        else:
+            _cleanup_resolved_markers(conn, row)
+
+
+def _reconcile_reminder_pins(conn) -> None:
+    """Keep only unresolved, unclaimed fired Family reminders pinned."""
+    rows = conn.execute(
+        """SELECT o.*,r.status AS reminder_status,r.claimable,r.claimed_by_user_id
+           FROM outbound_messages o
+           JOIN reminders r ON r.reminder_id=o.context_id
+           WHERE o.context_kind='REMINDER_INITIAL'
+             AND o.delivery_status='SENT'
+             AND o.job_pinned_at_utc IS NOT NULL
+             AND o.job_unpinned_at_utc IS NULL"""
+    ).fetchall()
+    for row in rows:
+        unresolved = (
+            str(row["conversation_id"]).endswith("@g.us")
+            and int(row["claimable"] or 0) == 1
+            and not row["claimed_by_user_id"]
+            and row["reminder_status"] == "DUE"
+        )
+        if not unresolved and _control_outbound(row, "unpin"):
+            conn.execute(
+                "UPDATE outbound_messages SET job_unpinned_at_utc=? WHERE outbound_id=?",
+                (_now(), row["outbound_id"]),
+            )
+            conn.commit()
+
+
 def _ensure_unresolved_markers(conn, row) -> None:
-    """A deferred document job is visibly unresolved until provider delivery."""
-    if row["kind"] != "DOCUMENT" or not row["source_message_id"]:
+    """Mark a managed unresolved source message with ⏳ + pin."""
+    managed = row["kind"] == "DOCUMENT" or row["context_kind"] == "PENDING_ITEM"
+    if not managed or not row["source_message_id"]:
         return
     now = _now()
     if not row["job_reacted_at_utc"]:
@@ -151,8 +216,9 @@ def _ensure_unresolved_markers(conn, row) -> None:
 
 
 def _cleanup_resolved_markers(conn, row) -> None:
-    """Remove managed ⏳/pin only after the document row is confirmed SENT."""
-    if row["kind"] != "DOCUMENT" or not row["source_message_id"]:
+    """Remove managed ⏳/pin only when the managed item is truly resolved."""
+    managed = row["kind"] == "DOCUMENT" or row["context_kind"] == "PENDING_ITEM"
+    if not managed or not row["source_message_id"]:
         return
     now = _now()
     if row["job_reacted_at_utc"] and not row["job_reaction_cleared_at_utc"]:
@@ -262,6 +328,10 @@ def sweep():
                     conn.commit()
                     continue
 
+            if row["context_kind"] == "PENDING_ITEM":
+                _ensure_unresolved_markers(conn, row)
+                row = _joined_row(conn, row["outbound_id"])
+
             try:
                 payload = _payload(row)
                 ok, detail = _send(payload)
@@ -317,6 +387,30 @@ def sweep():
                 refreshed = _joined_row(conn, row["outbound_id"])
                 if refreshed and refreshed["kind"] == "DOCUMENT":
                     _cleanup_resolved_markers(conn, refreshed)
+                if (
+                    refreshed
+                    and refreshed["context_kind"] == "REMINDER_INITIAL"
+                    and str(refreshed["conversation_id"]).endswith("@g.us")
+                    and refreshed["context_id"]
+                ):
+                    reminder = conn.execute(
+                        """SELECT status,claimable,claimed_by_user_id FROM reminders
+                           WHERE reminder_id=?""",
+                        (refreshed["context_id"],),
+                    ).fetchone()
+                    if (
+                        reminder
+                        and reminder["status"] == "DUE"
+                        and int(reminder["claimable"] or 0) == 1
+                        and not reminder["claimed_by_user_id"]
+                        and not refreshed["job_pinned_at_utc"]
+                        and _control_outbound(refreshed, "pin")
+                    ):
+                        conn.execute(
+                            "UPDATE outbound_messages SET job_pinned_at_utc=? WHERE outbound_id=?",
+                            (_now(), refreshed["outbound_id"]),
+                        )
+                        conn.commit()
 
             elif permanent_error:
                 conn.execute(
@@ -348,6 +442,9 @@ def sweep():
                     _queue_document_notice(
                         conn, _joined_row(conn, row["outbound_id"]), permanent=False
                     )
+
+        _reconcile_pending_item_markers(conn)
+        _reconcile_reminder_pins(conn)
 
         # Restart reconciliation is exactly that: restart recovery. Normal
         # document attempts already apply/clean their own markers above. Running

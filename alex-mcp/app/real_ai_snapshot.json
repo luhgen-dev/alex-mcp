@@ -1,10 +1,10 @@
 {
   "snapshot_version": 3,
-  "corpus_fingerprint": "fe8d2f261f134a66573cc02aa08af9f9d161ad1652bbcf56d422a46a5d1b74c7",
+  "corpus_fingerprint": "7c14c73b2bd66da4349e96e7bed49b750a04b4f96356d18024c9f61ce4f101de",
   "reviewer": "GPT-5.6 Sol",
-  "review_date": "2026-10-01",
-  "method": "v0.5.5 compatibility recertification over the same 381 prompt identities after targeted routing/tool-description repairs. Existing frozen decisions are retained provisionally and rescored against the exact current exposed-tool packets; CI must reject any selected tool that is no longer exposed or any decision that no longer satisfies its private behaviour contract. This is an engineering compatibility delta, not a fresh independent-model pass; the final repair head still requires external audit before release.",
-  "decision_count": 381,
+  "review_date": "2026-10-02",
+  "method": "v0.5.6 live-regression recertification. The prior 381 packet decisions are retained from the existing frozen snapshot. GPT-5.6 Sol independently reviewed the three newly-added public deferred-voice-inbox packets using only their prompt, visible history and exposed tool descriptions; all three select list_pending_items. The updated fingerprint binds this snapshot to the exact 384-packet corpus.",
+  "decision_count": 384,
   "v055_compatibility_review": {
     "parent_corpus_fingerprint": "efd2a14c796bb4bf1aabe38b9d121de12a2727f73bf0135b1ef6e5ddddca8838",
     "current_corpus_fingerprint": "fe8d2f261f134a66573cc02aa08af9f9d161ad1652bbcf56d422a46a5d1b74c7",
@@ -22,7 +22,7 @@
   },
   "delta_review": {
     "changed_existing": 7,
-    "newly_added": 0,
+    "newly_added": 3,
     "reviewed_packet_ids": [
       "hai-408e5ad6eb090d9eb4",
       "hai-6da98a13773c69bc4b",
@@ -30,7 +30,10 @@
       "hai-8c4625f124552f9d95",
       "hai-bec55f4593a861adda",
       "hai-e66a2dac349618a775",
-      "hai-f972e359daeebb5802"
+      "hai-f972e359daeebb5802",
+      "hai-d196cfb9c08df22c35",
+      "hai-939ce142fb3f6ce4e9",
+      "hai-7ac664ae61c874046e"
     ]
   },
   "decisions_by_packet_id": {
@@ -3137,6 +3140,45 @@
       ],
       "reply_language": "en",
       "provenance": "delta_engineering_review"
+    },
+    "hai-d196cfb9c08df22c35": {
+      "decision": "tools",
+      "tools": [
+        "list_pending_items"
+      ],
+      "reply_language": "en",
+      "provenance": "delta_engineering_review"
+    },
+    "hai-939ce142fb3f6ce4e9": {
+      "decision": "tools",
+      "tools": [
+        "list_pending_items"
+      ],
+      "reply_language": "en",
+      "provenance": "delta_engineering_review"
+    },
+    "hai-7ac664ae61c874046e": {
+      "decision": "tools",
+      "tools": [
+        "list_pending_items"
+      ],
+      "reply_language": "en",
+      "provenance": "delta_engineering_review"
     }
+  },
+  "v056_live_regression_review": {
+    "parent_corpus_fingerprint": "fe8d2f261f134a66573cc02aa08af9f9d161ad1652bbcf56d422a46a5d1b74c7",
+    "current_corpus_fingerprint": "7c14c73b2bd66da4349e96e7bed49b750a04b4f96356d18024c9f61ce4f101de",
+    "prior_decision_count": 381,
+    "current_decision_count": 384,
+    "newly_reviewed_packet_ids": [
+      "hai-d196cfb9c08df22c35",
+      "hai-939ce142fb3f6ce4e9",
+      "hai-7ac664ae61c874046e"
+    ],
+    "newly_reviewed_decision": "list_pending_items",
+    "reviewer": "GPT-5.6 Sol",
+    "fresh_full_independent_pass": false,
+    "fresh_delta_model_review": true
   }
 }

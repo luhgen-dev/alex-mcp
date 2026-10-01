@@ -18,6 +18,8 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 import profile_config
 import compat_tools as tools
+import scope_policy
+from context import current_actor
 
 
 SCHEMA = """
@@ -413,7 +415,12 @@ def _space_for(conn, sender_phone, conversation_type, visibility):
 
 def _authorized_space_clause(conn, sender_phone, conversation_type, requested_scope="all"):
     user_id, private_space, shared = _context(conn, sender_phone, conversation_type)
-    scope = str(requested_scope or "all").lower()
+    try:
+        scope = scope_policy.effective_read_scope(current_actor(), requested_scope)
+    except RuntimeError:
+        # Direct backend tests/admin calls have no authenticated MCP actor and
+        # retain the explicit legacy scope argument.
+        scope = str(requested_scope or "all").lower()
     if conversation_type == "GROUP":
         if scope == "private":
             raise PermissionError("Private Phase-2 data cannot be shown in the family group")
@@ -535,7 +542,10 @@ def _get_authorized_goal(conn, goal_id, sender_phone, conversation_type):
 
 
 def _normalized_ref(value):
-    return " ".join(re.findall(r"[a-z0-9]+", str(value or "").casefold()))
+    words = re.findall(r"[a-z0-9]+", str(value or "").casefold())
+    while words and words[0] in {"my", "our", "the"}:
+        words.pop(0)
+    return " ".join(words)
 
 
 def resolve_goal_reference(goal_id, goal_name, sender_phone,

@@ -18,6 +18,7 @@ import brain
 import db
 import media
 import services
+import phase2_reports
 import scope_policy
 import diagnostics
 from config import DATA_DIR
@@ -283,12 +284,16 @@ def _received_at_utc(payload: dict) -> str:
 def build_turn(payload: dict, media_lines: list[str]) -> dict:
     """Normalize one inbound WhatsApp message into a single Turn shape.
 
-    trusted_text  = typed text and/or the user's own voice transcript
+    trusted_text  = typed text only
     document_lines = OCR/PDF text (untrusted content, never user intent)
+
+    Voice transcripts are deliberately non-authoritative in v0.5.6. Original
+    audio is saved to the pending-review inbox and only later typed text may
+    become executable intent.
     """
     typed = str(payload.get("text") or "").strip()
-    transcript, document_lines = media.split_voice_transcript(media_lines)
-    trusted_text = "\n".join(x for x in (typed, transcript) if x).strip()
+    _transcript, document_lines = media.split_voice_transcript(media_lines)
+    trusted_text = typed
     has_audio = bool(payload.get("audio_data"))
     has_image = bool(payload.get("image_data"))
     has_pdf = bool(payload.get("pdf_data"))
@@ -304,6 +309,7 @@ def build_turn(payload: dict, media_lines: list[str]) -> dict:
         source = "text"
     return {
         "trusted_text": trusted_text,
+        "read_scope": scope_policy.resolve_read_scope(trusted_text),
         "document_lines": document_lines,
         "source": source,
         "has_document_media": has_image or has_pdf,
@@ -333,7 +339,7 @@ def _private_group_handoff_requested(text: str) -> bool:
         low,
     ))
     explicit_private = scope_policy.explicit_private(text)
-    emoji_private_write = scope_policy.contains_emoji(text) and writeish
+    emoji_private = scope_policy.contains_emoji(text)
     # Do not infer that ordinary Family Shared finance/receipt reads are
     # private merely because they concern the authenticated sender. The group
     # actor is already structurally restricted to FAMILY_SHARED. Automatic DM
@@ -346,8 +352,7 @@ def _private_group_handoff_requested(text: str) -> bool:
         low,
     ))
     return (
-        (explicit_private and (readish or writeish))
-        or emoji_private_write
+        ((explicit_private or emoji_private) and (readish or writeish))
         or sensitive_read
     )
 
@@ -456,6 +461,40 @@ def _selection_context_for_offer(actor, reply: str, attachments: list[dict]) -> 
     return services.latest_single_selection_context(
         actor, created_after_utc=actor.received_at_utc
     )
+
+
+def _report_context_for_turn(actor) -> str | None:
+    """Snapshot the report spec produced by this exact inbound turn for replies."""
+    active = phase2_reports.load_active_report(actor.user_id, actor.conversation_id)
+    if not active:
+        return None
+    spec = dict(active.get("spec") or {})
+    if str(spec.get("source_message_id") or "") != str(actor.source_message_id or ""):
+        return None
+    payload = {
+        "kind": active.get("kind"),
+        "period": active.get("period"),
+        "spec": spec,
+    }
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))[:4000]
+
+
+def _created_claimable_reminder_id(actor) -> str | None:
+    """Bind a group reminder setup reply to the reminder created by this turn."""
+    if actor.conversation_type != "GROUP":
+        return None
+    conn = db.connect()
+    try:
+        rows = conn.execute(
+            """SELECT reminder_id FROM reminders
+               WHERE source_message_id=? AND conversation_id=?
+                 AND claimable=1 AND status='OPEN'
+               ORDER BY created_at_utc DESC LIMIT 2""",
+            (actor.source_message_id, actor.conversation_id),
+        ).fetchall()
+        return str(rows[0]["reminder_id"]) if len(rows) == 1 else None
+    finally:
+        conn.close()
 
 
 def _selection_context_parts(context: dict | None) -> tuple[str, str] | None:
@@ -622,10 +661,51 @@ def process(payload: dict) -> dict:
             source=turn["source"],
             trusted_text=turn["trusted_text"],
             received_at_utc=turn["received_at_utc"],
+            read_scope=turn["read_scope"],
+            private_handoff=(
+                actor.conversation_type == "GROUP"
+                and turn["read_scope"] == "private"
+            ),
         )
+        if payload.get("audio_data"):
+            audio_id = next(
+                (
+                    mid for mid in media_ids
+                    if (media.get_media(mid) or {}).get("media_type") == "AUDIO"
+                ),
+                None,
+            )
+            pending = db.create_pending_item(
+                actor, "VOICE", audio_id,
+                note="Original WhatsApp voice note saved for typed clarification.",
+            )
+            reply = (
+                "I’ve saved this voice note for review. I don’t reliably act on "
+                "voice messages, so please type what you want me to do when you "
+                "have time. I’ll keep this pending until then."
+            )
+            db.queue_outbound(
+                actor.conversation_id, "TEXT", text=reply,
+                source_message_id=actor.source_message_id,
+                context_kind="PENDING_ITEM",
+                context_id=pending["item_id"],
+            )
+            db.finish_inbound(actor.source_message_id, reply)
+            return {"ok": True, "voice_pending": True, "pending_item_id": pending["item_id"]}
+
         quoted_context = db.resolve_quoted_context(
             actor.conversation_id, payload.get("quoted_message_id"), actor.phone
         )
+        pending_item = db.pending_item_for_reference(actor, quoted_context)
+        if pending_item:
+            quoted_context = dict(quoted_context or {})
+            quoted_context["pending_item"] = {
+                "item_id": pending_item["item_id"],
+                "kind": pending_item["kind"],
+                "media_id": pending_item["media_id"],
+                "source_message_id": pending_item["source_message_id"],
+            }
+
         # Orphan-attachment pairing applies ONLY to a genuinely captionless
         # image/PDF. Voice notes are the user's own words and must never
         # inherit an earlier, unrelated text instruction (v0.4.3 vinyl leak).
@@ -692,7 +772,6 @@ def process(payload: dict) -> dict:
             actor.conversation_type == "GROUP"
             and (
                 _private_group_handoff_requested(turn["trusted_text"])
-                or _private_group_match_available(actor, turn["trusted_text"])
             )
         ):
             dm_conversation = _dm_conversation_for_actor(actor)
@@ -705,6 +784,8 @@ def process(payload: dict) -> dict:
                 source=turn["source"],
                 trusted_text=turn["trusted_text"],
                 received_at_utc=turn["received_at_utc"],
+                read_scope=turn["read_scope"],
+                private_handoff=False,
             )
             private_reply, private_attachments = asyncio.run(
                 brain.respond(
@@ -749,6 +830,10 @@ def process(payload: dict) -> dict:
                 actor.conversation_id, "TEXT", text=group_reply,
                 source_message_id=actor.source_message_id,
             )
+            if pending_item and turn["trusted_text"].strip():
+                db.resolve_pending_item(
+                    pending_item["item_id"], actor.user_id, actor.source_message_id
+                )
             db.finish_inbound(actor.source_message_id, group_reply)
             return {"ok": True, "private_handoff": True}
 
@@ -762,15 +847,26 @@ def process(payload: dict) -> dict:
         selection_context = _selection_context_for_offer(
             actor, reply, attachments
         )
+        reminder_setup_id = _created_claimable_reminder_id(actor)
+        report_context = _report_context_for_turn(actor)
         if not attachments:
+            context_kind = (
+                "SELECTION" if selection_context
+                else "REMINDER_SETUP" if reminder_setup_id
+                else "REPORT" if report_context
+                else None
+            )
+            context_id = (
+                f"{selection_context['kind']}:{selection_context['id']}"
+                if selection_context
+                else reminder_setup_id if reminder_setup_id
+                else report_context
+            )
             db.queue_outbound(
                 actor.conversation_id, "TEXT", text=reply,
                 source_message_id=actor.source_message_id,
-                context_kind="SELECTION" if selection_context else None,
-                context_id=(
-                    f"{selection_context['kind']}:{selection_context['id']}"
-                    if selection_context else None
-                ),
+                context_kind=context_kind,
+                context_id=context_id,
             )
         sent_paths: set[str] = set()
         first_attachment = True
@@ -788,6 +884,10 @@ def process(payload: dict) -> dict:
                     source_message_id=actor.source_message_id,
                 )
                 first_attachment = False
+        if pending_item and turn["trusted_text"].strip():
+            db.resolve_pending_item(
+                pending_item["item_id"], actor.user_id, actor.source_message_id
+            )
         db.finish_inbound(actor.source_message_id, reply)
         return {"ok": True}
     except media.VoiceTranscriptionUncertain as exc:

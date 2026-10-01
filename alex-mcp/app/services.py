@@ -23,19 +23,10 @@ from db import connect, utc_now
 
 
 def _spaces_sql(actor: ActorContext, scope: str | None = None) -> tuple[str, list[str]]:
-    resolved = str(scope or "all").strip().casefold()
-    if resolved in {"", "all", "visible", "accessible"}:
-        spaces = list(actor.allowed_spaces)
-    elif resolved in {"family", "shared", "family_shared"}:
-        if "FAMILY_SHARED" not in actor.allowed_spaces:
-            raise PermissionError("family finance/list scope is not accessible in this conversation")
-        spaces = ["FAMILY_SHARED"]
-    elif resolved in {"private", "personal", "my"}:
-        if actor.conversation_type == "GROUP" or actor.private_space not in actor.allowed_spaces:
-            raise PermissionError("private scope is not accessible in the Family Shared group")
-        spaces = [actor.private_space]
-    else:
-        raise ValueError("scope must be all, family, or private")
+    # The current trusted command fixes the maximum read boundary once in
+    # ingress. Tool/model scope arguments may narrow an explicit all-spaces
+    # request, but may never widen the actor's normalized policy.
+    spaces = scope_policy.read_spaces(actor, scope)
     marks = ",".join("?" for _ in spaces)
     return marks, spaces
 
@@ -157,6 +148,49 @@ def _user_stated_time(text: str | None) -> bool:
     never authorize a model-invented clock value.
     """
     return bool(_EXACT_TIME_STATED_RE.search(text or ""))
+
+
+_RELATIVE_REMINDER_TIME_RE = re.compile(
+    r"(?i)\b(?:in|after)\s+\d+\s*(?:minutes?|mins?|hours?|hrs?)\b"
+)
+_WEEKDAY_NAMES = {
+    "mon": 0, "monday": 0, "tue": 1, "tues": 1, "tuesday": 1,
+    "wed": 2, "wednesday": 2, "thu": 3, "thur": 3, "thurs": 3, "thursday": 3,
+    "fri": 4, "friday": 4, "sat": 5, "saturday": 5, "sun": 6, "sunday": 6,
+}
+_WEEKDAY_RE = re.compile(
+    r"(?i)\b(mon(?:day)?|tue(?:s|sday)?|wed(?:nesday)?|thu(?:r|rs|rsday)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?)\b"
+)
+
+
+def _stated_weekday(text: str | None) -> int | None:
+    values = {
+        _WEEKDAY_NAMES[m.group(1).casefold()]
+        for m in _WEEKDAY_RE.finditer(str(text or ""))
+        if m.group(1).casefold() in _WEEKDAY_NAMES
+    }
+    return next(iter(values)) if len(values) == 1 else None
+
+
+def _validate_reminder_time_intent(actor: ActorContext, due_utc: str) -> None:
+    trusted = str(getattr(actor, "trusted_text", "") or "")
+    if trusted and not (_user_stated_time(trusted) or _RELATIVE_REMINDER_TIME_RE.search(trusted)):
+        raise ValueError(
+            "REMINDER_NEEDS_TIME: ask the user for an exact time before creating the reminder"
+        )
+    wanted = _stated_weekday(trusted)
+    if wanted is None:
+        return
+    due = datetime.fromisoformat(str(due_utc).replace("Z", "+00:00"))
+    if due.tzinfo is None:
+        due = due.replace(tzinfo=timezone.utc)
+    local = due.astimezone(ZoneInfo(actor.timezone))
+    if local.weekday() != wanted:
+        requested = [name.title() for name, idx in _WEEKDAY_NAMES.items() if idx == wanted and len(name) > 3][0]
+        raise ValueError(
+            f"DATE_WEEKDAY_MISMATCH: user requested {requested}, but "
+            f"{local.date().isoformat()} is {local.strftime('%A')}; resolve the correct date before saving"
+        )
 
 
 def _combine_local_date_with_received_clock(event_day, received: str, tz_name: str) -> str:
@@ -1392,6 +1426,7 @@ def create_reminder(actor: ActorContext, task: str, due_local: str,
     if not actor.action_key:
         raise RuntimeError("missing deterministic action key")
     due_utc = _parse_event_time(due_local, actor.timezone)
+    _validate_reminder_time_intent(actor, due_utc)
     delivery_class = (delivery_class or "routine").strip().lower()
     if delivery_class not in {"routine", "time_critical"}:
         raise ValueError("delivery_class must be routine or time_critical")
@@ -2184,7 +2219,7 @@ def claim_reminder_from_reaction(
                FROM outbound_messages
                WHERE conversation_id=? AND provider_message_id=?
                  AND context_kind IN (
-                     'REMINDER_INITIAL','REMINDER_FOLLOWUP',
+                     'REMINDER_SETUP','REMINDER_INITIAL','REMINDER_FOLLOWUP',
                      'REMINDER_CLAIMANT_FOLLOWUP','REMINDER_FAMILY_RESURFACE',
                      'REMINDER_HANDOFF'
                  )
@@ -2197,7 +2232,7 @@ def claim_reminder_from_reaction(
                    FROM outbound_messages
                    WHERE conversation_id=? AND delivery_status='SENT'
                      AND context_kind IN (
-                         'REMINDER_INITIAL','REMINDER_FOLLOWUP',
+                         'REMINDER_SETUP','REMINDER_INITIAL','REMINDER_FOLLOWUP',
                          'REMINDER_CLAIMANT_FOLLOWUP','REMINDER_FAMILY_RESURFACE',
                          'REMINDER_HANDOFF'
                      )
@@ -2251,17 +2286,120 @@ def claim_reminder_from_reaction(
             conn.commit()
             return result
 
+        reminder_id = str(outbound["context_id"])
+        context_kind = str(outbound["context_kind"] or "")
+        if context_kind == "REMINDER_SETUP":
+            if actor.conversation_type != "GROUP":
+                conn.rollback()
+                return {"status": "ignored_direct_reminder_reaction"}
+            reminder = conn.execute(
+                """SELECT due_at_utc,status FROM reminders WHERE reminder_id=?""",
+                (reminder_id,),
+            ).fetchone()
+            if not reminder:
+                conn.rollback()
+                return {"status": "not_a_reminder_message"}
+            due = datetime.fromisoformat(str(reminder["due_at_utc"]).replace("Z", "+00:00"))
+            if due.tzinfo is None:
+                due = due.replace(tzinfo=timezone.utc)
+            if runtime_clock.now_utc() >= due:
+                conn.rollback()
+                return {"status": "too_late_to_claim", "reminder_id": reminder_id}
+            result = _claim_reminder_tx(
+                conn, actor, reminder_id,
+                source="WHATSAPP_REACTION",
+                provider_message_id=provider_message_id,
+                reaction_text=reaction,
+            )
+            if result.get("status") == "claimed":
+                # A pre-due claim changes ownership/routing, not the due time.
+                # Clear the old post-due follow-up timestamp so the original
+                # due alert still fires on time to the claimant's DM.
+                conn.execute(
+                    """UPDATE reminders SET next_delivery_at_utc=NULL
+                       WHERE reminder_id=?""",
+                    (reminder_id,),
+                )
+                result["next_claimant_follow_up_at_utc"] = None
+            conn.commit()
+            return result
+
+        # Compatibility for any already-bound early reminder card: if it is
+        # still OPEN it is necessarily pre-due from the state machine's point
+        # of view, so a Family Shared reaction may claim it. Normal scheduler
+        # delivery sets DUE before REMINDER_INITIAL is sent, so live post-due
+        # reactions still fall through to ACK below.
+        early = conn.execute(
+            """SELECT status FROM reminders WHERE reminder_id=?""",
+            (reminder_id,),
+        ).fetchone()
+        if (
+            actor.conversation_type == "GROUP"
+            and early
+            and early["status"] == "OPEN"
+        ):
+            result = _claim_reminder_tx(
+                conn, actor, reminder_id,
+                source="WHATSAPP_REACTION",
+                provider_message_id=provider_message_id,
+                reaction_text=reaction,
+            )
+            if result.get("status") == "claimed":
+                conn.execute(
+                    "UPDATE reminders SET next_delivery_at_utc=NULL WHERE reminder_id=?",
+                    (reminder_id,),
+                )
+                result["next_claimant_follow_up_at_utc"] = None
+            conn.commit()
+            return result
+
+        # Direct-message reminder reactions keep the existing explicit-text
+        # semantics. The claim/ack reaction contract applies to Family Shared.
         if actor.conversation_type != "GROUP":
             conn.rollback()
             return {"status": "ignored_direct_reminder_reaction"}
-        result = _claim_reminder_tx(
-            conn, actor, str(outbound["context_id"]),
-            source="WHATSAPP_REACTION",
-            provider_message_id=provider_message_id,
-            reaction_text=reaction,
+
+        # The reminder has already fired. Under the current household contract,
+        # a group reaction now means acknowledgement/handled, never a new claim.
+        reminder = conn.execute(
+            """SELECT reminder_id,status,task_text,owner_id,claimed_by_user_id
+               FROM reminders WHERE reminder_id=?""",
+            (reminder_id,),
+        ).fetchone()
+        if not reminder:
+            conn.rollback()
+            return {"status": "not_a_reminder_message"}
+        if reminder["status"] in {"COMP", "CANC"}:
+            conn.rollback()
+            return {"status": "closed", "reminder_id": reminder_id}
+        if reminder["status"] == "ACK":
+            conn.rollback()
+            return {"status": "already_acknowledged", "reminder_id": reminder_id}
+        previous_state = reminder["status"]
+        acknowledged = utc_now()
+        conn.execute(
+            """UPDATE reminders SET status='ACK',acknowledged_at_utc=?,
+               next_delivery_at_utc=NULL,defer_reason=NULL WHERE reminder_id=?""",
+            (acknowledged, reminder_id),
         )
+        _record_reminder_event(
+            conn, reminder_id, "ACKNOWLEDGED", previous_state, "ACK",
+            note="WhatsApp reaction after reminder delivery",
+        )
+        try:
+            import ha_mobile
+            notify_user = str(reminder["claimed_by_user_id"] or reminder["owner_id"])
+            ha_mobile.queue_state(
+                conn, notify_user, reminder_id, reminder["task_text"], "ACK",
+                event_key=f"wa-ack:{provider_message_id}",
+            )
+        except Exception:
+            pass
         conn.commit()
-        return result
+        return {
+            "status": "acknowledged", "reminder_id": reminder_id,
+            "state": "ACK", "task": reminder["task_text"],
+        }
     except Exception:
         conn.rollback()
         raise

@@ -21,6 +21,7 @@ CAPABILITY_TO_TOOLS: dict[str, frozenset[str]] = {
     "receipt.get": frozenset({"get_receipt"}),
     "media.find": frozenset({"find_media"}),
     "media.get": frozenset({"get_media_original"}),
+    "media.pending": frozenset({"list_pending_items"}),
 
     # Saved memory / selection
     "memory.save": frozenset({"save_item"}),

@@ -116,6 +116,27 @@ CREATE TABLE IF NOT EXISTS media_objects (
 
 CREATE INDEX IF NOT EXISTS idx_media_sha ON media_objects(sha256);
 
+CREATE TABLE IF NOT EXISTS pending_items (
+    item_id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    owner_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    source_message_id TEXT NOT NULL,
+    media_id TEXT,
+    status TEXT NOT NULL CHECK(status IN ('PENDING','RESOLVED','CANCELLED')) DEFAULT 'PENDING',
+    note TEXT,
+    created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    resolved_at_utc TEXT,
+    resolution_message_id TEXT,
+    FOREIGN KEY(owner_id) REFERENCES users(user_id),
+    FOREIGN KEY(source_message_id) REFERENCES inbound_messages(message_id),
+    FOREIGN KEY(media_id) REFERENCES media_objects(media_id)
+);
+CREATE INDEX IF NOT EXISTS idx_pending_items_owner_status
+ON pending_items(owner_id,status,created_at_utc);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pending_items_source_kind
+ON pending_items(source_message_id,kind);
+
 CREATE TABLE IF NOT EXISTS event_media_links (
     event_id TEXT NOT NULL,
     media_id TEXT NOT NULL,

@@ -130,6 +130,26 @@ def classify_write_intent(text, *, has_media=False):
     if not raw:
         return {"status": "no_write", "intents": []}
 
+    # Read questions that mention a date and money must not be mistaken for a
+    # new diary/reminder/expense write before the AI sees them. Keep explicit
+    # write verbs authoritative so requests such as "Can you remind me..." are
+    # still allowed through the mutation classifier.
+    interrogative = bool(
+        re.match(r"^(?:what|how|which|when|did|do|show|list)\b", low)
+        or raw.endswith("?")
+    )
+    explicit_write_verb = bool(re.search(
+        r"\b(?:remind|schedule|set|add|log|record|save|remember|create|"
+        r"cancel|delete|remove|update|change|correct|mark)\b",
+        low,
+    ))
+    if interrogative and not explicit_write_verb:
+        return {
+            "status": "no_write", "intents": [],
+            "requires_clarification": False,
+            "basis": "INTERROGATIVE_READ",
+        }
+
     explicit = []
     if re.search(r"\b(?:remind\s+(?:me|us|my\s+wife|my\s+husband|priya)|"
                  r"set\s+(?:a\s+)?reminder|add\s+(?:a\s+)?reminder)\b", low):

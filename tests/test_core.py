@@ -34,6 +34,8 @@ import services
 import ha
 import ha_mobile
 import phase2
+import phase2_intent
+import scope_policy
 import diagnostics
 import ingress
 import profile_config
@@ -53,6 +55,7 @@ import outbox
 from context import use_actor, with_action_key
 from config import Settings
 from mcp import Client
+from mcp.server.mcpserver.exceptions import ToolError
 from mcp_server import mcp
 
 
@@ -87,7 +90,7 @@ class AlexCoreTests(unittest.TestCase):
                 "leave_records", "work_roster", "cashflow_baselines",
                 "event_media_links", "financial_event_corrections", "financial_events",
                 "saved_items", "shopping_items", "reminders", "savings_goals", "money_buckets",
-                "leave_state", "media_objects", "inbound_messages",
+                "leave_state", "pending_items", "media_objects", "inbound_messages",
             ):
                 conn.execute(f"DELETE FROM {table}")
             conn.commit()
@@ -2060,7 +2063,7 @@ class AlexCoreTests(unittest.TestCase):
         )
         self.assertEqual(mine["conversation_id"], "60111111111@s.whatsapp.net")
 
-        self.claim("group-dest", "+60111111111", "put reminder in group")
+        self.claim("group-dest", "+60111111111", "put reminder in group at 6pm")
         dm_actor = with_action_key(
             self.actor("group-dest", "+60111111111"), "group-dest-action"
         )
@@ -2249,11 +2252,11 @@ class AlexCoreTests(unittest.TestCase):
         with open(os.path.join(TEST_DIR, "family_group.json"), "w", encoding="utf-8") as handle:
             handle.write('{"group_jid":"%s"}' % group_id)
 
-        self.claim("handoff-create", "+60111111111", "put reminder in group")
+        self.claim("handoff-create", "+60111111111", "put reminder in group at 6pm")
         creator = with_action_key(
             replace(
                 self.actor("handoff-create", "+60111111111"),
-                trusted_text="put reminder in group",
+                trusted_text="put reminder in group at 6pm",
             ),
             "handoff-create-action",
         )
@@ -2554,23 +2557,22 @@ class AlexCoreTests(unittest.TestCase):
             destination="group", claimable=True, follow_up_after_hours=1,
         )
 
-        # Simulate initial group delivery, then claim it by wife.
-        out_id = db.queue_outbound(
-            group_id, "TEXT", text="⏰ Reminder: collect parcel",
-            context_kind="REMINDER_INITIAL", context_id=reminder["reminder_id"],
+        # Claim before the due time from a bound setup message.
+        setup_id = db.queue_outbound(
+            group_id, "TEXT", text="Reminder created: collect parcel",
+            context_kind="REMINDER_SETUP", context_id=reminder["reminder_id"],
         )
         conn = db.connect()
         try:
             conn.execute(
                 """UPDATE outbound_messages
-                   SET provider_message_id='wa-claim-due',delivery_status='SENT',
-                       delivered_at_utc='2026-09-30T10:00:00+00:00'
+                   SET provider_message_id='wa-claim-setup',delivery_status='SENT',
+                       delivered_at_utc='2026-09-30T09:50:00+00:00'
                    WHERE outbound_id=?""",
-                (out_id,),
+                (setup_id,),
             )
             conn.execute(
-                """UPDATE reminders
-                   SET status='DUE',due_at_utc='2026-09-30T10:00:00+00:00'
+                """UPDATE reminders SET due_at_utc='2026-09-30T10:00:00+00:00'
                    WHERE reminder_id=?""",
                 (reminder["reminder_id"],),
             )
@@ -2591,12 +2593,31 @@ class AlexCoreTests(unittest.TestCase):
         )
         with patch.object(
             runtime_clock, "now_utc",
-            return_value=datetime(2026, 9, 30, 10, 5, tzinfo=timezone.utc),
+            return_value=datetime(2026, 9, 30, 9, 55, tzinfo=timezone.utc),
         ):
             claimed = services.claim_reminder_from_reaction(
-                wife, "wa-claim-due", "✅"
+                wife, "wa-claim-setup", "✅"
             )
         self.assertEqual(claimed["status"], "claimed")
+
+        # At due time the initial reminder must go to the claimant DM, not group.
+        with patch.object(
+            runtime_clock, "now_utc",
+            return_value=datetime(2026, 9, 30, 10, 1, tzinfo=timezone.utc),
+        ):
+            scheduler.fire_due()
+        conn = db.connect()
+        try:
+            initial = conn.execute(
+                """SELECT conversation_id,context_kind FROM outbound_messages
+                   WHERE context_id=? AND context_kind='REMINDER_INITIAL'
+                   ORDER BY rowid DESC LIMIT 1""",
+                (reminder["reminder_id"],),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertIsNotNone(initial)
+        self.assertEqual(initial["conversation_id"], "60222222222@s.whatsapp.net")
 
         with patch.object(
             runtime_clock, "now_utc",
@@ -3042,7 +3063,7 @@ class AlexCoreTests(unittest.TestCase):
         self.assertTrue(any(x["name"] == "private policy stash" for x in private))
 
         group = self.group_actor("stash-private-policy-group", "+60111111111")
-        with self.assertRaises(PermissionError):
+        with self.assertRaisesRegex(ToolError, "Private Phase-2 data"):
             mcp_server.planning_list_cash_pools(group)
         self.assertTrue(
             ingress._private_group_handoff_requested("How much stash do I have?")
@@ -3315,8 +3336,10 @@ class AlexCoreTests(unittest.TestCase):
 
             @staticmethod
             def assert_final(kwargs):
-                if kwargs.get("tool_choice") != "none":
-                    raise AssertionError(f"final tool_choice was {kwargs.get('tool_choice')!r}")
+                if "tools" in kwargs or "tool_choice" in kwargs:
+                    raise AssertionError(
+                        "final answer call must not expose tools or tool_choice"
+                    )
 
         fake_completions = FakeCompletions()
         fake_client = type(
@@ -3349,7 +3372,7 @@ class AlexCoreTests(unittest.TestCase):
         self.assertEqual(len(executed), 3)
         self.assertEqual(
             [call.get("tool_choice") for call in fake_completions.calls],
-            ["auto", "auto", "auto", "none"],
+            ["auto", "auto", "auto", None],
         )
 
     def test_v055_read_tools_are_not_misclassified_as_mutations(self):
@@ -3570,10 +3593,12 @@ class AlexCoreTests(unittest.TestCase):
                 data = json.loads(item["data_json"])
                 self.assertTrue(data["confirmation"])
                 self.assertTrue(data["alex_notification_id"])
-                self.assertEqual(len(data["actions"]), 1)
-                parsed = ha_mobile.parse_action_token(data["actions"][0]["action"])
-                self.assertEqual(parsed["action"], "CLAIM")
-                self.assertEqual(parsed["user_id"], item["user_id"])
+                self.assertEqual(len(data["actions"]), 2)
+                parsed = [
+                    ha_mobile.parse_action_token(action["action"])["action"]
+                    for action in data["actions"]
+                ]
+                self.assertEqual(parsed, ["ACK", "DONE"])
         finally:
             conn.close()
 
@@ -3639,7 +3664,7 @@ class AlexCoreTests(unittest.TestCase):
             "conversation_id": group_id,
             "conversation_type": "GROUP",
             "sender_phone": "+60111111111",
-            "text": "put a reminder in this group tomorrow: collect parcel",
+            "text": "put a reminder in this group tomorrow at 3pm: collect parcel",
         })
         group_actor = db.resolve_actor(
             "+60111111111", group_id, "GROUP", "ha-claim-create", []
@@ -3647,7 +3672,7 @@ class AlexCoreTests(unittest.TestCase):
         group_actor = with_action_key(
             replace(
                 group_actor,
-                trusted_text="put a reminder in this group tomorrow: collect parcel",
+                trusted_text="put a reminder in this group tomorrow at 3pm: collect parcel",
             ),
             "ha-claim-create-action",
         )
@@ -3671,11 +3696,11 @@ class AlexCoreTests(unittest.TestCase):
         self.assertEqual(second["claimed_by_user_id"], "USR_HUSBAND")
 
     def test_v055_ha_action_event_updates_reminder_without_new_inbound_port(self):
-        self.claim("ha-action-create", "+60111111111", "remind me later")
+        self.claim("ha-action-create", "+60111111111", "remind me on 2 October 2026 at 3pm")
         actor = with_action_key(
             replace(
                 self.actor("ha-action-create", "+60111111111"),
-                trusted_text="remind me later",
+                trusted_text="remind me on 2 October 2026 at 3pm",
             ),
             "ha-action-create-key",
         )
@@ -3705,11 +3730,11 @@ class AlexCoreTests(unittest.TestCase):
 
 
     def test_v055_stale_ha_action_cannot_reopen_completed_reminder(self):
-        self.claim("ha-stale-create", "+60111111111", "remind me later")
+        self.claim("ha-stale-create", "+60111111111", "remind me on 2 October 2026 at 3pm")
         actor = with_action_key(
             replace(
                 self.actor("ha-stale-create", "+60111111111"),
-                trusted_text="remind me later",
+                trusted_text="remind me on 2 October 2026 at 3pm",
             ),
             "ha-stale-create-key",
         )
@@ -3737,6 +3762,147 @@ class AlexCoreTests(unittest.TestCase):
             conn.close()
         self.assertEqual(row["status"], "COMP")
 
+
+    def test_v056_scope_policy_is_deterministic_for_reads(self):
+        self.claim("scope-read", "+60111111111", "show me notes")
+        actor = self.actor("scope-read", "+60111111111")
+        self.assertEqual(scope_policy.resolve_read_scope("show me notes"), "family")
+        self.assertEqual(scope_policy.resolve_read_scope("show me notes 😊"), "private")
+        self.assertEqual(scope_policy.resolve_read_scope("show my private notes"), "private")
+        self.assertEqual(scope_policy.resolve_read_scope("show family notes"), "family")
+        self.assertEqual(
+            services._spaces_sql(replace(actor, read_scope="family"))[1],
+            ["FAMILY_SHARED"],
+        )
+        self.assertEqual(
+            services._spaces_sql(replace(actor, read_scope="private"))[1],
+            ["HUSBAND_PVT"],
+        )
+
+    def test_v056_finance_amount_question_skips_write_preflight(self):
+        result = phase2_intent.classify_write_intent(
+            "What did I spend RM6.50 on today?"
+        )
+        self.assertEqual(result["status"], "no_write")
+        self.assertFalse(result.get("requires_clarification", False))
+
+    def test_v056_reminder_requires_time_and_validates_weekday(self):
+        self.claim(
+            "reminder-vague", "+60111111111",
+            "Remind me to wash the car this weekend",
+        )
+        vague_actor = with_action_key(
+            replace(
+                self.actor("reminder-vague", "+60111111111"),
+                trusted_text="Remind me to wash the car this weekend",
+            ),
+            "reminder-vague-action",
+        )
+        with self.assertRaisesRegex(ValueError, "REMINDER_NEEDS_TIME"):
+            services.create_reminder(
+                vague_actor, "wash the car", "2026-10-03T10:00:00+08:00"
+            )
+
+        self.claim(
+            "reminder-weekday", "+60111111111",
+            "Remind me on Saturday at 10:00 AM to wash the car",
+        )
+        weekday_actor = with_action_key(
+            replace(
+                self.actor("reminder-weekday", "+60111111111"),
+                trusted_text="Remind me on Saturday at 10:00 AM to wash the car",
+            ),
+            "reminder-weekday-action",
+        )
+        with self.assertRaisesRegex(ValueError, "DATE_WEEKDAY_MISMATCH"):
+            services.create_reminder(
+                weekday_actor, "wash the car", "2026-10-04T10:00:00+08:00"
+            )
+
+    def test_v056_leave_cancel_readd_portion_does_not_hit_tombstone(self):
+        self.claim(
+            "leave-v056", "+60111111111",
+            "I'm on full-day annual leave on 6 October 2026.",
+        )
+        actor = with_action_key(
+            replace(
+                self.actor("leave-v056", "+60111111111"),
+                trusted_text="I'm on full-day annual leave on 6 October 2026.",
+            ),
+            "leave-v056-full",
+        )
+        first = phase2.set_leave_record(
+            actor, "2026-10-06", leave_type="ANNUAL_LEAVE", portion="FULL"
+        )
+        self.assertEqual(first["portion"], "FULL")
+        actor_half = with_action_key(actor, "leave-v056-half")
+        half = phase2.set_leave_record(
+            actor_half, "2026-10-06", leave_type="ANNUAL_LEAVE",
+            portion="HALF_AFTERNOON",
+        )
+        self.assertEqual(half["previous"]["portion"], "FULL")
+        cancel_actor = with_action_key(actor, "leave-v056-cancel")
+        phase2.set_leave_record(
+            cancel_actor, "2026-10-06", leave_type="ANNUAL_LEAVE",
+            portion="HALF_AFTERNOON", status="CANCELLED",
+        )
+        restore_actor = with_action_key(actor, "leave-v056-restore")
+        restored = phase2.set_leave_record(
+            restore_actor, "2026-10-06", leave_type="ANNUAL_LEAVE",
+            portion="FULL",
+        )
+        self.assertEqual(restored["portion"], "FULL")
+
+    def test_v056_goal_reference_strips_possessive(self):
+        self.assertEqual(
+            phase2_finance._normalized_ref("my Europe fund"),
+            "europe fund",
+        )
+
+    def test_v056_reply_resolver_accepts_deterministic_alex_id(self):
+        self.claim("quote-source", "+60111111111", "show transport")
+        oid = db.queue_outbound(
+            "60111111111@s.whatsapp.net", "TEXT",
+            text="Transport: MYR 30.49",
+            source_message_id="quote-source",
+            context_kind="REPORT",
+            context_id='{"kind":"finance_query","spec":{"category":"transport"}}',
+        )
+        conn = db.connect()
+        try:
+            conn.execute(
+                """UPDATE outbound_messages SET delivery_status='SENT'
+                   WHERE outbound_id=?""",
+                (oid,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        quoted_id = "ALEX" + hashlib.sha256(oid.encode("utf-8")).hexdigest().upper()[:28]
+        result = db.resolve_quoted_context(
+            "60111111111@s.whatsapp.net", quoted_id, "+60111111111"
+        )
+        self.assertEqual(result["context_kind"], "REPORT")
+        self.assertEqual(
+            result["report_context"]["spec"]["category"], "transport"
+        )
+
+    def test_v056_voice_media_is_saved_without_transcription(self):
+        self.claim("voice-v056", "+60111111111", "")
+        media_ids, context_lines, vision_parts = media.process_payload_media({
+            "message_id": "voice-v056",
+            "audio_data": base64.b64encode(b"fake-audio").decode("ascii"),
+            "audio_mime_type": "audio/ogg",
+        })
+        self.assertEqual(len(media_ids), 1)
+        saved = media.get_media(media_ids[0])
+        self.assertEqual(saved["media_type"], "AUDIO")
+        self.assertEqual(saved.get("transcript_text") or "", "")
+        meta = json.loads(saved.get("transcript_meta_json") or "{}")
+        self.assertEqual(meta.get("mode"), "deferred_voice_inbox")
+        self.assertFalse(meta.get("command_execution", True))
+        self.assertEqual(context_lines, [])
+        self.assertEqual(vision_parts, [])
 
     def actor_for_context(self):
         self.claim("context-policy", "+60111111111", "context")
