@@ -1857,6 +1857,13 @@ def request_reminder_handoff(actor: ActorContext, reminder_id: str,
                 handoff_id,
             ),
         )
+        try:
+            import ha_mobile
+            ha_mobile.queue_handoff(
+                conn, target_user, reminder_id, handoff_id, row["task_text"]
+            )
+        except Exception:
+            pass
         conn.commit()
         return {
             "status": "handoff_requested",
