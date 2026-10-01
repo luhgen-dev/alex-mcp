@@ -355,7 +355,21 @@ def _process_action_event(event: dict) -> dict:
         if action in {"HANDOFF_ACCEPT", "HANDOFF_DECLINE"} and target_kind != "handoff":
             raise PermissionError("HA action target does not match handoff operation")
 
-        if action == "ACK":
+        closed = False
+        if action in {"ACK", "DONE", "SNOOZE10"}:
+            conn = db.connect()
+            try:
+                row = conn.execute(
+                    "SELECT status FROM reminders WHERE reminder_id=?",
+                    (target_id,),
+                ).fetchone()
+                closed = bool(row and row["status"] in {"COMP", "CANC"})
+            finally:
+                conn.close()
+
+        if closed:
+            result = {"status": "closed", "reminder_id": target_id}
+        elif action == "ACK":
             result = services.update_reminder(actor, target_id, status="ack")
         elif action == "DONE":
             result = services.update_reminder(actor, target_id, status="complete")
