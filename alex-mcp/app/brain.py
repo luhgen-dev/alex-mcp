@@ -920,14 +920,23 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         r"\b(?:bill|bills|tnb|electricity|water|unifi|insurance|road tax|"
         r"instalment|installment|obligation|payment)\b", low
     ))
-    reminder_due_read = bool(
+    explicit_reminder_due = bool(
         (re.search(r"\bremind(?:er|ers)?\b", low) and re.search(r"\bdue\b", low))
         or re.search(r"\bwhen\s+is\b.*\b(?:snooz\w*|check\b.*\bdue\s+now)\b", low)
-        or (re.search(r"\bwhen\s+is\b.+\bdue\b", low) and not bill_due_signal)
     )
-    if reminder_due_read:
+    generic_due_question = bool(
+        re.search(r"\bwhen\s+is\b.+\bdue\b", low)
+        and not bill_due_signal
+        and not explicit_reminder_due
+    )
+    if explicit_reminder_due:
         force |= {"list_reminders", "reminder_history"}
         block |= BILL_TOOLS
+    elif generic_due_question:
+        # Natural obligation names such as rent, credit card and car loan may
+        # not contain the word "bill". Keep both domains reachable and let the
+        # model choose from real data instead of hard-blocking bills.
+        force |= {"list_reminders", "reminder_history", "bills_list"}
     if re.search(
         r"\b(?:push|hand|give|pass|transfer|ask)\b.*\b(?:priya|wife|husband|spouse|partner)\b"
         r"|\b(?:priya|wife|husband|spouse|partner)\b.*\b(?:take|claim|handle)\b",
@@ -2359,10 +2368,22 @@ _FUTURE_ATTACHMENT_RE = re.compile(
 def _guard_delivery_claim(candidate: str, attachments: list[dict]) -> str:
     value = candidate or ""
     if attachments:
-        # If the file is part of this actual outbound, future-tense queue
-        # language is stale by the time the user sees the WhatsApp bubble.
+        # If the file is part of this actual outbound, rewrite only stale
+        # delivery wording. Never discard unrelated information in a compound
+        # reply just because one sentence says the attachment is "on its way".
         if _FUTURE_ATTACHMENT_RE.search(value):
-            return "Here it is."
+            replacements = (
+                (r"\bwill\s+be\s+sent(?:\s+shortly)?\b", "is attached"),
+                (r"\bsent\s+shortly\b", "is attached"),
+                (r"\bwill\s+arrive\b", "is attached"),
+                (r"\barrive\s+shortly\b", "is attached"),
+                (r"\bqueued(?:\s+for\s+delivery)?\b", "attached"),
+                (r"\bon\s+its\s+way\b", "attached"),
+            )
+            rewritten = value
+            for pattern, replacement in replacements:
+                rewritten = re.sub(pattern, replacement, rewritten, flags=re.IGNORECASE)
+            return rewritten
         return candidate
     if not _DELIVERY_CLAIM_RE.search(value):
         return candidate
