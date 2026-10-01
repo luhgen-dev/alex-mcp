@@ -316,6 +316,7 @@ async function forwardReactionEvent(targetKey, reaction) {
   }
 
   const reactionKey = reaction && reaction.key ? reaction.key : {};
+  if (reactionKey.fromMe) return;
   let rawSenderJid = reactionKey.participant || reactionKey.remoteJid || '';
   if (!rawSenderJid || rawSenderJid.endsWith('@g.us')) return;
   const senderJid = await resolveSenderJid(null, rawSenderJid);
