@@ -458,6 +458,24 @@ def _selection_context_for_offer(actor, reply: str, attachments: list[dict]) -> 
     )
 
 
+def _created_claimable_reminder_id(actor) -> str | None:
+    """Bind a group reminder setup reply to the reminder created by this turn."""
+    if actor.conversation_type != "GROUP":
+        return None
+    conn = db.connect()
+    try:
+        rows = conn.execute(
+            """SELECT reminder_id FROM reminders
+               WHERE source_message_id=? AND conversation_id=?
+                 AND claimable=1 AND status='OPEN'
+               ORDER BY created_at_utc DESC LIMIT 2""",
+            (actor.source_message_id, actor.conversation_id),
+        ).fetchall()
+        return str(rows[0]["reminder_id"]) if len(rows) == 1 else None
+    finally:
+        conn.close()
+
+
 def _selection_context_parts(context: dict | None) -> tuple[str, str] | None:
     if not context or context.get("context_kind") != "SELECTION":
         return None
@@ -768,15 +786,22 @@ def process(payload: dict) -> dict:
         selection_context = _selection_context_for_offer(
             actor, reply, attachments
         )
+        reminder_setup_id = _created_claimable_reminder_id(actor)
         if not attachments:
+            context_kind = (
+                "SELECTION" if selection_context
+                else "REMINDER_SETUP" if reminder_setup_id
+                else None
+            )
+            context_id = (
+                f"{selection_context['kind']}:{selection_context['id']}"
+                if selection_context else reminder_setup_id
+            )
             db.queue_outbound(
                 actor.conversation_id, "TEXT", text=reply,
                 source_message_id=actor.source_message_id,
-                context_kind="SELECTION" if selection_context else None,
-                context_id=(
-                    f"{selection_context['kind']}:{selection_context['id']}"
-                    if selection_context else None
-                ),
+                context_kind=context_kind,
+                context_id=context_id,
             )
         sent_paths: set[str] = set()
         first_attachment = True
