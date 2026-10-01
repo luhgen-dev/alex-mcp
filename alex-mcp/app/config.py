@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 OPTIONS_PATH = os.environ.get("ALEX_OPTIONS_PATH", "/data/options.json")
 DATA_DIR = os.environ.get("ALEX_DATA_DIR", "/data")
@@ -32,6 +32,7 @@ class Settings:
     monthly_ai_budget_usd: float = 0.0
     auto_grok_fallback_budget_usd: float = 0.50
     budget_safety_multiplier: float = 2.0
+    ha_notify_devices: list[dict] = field(default_factory=list)
 
     def model_for(self, provider: str, *, lite: bool = False) -> str:
         if provider == "gemini" and lite:
@@ -111,6 +112,12 @@ def get_settings() -> Settings:
         clean["budget_safety_multiplier"] = max(1.0, min(10.0, float(clean.get("budget_safety_multiplier", 2.0))))
     except (TypeError, ValueError):
         clean["budget_safety_multiplier"] = 2.0
+    devices = clean.get("ha_notify_devices", [])
+    if not isinstance(devices, list):
+        devices = []
+    clean["ha_notify_devices"] = [
+        item for item in devices if isinstance(item, dict)
+    ][:10]
     return Settings(**clean)
 
 
