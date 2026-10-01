@@ -712,9 +712,10 @@ def list_tasks(actor: ActorContext, status: str = "open",
     if state not in aliases:
         raise ValueError("task status must be open, done, cancelled, or all")
     state = aliases[state]
-    marks = ",".join("?" for _ in actor.allowed_spaces)
+    read_spaces = scope_policy.read_spaces(actor)
+    marks = ",".join("?" for _ in read_spaces)
     where = [f"t.space_id IN ({marks})"]
-    params: list = list(actor.allowed_spaces)
+    params: list = list(read_spaces)
     if state != "ALL":
         where.append("t.status=?")
         params.append(state)
