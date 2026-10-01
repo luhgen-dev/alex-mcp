@@ -181,8 +181,24 @@ def update_reminder(reminder_id: str, actor: Actor, status: str = "open",
 @mcp.tool()
 def reminder_history(actor: Actor, reminder_id: str | None = None,
                      limit: int = 50) -> dict:
-    """Read durable reminder lifecycle history. Omit reminder_id for recent aggregate history across authorized reminders; per-reminder output also includes claim/release history."""
-    return services.reminder_history(actor, reminder_id, limit)
+    """Read user-facing reminder history with local times and no database/provider internals."""
+    raw = services.reminder_history(actor, reminder_id, limit)
+    claims = []
+    for row in raw.get("claim_history", []):
+        who = "You" if row.get("actor_user_id") == actor.user_id else "Your spouse"
+        claims.append({
+            "who": who,
+            "action": str(row.get("event_type") or "").replace("_", " ").title(),
+            "time_local": row.get("created_local"),
+        })
+    return {
+        "display": raw.get("display") or {},
+        "claims": claims,
+        "presentation_rule": (
+            "Present this naturally using local times. Never expose UUIDs, raw "
+            "state codes, provider ids, egress jargon or UTC."
+        ),
+    }
 
 
 @mcp.tool()
