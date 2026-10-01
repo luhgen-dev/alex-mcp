@@ -79,9 +79,23 @@ def resolve_read_scope(text: str | None) -> str:
 
 
 def effective_read_scope(actor, requested_scope: str | None = None) -> str:
-    """Resolve an effective backend scope without allowing model-side widening."""
-    policy = str(getattr(actor, "read_scope", "family") or "family").strip().casefold()
+    """Resolve an effective backend scope without allowing live model-side widening.
+
+    Actors created directly by service/unit code have read_scope=None and keep
+    the explicit legacy backend scope. Real inbound turns are normalized by
+    ingress to family/private/all before any model/tool call.
+    """
+    raw_policy = getattr(actor, "read_scope", None)
     requested = str(requested_scope or "").strip().casefold()
+    if raw_policy is None:
+        if requested in {"family", "shared", "family_shared"}:
+            return "family"
+        if requested in {"private", "personal", "my"}:
+            return "private"
+        if requested not in {"", "all", "visible", "accessible"}:
+            raise ValueError("scope must be all, family, or private")
+        return "all"
+    policy = str(raw_policy).strip().casefold()
     if policy in {"family", "private"}:
         return policy
     if policy != "all":
