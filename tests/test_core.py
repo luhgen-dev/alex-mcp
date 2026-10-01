@@ -2925,7 +2925,7 @@ class AlexCoreTests(unittest.TestCase):
             "media_playing": [],
             "unavailable": ["TV"],
         })
-        self.assertTrue(payload.startswith(b"\\x89PNG\\r\\n\\x1a\\n"))
+        self.assertTrue(payload.startswith(bytes.fromhex("89504e470d0a1a0a")))
         width = int.from_bytes(payload[16:20], "big")
         height = int.from_bytes(payload[20:24], "big")
         self.assertGreater(width, height)
