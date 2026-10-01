@@ -23,19 +23,10 @@ from db import connect, utc_now
 
 
 def _spaces_sql(actor: ActorContext, scope: str | None = None) -> tuple[str, list[str]]:
-    resolved = str(scope or "all").strip().casefold()
-    if resolved in {"", "all", "visible", "accessible"}:
-        spaces = list(actor.allowed_spaces)
-    elif resolved in {"family", "shared", "family_shared"}:
-        if "FAMILY_SHARED" not in actor.allowed_spaces:
-            raise PermissionError("family finance/list scope is not accessible in this conversation")
-        spaces = ["FAMILY_SHARED"]
-    elif resolved in {"private", "personal", "my"}:
-        if actor.conversation_type == "GROUP" or actor.private_space not in actor.allowed_spaces:
-            raise PermissionError("private scope is not accessible in the Family Shared group")
-        spaces = [actor.private_space]
-    else:
-        raise ValueError("scope must be all, family, or private")
+    # The current trusted command fixes the maximum read boundary once in
+    # ingress. Tool/model scope arguments may narrow an explicit all-spaces
+    # request, but may never widen the actor's normalized policy.
+    spaces = scope_policy.read_spaces(actor, scope)
     marks = ",".join("?" for _ in spaces)
     return marks, spaces
 
