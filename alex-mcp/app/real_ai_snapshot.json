@@ -9,7 +9,7 @@
     "corpus_fingerprint": "b75bb393b735452f63832d6e8a59950eb2a01bd59ca7f5d05ad5b4ba8aaafb09",
     "decision_count": 381,
     "independent_model_pass": false,
-    "carried_forward_unchanged": 374,
+    "carried_forward_unchanged": 162,
     "ancestor_engineering_review_carried": 212
   },
   "delta_review": {
