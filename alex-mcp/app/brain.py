@@ -2492,6 +2492,56 @@ def _guard_delivery_claim(candidate: str, attachments: list[dict]) -> str:
     )
 
 
+def _known_warranty_dates(tool_evidence: list[dict]) -> set[str]:
+    dates: set[str] = set()
+    def walk(value):
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if str(key).casefold() == "warranty_end" and item:
+                    dates.add(str(item))
+                walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+    for payload in tool_evidence:
+        walk(payload)
+    return dates
+
+
+def _guard_warranty_grounding(candidate: str, tool_evidence: list[dict]) -> str:
+    """Do not let synthesis turn an unknown warranty duration into a date."""
+    value = str(candidate or "")
+    if not re.search(r"\b(?:warranty|warranties)\b", value, re.IGNORECASE):
+        return value
+    known = _known_warranty_dates(tool_evidence)
+    dateish = re.compile(
+        r"\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|"
+        r"\d{1,2}(?:st|nd|rd|th)?\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|"
+        r"Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|"
+        r"Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{4})\b",
+        re.IGNORECASE,
+    )
+    suspicious = False
+    for line in value.splitlines() or [value]:
+        if re.search(r"\b(?:warranty|expiry|expires|expiration)\b", line, re.IGNORECASE):
+            for found in dateish.findall(line):
+                if not any(str(found) in d or d in str(found) for d in known):
+                    suspicious = True
+                    break
+    if not suspicious:
+        return value
+    kept = [
+        line for line in value.splitlines()
+        if not (
+            re.search(r"\b(?:warranty|expiry|expires|expiration)\b", line, re.IGNORECASE)
+            and dateish.search(line)
+        )
+    ]
+    clean = "\n".join(kept).strip()
+    suffix = "No warranty expiry is recorded."
+    return (clean + "\n" + suffix).strip() if clean else suffix
+
+
 def _guard_mutation_success(
     candidate: str, user_text: str, mutation_ledger: list[dict]
 ) -> str:
@@ -2698,6 +2748,7 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
     capability_retry_used = False
     language_retry_used = False
     mutation_ledger: list[dict] = []
+    tool_evidence: list[dict] = []
 
     for call_index in range(MAX_MODEL_CALLS):
         final_answer_call = call_index == MAX_MODEL_CALLS - 1
@@ -2857,6 +2908,7 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                 candidate = rewritten or candidate
 
             final = _guard_mutation_success(candidate, user_text, mutation_ledger)
+            final = _guard_warranty_grounding(final, tool_evidence)
             final = _guard_delivery_claim(final, attachments)
             _record_usage_buckets(actor.source_message_id, usage_by_route)
             add_turn(actor.user_id, actor.conversation_id, "user", history_user)
@@ -2929,6 +2981,7 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                         new_files.append(item)
                 attachments.extend(new_files)
                 payload = dict(result) if isinstance(result, dict) else {"result": result}
+                tool_evidence.append(payload)
                 if files:
                     # Tell the model delivery is automatic so it never claims
                     # it "cannot send images" while the file is being sent.
