@@ -150,6 +150,49 @@ def _user_stated_time(text: str | None) -> bool:
     return bool(_EXACT_TIME_STATED_RE.search(text or ""))
 
 
+_RELATIVE_REMINDER_TIME_RE = re.compile(
+    r"(?i)\b(?:in|after)\s+\d+\s*(?:minutes?|mins?|hours?|hrs?)\b"
+)
+_WEEKDAY_NAMES = {
+    "mon": 0, "monday": 0, "tue": 1, "tues": 1, "tuesday": 1,
+    "wed": 2, "wednesday": 2, "thu": 3, "thur": 3, "thurs": 3, "thursday": 3,
+    "fri": 4, "friday": 4, "sat": 5, "saturday": 5, "sun": 6, "sunday": 6,
+}
+_WEEKDAY_RE = re.compile(
+    r"(?i)\b(mon(?:day)?|tue(?:s|sday)?|wed(?:nesday)?|thu(?:r|rs|rsday)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?)\b"
+)
+
+
+def _stated_weekday(text: str | None) -> int | None:
+    values = {
+        _WEEKDAY_NAMES[m.group(1).casefold()]
+        for m in _WEEKDAY_RE.finditer(str(text or ""))
+        if m.group(1).casefold() in _WEEKDAY_NAMES
+    }
+    return next(iter(values)) if len(values) == 1 else None
+
+
+def _validate_reminder_time_intent(actor: ActorContext, due_utc: str) -> None:
+    trusted = str(getattr(actor, "trusted_text", "") or "")
+    if trusted and not (_user_stated_time(trusted) or _RELATIVE_REMINDER_TIME_RE.search(trusted)):
+        raise ValueError(
+            "REMINDER_NEEDS_TIME: ask the user for an exact time before creating the reminder"
+        )
+    wanted = _stated_weekday(trusted)
+    if wanted is None:
+        return
+    due = datetime.fromisoformat(str(due_utc).replace("Z", "+00:00"))
+    if due.tzinfo is None:
+        due = due.replace(tzinfo=timezone.utc)
+    local = due.astimezone(ZoneInfo(actor.timezone))
+    if local.weekday() != wanted:
+        requested = [name.title() for name, idx in _WEEKDAY_NAMES.items() if idx == wanted and len(name) > 3][0]
+        raise ValueError(
+            f"DATE_WEEKDAY_MISMATCH: user requested {requested}, but "
+            f"{local.date().isoformat()} is {local.strftime('%A')}; resolve the correct date before saving"
+        )
+
+
 def _combine_local_date_with_received_clock(event_day, received: str, tz_name: str) -> str:
     """Use the intended local date with the real message-receive clock."""
     tz = ZoneInfo(tz_name)
@@ -1383,6 +1426,7 @@ def create_reminder(actor: ActorContext, task: str, due_local: str,
     if not actor.action_key:
         raise RuntimeError("missing deterministic action key")
     due_utc = _parse_event_time(due_local, actor.timezone)
+    _validate_reminder_time_intent(actor, due_utc)
     delivery_class = (delivery_class or "routine").strip().lower()
     if delivery_class not in {"routine", "time_critical"}:
         raise ValueError("delivery_class must be routine or time_critical")
