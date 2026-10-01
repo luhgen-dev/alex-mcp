@@ -25,7 +25,7 @@ import human_ai_lab
 
 # Frozen deterministic regression corpus. Any prompt/tool-surface change
 # invalidates this oracle until its regression expectations are reviewed.
-REVIEWED_CORPUS_FINGERPRINT = "fe8d2f261f134a66573cc02aa08af9f9d161ad1652bbcf56d422a46a5d1b74c7"
+REVIEWED_CORPUS_FINGERPRINT = "7c14c73b2bd66da4349e96e7bed49b750a04b4f96356d18024c9f61ce4f101de"
 
 
 def _low(value: str) -> str:
@@ -159,6 +159,14 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
             _pick(tools, "work_schedule", "work_departure_plan")
             or _one(tools, "work_departure_plan", "work_schedule"),
         )
+
+    # Deferred voice inbox is a pending-item read, not a generic media browse.
+    # Keep this ahead of the broader voice/audio provenance rule.
+    if (
+        re.search(r"\b(?:voice\s*notes?|audio\s*notes?)\b", text)
+        and re.search(r"\b(?:unresolved|pending|waiting|clarification)\b", text)
+    ):
+        return result("tools", _one(tools, "list_pending_items"))
 
     # Original media provenance/replay. This is regression logic only; the
     # real-AI snapshot makes its own independent choices for these packets.
