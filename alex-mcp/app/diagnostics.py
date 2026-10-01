@@ -5,6 +5,7 @@ import os
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from config import DATA_DIR, get_settings
 from db import connect
@@ -612,12 +613,52 @@ def recent_failures(actor, hours: int = 24, limit: int = 20) -> dict:
                ORDER BY created_at_utc DESC LIMIT ?""",
             (cutoff, bounded),
         ).fetchall()]
+        tz = ZoneInfo(getattr(actor, "timezone", None) or get_settings().timezone)
+        def local_label(value):
+            if not value:
+                return None
+            try:
+                parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=timezone.utc)
+                return parsed.astimezone(tz).strftime("%-d %B %Y, %-I:%M:%S %p")
+            except Exception:
+                return None
+
+        display_failures = []
+        for row in inbound:
+            display_failures.append({
+                "kind": "Inbound message",
+                "name": "Message processing",
+                "time_local": local_label(row.get("received_at_utc")),
+                "detail": row.get("last_error"),
+            })
+        for row in outbound:
+            display_failures.append({
+                "kind": "Outbound delivery",
+                "name": "WhatsApp delivery",
+                "time_local": local_label(row.get("created_at_utc")),
+                "detail": row.get("last_error"),
+            })
+        for row in tool_rows:
+            display_failures.append({
+                "kind": "Tool",
+                "name": row.get("tool_name"),
+                "time_local": local_label(row.get("created_at_utc")),
+                "detail": row.get("result_json"),
+            })
+
         return {
             "window_hours": max(1, min(24 * 30, int(hours))),
+            "display_failures": display_failures,
             "inbound_failures": inbound,
             "outbound_failures": outbound,
             "tool_failures": tool_rows,
             "common_cause_established": False,
+            "presentation_rule": (
+                "For normal user-facing replies use display_failures.time_local. "
+                "Do not print raw *_utc fields unless the user explicitly asks for debugging data."
+            ),
             "interpretation_rule": (
                 "Report recorded errors as observed facts. Do not claim broader instability "
                 "or one shared root cause unless this payload explicitly establishes it. "
