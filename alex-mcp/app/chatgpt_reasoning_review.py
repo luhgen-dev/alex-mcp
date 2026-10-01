@@ -25,7 +25,7 @@ import human_ai_lab
 
 # Frozen deterministic regression corpus. Any prompt/tool-surface change
 # invalidates this oracle until its regression expectations are reviewed.
-REVIEWED_CORPUS_FINGERPRINT = "efd2a14c796bb4bf1aabe38b9d121de12a2727f73bf0135b1ef6e5ddddca8838"
+REVIEWED_CORPUS_FINGERPRINT = "fe8d2f261f134a66573cc02aa08af9f9d161ad1652bbcf56d422a46a5d1b74c7"
 
 
 def _low(value: str) -> str:
