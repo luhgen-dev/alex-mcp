@@ -472,6 +472,132 @@ def _typed_reply_completes_pending_item(text: str) -> bool:
     return True
 
 
+def _yes_no_answer(text: str) -> str | None:
+    value = str(text or "").strip().casefold()
+    if re.fullmatch(r"(?:yes|yep|yeah|sure|ok|okay|please|please do)[.!]?", value):
+        return "yes"
+    if re.fullmatch(r"(?:no|nope|nah|not now|cancel)[.!]?", value):
+        return "no"
+    return None
+
+
+def _private_search_offer_candidate(actor, query: str, reply: str,
+                                    attachments: list[dict]) -> bool:
+    """Offer one private retry after a Family-scope miss without probing private data."""
+    if attachments or getattr(actor, "read_scope", None) != "family":
+        return False
+    text = str(query or "").strip()
+    if not text or not re.search(
+        r"(?i)\b(?:show|find|search|list|what|where|when|which|how much|"
+        r"do you remember|remember me|have i|do i have|any)\b",
+        text,
+    ):
+        return False
+    value = str(reply or "")
+    return bool(re.search(
+        r"(?i)\b(?:could(?:n't| not) find|can(?:'t|not) find|"
+        r"don(?:'t| not) (?:see|have|find)|no (?:matching|saved|record|records|"
+        r"asset|assets|receipt|receipts|note|notes|pool|pools|stash|stashes|"
+        r"reminder|reminders)|not found|nothing (?:matching|found))\b",
+        value,
+    ))
+
+
+def _maybe_create_private_search_offer(actor, query: str, reply: str,
+                                       attachments: list[dict]) -> tuple[dict | None, str]:
+    if not _private_search_offer_candidate(actor, query, reply, attachments):
+        return None, reply
+    pending = db.create_pending_item(
+        actor,
+        "PRIVATE_SEARCH_OFFER",
+        note=json.dumps(
+            {"query": str(query or "").strip()},
+            ensure_ascii=False, separators=(",", ":"),
+        )[:4000],
+    )
+    value = str(reply or "").rstrip()
+    if not re.search(r"(?i)\bcheck\b.{0,35}\bprivate\b", value):
+        value += (
+            "\n\nI only checked your shared records. "
+            "I can also check your private records if you want."
+        )
+    return pending, value
+
+
+def _private_offer_query(pending: dict) -> str | None:
+    try:
+        payload = json.loads(str(pending.get("note") or "{}"))
+    except Exception:
+        return None
+    query = str(payload.get("query") or "").strip() if isinstance(payload, dict) else ""
+    return query or None
+
+
+def _fulfill_private_search_offer(actor, pending: dict) -> dict:
+    query = _private_offer_query(pending)
+    if not query:
+        raise ValueError("private-search offer has no recoverable query")
+
+    dm_conversation = _dm_conversation_for_actor(actor)
+    private_actor = db.resolve_actor(
+        actor.phone, dm_conversation, "DIRECT_DM",
+        actor.source_message_id, [],
+    )
+    private_actor = replace(
+        private_actor,
+        source="text",
+        trusted_text=query,
+        received_at_utc=getattr(actor, "received_at_utc", ""),
+        read_scope="private",
+        private_handoff=False,
+    )
+    reply, attachments = asyncio.run(
+        brain.respond(private_actor, query, quoted_context=None)
+    )
+    report_context = _report_context_for_turn(private_actor)
+    if not attachments:
+        db.queue_outbound(
+            dm_conversation, "TEXT", text=reply,
+            source_message_id=actor.source_message_id,
+            context_kind="REPORT" if report_context else None,
+            context_id=report_context,
+        )
+    sent_paths = set()
+    first = True
+    for item in attachments:
+        path = item.get("path")
+        if not path or path in sent_paths:
+            continue
+        sent_paths.add(path)
+        kind = item.get("kind", "DOCUMENT")
+        db.queue_outbound(
+            dm_conversation,
+            "IMAGE" if kind == "IMAGE" else "DOCUMENT",
+            text=reply if first else None,
+            local_path=path,
+            mime_type=item.get("mime_type"),
+            source_message_id=actor.source_message_id,
+            context_kind="REPORT" if first and report_context else None,
+            context_id=report_context if first and report_context else None,
+        )
+        first = False
+
+    db.resolve_pending_item(
+        pending["item_id"], actor.user_id, actor.source_message_id
+    )
+    if actor.conversation_type == "GROUP":
+        group_reply = "I checked that in your private DM."
+        db.queue_outbound(
+            actor.conversation_id, "TEXT", text=group_reply,
+            source_message_id=actor.source_message_id,
+        )
+        db.finish_inbound(actor.source_message_id, group_reply)
+        return {"ok": True, "private_search_handoff": True}
+
+    db.finish_inbound(actor.source_message_id, reply)
+    return {"ok": True, "private_search": True}
+
+
 def _selection_context_for_offer(actor, reply: str, attachments: list[dict]) -> dict | None:
     if attachments:
         return None
@@ -869,6 +995,17 @@ def process(payload: dict) -> dict:
                 error_report=True,
             )
 
+        private_offer = db.latest_pending_item(
+            actor, "PRIVATE_SEARCH_OFFER", max_age_seconds=600
+        )
+        answer = _yes_no_answer(turn["trusted_text"])
+        if private_offer and answer == "yes":
+            return _fulfill_private_search_offer(actor, private_offer)
+        if private_offer and answer == "no":
+            db.cancel_pending_item(
+                private_offer["item_id"], actor.user_id, actor.source_message_id
+            )
+
         if _is_selection_followup(turn["trusted_text"]):
             selection_context = quoted_context
             if not _selection_context_parts(selection_context):
@@ -956,6 +1093,9 @@ def process(payload: dict) -> dict:
             )
         )
         db.touch_inbound_processing(payload["message_id"])
+        private_search_offer, reply = _maybe_create_private_search_offer(
+            actor, turn["trusted_text"], reply, attachments
+        )
         selection_context = _selection_context_for_offer(
             actor, reply, attachments
         )
@@ -973,14 +1113,16 @@ def process(payload: dict) -> dict:
             )
         if not attachments:
             context_kind = (
-                "PENDING_ITEM" if reminder_draft
+                "PENDING_ITEM" if private_search_offer
+                else "PENDING_ITEM" if reminder_draft
                 else "SELECTION" if selection_context
                 else "REMINDER_SETUP" if reminder_setup_id
                 else "REPORT" if report_context
                 else None
             )
             context_id = (
-                reminder_draft["item_id"] if reminder_draft
+                private_search_offer["item_id"] if private_search_offer
+                else reminder_draft["item_id"] if reminder_draft
                 else f"{selection_context['kind']}:{selection_context['id']}"
                 if selection_context
                 else reminder_setup_id if reminder_setup_id
