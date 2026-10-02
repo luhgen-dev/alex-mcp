@@ -3050,60 +3050,62 @@ class AlexCoreTests(unittest.TestCase):
         self.assertGreater(width, height)
         self.assertGreaterEqual(width, 960)
 
-    def test_v054_postaudit_stash_is_private_by_domain_and_upgrade_repairs_shared_pool(self):
-        self.claim("stash-private-policy", "+60111111111", "Create a stash with RM100")
-        actor = replace(
-            self.actor("stash-private-policy", "+60111111111"),
+    def test_v057_cash_pool_follows_global_scope_policy_and_preserves_space(self):
+        self.claim("pool-family-create", "+60111111111", "Create a stash with RM100")
+        family_actor = replace(
+            self.actor("pool-family-create", "+60111111111"),
             trusted_text="Create a stash with RM100",
+            read_scope="family",
         )
-        created = mcp_server.planning_create_cash_pool(
-            "private policy stash", actor, opening_balance=100, shared=True
+        family_pool = mcp_server.planning_create_cash_pool(
+            "v057 family stash", family_actor, opening_balance=100
         )
-        self.assertEqual(created["space"], "HUSBAND_PVT")
-        private = mcp_server.planning_list_cash_pools(actor)["pools"]
-        self.assertTrue(any(x["name"] == "private policy stash" for x in private))
+        self.assertEqual(family_pool["space"], "FAMILY_SHARED")
 
-        group = self.group_actor("stash-private-policy-group", "+60111111111")
-        with self.assertRaisesRegex(ToolError, "Private Phase-2 data"):
-            mcp_server.planning_list_cash_pools(group)
-        self.assertTrue(
-            ingress._private_group_handoff_requested("How much stash do I have?")
+        self.claim(
+            "pool-private-create", "+60111111111",
+            "Create a private stash with RM50 😊"
         )
+        private_actor = replace(
+            self.actor("pool-private-create", "+60111111111"),
+            trusted_text="Create a private stash with RM50 😊",
+            read_scope="private",
+        )
+        private_pool = mcp_server.planning_create_cash_pool(
+            "v057 private stash", private_actor, opening_balance=50
+        )
+        self.assertEqual(private_pool["space"], "HUSBAND_PVT")
 
-        # Simulate a pool accidentally created Family Shared by the previous
-        # repair candidate, then rerun the additive upgrade repair.
-        conn = db.connect()
-        try:
-            conn.execute(
-                """UPDATE alex_phase2_cash_pools
-                   SET space_id='FAMILY_SHARED' WHERE pool_id=?""",
-                (created["pool_id"],),
-            )
-            conn.execute(
-                """UPDATE alex_phase2_cash_pool_adjustments
-                   SET space_id='FAMILY_SHARED' WHERE pool_id=?""",
-                (created["pool_id"],),
-            )
-            conn.commit()
-        finally:
-            conn.close()
+        family_names = {
+            row["name"]
+            for row in mcp_server.planning_list_cash_pools(family_actor)["pools"]
+        }
+        private_names = {
+            row["name"]
+            for row in mcp_server.planning_list_cash_pools(private_actor)["pools"]
+        }
+        self.assertIn("v057 family stash", family_names)
+        self.assertNotIn("v057 private stash", family_names)
+        self.assertIn("v057 private stash", private_names)
+        self.assertNotIn("v057 family stash", private_names)
+
+        # Schema maintenance must preserve the stored visibility; it must never
+        # silently rewrite Family pools into owner-private pools.
         phase2_finance.ensure_schema()
         conn = db.connect()
         try:
-            repaired = conn.execute(
-                """SELECT space_id FROM alex_phase2_cash_pools
-                   WHERE pool_id=?""",
-                (created["pool_id"],),
-            ).fetchone()
-            adjustment = conn.execute(
-                """SELECT space_id FROM alex_phase2_cash_pool_adjustments
-                   WHERE pool_id=? ORDER BY created_at_utc LIMIT 1""",
-                (created["pool_id"],),
-            ).fetchone()
+            spaces = {
+                row["pool_id"]: row["space_id"]
+                for row in conn.execute(
+                    """SELECT pool_id,space_id FROM alex_phase2_cash_pools
+                       WHERE pool_id IN (?,?)""",
+                    (family_pool["pool_id"], private_pool["pool_id"]),
+                ).fetchall()
+            }
         finally:
             conn.close()
-        self.assertEqual(repaired["space_id"], "HUSBAND_PVT")
-        self.assertEqual(adjustment["space_id"], "HUSBAND_PVT")
+        self.assertEqual(spaces[family_pool["pool_id"]], "FAMILY_SHARED")
+        self.assertEqual(spaces[private_pool["pool_id"]], "HUSBAND_PVT")
 
     def test_v054_postaudit_caption_only_shared_receipt_gets_in_group(self):
         caption = "July TNB receipt - share with the family"
@@ -3392,53 +3394,94 @@ class AlexCoreTests(unittest.TestCase):
             "tools_called": ["finance_report", "report_export"],
         }))
 
-    def test_v055_stashes_plural_and_named_pool_reads_handoff_or_route_directly(self):
-        self.assertTrue(
-            ingress._private_group_handoff_requested("What stashes do I have?")
+    def test_v057_named_private_pool_requires_current_private_scope(self):
+        self.claim(
+            "v057-pocket-private-create", "+60111111111",
+            "Create pocket cash privately 😊"
         )
-        self.claim("v055-pool-create", "+60111111111", "Create pocket cash stash")
-        actor = replace(
-            self.actor("v055-pool-create", "+60111111111"),
-            trusted_text="Create pocket cash stash",
+        creator = replace(
+            self.actor("v057-pocket-private-create", "+60111111111"),
+            trusted_text="Create pocket cash privately 😊",
+            read_scope="private",
         )
         created = mcp_server.planning_create_cash_pool(
-            "pocket cash", actor, opening_balance=100
+            "v057 pocket cash", creator, opening_balance=100
         )
         self.assertEqual(created["space"], "HUSBAND_PVT")
-        dm_actor = self.actor("v055-pool-create", "+60111111111")
-        self.assertTrue(
+
+        family_actor = replace(
+            creator,
+            trusted_text="How much do I have in v057 pocket cash?",
+            read_scope="family",
+        )
+        private_actor = replace(
+            creator,
+            trusted_text="How much do I have in v057 pocket cash? 😊",
+            read_scope="private",
+        )
+        self.assertFalse(
             brain._owned_cash_pool_name_mentioned(
-                dm_actor, "How much do I have in pocket cash?"
+                family_actor, "How much do I have in v057 pocket cash?"
             )
         )
-        group = self.group_actor("v055-pool-group", "+60111111111")
         self.assertTrue(
-            ingress._private_group_match_available(
-                group, "How much do I have in pocket cash?"
+            brain._owned_cash_pool_name_mentioned(
+                private_actor, "How much do I have in v057 pocket cash? 😊"
             )
         )
 
-    def test_v055_private_note_group_miss_detects_only_private_match(self):
-        self.claim("v055-private-note", "+60111111111", "save this privately")
-        private_actor = with_action_key(
-            replace(
-                self.actor("v055-private-note", "+60111111111"),
-                trusted_text="save this privately",
-            ),
-            "v055-private-note-action",
-        )
-        saved = services.save_item(
-            private_actor, "v055 secret drawer note", "keys in blue drawer"
-        )
-        self.assertEqual(saved["space"], "HUSBAND_PVT")
-        group = self.group_actor("v055-private-note-group", "+60111111111")
-        self.assertTrue(
-            ingress._private_group_match_available(
-                group, "show me the v055 secret drawer note"
+        with use_actor(family_actor):
+            with self.assertRaisesRegex(ValueError, "current scope|authorized"):
+                phase2_finance.resolve_cash_pool_reference(
+                    None, "v057 pocket cash", creator.phone, "DIRECT_DM"
+                )
+        with use_actor(private_actor):
+            resolved = phase2_finance.resolve_cash_pool_reference(
+                None, "v057 pocket cash", creator.phone, "DIRECT_DM"
+            )
+            balance = phase2_finance.cash_pool_balance(
+                resolved, creator.phone, "DIRECT_DM"
+            )
+        self.assertEqual(balance["balance"], 100.0)
+
+        self.assertFalse(
+            ingress._private_group_handoff_requested(
+                "How much do I have in v057 pocket cash?"
             )
         )
+        self.assertTrue(
+            ingress._private_group_handoff_requested(
+                "How much do I have in v057 pocket cash? 😊"
+            )
+        )
+
+    def test_v057_group_plain_private_note_miss_does_not_probe_or_handoff(self):
+        self.claim("v057-private-note", "+60111111111", "save this privately 😊")
+        private_actor = with_action_key(
+            replace(
+                self.actor("v057-private-note", "+60111111111"),
+                trusted_text="save this privately 😊",
+                read_scope="private",
+            ),
+            "v057-private-note-action",
+        )
+        saved = services.save_item(
+            private_actor, "v057 secret drawer note", "keys in blue drawer"
+        )
+        self.assertEqual(saved["space"], "HUSBAND_PVT")
+        group = self.group_actor("v057-private-note-group", "+60111111111")
         self.assertEqual(
-            services.search_saved_items(group, "v055 secret drawer note")["count"], 0
+            services.search_saved_items(group, "v057 secret drawer note")["count"], 0
+        )
+        self.assertFalse(
+            ingress._private_group_handoff_requested(
+                "show me the v057 secret drawer note"
+            )
+        )
+        self.assertTrue(
+            ingress._private_group_handoff_requested(
+                "show me the v057 secret drawer note 😊"
+            )
         )
 
     def test_v055_named_assignee_from_group_forces_dm_and_queues_immediate_ack(self):
