@@ -83,7 +83,7 @@ class AlexCoreTests(unittest.TestCase):
                 "alex_phase2_work_events", "alex_phase2_delegations",
                 "alex_profile_config_versions",
                 "tool_audit", "tool_execution_claims", "ai_usage", "diagnostic_runs", "monitor_notifications",
-                "ha_notification_outbox", "outbound_messages", "conversation_turns", "selection_sets", "active_report_contexts",
+                "ha_notification_outbox", "outbound_messages", "conversation_turns", "selection_sets", "pending_selection_sets", "active_report_contexts",
                 "reminder_handoffs", "reminder_claim_events", "reminder_events",
                 "task_reminder_links", "task_events", "tasks",
                 "diary_reminder_links", "plan_diary_links", "schedule_conflicts", "diary_events", "plans",
@@ -1883,7 +1883,7 @@ class AlexCoreTests(unittest.TestCase):
             "conversation_id": group_id,
             "conversation_type": "GROUP",
             "sender_phone": "+60111111111",
-            "text": "show me my salary",
+            "text": "show me my private salary",
         }
         with patch.object(brain, "respond", new=fake_respond):
             result = ingress.process(payload)
@@ -2649,18 +2649,19 @@ class AlexCoreTests(unittest.TestCase):
 
         conn = db.connect()
         try:
-            resurfaced = conn.execute(
+            escalated = conn.execute(
                 """SELECT conversation_id,context_kind,text_body
                    FROM outbound_messages
-                   WHERE context_id=? AND context_kind='REMINDER_FAMILY_RESURFACE'
+                   WHERE context_id=? AND context_kind='REMINDER_INITIATOR_ESCALATION'
                    ORDER BY rowid DESC LIMIT 1""",
                 (reminder["reminder_id"],),
             ).fetchone()
         finally:
             conn.close()
-        self.assertIsNotNone(resurfaced)
-        self.assertEqual(resurfaced["conversation_id"], group_id)
-        self.assertIn("Still outstanding", resurfaced["text_body"])
+        self.assertIsNotNone(escalated)
+        self.assertEqual(escalated["conversation_id"], "60111111111@s.whatsapp.net")
+        self.assertIn("Still unresolved", escalated["text_body"])
+        self.assertIn("Wife", escalated["text_body"])
 
     def test_home_state_monitor_is_explicit_one_shot_candidate(self):
         self.claim("home-monitor-create", "+60111111111", "monitor hall ac")
@@ -2899,7 +2900,11 @@ class AlexCoreTests(unittest.TestCase):
         self.assertFalse(ingress._private_group_handoff_requested("show me the latest expenses"))
         self.assertFalse(ingress._private_group_handoff_requested("show me the receipt for our blender"))
         self.assertTrue(ingress._private_group_handoff_requested("how much did I spend privately this month?"))
-        self.assertTrue(ingress._private_group_handoff_requested("show me my salary"))
+        # Global v0.5.7 rule: plain wording stays Family Shared even for
+        # historically-sensitive domains. Explicit private wording/emoji is
+        # what authorizes owner-DM handoff.
+        self.assertFalse(ingress._private_group_handoff_requested("show me my salary"))
+        self.assertTrue(ingress._private_group_handoff_requested("show me my private salary"))
         self.assertTrue(ingress._private_group_handoff_requested("save this privately: test note"))
 
     def test_v054_shared_saved_receipt_is_retrievable_from_family_group(self):
@@ -3049,60 +3054,62 @@ class AlexCoreTests(unittest.TestCase):
         self.assertGreater(width, height)
         self.assertGreaterEqual(width, 960)
 
-    def test_v054_postaudit_stash_is_private_by_domain_and_upgrade_repairs_shared_pool(self):
-        self.claim("stash-private-policy", "+60111111111", "Create a stash with RM100")
-        actor = replace(
-            self.actor("stash-private-policy", "+60111111111"),
+    def test_v057_cash_pool_follows_global_scope_policy_and_preserves_space(self):
+        self.claim("pool-family-create", "+60111111111", "Create a stash with RM100")
+        family_actor = replace(
+            self.actor("pool-family-create", "+60111111111"),
             trusted_text="Create a stash with RM100",
+            read_scope="family",
         )
-        created = mcp_server.planning_create_cash_pool(
-            "private policy stash", actor, opening_balance=100, shared=True
+        family_pool = mcp_server.planning_create_cash_pool(
+            "v057 family stash", family_actor, opening_balance=100
         )
-        self.assertEqual(created["space"], "HUSBAND_PVT")
-        private = mcp_server.planning_list_cash_pools(actor)["pools"]
-        self.assertTrue(any(x["name"] == "private policy stash" for x in private))
+        self.assertEqual(family_pool["space"], "FAMILY_SHARED")
 
-        group = self.group_actor("stash-private-policy-group", "+60111111111")
-        with self.assertRaisesRegex(ToolError, "Private Phase-2 data"):
-            mcp_server.planning_list_cash_pools(group)
-        self.assertTrue(
-            ingress._private_group_handoff_requested("How much stash do I have?")
+        self.claim(
+            "pool-private-create", "+60111111111",
+            "Create a private stash with RM50 😊"
         )
+        private_actor = replace(
+            self.actor("pool-private-create", "+60111111111"),
+            trusted_text="Create a private stash with RM50 😊",
+            read_scope="private",
+        )
+        private_pool = mcp_server.planning_create_cash_pool(
+            "v057 private stash", private_actor, opening_balance=50
+        )
+        self.assertEqual(private_pool["space"], "HUSBAND_PVT")
 
-        # Simulate a pool accidentally created Family Shared by the previous
-        # repair candidate, then rerun the additive upgrade repair.
-        conn = db.connect()
-        try:
-            conn.execute(
-                """UPDATE alex_phase2_cash_pools
-                   SET space_id='FAMILY_SHARED' WHERE pool_id=?""",
-                (created["pool_id"],),
-            )
-            conn.execute(
-                """UPDATE alex_phase2_cash_pool_adjustments
-                   SET space_id='FAMILY_SHARED' WHERE pool_id=?""",
-                (created["pool_id"],),
-            )
-            conn.commit()
-        finally:
-            conn.close()
+        family_names = {
+            row["name"]
+            for row in mcp_server.planning_list_cash_pools(family_actor)["pools"]
+        }
+        private_names = {
+            row["name"]
+            for row in mcp_server.planning_list_cash_pools(private_actor)["pools"]
+        }
+        self.assertIn("v057 family stash", family_names)
+        self.assertNotIn("v057 private stash", family_names)
+        self.assertIn("v057 private stash", private_names)
+        self.assertNotIn("v057 family stash", private_names)
+
+        # Schema maintenance must preserve the stored visibility; it must never
+        # silently rewrite Family pools into owner-private pools.
         phase2_finance.ensure_schema()
         conn = db.connect()
         try:
-            repaired = conn.execute(
-                """SELECT space_id FROM alex_phase2_cash_pools
-                   WHERE pool_id=?""",
-                (created["pool_id"],),
-            ).fetchone()
-            adjustment = conn.execute(
-                """SELECT space_id FROM alex_phase2_cash_pool_adjustments
-                   WHERE pool_id=? ORDER BY created_at_utc LIMIT 1""",
-                (created["pool_id"],),
-            ).fetchone()
+            spaces = {
+                row["pool_id"]: row["space_id"]
+                for row in conn.execute(
+                    """SELECT pool_id,space_id FROM alex_phase2_cash_pools
+                       WHERE pool_id IN (?,?)""",
+                    (family_pool["pool_id"], private_pool["pool_id"]),
+                ).fetchall()
+            }
         finally:
             conn.close()
-        self.assertEqual(repaired["space_id"], "HUSBAND_PVT")
-        self.assertEqual(adjustment["space_id"], "HUSBAND_PVT")
+        self.assertEqual(spaces[family_pool["pool_id"]], "FAMILY_SHARED")
+        self.assertEqual(spaces[private_pool["pool_id"]], "HUSBAND_PVT")
 
     def test_v054_postaudit_caption_only_shared_receipt_gets_in_group(self):
         caption = "July TNB receipt - share with the family"
@@ -3391,53 +3398,94 @@ class AlexCoreTests(unittest.TestCase):
             "tools_called": ["finance_report", "report_export"],
         }))
 
-    def test_v055_stashes_plural_and_named_pool_reads_handoff_or_route_directly(self):
-        self.assertTrue(
-            ingress._private_group_handoff_requested("What stashes do I have?")
+    def test_v057_named_private_pool_requires_current_private_scope(self):
+        self.claim(
+            "v057-pocket-private-create", "+60111111111",
+            "Create pocket cash privately 😊"
         )
-        self.claim("v055-pool-create", "+60111111111", "Create pocket cash stash")
-        actor = replace(
-            self.actor("v055-pool-create", "+60111111111"),
-            trusted_text="Create pocket cash stash",
+        creator = replace(
+            self.actor("v057-pocket-private-create", "+60111111111"),
+            trusted_text="Create pocket cash privately 😊",
+            read_scope="private",
         )
         created = mcp_server.planning_create_cash_pool(
-            "pocket cash", actor, opening_balance=100
+            "v057 pocket cash", creator, opening_balance=100
         )
         self.assertEqual(created["space"], "HUSBAND_PVT")
-        dm_actor = self.actor("v055-pool-create", "+60111111111")
-        self.assertTrue(
+
+        family_actor = replace(
+            creator,
+            trusted_text="How much do I have in v057 pocket cash?",
+            read_scope="family",
+        )
+        private_actor = replace(
+            creator,
+            trusted_text="How much do I have in v057 pocket cash? 😊",
+            read_scope="private",
+        )
+        self.assertFalse(
             brain._owned_cash_pool_name_mentioned(
-                dm_actor, "How much do I have in pocket cash?"
+                family_actor, "How much do I have in v057 pocket cash?"
             )
         )
-        group = self.group_actor("v055-pool-group", "+60111111111")
         self.assertTrue(
-            ingress._private_group_match_available(
-                group, "How much do I have in pocket cash?"
+            brain._owned_cash_pool_name_mentioned(
+                private_actor, "How much do I have in v057 pocket cash? 😊"
             )
         )
 
-    def test_v055_private_note_group_miss_detects_only_private_match(self):
-        self.claim("v055-private-note", "+60111111111", "save this privately")
-        private_actor = with_action_key(
-            replace(
-                self.actor("v055-private-note", "+60111111111"),
-                trusted_text="save this privately",
-            ),
-            "v055-private-note-action",
-        )
-        saved = services.save_item(
-            private_actor, "v055 secret drawer note", "keys in blue drawer"
-        )
-        self.assertEqual(saved["space"], "HUSBAND_PVT")
-        group = self.group_actor("v055-private-note-group", "+60111111111")
-        self.assertTrue(
-            ingress._private_group_match_available(
-                group, "show me the v055 secret drawer note"
+        with use_actor(family_actor):
+            with self.assertRaisesRegex(ValueError, "current scope|authorized"):
+                phase2_finance.resolve_cash_pool_reference(
+                    None, "v057 pocket cash", creator.phone, "DIRECT_DM"
+                )
+        with use_actor(private_actor):
+            resolved = phase2_finance.resolve_cash_pool_reference(
+                None, "v057 pocket cash", creator.phone, "DIRECT_DM"
+            )
+            balance = phase2_finance.cash_pool_balance(
+                resolved, creator.phone, "DIRECT_DM"
+            )
+        self.assertEqual(balance["balance"], 100.0)
+
+        self.assertFalse(
+            ingress._private_group_handoff_requested(
+                "How much do I have in v057 pocket cash?"
             )
         )
+        self.assertTrue(
+            ingress._private_group_handoff_requested(
+                "How much do I have in v057 pocket cash? 😊"
+            )
+        )
+
+    def test_v057_group_plain_private_note_miss_does_not_probe_or_handoff(self):
+        self.claim("v057-private-note", "+60111111111", "save this privately 😊")
+        private_actor = with_action_key(
+            replace(
+                self.actor("v057-private-note", "+60111111111"),
+                trusted_text="save this privately 😊",
+                read_scope="private",
+            ),
+            "v057-private-note-action",
+        )
+        saved = services.save_item(
+            private_actor, "v057 secret drawer note", "keys in blue drawer"
+        )
+        self.assertEqual(saved["space"], "HUSBAND_PVT")
+        group = self.group_actor("v057-private-note-group", "+60111111111")
         self.assertEqual(
-            services.search_saved_items(group, "v055 secret drawer note")["count"], 0
+            services.search_saved_items(group, "v057 secret drawer note")["count"], 0
+        )
+        self.assertFalse(
+            ingress._private_group_handoff_requested(
+                "show me the v057 secret drawer note"
+            )
+        )
+        self.assertTrue(
+            ingress._private_group_handoff_requested(
+                "show me the v057 secret drawer note 😊"
+            )
         )
 
     def test_v055_named_assignee_from_group_forces_dm_and_queues_immediate_ack(self):
@@ -3716,16 +3764,19 @@ class AlexCoreTests(unittest.TestCase):
                 "context": {"id": "ctx-ha-action-ack"},
             }
         })
-        self.assertEqual(result["state"], "ACK")
+        self.assertEqual(result["state"], "OPEN")
+        self.assertTrue(result["seen"])
         conn = db.connect()
         try:
             row = conn.execute(
-                "SELECT status FROM reminders WHERE reminder_id=?",
+                "SELECT status,seen_at_utc,seen_by_user_id FROM reminders WHERE reminder_id=?",
                 (reminder["reminder_id"],),
             ).fetchone()
         finally:
             conn.close()
-        self.assertEqual(row["status"], "ACK")
+        self.assertEqual(row["status"], "OPEN")
+        self.assertIsNotNone(row["seen_at_utc"])
+        self.assertEqual(row["seen_by_user_id"], "USR_HUSBAND")
 
 
 
@@ -3908,6 +3959,1522 @@ class AlexCoreTests(unittest.TestCase):
         self.claim("context-policy", "+60111111111", "context")
         return self.actor("context-policy", "+60111111111")
 
+
+
+    def test_v057_baileys_pin_contract_and_self_target(self):
+        bridge_path = os.path.join(
+            os.path.dirname(__file__), "..", "alex-mcp", "app", "connect.js"
+        )
+        bridge = open(bridge_path, encoding="utf-8").read()
+        self.assertIn("pin: targetKey", bridge)
+        self.assertIn("type: payload.kind === 'pin' ? 1 : 2", bridge)
+        self.assertIn("fromMe: Boolean(payload.target_from_me)", bridge)
+
+        row = {
+            "provider_message_id": "wa-own-message",
+            "outbound_id": "outbound-1",
+            "conversation_id": "60111111111@s.whatsapp.net",
+        }
+        sent = []
+        with patch.object(
+            outbox, "_send",
+            side_effect=lambda payload: (sent.append(payload) or True, "{}"),
+        ):
+            self.assertTrue(outbox._control_outbound(row, "pin"))
+        self.assertTrue(sent[0]["target_from_me"])
+        self.assertEqual(sent[0]["target_message_id"], "wa-own-message")
+
+    def test_v057_empty_read_reply_uses_tool_evidence_not_done(self):
+        class FakeFunction:
+            def __init__(self, name, arguments="{}"):
+                self.name = name
+                self.arguments = arguments
+
+        class FakeCall:
+            def __init__(self, call_id, name):
+                self.id = call_id
+                self.function = FakeFunction(name)
+
+        class FakeMessage:
+            def __init__(self, content="", calls=None):
+                self.content = content
+                self.tool_calls = calls or []
+
+            def model_dump(self, exclude_none=True):
+                payload = {"role": "assistant", "content": self.content}
+                if self.tool_calls:
+                    payload["tool_calls"] = [
+                        {
+                            "id": call.id,
+                            "type": "function",
+                            "function": {
+                                "name": call.function.name,
+                                "arguments": call.function.arguments,
+                            },
+                        }
+                        for call in self.tool_calls
+                    ]
+                return payload
+
+        class FakeResponse:
+            def __init__(self, message):
+                self.choices = [type("Choice", (), {"message": message})()]
+                self.usage = None
+
+        class FakeCompletions:
+            def __init__(self):
+                self.calls = 0
+
+            def create(self, **kwargs):
+                self.calls += 1
+                if self.calls == 1:
+                    return FakeResponse(
+                        FakeMessage(calls=[FakeCall("read-1", "query_finances")])
+                    )
+                return FakeResponse(FakeMessage(content=""))
+
+        fake_client = type(
+            "FakeClient",
+            (),
+            {"chat": type("FakeChat", (), {"completions": FakeCompletions()})()},
+        )()
+        route = {
+            "provider": "grok",
+            "model": "stub",
+            "reasoning_effort": "low",
+            "role": "manual",
+        }
+
+        async def fake_call_mcp(actor, name, args, action_key):
+            return ({
+                "spending_totals": {"MYR": 30.49},
+                "income_totals": {},
+                "net_outflow": {"MYR": 30.49},
+                "category_totals": [],
+                "count": 4,
+                "returned_records": 4,
+                "latest_record": None,
+                "records": [],
+            }, [])
+
+        self.claim("v057-empty-read", "+60111111111", "show transport expenses")
+        actor = self.actor("v057-empty-read", "+60111111111")
+        with patch.object(brain, "_provider_routes", return_value=[route]), \
+             patch.object(brain, "_client_for", return_value=fake_client), \
+             patch.object(brain, "_call_mcp", new=fake_call_mcp):
+            reply, attachments = asyncio.run(
+                brain.respond(actor, "show transport expenses")
+            )
+        self.assertEqual(attachments, [])
+        self.assertNotEqual(reply.strip().casefold().rstrip(".!"), "done")
+        self.assertIn("MYR 30.49", reply)
+        self.assertIn("4 matching finance records", reply)
+
+
+    def test_v057_finance_followup_overrides_model_dates_and_drops_old_search(self):
+        self.claim("v057-fin-sep", "+60111111111", "spent RM15.67 on snacks")
+        sep_actor = with_action_key(
+            replace(
+                self.actor("v057-fin-sep", "+60111111111"),
+                trusted_text="spent RM15.67 on snacks",
+                read_scope="family",
+            ),
+            "v057-fin-sep-action",
+        )
+        services.log_expense(
+            sep_actor, "September family snacks", 15.67, "food",
+            currency="MYR", event_date_local="2026-09-30T12:00:00+08:00",
+        )
+        self.claim("v057-fin-oct", "+60111111111", "spent RM18.50 on lunch")
+        oct_actor = with_action_key(
+            replace(
+                self.actor("v057-fin-oct", "+60111111111"),
+                trusted_text="spent RM18.50 on lunch",
+                read_scope="family",
+            ),
+            "v057-fin-oct-action",
+        )
+        services.log_expense(
+            oct_actor, "October lunch", 18.50, "food",
+            currency="MYR", event_date_local="2026-10-01T12:00:00+08:00",
+        )
+
+        conversation = self.actor("v057-fin-sep", "+60111111111").conversation_id
+        phase2_reports.remember_active_report(
+            "USR_HUSBAND", conversation, "finance_query",
+            {"count": 1}, period="2026-09",
+            spec={
+                "period": "2026-09",
+                "start_date": "2026-09-01",
+                "end_date": "2026-09-30",
+                "search": "transport",
+                "scope": "family",
+            },
+        )
+        self.claim(
+            "v057-fin-follow", "+60111111111",
+            "Give me a breakdown on food expenses next",
+        )
+        follow = replace(
+            self.actor("v057-fin-follow", "+60111111111"),
+            trusted_text="Give me a breakdown on food expenses next",
+            read_scope="family",
+        )
+        result = mcp_server.query_finances(
+            follow,
+            start_date="2026-10-01", end_date="2026-10-01",
+            category="food", search="transport",
+        )
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["spending_totals"]["MYR"], 15.67)
+        self.assertIn("2026-09-30", result["records"][0]["date_local"])
+        self.assertEqual(result["records"][0]["description"], "September family snacks")
+
+    def test_v057_quoted_report_overrides_model_period_and_active_context(self):
+        class FakeFunction:
+            def __init__(self, name, arguments):
+                self.name = name
+                self.arguments = arguments
+
+        class FakeCall:
+            def __init__(self):
+                self.id = "export-1"
+                self.function = FakeFunction(
+                    "report_export",
+                    json.dumps({
+                        "format": "csv",
+                        "period": "2026-10",
+                        "report_type": "finance",
+                        "search": "pocket cash",
+                    }),
+                )
+
+        class FakeMessage:
+            def __init__(self, content="", calls=None):
+                self.content = content
+                self.tool_calls = calls or []
+
+            def model_dump(self, exclude_none=True):
+                payload = {"role": "assistant", "content": self.content}
+                if self.tool_calls:
+                    payload["tool_calls"] = [{
+                        "id": call.id,
+                        "type": "function",
+                        "function": {
+                            "name": call.function.name,
+                            "arguments": call.function.arguments,
+                        },
+                    } for call in self.tool_calls]
+                return payload
+
+        class FakeResponse:
+            def __init__(self, message):
+                self.choices = [type("Choice", (), {"message": message})()]
+                self.usage = None
+
+        class FakeCompletions:
+            def __init__(self):
+                self.n = 0
+            def create(self, **kwargs):
+                self.n += 1
+                if self.n == 1:
+                    return FakeResponse(FakeMessage(calls=[FakeCall()]))
+                return FakeResponse(FakeMessage(content="Here it is."))
+
+        fake_client = type(
+            "FakeClient", (),
+            {"chat": type("FakeChat", (), {"completions": FakeCompletions()})()},
+        )()
+        captured = {}
+
+        async def fake_call(actor, name, args, action_key):
+            captured.update(args)
+            return ({"status": "ready", "format": "csv"}, [])
+
+        self.claim("v057-quote-export", "+60111111111", "Send this as a csv")
+        actor = replace(
+            self.actor("v057-quote-export", "+60111111111"),
+            trusted_text="Send this as a csv",
+            read_scope="family",
+        )
+        route = {
+            "provider": "grok", "model": "stub",
+            "reasoning_effort": "low", "role": "manual",
+        }
+        quoted = {
+            "context_kind": "REPORT",
+            "context_id": "frozen",
+            "report_context": {
+                "kind": "finance_query",
+                "period": "2026-09",
+                "spec": {
+                    "start_date": "2026-09-01",
+                    "end_date": "2026-09-30",
+                    "category": "transport",
+                    "search": None,
+                    "scope": "family",
+                },
+            },
+        }
+        with patch.object(brain, "_provider_routes", return_value=[route]), \
+             patch.object(brain, "_client_for", return_value=fake_client), \
+             patch.object(brain, "_call_mcp", new=fake_call):
+            asyncio.run(brain.respond(
+                actor, "Send this as a csv", quoted_context=quoted
+            ))
+        self.assertEqual(captured["period"], "2026-09")
+        self.assertEqual(captured["category"], "transport")
+        self.assertIsNone(captured["search"])
+        self.assertEqual(captured["scope"], "family")
+        self.assertEqual(captured["report_type"], "finance")
+        self.assertFalse(captured["use_active_context"])
+        self.assertFalse(captured["full_report"])
+
+    def test_v057_pending_voice_numbers_bind_play_and_resolve(self):
+        self.claim("v057-voice-src", "+60111111111", "")
+        media_ids, _, _ = media.process_payload_media({
+            "message_id": "v057-voice-src",
+            "audio_data": base64.b64encode(b"voice-audio-v057").decode("ascii"),
+            "audio_mime_type": "audio/ogg",
+        })
+        actor = self.actor("v057-voice-src", "+60111111111", media_ids)
+        pending = db.create_pending_item(
+            actor, "VOICE", media_id=media_ids[0], note="deferred voice"
+        )
+
+        self.claim("v057-voice-list", "+60111111111", "Any unresolved voice notes?")
+        reader = replace(
+            self.actor("v057-voice-list", "+60111111111"),
+            trusted_text="Any unresolved voice notes?",
+            read_scope="family",
+        )
+        listed = mcp_server.list_pending_items(reader, "VOICE")
+        self.assertEqual(len(listed["items"]), 1)
+        self.assertEqual(
+            set(listed["items"][0]),
+            {"choice", "kind", "received", "media_type"},
+        )
+        self.assertEqual(listed["items"][0]["choice"], 1)
+        self.assertRegex(listed["items"][0]["received"], r", \d{1,2}:\d{2} (?:AM|PM)$")
+
+        played = services.resolve_numbered_choice(reader, 1)
+        self.assertEqual(played["media_type"], "AUDIO")
+        self.assertTrue(played["_attachments"])
+        conn = db.connect()
+        try:
+            state = conn.execute(
+                "SELECT status FROM pending_items WHERE item_id=?",
+                (pending["item_id"],),
+            ).fetchone()["status"]
+        finally:
+            conn.close()
+        self.assertEqual(state, "PENDING")
+
+        resolved = mcp_server.resolve_pending_item(reader, choice=1)
+        self.assertEqual(resolved["status"], "resolved")
+        conn = db.connect()
+        try:
+            state = conn.execute(
+                "SELECT status FROM pending_items WHERE item_id=?",
+                (pending["item_id"],),
+            ).fetchone()["status"]
+        finally:
+            conn.close()
+        self.assertEqual(state, "RESOLVED")
+
+    def test_v057_typed_voice_clarification_resolves_only_after_verified_action(self):
+        self.claim("v057-voice-auto-src", "+60111111111", "")
+        media_ids, _, _ = media.process_payload_media({
+            "message_id": "v057-voice-auto-src",
+            "audio_data": base64.b64encode(b"voice-auto-v057").decode("ascii"),
+            "audio_mime_type": "audio/ogg",
+        })
+        source_actor = self.actor(
+            "v057-voice-auto-src", "+60111111111", media_ids
+        )
+        pending = db.create_pending_item(
+            source_actor, "VOICE", media_id=media_ids[0],
+            note="deferred voice",
+        )
+        oid = db.queue_outbound(
+            source_actor.conversation_id,
+            "TEXT",
+            text="I saved this voice note for review.",
+            source_message_id="v057-voice-auto-src",
+            context_kind="PENDING_ITEM",
+            context_id=pending["item_id"],
+        )
+        conn = db.connect()
+        try:
+            conn.execute(
+                """UPDATE outbound_messages
+                   SET provider_message_id='wa-v057-voice-auto',
+                       delivery_status='SENT',delivered_at_utc=CURRENT_TIMESTAMP
+                   WHERE outbound_id=?""",
+                (oid,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        async def successful_typed_action(actor, *args, **kwargs):
+            action_key = "v057-voice-auto-action"
+            conn = db.connect()
+            try:
+                conn.execute(
+                    """INSERT INTO tool_execution_claims(
+                           action_key,tool_name,state,result_json,attachments_json,
+                           completed_at_utc
+                       ) VALUES(?,?,'COMPLETED','{}','[]',CURRENT_TIMESTAMP)""",
+                    (action_key, "save_item"),
+                )
+                conn.execute(
+                    """INSERT INTO tool_audit(
+                           audit_id,action_key,source_message_id,user_id,tool_name,
+                           arguments_json,result_json,status,latency_ms
+                       ) VALUES(?,?,?,?,?,'{}','{}','OK',0)""",
+                    (
+                        "v057-voice-auto-audit", action_key,
+                        actor.source_message_id, actor.user_id, "save_item",
+                    ),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+            return "Saved that.", []
+
+        payload = {
+            "message_id": "v057-voice-auto-clarify",
+            "provider": "WHATSAPP",
+            "conversation_id": source_actor.conversation_id,
+            "conversation_type": "DIRECT_DM",
+            "sender_phone": "+60111111111",
+            "text": "Save this as a note: the spare key is in the drawer.",
+            "quoted_message_id": "wa-v057-voice-auto",
+        }
+        with patch.object(brain, "respond", new=successful_typed_action):
+            result = ingress.process(payload)
+        self.assertTrue(result["ok"])
+        conn = db.connect()
+        try:
+            state = conn.execute(
+                "SELECT status FROM pending_items WHERE item_id=?",
+                (pending["item_id"],),
+            ).fetchone()["status"]
+        finally:
+            conn.close()
+        self.assertEqual(state, "RESOLVED")
+
+        # A second typed clarification with no verified mutation must stay
+        # pending even when the model returns a fluent answer.
+        self.claim("v057-voice-fail-src", "+60111111111", "")
+        failed_pending = db.create_pending_item(
+            self.actor("v057-voice-fail-src", "+60111111111"),
+            "VOICE", note="deferred voice",
+        )
+        failed_oid = db.queue_outbound(
+            source_actor.conversation_id,
+            "TEXT",
+            text="I saved this voice note for review.",
+            source_message_id="v057-voice-fail-src",
+            context_kind="PENDING_ITEM",
+            context_id=failed_pending["item_id"],
+        )
+        conn = db.connect()
+        try:
+            conn.execute(
+                """UPDATE outbound_messages
+                   SET provider_message_id='wa-v057-voice-fail',
+                       delivery_status='SENT',delivered_at_utc=CURRENT_TIMESTAMP
+                   WHERE outbound_id=?""",
+                (failed_oid,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        async def no_action(*args, **kwargs):
+            return "I couldn't complete that request.", []
+
+        failed_payload = {
+            "message_id": "v057-voice-fail-clarify",
+            "provider": "WHATSAPP",
+            "conversation_id": source_actor.conversation_id,
+            "conversation_type": "DIRECT_DM",
+            "sender_phone": "+60111111111",
+            "text": "Save this as a note.",
+            "quoted_message_id": "wa-v057-voice-fail",
+        }
+        with patch.object(brain, "respond", new=no_action):
+            result = ingress.process(failed_payload)
+        self.assertTrue(result["ok"])
+        conn = db.connect()
+        try:
+            state = conn.execute(
+                "SELECT status FROM pending_items WHERE item_id=?",
+                (failed_pending["item_id"],),
+            ).fetchone()["status"]
+        finally:
+            conn.close()
+        self.assertEqual(state, "PENDING")
+
+    def test_v057_cancel_pending_voice_preserves_original_provenance(self):
+        self.claim("v057-voice-cancel-src", "+60111111111", "")
+        media_ids, _, _ = media.process_payload_media({
+            "message_id": "v057-voice-cancel-src",
+            "audio_data": base64.b64encode(b"voice-cancel-v057").decode("ascii"),
+            "audio_mime_type": "audio/ogg",
+        })
+        actor = self.actor(
+            "v057-voice-cancel-src", "+60111111111", media_ids
+        )
+        pending = db.create_pending_item(
+            actor, "VOICE", media_id=media_ids[0], note="deferred voice"
+        )
+        listed = mcp_server.list_pending_items(actor, "VOICE")
+        choice = next(
+            item["choice"] for item in listed["items"]
+            if item["kind"] == "VOICE"
+        )
+        cancelled = mcp_server.cancel_pending_item(actor, choice=choice)
+        self.assertEqual(cancelled["status"], "cancelled")
+        conn = db.connect()
+        try:
+            state = conn.execute(
+                "SELECT status FROM pending_items WHERE item_id=?",
+                (pending["item_id"],),
+            ).fetchone()["status"]
+        finally:
+            conn.close()
+        self.assertEqual(state, "CANCELLED")
+        original = services.get_media_original(actor, media_ids[0])
+        self.assertEqual(original["media_type"], "AUDIO")
+        self.assertTrue(original["_attachments"])
+
+    def test_v057_post_due_reaction_seen_vs_complete(self):
+        group_id = "120363575757@g.us"
+        with open(os.path.join(TEST_DIR, "family_group.json"), "w", encoding="utf-8") as handle:
+            handle.write('{"group_jid":"%s"}' % group_id)
+        creator = self.group_actor("v057-due-create", "+60111111111")
+        creator = with_action_key(
+            replace(
+                creator,
+                trusted_text="remind the family on Saturday at 10 AM about v057 parcel",
+            ),
+            "v057-due-create-action",
+        )
+        reminder = services.create_reminder(
+            creator, "v057 parcel", "2026-10-03T10:00:00+08:00",
+            destination="group", claimable=True,
+        )
+        oid = db.queue_outbound(
+            group_id, "TEXT", text="Reminder: v057 parcel",
+            context_kind="REMINDER_INITIAL", context_id=reminder["reminder_id"],
+        )
+        conn = db.connect()
+        try:
+            conn.execute(
+                """UPDATE reminders SET status='DUE' WHERE reminder_id=?""",
+                (reminder["reminder_id"],),
+            )
+            conn.execute(
+                """UPDATE outbound_messages
+                   SET provider_message_id='wa-v057-due',delivery_status='SENT',
+                       delivered_at_utc=CURRENT_TIMESTAMP,job_pinned_at_utc=CURRENT_TIMESTAMP
+                   WHERE outbound_id=?""",
+                (oid,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        db.claim_inbound({
+            "message_id": "v057-due-react",
+            "provider": "WHATSAPP",
+            "conversation_id": group_id,
+            "conversation_type": "GROUP",
+            "sender_phone": "+60111111111",
+            "text": "",
+        })
+        reactor = db.resolve_actor(
+            "+60111111111", group_id, "GROUP", "v057-due-react", []
+        )
+        seen = services.claim_reminder_from_reaction(
+            reactor, "wa-v057-due", "👍"
+        )
+        self.assertEqual(seen["status"], "seen")
+        self.assertEqual(seen["state"], "DUE")
+        visible = services.list_reminders(reactor)["reminders"]
+        self.assertTrue(any(x["task_text"] == "v057 parcel" for x in visible))
+        conn = db.connect()
+        try:
+            row = conn.execute(
+                "SELECT status,seen_at_utc FROM reminders WHERE reminder_id=?",
+                (reminder["reminder_id"],),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(row["status"], "DUE")
+        self.assertIsNotNone(row["seen_at_utc"])
+
+        done = services.claim_reminder_from_reaction(
+            reactor, "wa-v057-due", "✅"
+        )
+        self.assertEqual(done["status"], "completed")
+        conn = db.connect()
+        try:
+            state = conn.execute(
+                "SELECT status FROM reminders WHERE reminder_id=?",
+                (reminder["reminder_id"],),
+            ).fetchone()["status"]
+        finally:
+            conn.close()
+        self.assertEqual(state, "COMP")
+
+    def test_v057_reminder_task_name_blocks_cross_domain_fallback(self):
+        self.claim("v057-reminder-seed", "+60111111111", "create reminder")
+        creator = with_action_key(
+            replace(
+                self.actor("v057-reminder-seed", "+60111111111"),
+                trusted_text="Remind me on Saturday at 10 AM: v056 unclaimed test",
+            ),
+            "v057-reminder-seed-action",
+        )
+        services.create_reminder(
+            creator, "v056 unclaimed test", "2026-10-03T10:00:00+08:00",
+            shared=True,
+        )
+        self.claim("v057-note-collision", "+60111111111", "save v056 note")
+        note_actor = with_action_key(
+            replace(
+                self.actor("v057-note-collision", "+60111111111"),
+                trusted_text="save v056 note",
+            ),
+            "v057-note-action",
+        )
+        services.save_item(note_actor, "v056 lighter location", "shared collision")
+
+        self.claim(
+            "v057-reminder-lookup", "+60111111111",
+            "Is v056 unclaimed test still unresolved?",
+        )
+        actor = replace(
+            self.actor("v057-reminder-lookup", "+60111111111"),
+            trusted_text="Is v056 unclaimed test still unresolved?",
+            read_scope="family",
+        )
+        self.assertTrue(
+            brain._accessible_reminder_name_mentioned(
+                actor, "Is v056 unclaimed test still unresolved?"
+            )
+        )
+
+        exposed = {}
+        class FakeResponse:
+            def __init__(self):
+                self.choices = [
+                    type("Choice", (), {
+                        "message": type("Msg", (), {
+                            "content": "It is still unresolved.",
+                            "tool_calls": [],
+                            "model_dump": lambda self, exclude_none=True: {
+                                "role": "assistant",
+                                "content": self.content,
+                            },
+                        })()
+                    })()
+                ]
+                self.usage = None
+        class FakeCompletions:
+            def create(self, **kwargs):
+                exposed["names"] = {
+                    x["function"]["name"] for x in kwargs.get("tools", [])
+                }
+                return FakeResponse()
+        fake_client = type(
+            "FakeClient", (),
+            {"chat": type("FakeChat", (), {"completions": FakeCompletions()})()},
+        )()
+        route = {
+            "provider": "grok", "model": "stub",
+            "reasoning_effort": "low", "role": "manual",
+        }
+        with patch.object(brain, "_provider_routes", return_value=[route]), \
+             patch.object(brain, "_client_for", return_value=fake_client):
+            asyncio.run(brain.respond(
+                actor, "Is v056 unclaimed test still unresolved?"
+            ))
+        self.assertIn("list_reminders", exposed["names"])
+        self.assertNotIn("search_saved_items", exposed["names"])
+        self.assertNotIn("query_finances", exposed["names"])
+
+    def test_v057_reminder_clarification_is_durable_pending_draft(self):
+        first = {
+            "message_id": "v057-draft-first",
+            "provider": "WHATSAPP",
+            "conversation_id": "60111111111@s.whatsapp.net",
+            "conversation_type": "DIRECT_DM",
+            "sender_phone": "+60111111111",
+            "text": "Remind me to water the plants this weekend.",
+        }
+        with patch.object(
+            brain, "respond",
+            return_value=(
+                "What day and time this weekend would you like me to set the reminder for?",
+                [],
+            ),
+        ):
+            result = ingress.process(first)
+        self.assertTrue(result["ok"])
+        conn = db.connect()
+        try:
+            draft = conn.execute(
+                """SELECT * FROM pending_items
+                   WHERE kind='REMINDER_DRAFT' AND status='PENDING'
+                   ORDER BY created_at_utc DESC LIMIT 1"""
+            ).fetchone()
+            outbound = conn.execute(
+                """SELECT context_kind,context_id FROM outbound_messages
+                   WHERE source_message_id='v057-draft-first'
+                   ORDER BY rowid DESC LIMIT 1"""
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertIsNotNone(draft)
+        self.assertEqual(outbound["context_kind"], "PENDING_ITEM")
+        self.assertEqual(outbound["context_id"], draft["item_id"])
+
+        second = {
+            "message_id": "v057-draft-second",
+            "provider": "WHATSAPP",
+            "conversation_id": "60111111111@s.whatsapp.net",
+            "conversation_type": "DIRECT_DM",
+            "sender_phone": "+60111111111",
+            "text": "Saturday at 9 AM",
+        }
+        async def finish_draft(actor, user_text, media_context=None,
+                               vision_parts=None, quoted_context=None):
+            self.assertEqual(
+                quoted_context["pending_item"]["kind"], "REMINDER_DRAFT"
+            )
+            self.assertIn(
+                "water the plants",
+                quoted_context["recent_user_instruction"].casefold(),
+            )
+            services.create_reminder(
+                with_action_key(actor, "v057-draft-final-action"),
+                "water the plants", "2026-10-03T09:00:00+08:00",
+            )
+            return ("OK. I've set the reminder for Saturday at 9:00 AM.", [])
+
+        with patch.object(brain, "respond", new=finish_draft):
+            result = ingress.process(second)
+        self.assertTrue(result["ok"])
+        conn = db.connect()
+        try:
+            draft_state = conn.execute(
+                "SELECT status FROM pending_items WHERE item_id=?",
+                (draft["item_id"],),
+            ).fetchone()["status"]
+            made = conn.execute(
+                """SELECT task_text FROM reminders
+                   WHERE source_message_id='v057-draft-second'"""
+            ).fetchall()
+        finally:
+            conn.close()
+        self.assertEqual(draft_state, "RESOLVED")
+        self.assertEqual([row["task_text"] for row in made], ["water the plants"])
+
+    def test_v057_private_search_offer_is_single_use_and_scope_safe(self):
+        self.claim("v057-private-offer-src", "+60111111111", "Show me my Philips asset")
+        source_actor = replace(
+            self.actor("v057-private-offer-src", "+60111111111"),
+            trusted_text="Show me my Philips asset",
+            read_scope="family",
+        )
+        pending, reply = ingress._maybe_create_private_search_offer(
+            source_actor,
+            "Show me my Philips asset",
+            "I couldn't locate a specific Philips Air Fryer in the records available to this request.",
+            [],
+        )
+        self.assertIsNotNone(pending)
+        self.assertIn("shared records", reply)
+        self.assertIn("private records", reply)
+        self.assertEqual(
+            ingress._private_offer_query(pending),
+            "Show me my Philips asset",
+        )
+
+        self.claim("v057-private-offer-yes", "+60111111111", "Yes")
+        yes_actor = replace(
+            self.actor("v057-private-offer-yes", "+60111111111"),
+            trusted_text="Yes",
+            read_scope="family",
+        )
+        seen_scope = {}
+        async def private_reply(actor, user_text, media_context=None,
+                                vision_parts=None, quoted_context=None):
+            seen_scope["scope"] = actor.read_scope
+            seen_scope["query"] = user_text
+            return ("I found the private Philips asset.", [])
+        with patch.object(brain, "respond", new=private_reply):
+            result = ingress._fulfill_private_search_offer(yes_actor, dict(pending))
+        self.assertTrue(result["ok"])
+        self.assertEqual(seen_scope["scope"], "private")
+        self.assertEqual(seen_scope["query"], "Show me my Philips asset")
+        conn = db.connect()
+        try:
+            state = conn.execute(
+                "SELECT status FROM pending_items WHERE item_id=?",
+                (pending["item_id"],),
+            ).fetchone()["status"]
+        finally:
+            conn.close()
+        self.assertEqual(state, "RESOLVED")
+
+    def test_v057_private_asset_is_searchable_without_crossing_family_scope(self):
+        phase2_library.create_asset(
+            "Philips Air Fryer", "+60111111111", "DIRECT_DM",
+            visibility="private", brand="Philips", model="HD9280/90",
+            serial_number="V05-12345", purchase_date="2026-09-27",
+        )
+        self.claim("v057-asset-family", "+60111111111", "show Philips Air Fryer")
+        base = self.actor("v057-asset-family", "+60111111111")
+        family_actor = replace(base, trusted_text="show Philips Air Fryer", read_scope="family")
+        private_actor = replace(base, trusted_text="show Philips Air Fryer 😊", read_scope="private")
+        with use_actor(family_actor):
+            shared = phase2_library.list_assets(
+                base.phone, base.conversation_type, "all", False, "Philips Air Fryer"
+            )
+        with use_actor(private_actor):
+            private = phase2_library.list_assets(
+                base.phone, base.conversation_type, "all", False, "Philips Air Fryer"
+            )
+        self.assertEqual(shared, [])
+        self.assertEqual(len(private), 1)
+        self.assertEqual(private[0]["model"], "HD9280/90")
+        self.assertIsNone(private[0]["warranty_end"])
+
+    def test_v057_saved_item_browse_uses_local_date_and_time(self):
+        self.claim("v057-saved-time", "+60111111111", "save lighter location")
+        actor = with_action_key(
+            replace(
+                self.actor("v057-saved-time", "+60111111111"),
+                trusted_text="save lighter location",
+                read_scope="family",
+            ),
+            "v057-saved-time-action",
+        )
+        services.save_item(actor, "Lighter location", "lighter is in the garage")
+        found = services.search_saved_items(actor, "lighter")
+        self.assertEqual(found["count"], 1)
+        self.assertRegex(
+            found["matches"][0]["saved_on"],
+            r"^\d{1,2} [A-Za-z]+ 2026, \d{1,2}:\d{2} (?:AM|PM)$",
+        )
+
+
+    def test_v057_frozen_filtered_export_stays_inside_quoted_month(self):
+        self.claim("v057-exp-sep", "+60111111111", "spent RM10 on transport")
+        sep = with_action_key(
+            replace(
+                self.actor("v057-exp-sep", "+60111111111"),
+                trusted_text="spent RM10 on transport",
+                read_scope="family",
+            ),
+            "v057-exp-sep-action",
+        )
+        services.log_expense(
+            sep, "September transport", 10.0, "transport",
+            currency="MYR", event_date_local="2026-09-30T08:00:00+08:00",
+        )
+        self.claim("v057-exp-oct", "+60111111111", "spent RM20 on transport")
+        oct_actor = with_action_key(
+            replace(
+                self.actor("v057-exp-oct", "+60111111111"),
+                trusted_text="spent RM20 on transport",
+                read_scope="family",
+            ),
+            "v057-exp-oct-action",
+        )
+        services.log_expense(
+            oct_actor, "October transport", 20.0, "transport",
+            currency="MYR", event_date_local="2026-10-01T08:00:00+08:00",
+        )
+        self.claim("v057-exp-export", "+60111111111", "send this as csv")
+        exporter = replace(
+            self.actor("v057-exp-export", "+60111111111"),
+            trusted_text="send this as csv",
+            read_scope="family",
+        )
+        result = mcp_server.report_export(
+            "csv", exporter,
+            period="2026-09", report_type="finance",
+            category="transport", scope="family",
+            use_active_context=False,
+        )
+        self.assertEqual(result["record_count"], 1)
+        payload = open(
+            result["_attachments"][0]["path"], encoding="utf-8"
+        ).read()
+        self.assertIn("September transport", payload)
+        self.assertNotIn("October transport", payload)
+
+    def test_v057_rc2_upgrade_does_not_rebridge_legacy_family_stash(self):
+        conn = db.connect()
+        try:
+            conn.execute(
+                """INSERT INTO money_buckets(
+                       bucket_id,owner_id,space_id,bucket_name,amount_minor,currency
+                   ) VALUES('legacy-b1','USR_HUSBAND','FAMILY_SHARED',
+                            'v05 emergency stash',30000,'MYR')"""
+            )
+            conn.execute(
+                """INSERT INTO alex_phase2_cash_pools(
+                       pool_id,space_id,owner_user_id,name,currency
+                   ) VALUES('legacy-private-pool','HUSBAND_PVT','USR_HUSBAND',
+                            'v05 emergency stash','MYR')"""
+            )
+            conn.execute(
+                """INSERT INTO alex_phase2_cash_pool_adjustments(
+                       adjustment_id,pool_id,space_id,owner_user_id,amount_minor,
+                       adjustment_kind,event_date,note,source_message_id
+                   ) VALUES('legacy-adj','legacy-private-pool','HUSBAND_PVT',
+                            'USR_HUSBAND',30000,'OPENING_BALANCE','2026-09-01',
+                            'legacy bridge','legacy-money-bucket:legacy-b1')"""
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        phase2_finance.ensure_schema()
+        phase2_finance.ensure_schema()
+        conn = db.connect()
+        try:
+            pools = conn.execute(
+                """SELECT pool_id,space_id FROM alex_phase2_cash_pools
+                   WHERE owner_user_id='USR_HUSBAND'
+                     AND LOWER(TRIM(name))='v05 emergency stash'
+                     AND status='ACTIVE'"""
+            ).fetchall()
+            total = conn.execute(
+                """SELECT COALESCE(SUM(a.amount_minor),0) AS total
+                   FROM alex_phase2_cash_pool_adjustments a
+                   JOIN alex_phase2_cash_pools p ON p.pool_id=a.pool_id
+                   WHERE p.owner_user_id='USR_HUSBAND'
+                     AND LOWER(TRIM(p.name))='v05 emergency stash'
+                     AND p.status='ACTIVE'"""
+            ).fetchone()["total"]
+        finally:
+            conn.close()
+        self.assertEqual(len(pools), 1)
+        self.assertEqual(pools[0]["space_id"], "HUSBAND_PVT")
+        self.assertEqual(total, 30000)
+
+    def test_v057_rc2_explicit_non_month_periods_never_inherit_active_month(self):
+        self.claim("v057-period-explicit", "+60111111111", "period test")
+        base = self.actor("v057-period-explicit", "+60111111111")
+        for phrase in (
+            "Give me the breakdown for the last 3 months",
+            "Breakdown of transport this week",
+            "Category breakdown for this year",
+            "What about fuel last week?",
+            "Show me the expenses in 2025",
+            "Show transport since 1 Sep",
+            "Show transport between Monday and Friday",
+        ):
+            actor = replace(base, trusted_text=phrase, read_scope="family")
+            self.assertFalse(
+                mcp_server._finance_followup_inherits_active_report(actor),
+                phrase,
+            )
+
+        # "May" as a modal verb must not be misread as the month.
+        modal = replace(
+            base, trusted_text="May I see the food breakdown next?", read_scope="family"
+        )
+        self.assertTrue(
+            mcp_server._finance_followup_inherits_active_report(modal)
+        )
+
+    def test_v057_rc2_reminder_draft_does_not_capture_unrelated_dated_turn(self):
+        first = {
+            "message_id": "v057-draft-safe-first",
+            "provider": "WHATSAPP",
+            "conversation_id": "60111111111@s.whatsapp.net",
+            "conversation_type": "DIRECT_DM",
+            "sender_phone": "+60111111111",
+            "text": "Remind me to water the plants this weekend.",
+        }
+        with patch.object(
+            brain, "respond",
+            return_value=(
+                "What day and time this weekend would you like me to set the reminder for?",
+                [],
+            ),
+        ):
+            self.assertTrue(ingress.process(first)["ok"])
+
+        conn = db.connect()
+        try:
+            draft = conn.execute(
+                """SELECT * FROM pending_items
+                   WHERE source_message_id='v057-draft-safe-first'
+                     AND kind='REMINDER_DRAFT'"""
+            ).fetchone()
+            outbound = conn.execute(
+                """SELECT outbound_id FROM outbound_messages
+                   WHERE source_message_id='v057-draft-safe-first'
+                   ORDER BY rowid DESC LIMIT 1"""
+            ).fetchone()
+            conn.execute(
+                """UPDATE outbound_messages
+                   SET provider_message_id='wa-v057-draft-safe',
+                       delivery_status='SENT',delivered_at_utc=CURRENT_TIMESTAMP
+                   WHERE outbound_id=?""",
+                (outbound["outbound_id"],),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        self.assertIsNotNone(draft)
+
+        seen = {}
+        async def unrelated_turn(actor, user_text, media_context=None,
+                                 vision_parts=None, quoted_context=None):
+            seen["quoted"] = quoted_context
+            return ("Noted.", [])
+
+        expense = {
+            "message_id": "v057-draft-safe-expense",
+            "provider": "WHATSAPP",
+            "conversation_id": "60111111111@s.whatsapp.net",
+            "conversation_type": "DIRECT_DM",
+            "sender_phone": "+60111111111",
+            "text": "I spent RM20 on lunch today",
+        }
+        with patch.object(brain, "respond", new=unrelated_turn):
+            self.assertTrue(ingress.process(expense)["ok"])
+        self.assertIsNone(seen["quoted"])
+
+        async def quoted_finish(actor, user_text, media_context=None,
+                                vision_parts=None, quoted_context=None):
+            self.assertEqual(
+                quoted_context["pending_item"]["item_id"], draft["item_id"]
+            )
+            services.create_reminder(
+                with_action_key(actor, "v057-draft-safe-final"),
+                "water the plants", "2026-10-03T09:00:00+08:00",
+            )
+            return ("OK. Reminder set.", [])
+
+        final = {
+            "message_id": "v057-draft-safe-final-msg",
+            "provider": "WHATSAPP",
+            "conversation_id": "60111111111@s.whatsapp.net",
+            "conversation_type": "DIRECT_DM",
+            "sender_phone": "+60111111111",
+            "text": "Saturday at 9 AM",
+            "quoted_message_id": "wa-v057-draft-safe",
+        }
+        with patch.object(brain, "respond", new=quoted_finish):
+            self.assertTrue(ingress.process(final)["ok"])
+        conn = db.connect()
+        try:
+            state = conn.execute(
+                "SELECT status FROM pending_items WHERE item_id=?",
+                (draft["item_id"],),
+            ).fetchone()["status"]
+        finally:
+            conn.close()
+        self.assertEqual(state, "RESOLVED")
+
+    def test_v057_rc2_private_offer_yes_binds_to_visible_prompt_or_quote(self):
+        self.claim("v057-offer-bind-src", "+60111111111", "show missing thing")
+        actor = replace(
+            self.actor("v057-offer-bind-src", "+60111111111"),
+            trusted_text="show missing thing",
+            read_scope="family",
+        )
+        offer = db.create_pending_item(
+            actor, "PRIVATE_SEARCH_OFFER",
+            note=json.dumps({"query": "show missing thing"}),
+        )
+        offer_oid = db.queue_outbound(
+            actor.conversation_id, "TEXT",
+            text="I can also check your private records if you want.",
+            source_message_id=actor.source_message_id,
+            context_kind="PENDING_ITEM", context_id=offer["item_id"],
+        )
+        conn = db.connect()
+        try:
+            conn.execute(
+                """UPDATE outbound_messages
+                   SET provider_message_id='wa-v057-private-offer',
+                       delivery_status='SENT',delivered_at_utc=CURRENT_TIMESTAMP
+                   WHERE outbound_id=?""",
+                (offer_oid,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        db.queue_outbound(
+            actor.conversation_id, "TEXT",
+            text="Would you like me to show the image?",
+            source_message_id=actor.source_message_id,
+            context_kind="SELECTION", context_id="saved_item:later-image",
+        )
+
+        later_yes = {
+            "message_id": "v057-offer-bind-later-yes",
+            "provider": "WHATSAPP",
+            "conversation_id": actor.conversation_id,
+            "conversation_type": "DIRECT_DM",
+            "sender_phone": "+60111111111",
+            "text": "Yes",
+        }
+        with patch.object(
+            ingress, "_fulfill_private_search_offer",
+            side_effect=AssertionError("stale private offer stole later Yes"),
+        ), patch.object(
+            ingress, "_deliver_selection_followup",
+            return_value={"ok": True, "selection_followup": True},
+        ):
+            result = ingress.process(later_yes)
+        self.assertTrue(result["selection_followup"])
+
+        quoted_yes = {
+            "message_id": "v057-offer-bind-quoted-yes",
+            "provider": "WHATSAPP",
+            "conversation_id": actor.conversation_id,
+            "conversation_type": "DIRECT_DM",
+            "sender_phone": "+60111111111",
+            "text": "Yes",
+            "quoted_message_id": "wa-v057-private-offer",
+        }
+        with patch.object(
+            ingress, "_fulfill_private_search_offer",
+            return_value={"ok": True, "private_search": True},
+        ) as fulfill:
+            result = ingress.process(quoted_yes)
+        self.assertTrue(result["private_search"])
+        self.assertEqual(fulfill.call_args.args[1]["item_id"], offer["item_id"])
+
+    def test_v057_rc2_private_report_scope_is_frozen_and_requires_reauthorization(self):
+        self.claim(
+            "v057-private-report-src", "+60111111111",
+            "Show my September finance report 😊",
+        )
+        private_actor = replace(
+            self.actor("v057-private-report-src", "+60111111111"),
+            trusted_text="Show my September finance report 😊",
+            read_scope="private",
+        )
+        mcp_server.finance_report(private_actor, "2026-09", scope="all")
+        active = phase2_reports.load_active_report(
+            private_actor.user_id, private_actor.conversation_id
+        )
+        self.assertEqual(active["spec"]["scope"], "private")
+
+        self.claim(
+            "v057-private-report-export", "+60111111111",
+            "Send this as CSV",
+        )
+        family_actor = replace(
+            self.actor("v057-private-report-export", "+60111111111"),
+            trusted_text="Send this as CSV",
+            read_scope="family",
+        )
+        with self.assertRaisesRegex(ToolError, "quoted report is private"):
+            mcp_server.report_export(
+                "csv", family_actor, period="2026-09",
+                report_type="finance", scope="private",
+                use_active_context=False,
+            )
+
+    def test_v057_rc2_pending_lifecycle_mutation_cannot_auto_resolve_other_voice(self):
+        self.claim("v057-voice-cross-src", "+60111111111", "")
+        pending = db.create_pending_item(
+            self.actor("v057-voice-cross-src", "+60111111111"),
+            "VOICE", note="voice one",
+        )
+        self.claim("v057-voice-cross-turn", "+60111111111", "Cancel 2")
+        actor = replace(
+            self.actor("v057-voice-cross-turn", "+60111111111"),
+            trusted_text="Cancel 2",
+        )
+        conn = db.connect()
+        try:
+            conn.execute(
+                """INSERT INTO tool_execution_claims(
+                       action_key,tool_name,state,result_json,attachments_json,
+                       completed_at_utc
+                   ) VALUES('v057-cross-action','cancel_pending_item','COMPLETED',
+                            '{}','[]',CURRENT_TIMESTAMP)"""
+            )
+            conn.execute(
+                """INSERT INTO tool_audit(
+                       audit_id,action_key,source_message_id,user_id,tool_name,
+                       arguments_json,result_json,status,latency_ms
+                   ) VALUES('v057-cross-audit','v057-cross-action',?,
+                            'USR_HUSBAND','cancel_pending_item','{}','{}','OK',0)""",
+                (actor.source_message_id,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        self.assertFalse(
+            ingress._resolve_voice_pending_after_success(
+                actor, dict(pending), "Cancel 2"
+            )
+        )
+        conn = db.connect()
+        try:
+            state = conn.execute(
+                "SELECT status FROM pending_items WHERE item_id=?",
+                (pending["item_id"],),
+            ).fetchone()["status"]
+        finally:
+            conn.close()
+        self.assertEqual(state, "PENDING")
+
+    def test_v057_rc2_frozen_monthly_export_keeps_monthly_kind_and_filters(self):
+        self.claim("v057-monthly-sep-t", "+60111111111", "spent RM10 transport")
+        t_actor = with_action_key(
+            replace(
+                self.actor("v057-monthly-sep-t", "+60111111111"),
+                trusted_text="spent RM10 transport", read_scope="family",
+            ),
+            "v057-monthly-sep-t-action",
+        )
+        services.log_expense(
+            t_actor, "September transport only", 10, "transport",
+            currency="MYR", event_date_local="2026-09-10T10:00:00+08:00",
+        )
+        self.claim("v057-monthly-sep-f", "+60111111111", "spent RM20 food")
+        f_actor = with_action_key(
+            replace(
+                self.actor("v057-monthly-sep-f", "+60111111111"),
+                trusted_text="spent RM20 food", read_scope="family",
+            ),
+            "v057-monthly-sep-f-action",
+        )
+        services.log_expense(
+            f_actor, "September food excluded", 20, "food",
+            currency="MYR", event_date_local="2026-09-11T10:00:00+08:00",
+        )
+        self.claim("v057-monthly-export", "+60111111111", "send quoted report")
+        exporter = replace(
+            self.actor("v057-monthly-export", "+60111111111"),
+            trusted_text="send quoted report", read_scope="family",
+        )
+        result = mcp_server.report_export(
+            "csv", exporter, period="2026-09", report_type="finance",
+            category="transport", scope="family", full_report=True,
+            use_active_context=False,
+        )
+        self.assertEqual(result["source_report_kind"], "monthly_finance")
+        self.assertEqual(result["record_count"], 1)
+        csv_text = open(
+            result["_attachments"][0]["path"], encoding="utf-8"
+        ).read()
+        self.assertIn("September transport only", csv_text)
+        self.assertNotIn("September food excluded", csv_text)
+
+    def test_v057_initiator_can_privately_nudge_claimant_without_reopening(self):
+        group_id = "120363585858@g.us"
+        with open(os.path.join(TEST_DIR, "family_group.json"), "w", encoding="utf-8") as handle:
+            handle.write('{"group_jid":"%s"}' % group_id)
+        creator = self.group_actor("v057-nudge-create", "+60111111111")
+        creator = with_action_key(
+            replace(
+                creator,
+                trusted_text="remind the family on Saturday at 10 AM to collect parcel",
+            ),
+            "v057-nudge-create-action",
+        )
+        reminder = services.create_reminder(
+            creator, "collect parcel", "2026-10-03T10:00:00+08:00",
+            destination="group", claimable=True,
+        )
+        conn = db.connect()
+        try:
+            conn.execute(
+                """UPDATE reminders
+                   SET status='DUE',claimed_by_user_id='USR_WIFE',
+                       claimed_at_utc=CURRENT_TIMESTAMP
+                   WHERE reminder_id=?""",
+                (reminder["reminder_id"],),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        self.claim("v057-nudge-now", "+60111111111", "remind her again")
+        initiator = replace(
+            self.actor("v057-nudge-now", "+60111111111"),
+            trusted_text="remind her again",
+            read_scope="family",
+        )
+        result = services.nudge_reminder_claimant(
+            initiator, reminder["reminder_id"]
+        )
+        self.assertEqual(result["status"], "nudged")
+        conn = db.connect()
+        try:
+            row = conn.execute(
+                """SELECT status,claimed_by_user_id,nudged_at_utc
+                   FROM reminders WHERE reminder_id=?""",
+                (reminder["reminder_id"],),
+            ).fetchone()
+            outbound = conn.execute(
+                """SELECT conversation_id,context_kind,text_body
+                   FROM outbound_messages
+                   WHERE context_id=? AND context_kind='REMINDER_CLAIMANT_FOLLOWUP'
+                   ORDER BY rowid DESC LIMIT 1""",
+                (reminder["reminder_id"],),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(row["status"], "DUE")
+        self.assertEqual(row["claimed_by_user_id"], "USR_WIFE")
+        self.assertIsNotNone(row["nudged_at_utc"])
+        self.assertEqual(outbound["conversation_id"], "60222222222@s.whatsapp.net")
+        self.assertIn("still unresolved", outbound["text_body"])
+
+
+    def test_v057_rc3_transient_prompts_never_pin_and_expire(self):
+        self.claim("rc3-offer-src", "+60111111111", "show missing thing")
+        actor = self.actor("rc3-offer-src", "+60111111111")
+        offer = db.create_pending_item(
+            actor, "PRIVATE_SEARCH_OFFER",
+            note=json.dumps({"query": "show missing thing"}),
+        )
+        offer_oid = db.queue_outbound(
+            actor.conversation_id, "TEXT",
+            text="I can also check your private records if you want.",
+            source_message_id=actor.source_message_id,
+            context_kind="PENDING_ITEM", context_id=offer["item_id"],
+        )
+
+        self.claim("rc3-draft-src", "+60111111111", "remind me this weekend")
+        draft_actor = self.actor("rc3-draft-src", "+60111111111")
+        draft = db.create_pending_item(
+            draft_actor, "REMINDER_DRAFT", note="awaiting date/time"
+        )
+        draft_oid = db.queue_outbound(
+            draft_actor.conversation_id, "TEXT",
+            text="What day and time?",
+            source_message_id=draft_actor.source_message_id,
+            context_kind="PENDING_ITEM", context_id=draft["item_id"],
+        )
+
+        sent = []
+        conn = db.connect()
+        try:
+            with patch.object(
+                outbox, "_send",
+                side_effect=lambda payload: (sent.append(payload) or True, "{}"),
+            ):
+                outbox._reconcile_pending_item_markers(conn)
+            self.assertEqual(sent, [])
+
+            # Simulate markers left by RC3 before this fix, then age both prompts
+            # past their validity windows. Expiry must cancel them and cleanup
+            # the stale reaction/pin state.
+            conn.execute(
+                """UPDATE pending_items
+                   SET created_at_utc=datetime('now','-31 minutes')
+                   WHERE item_id=?""",
+                (draft["item_id"],),
+            )
+            conn.execute(
+                """UPDATE pending_items
+                   SET created_at_utc=datetime('now','-11 minutes')
+                   WHERE item_id=?""",
+                (offer["item_id"],),
+            )
+            conn.execute(
+                """UPDATE outbound_messages
+                   SET delivery_status='SENT',
+                       job_reacted_at_utc=CURRENT_TIMESTAMP,
+                       job_pinned_at_utc=CURRENT_TIMESTAMP
+                   WHERE outbound_id IN (?,?)""",
+                (offer_oid, draft_oid),
+            )
+            conn.commit()
+
+            sent.clear()
+            with patch.object(
+                outbox, "_send",
+                side_effect=lambda payload: (sent.append(payload) or True, "{}"),
+            ):
+                outbox._expire_transient_pending_items(conn)
+                outbox._reconcile_pending_item_markers(conn)
+
+            states = {
+                row["kind"]: row["status"]
+                for row in conn.execute(
+                    """SELECT kind,status FROM pending_items
+                       WHERE item_id IN (?,?)""",
+                    (offer["item_id"], draft["item_id"]),
+                ).fetchall()
+            }
+            markers = conn.execute(
+                """SELECT job_reaction_cleared_at_utc,job_unpinned_at_utc
+                   FROM outbound_messages WHERE outbound_id IN (?,?)""",
+                (offer_oid, draft_oid),
+            ).fetchall()
+        finally:
+            conn.close()
+        self.assertEqual(states["PRIVATE_SEARCH_OFFER"], "CANCELLED")
+        self.assertEqual(states["REMINDER_DRAFT"], "CANCELLED")
+        self.assertTrue(all(row["job_reaction_cleared_at_utc"] for row in markers))
+        self.assertTrue(all(row["job_unpinned_at_utc"] for row in markers))
+        self.assertEqual(
+            sorted(payload["kind"] for payload in sent),
+            ["reaction", "reaction", "unpin", "unpin"],
+        )
+
+    def test_v057_rc3_voice_remains_the_only_default_pinned_pending_inbox(self):
+        self.claim("rc3-voice-src", "+60111111111", "")
+        actor = self.actor("rc3-voice-src", "+60111111111")
+        voice = db.create_pending_item(actor, "VOICE", note="voice review")
+        voice_oid = db.queue_outbound(
+            actor.conversation_id, "TEXT",
+            text="Voice saved for review.",
+            source_message_id=actor.source_message_id,
+            context_kind="PENDING_ITEM", context_id=voice["item_id"],
+        )
+
+        self.claim("rc3-hidden-offer", "+60111111111", "find missing")
+        offer_actor = self.actor("rc3-hidden-offer", "+60111111111")
+        db.create_pending_item(
+            offer_actor, "PRIVATE_SEARCH_OFFER",
+            note=json.dumps({"query": "find missing"}),
+        )
+
+        sent = []
+        conn = db.connect()
+        try:
+            with patch.object(
+                outbox, "_send",
+                side_effect=lambda payload: (sent.append(payload) or True, "{}"),
+            ):
+                outbox._reconcile_pending_item_markers(conn)
+            marked = conn.execute(
+                """SELECT job_reacted_at_utc,job_pinned_at_utc
+                   FROM outbound_messages WHERE outbound_id=?""",
+                (voice_oid,),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertIsNotNone(marked["job_reacted_at_utc"])
+        self.assertIsNotNone(marked["job_pinned_at_utc"])
+        self.assertEqual(
+            sorted(payload["kind"] for payload in sent),
+            ["pin", "reaction"],
+        )
+
+        default_items = db.list_pending_items(actor)
+        self.assertEqual([row["kind"] for row in default_items], ["VOICE"])
+
+    def test_v057_rc3_zero_balance_legacy_stash_does_not_duplicate_across_spaces(self):
+        conn = db.connect()
+        try:
+            conn.execute(
+                """INSERT INTO money_buckets(
+                       bucket_id,owner_id,space_id,bucket_name,amount_minor,currency
+                   ) VALUES('legacy-zero','USR_HUSBAND','FAMILY_SHARED',
+                            'v05 zero stash',0,'MYR')"""
+            )
+            conn.execute(
+                """INSERT INTO alex_phase2_cash_pools(
+                       pool_id,space_id,owner_user_id,name,currency
+                   ) VALUES('legacy-zero-private','HUSBAND_PVT','USR_HUSBAND',
+                            'v05 zero stash','MYR')"""
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        phase2_finance.ensure_schema()
+        phase2_finance.ensure_schema()
+        conn = db.connect()
+        try:
+            pools = conn.execute(
+                """SELECT pool_id,space_id FROM alex_phase2_cash_pools
+                   WHERE owner_user_id='USR_HUSBAND'
+                     AND LOWER(TRIM(name))='v05 zero stash'
+                     AND status='ACTIVE'"""
+            ).fetchall()
+        finally:
+            conn.close()
+        self.assertEqual(len(pools), 1)
+        self.assertEqual(pools[0]["space_id"], "HUSBAND_PVT")
+
+    def test_v057_rc3_word_quantity_periods_and_legacy_ack_migration(self):
+        self.claim("rc3-word-period", "+60111111111", "period test")
+        base = self.actor("rc3-word-period", "+60111111111")
+        for phrase in (
+            "Show food for the past fortnight",
+            "Give me transport for the last few months",
+            "Show fuel for the last couple of weeks",
+            "Break down food for the previous several days",
+            "Show expenses for the past two months",
+        ):
+            actor = replace(base, trusted_text=phrase, read_scope="family")
+            self.assertFalse(
+                mcp_server._finance_followup_inherits_active_report(actor),
+                phrase,
+            )
+
+        self.claim("rc3-ack-src", "+60111111111", "legacy reminder")
+        reminder_actor = with_action_key(
+            self.actor("rc3-ack-src", "+60111111111"),
+            "rc3-ack-action",
+        )
+        reminder = services.create_reminder(
+            reminder_actor, "legacy ACK reminder",
+            "2026-10-01T09:00:00+08:00",
+        )
+        conn = db.connect()
+        try:
+            conn.execute(
+                """UPDATE reminders
+                   SET status='ACK',
+                       acknowledged_at_utc='2026-10-01T01:05:00+00:00',
+                       seen_at_utc=NULL
+                   WHERE reminder_id=?""",
+                (reminder["reminder_id"],),
+            )
+            conn.execute(
+                """DELETE FROM schema_migrations
+                   WHERE migration_key='v057_reopen_legacy_ack_reminders'"""
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        db.initialize()
+        conn = db.connect()
+        try:
+            row = conn.execute(
+                """SELECT status,acknowledged_at_utc,seen_at_utc
+                   FROM reminders WHERE reminder_id=?""",
+                (reminder["reminder_id"],),
+            ).fetchone()
+            guard = conn.execute(
+                """SELECT 1 FROM schema_migrations
+                   WHERE migration_key='v057_reopen_legacy_ack_reminders'"""
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(row["status"], "DUE")
+        self.assertEqual(row["seen_at_utc"], row["acknowledged_at_utc"])
+        self.assertIsNotNone(guard)
 
 
 if __name__ == "__main__":

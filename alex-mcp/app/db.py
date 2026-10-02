@@ -5,7 +5,8 @@ import json
 import os
 import sqlite3
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import runtime_clock
 
@@ -128,6 +129,11 @@ def initialize() -> None:
         _ensure_column(conn, "reminders", "claimed_at_utc", "TEXT")
         _ensure_column(conn, "reminders", "claimant_follow_up_at_utc", "TEXT")
         _ensure_column(conn, "reminders", "family_resurfaced_at_utc", "TEXT")
+        _ensure_column(conn, "reminders", "seen_at_utc", "TEXT")
+        _ensure_column(conn, "reminders", "seen_by_user_id", "TEXT")
+        _ensure_column(conn, "reminders", "nudged_at_utc", "TEXT")
+        _ensure_column(conn, "reminders", "initiator_notified_at_utc", "TEXT")
+        _ensure_column(conn, "reminders", "relinquished_at_utc", "TEXT")
         _ensure_column(conn, "outbound_messages", "context_kind", "TEXT")
         _ensure_column(conn, "outbound_messages", "context_id", "TEXT")
         _ensure_column(conn, "outbound_messages", "provider_message_id", "TEXT")
@@ -137,6 +143,48 @@ def initialize() -> None:
         _ensure_column(conn, "ai_usage", "reasoning_tokens", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(conn, "ai_usage", "model_calls", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(conn, "media_objects", "transcript_meta_json", "TEXT")
+
+        # v0.5.6 used a malformed Baileys pin payload but still recorded
+        # job_pinned_at_utc after the transport returned success. Reset those
+        # false-positive flags exactly once so v0.5.7 reconciliation can issue
+        # real pins for still-unresolved managed items/reminders.
+        pin_migration = "v057_reset_false_pin_flags"
+        already_reset = conn.execute(
+            "SELECT 1 FROM schema_migrations WHERE migration_key=?",
+            (pin_migration,),
+        ).fetchone()
+        if not already_reset:
+            conn.execute(
+                """UPDATE outbound_messages
+                   SET job_pinned_at_utc=NULL,job_unpinned_at_utc=NULL
+                   WHERE job_pinned_at_utc IS NOT NULL"""
+            )
+            conn.execute(
+                "INSERT INTO schema_migrations(migration_key) VALUES(?)",
+                (pin_migration,),
+            )
+
+        # v0.5.6 treated post-due acknowledgement as a terminal ACK state.
+        # v0.5.7 makes acknowledgement metadata-only, so reopen those legacy
+        # non-terminal rows exactly once and preserve their acknowledgement time
+        # as seen metadata. COMP/CANC are untouched.
+        ack_migration = "v057_reopen_legacy_ack_reminders"
+        already_reopened = conn.execute(
+            "SELECT 1 FROM schema_migrations WHERE migration_key=?",
+            (ack_migration,),
+        ).fetchone()
+        if not already_reopened:
+            conn.execute(
+                """UPDATE reminders
+                   SET status='DUE',
+                       seen_at_utc=COALESCE(seen_at_utc,acknowledged_at_utc)
+                   WHERE status='ACK'"""
+            )
+            conn.execute(
+                "INSERT INTO schema_migrations(migration_key) VALUES(?)",
+                (ack_migration,),
+            )
+
         # Privacy is a scope, never an expense category. Clean historical rows
         # created by the old presenter bug without changing amount/date/scope.
         conn.execute(
@@ -456,6 +504,62 @@ def queue_outbound(conversation_id: str, kind: str, text: str | None = None,
         conn.close()
 
 
+def has_completed_mutation(source_message_id: str) -> bool:
+    """Whether this exact inbound turn has a verified completed mutation.
+
+    tool_execution_claims contains only mutating tools. Joining it to the
+    per-turn tool audit lets ingress close a deferred voice item only after the
+    typed clarification actually changed state, never after a read, failed tool,
+    empty model reply, or retrieval request.
+    """
+    message_id = str(source_message_id or "").strip()
+    if not message_id:
+        return False
+    conn = connect()
+    try:
+        row = conn.execute(
+            """SELECT 1
+               FROM tool_audit a
+               JOIN tool_execution_claims c ON c.action_key=a.action_key
+               WHERE a.source_message_id=?
+                 AND a.status='OK'
+                 AND c.state='COMPLETED'
+               LIMIT 1""",
+            (message_id,),
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
+def has_completed_non_pending_mutation(source_message_id: str) -> bool:
+    """Verified mutation excluding pending-item lifecycle bookkeeping.
+
+    A typed clarification of one deferred voice item must not auto-resolve that
+    item merely because the same turn resolved/cancelled a different pending
+    item. Explicit pending resolve/cancel tools already update their own target.
+    """
+    message_id = str(source_message_id or "").strip()
+    if not message_id:
+        return False
+    conn = connect()
+    try:
+        row = conn.execute(
+            """SELECT 1
+               FROM tool_audit a
+               JOIN tool_execution_claims c ON c.action_key=a.action_key
+               WHERE a.source_message_id=?
+                 AND a.status='OK'
+                 AND c.state='COMPLETED'
+                 AND c.tool_name NOT IN ('resolve_pending_item','cancel_pending_item')
+               LIMIT 1""",
+            (message_id,),
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
 def record_usage(source_message_id: str, provider: str, model: str,
                  input_tokens: int, output_tokens: int, tool_rounds: int,
                  latency_ms: int, estimated_cost_usd: float | None = None,
@@ -665,6 +769,30 @@ def create_pending_item(actor: ActorContext, kind: str, media_id: str | None = N
         conn.close()
 
 
+def latest_pending_item(actor: ActorContext, kind: str,
+                        max_age_seconds: int = 600) -> dict | None:
+    """Return the newest unresolved owner item in this conversation."""
+    bounded = max(30, min(3600, int(max_age_seconds)))
+    conn = connect()
+    try:
+        row = conn.execute(
+            """SELECT p.*,i.raw_text AS original_text
+               FROM pending_items p
+               LEFT JOIN inbound_messages i ON i.message_id=p.source_message_id
+               WHERE p.owner_id=? AND p.conversation_id=? AND p.status='PENDING'
+                 AND p.kind=?
+                 AND datetime(p.created_at_utc)>=datetime('now', ?)
+               ORDER BY p.created_at_utc DESC,p.rowid DESC LIMIT 1""",
+            (
+                actor.user_id, actor.conversation_id, str(kind).strip().upper(),
+                f"-{bounded} seconds",
+            ),
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
 def pending_item_for_reference(actor: ActorContext, quoted_context: dict | None) -> dict | None:
     if not quoted_context:
         return None
@@ -698,16 +826,94 @@ def pending_item_for_reference(actor: ActorContext, quoted_context: dict | None)
         conn.close()
 
 
-def resolve_pending_item(item_id: str, owner_id: str, resolution_message_id: str) -> bool:
+def set_pending_item_status(item_id: str, owner_id: str, status: str,
+                            resolution_message_id: str) -> bool:
+    target = str(status or "").strip().upper()
+    if target not in {"RESOLVED", "CANCELLED"}:
+        raise ValueError("pending item status must be RESOLVED or CANCELLED")
     conn = connect()
     try:
         cur = conn.execute(
-            """UPDATE pending_items SET status='RESOLVED',resolved_at_utc=?,resolution_message_id=?
+            """UPDATE pending_items
+               SET status=?,resolved_at_utc=?,resolution_message_id=?
                WHERE item_id=? AND owner_id=? AND status='PENDING'""",
-            (utc_now(), resolution_message_id, item_id, owner_id),
+            (target, utc_now(), resolution_message_id, item_id, owner_id),
         )
         conn.commit()
         return cur.rowcount == 1
+    finally:
+        conn.close()
+
+
+def resolve_pending_item(item_id: str, owner_id: str, resolution_message_id: str) -> bool:
+    return set_pending_item_status(
+        item_id, owner_id, "RESOLVED", resolution_message_id
+    )
+
+
+def cancel_pending_item(item_id: str, owner_id: str, resolution_message_id: str) -> bool:
+    return set_pending_item_status(
+        item_id, owner_id, "CANCELLED", resolution_message_id
+    )
+
+
+def _pending_local_display(value: str, timezone_name: str) -> tuple[str | None, str | None]:
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        local = parsed.astimezone(ZoneInfo(timezone_name))
+        hour = local.strftime("%I").lstrip("0") or "12"
+        return (
+            local.isoformat(),
+            f"{local.day} {local.strftime('%B %Y')}, {hour}:{local.strftime('%M')} {local.strftime('%p')}",
+        )
+    except Exception:
+        return None, None
+
+
+def _store_pending_selection(conn, actor: ActorContext, item_ids: list[str]) -> None:
+    if not item_ids:
+        return
+    expires = (runtime_clock.now_utc() + timedelta(minutes=10)).isoformat()
+    conn.execute(
+        """INSERT INTO pending_selection_sets(
+               selection_id,user_id,conversation_id,items_json,expires_at_utc
+           ) VALUES(?,?,?,?,?)""",
+        (
+            str(uuid.uuid4()), actor.user_id, actor.conversation_id,
+            json.dumps(item_ids), expires,
+        ),
+    )
+
+
+def pending_item_by_choice(actor: ActorContext, choice: int) -> dict:
+    if actor.conversation_type == "GROUP":
+        raise PermissionError("Pending personal items are available only in the owner's DM")
+    index = int(choice)
+    if index < 1:
+        raise ValueError("choice must be 1 or greater")
+    conn = connect()
+    try:
+        row = conn.execute(
+            """SELECT items_json FROM pending_selection_sets
+               WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
+               ORDER BY created_at_utc DESC,rowid DESC LIMIT 1""",
+            (actor.user_id, actor.conversation_id, utc_now()),
+        ).fetchone()
+        if not row:
+            raise ValueError("no pending-item numbered list is waiting")
+        ids = json.loads(row["items_json"] or "[]")
+        if index > len(ids):
+            raise ValueError("choice is outside the latest pending-item list")
+        item = conn.execute(
+            """SELECT * FROM pending_items
+               WHERE item_id=? AND owner_id=? AND status='PENDING'""",
+            (ids[index - 1], actor.user_id),
+        ).fetchone()
+        if not item:
+            raise ValueError("that pending item is no longer unresolved")
+        return dict(item)
     finally:
         conn.close()
 
@@ -719,9 +925,9 @@ def list_pending_items(actor: ActorContext, kind: str | None = None, limit: int 
     try:
         where = ["p.owner_id=?", "p.status='PENDING'"]
         args: list = [actor.user_id]
-        if kind:
-            where.append("p.kind=?")
-            args.append(str(kind).strip().upper())
+        effective_kind = str(kind or "VOICE").strip().upper()
+        where.append("p.kind=?")
+        args.append(effective_kind)
         rows = conn.execute(
             """SELECT p.item_id,p.kind,p.source_message_id,p.media_id,p.created_at_utc,
                       m.media_type,m.mime_type
@@ -731,7 +937,22 @@ def list_pending_items(actor: ActorContext, kind: str | None = None, limit: int 
             + " ORDER BY p.created_at_utc DESC LIMIT ?",
             args + [max(1, min(100, int(limit)))],
         ).fetchall()
-        return [dict(row) for row in rows]
+        items = []
+        for index, row in enumerate(rows, 1):
+            item = dict(row)
+            local_iso, display_time = _pending_local_display(
+                item.get("created_at_utc"), actor.timezone
+            )
+            item["choice"] = index
+            item["created_local"] = local_iso
+            item["display_time"] = display_time
+            items.append(item)
+        if items:
+            _store_pending_selection(
+                conn, actor, [str(item["item_id"]) for item in items]
+            )
+            conn.commit()
+        return items
     finally:
         conn.close()
 

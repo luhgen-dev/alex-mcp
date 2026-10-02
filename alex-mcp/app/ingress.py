@@ -340,90 +340,14 @@ def _private_group_handoff_requested(text: str) -> bool:
     ))
     explicit_private = scope_policy.explicit_private(text)
     emoji_private = scope_policy.contains_emoji(text)
-    # Do not infer that ordinary Family Shared finance/receipt reads are
-    # private merely because they concern the authenticated sender. The group
-    # actor is already structurally restricted to FAMILY_SHARED. Automatic DM
-    # handoff is reserved for an explicit privacy signal or inherently private
-    # profile facts that have no meaningful shared interpretation.
-    sensitive_read = readish and bool(re.search(
-        r"\b(?:salary|paycheck|take[- ]home|ot rate|overtime rate|"
-        r"overtime pay|exact ot|bank balance|stash(?:es)?|cash\s+pool|cash\s+pools|"
-        r"my private (?:notes?|memory|data))\b",
-        low,
-    ))
-    return (
-        ((explicit_private or emoji_private) and (readish or writeish))
-        or sensitive_read
-    )
+    # Global scope rule: ordinary group wording remains Family Shared.
+    # No domain (salary, stash, asset, receipt, etc.) may silently infer private
+    # intent. Private DM handoff requires the current command's explicit
+    # private wording or emoji shortcut.
+    return (explicit_private or emoji_private) and (readish or writeish)
 
 def _dm_conversation_for_actor(actor) -> str:
     return actor.phone.replace("+", "") + "@s.whatsapp.net"
-
-
-def _private_group_match_available(actor, text: str) -> bool:
-    """Probe for a private-only receipt/note match without widening group ACLs.
-
-    Family Shared is checked first. Only when the same read has no shared match
-    do we probe the authenticated owner's private space, and only a boolean
-    escapes this helper.
-    """
-    if actor.conversation_type != "GROUP":
-        return False
-    low = str(text or "").casefold()
-    readish = bool(re.search(
-        r"\b(?:show|find|get|send|open|what|which|where|latest|recent|list|"
-        r"check|balance|how much|how many)\b",
-        low,
-    ))
-    if not readish:
-        return False
-    receiptish = bool(re.search(r"\b(?:receipt|receipts|invoice|invoices)\b", low))
-    savedish = bool(re.search(r"\b(?:note|notes|saved|memory|memories|remembered)\b", low))
-
-    # A user may refer to an inherently-private stash only by its configured
-    # name ("how much is in pocket cash?"). Recognize that name without
-    # exposing its balance or existence to the group response.
-    try:
-        conn = db.connect()
-        rows = conn.execute(
-            """SELECT name FROM alex_phase2_cash_pools
-               WHERE owner_user_id=? AND space_id=? AND status='ACTIVE'""",
-            (actor.user_id, actor.private_space),
-        ).fetchall()
-        conn.close()
-        for row in rows:
-            name = str(row["name"] or "").strip().casefold()
-            if name and re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", low):
-                return True
-    except Exception:
-        try:
-            conn.close()
-        except Exception:
-            pass
-
-    if not (receiptish or savedish):
-        return False
-
-    dm_actor = replace(
-        actor,
-        conversation_id=_dm_conversation_for_actor(actor),
-        conversation_type="DIRECT_DM",
-        allowed_spaces=(actor.private_space,),
-    )
-    try:
-        if receiptish:
-            shared = services.find_receipts(actor, query=text, limit=1)
-            if shared.get("matches"):
-                return False
-            private = services.find_receipts(dm_actor, query=text, limit=1)
-            return bool(private.get("matches"))
-        shared = services.search_saved_items(actor, query=text, limit=1)
-        if shared.get("matches"):
-            return False
-        private = services.search_saved_items(dm_actor, query=text, limit=1)
-        return bool(private.get("matches"))
-    except Exception:
-        return False
 
 
 def _error_report_command(text: str) -> tuple[bool, str]:
@@ -446,6 +370,213 @@ def _is_selection_followup(text: str) -> bool:
         str(text or ""),
         re.IGNORECASE,
     ))
+
+
+def _typed_reply_completes_pending_item(text: str) -> bool:
+    """A typed clarification may resolve a deferred item; retrieval never does.
+
+    Voice/media provenance is immutable. Commands such as play/listen/show/details
+    inspect the pending item and must leave it pending. A real typed clarification
+    or an explicit resolve/cancel command may close it after the turn succeeds.
+    """
+    value = str(text or "").strip()
+    if not value:
+        return False
+    if re.fullmatch(
+        r"(?is)\s*(?:(?:play|listen(?:\s+to)?|show|open|send|get|details?|info)\s+)?\d+\s*[.!]?\s*",
+        value,
+    ):
+        return False
+    if re.search(
+        r"(?i)\b(?:play|listen(?:\s+to)?|show|open|send|get|details?|information)\b"
+        r".*\b(?:voice|audio|recording|note|it|this|that)\b",
+        value,
+    ):
+        return False
+    return True
+
+
+def _resolve_voice_pending_after_success(actor, pending: dict | None,
+                                         typed_text: str) -> bool:
+    """Close a quoted voice inbox item only after a verified typed action.
+
+    Retrieval/detail questions never resolve it. A narration-only or failed
+    model turn has no completed mutating tool claim, so it also stays pending.
+    """
+    if not pending or str(pending.get("kind") or "").upper() != "VOICE":
+        return False
+    if not _typed_reply_completes_pending_item(typed_text):
+        return False
+    if not db.has_completed_non_pending_mutation(actor.source_message_id):
+        return False
+    return db.resolve_pending_item(
+        pending["item_id"], actor.user_id, actor.source_message_id
+    )
+
+
+def _yes_no_answer(text: str) -> str | None:
+    value = str(text or "").strip().casefold()
+    if re.fullmatch(r"(?:yes|yep|yeah|sure|ok|okay|please|please do)[.!]?", value):
+        return "yes"
+    if re.fullmatch(r"(?:no|nope|nah|not now|cancel)[.!]?", value):
+        return "no"
+    return None
+
+
+def _private_search_offer_candidate(actor, query: str, reply: str,
+                                    attachments: list[dict]) -> bool:
+    """Offer one private retry after a Family-scope miss without probing private data."""
+    if attachments or getattr(actor, "read_scope", None) != "family":
+        return False
+    text = str(query or "").strip()
+    if not text or not re.search(
+        r"(?i)\b(?:show|find|search|list|what|where|when|which|how much|"
+        r"do you remember|remember me|have i|do i have|any)\b",
+        text,
+    ):
+        return False
+    value = str(reply or "")
+    return bool(re.search(
+        r"(?i)\b(?:could(?:n't| not) (?:find|locate)|can(?:'t|not) (?:find|locate)|"
+        r"unable to (?:find|locate)|don(?:'t| not) (?:see|have|find)|no (?:matching|saved|record|records|"
+        r"asset|assets|receipt|receipts|note|notes|pool|pools|stash|stashes|"
+        r"reminder|reminders)|not found|nothing (?:matching|found))\b",
+        value,
+    ))
+
+
+def _maybe_create_private_search_offer(actor, query: str, reply: str,
+                                       attachments: list[dict]) -> tuple[dict | None, str]:
+    if not _private_search_offer_candidate(actor, query, reply, attachments):
+        return None, reply
+    pending = db.create_pending_item(
+        actor,
+        "PRIVATE_SEARCH_OFFER",
+        note=json.dumps(
+            {"query": str(query or "").strip()},
+            ensure_ascii=False, separators=(",", ":"),
+        )[:4000],
+    )
+    value = str(reply or "").rstrip()
+    if not re.search(r"(?i)\bcheck\b.{0,35}\bprivate\b", value):
+        value += (
+            "\n\nI only checked your shared records. "
+            "I can also check your private records if you want."
+        )
+    return pending, value
+
+
+def _private_offer_query(pending: dict) -> str | None:
+    try:
+        payload = json.loads(str(pending.get("note") or "{}"))
+    except Exception:
+        return None
+    query = str(payload.get("query") or "").strip() if isinstance(payload, dict) else ""
+    return query or None
+
+
+def _pending_item_recent(pending: dict, max_age_seconds: int) -> bool:
+    raw = str(pending.get("created_at_utc") or "").strip()
+    if not raw:
+        return False
+    try:
+        created = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+        return (
+            runtime_clock.now_utc() - created.astimezone(timezone.utc)
+            <= timedelta(seconds=max_age_seconds)
+        )
+    except Exception:
+        return False
+
+
+def _private_offer_is_current_reference(actor, pending: dict,
+                                        quoted_context: dict | None) -> bool:
+    """A bare Yes belongs only to the offer it visibly follows.
+
+    An explicit quote may select that offer directly. Otherwise the offer must
+    still be Alex's newest outbound in the conversation. This prevents an older
+    private-search offer from stealing a Yes meant for a later prompt.
+    """
+    if not _pending_item_recent(pending, 600):
+        return False
+    item_id = str(pending.get("item_id") or "")
+    if (
+        quoted_context
+        and quoted_context.get("context_kind") == "PENDING_ITEM"
+        and str(quoted_context.get("context_id") or "") == item_id
+    ):
+        return True
+    latest = db.resolve_recent_outbound_context(
+        actor.conversation_id, "PENDING_ITEM", max_age_seconds=600
+    )
+    return bool(latest and str(latest.get("context_id") or "") == item_id)
+
+
+def _fulfill_private_search_offer(actor, pending: dict) -> dict:
+    query = _private_offer_query(pending)
+    if not query:
+        raise ValueError("private-search offer has no recoverable query")
+
+    dm_conversation = _dm_conversation_for_actor(actor)
+    private_actor = db.resolve_actor(
+        actor.phone, dm_conversation, "DIRECT_DM",
+        actor.source_message_id, [],
+    )
+    private_actor = replace(
+        private_actor,
+        source="text",
+        trusted_text=query,
+        received_at_utc=getattr(actor, "received_at_utc", ""),
+        read_scope="private",
+        private_handoff=False,
+    )
+    reply, attachments = asyncio.run(
+        brain.respond(private_actor, query, quoted_context=None)
+    )
+    report_context = _report_context_for_turn(private_actor)
+    if not attachments:
+        db.queue_outbound(
+            dm_conversation, "TEXT", text=reply,
+            source_message_id=actor.source_message_id,
+            context_kind="REPORT" if report_context else None,
+            context_id=report_context,
+        )
+    sent_paths = set()
+    first = True
+    for item in attachments:
+        path = item.get("path")
+        if not path or path in sent_paths:
+            continue
+        sent_paths.add(path)
+        kind = item.get("kind", "DOCUMENT")
+        db.queue_outbound(
+            dm_conversation,
+            "IMAGE" if kind == "IMAGE" else "DOCUMENT",
+            text=reply if first else None,
+            local_path=path,
+            mime_type=item.get("mime_type"),
+            source_message_id=actor.source_message_id,
+            context_kind="REPORT" if first and report_context else None,
+            context_id=report_context if first and report_context else None,
+        )
+        first = False
+
+    db.resolve_pending_item(
+        pending["item_id"], actor.user_id, actor.source_message_id
+    )
+    if actor.conversation_type == "GROUP":
+        group_reply = "I checked that in your private DM."
+        db.queue_outbound(
+            actor.conversation_id, "TEXT", text=group_reply,
+            source_message_id=actor.source_message_id,
+        )
+        db.finish_inbound(actor.source_message_id, group_reply)
+        return {"ok": True, "private_search_handoff": True}
+
+    db.finish_inbound(actor.source_message_id, reply)
+    return {"ok": True, "private_search": True}
 
 
 def _selection_context_for_offer(actor, reply: str, attachments: list[dict]) -> dict | None:
@@ -477,6 +608,130 @@ def _report_context_for_turn(actor) -> str | None:
         "spec": spec,
     }
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))[:4000]
+
+
+def _reminder_created_by_turn(actor) -> bool:
+    conn = db.connect()
+    try:
+        row = conn.execute(
+            """SELECT 1 FROM reminders
+               WHERE source_message_id=? LIMIT 1""",
+            (actor.source_message_id,),
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
+def _is_reminder_request(text: str) -> bool:
+    return bool(re.search(
+        r"(?i)\b(?:remind|reminder|rember|remnder|remidn|remindn|remidr)\b",
+        str(text or ""),
+    ))
+
+
+def _reply_is_reminder_clarification(reply: str) -> bool:
+    value = str(reply or "")
+    return bool(
+        "?" in value
+        and re.search(
+            r"(?i)\b(?:what|which|when)\b.{0,80}\b(?:day|date|time|morning|afternoon|evening)\b"
+            r"|\b(?:day|date|time)\b.{0,80}\b(?:would you like|should i|do you want)\b",
+            value,
+        )
+    )
+
+
+def _looks_like_reminder_clarification_reply(text: str) -> bool:
+    """Accept a concise date/time answer, not an unrelated dated sentence."""
+    value = str(text or "").strip()
+    if not value or len(value) > 120 or "?" in value:
+        return False
+    if re.search(
+        r"(?i)\b(?:spent|paid|bought|expense|expenses|agenda|appointment|diary|"
+        r"meeting|event|add|log|record|show|find|search|what|when|where|how|why)\b"
+        r"|\b(?:rm|myr|sgd)\s*\d",
+        value,
+    ):
+        return False
+
+    temporal = (
+        r"(?i)\b(?:mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|"
+        r"fri(?:day)?|sat(?:urday)?|sun(?:day)?|today|tomorrow|tonight|"
+        r"morning|afternoon|evening|noon|midnight)\b"
+        r"|\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b"
+        r"|\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|"
+        r"apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|"
+        r"oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b"
+        r"|\b\d{1,2}(?::\d{2})?\b"
+    )
+    if not re.search(temporal, value):
+        return False
+    remainder = re.sub(temporal, " ", value)
+    remainder = re.sub(
+        r"(?i)\b(?:at|on|around|about|please|this|next|the|in|by|for)\b",
+        " ",
+        remainder,
+    )
+    remainder = re.sub(r"[\s,./()\-]+", "", remainder)
+    return not remainder
+
+
+def _pending_is_immediate_previous_turn(actor, pending: dict) -> bool:
+    """Only the very next unquoted user turn may inherit a reminder draft."""
+    conn = db.connect()
+    try:
+        row = conn.execute(
+            """SELECT message_id FROM inbound_messages
+               WHERE conversation_id=? AND sender_phone=? AND message_id<>?
+               ORDER BY received_at_utc DESC,rowid DESC LIMIT 1""",
+            (actor.conversation_id, actor.phone, actor.source_message_id),
+        ).fetchone()
+        return bool(
+            row
+            and str(row["message_id"]) == str(pending.get("source_message_id") or "")
+        )
+    finally:
+        conn.close()
+
+
+def _recover_reminder_draft_context(actor, text: str) -> dict | None:
+    pending = db.latest_pending_item(actor, "REMINDER_DRAFT", max_age_seconds=1800)
+    if not pending:
+        return None
+    if not _pending_is_immediate_previous_turn(actor, pending):
+        return None
+    if not _looks_like_reminder_clarification_reply(text):
+        return None
+    original = str(pending.get("original_text") or "").strip()
+    if not original:
+        return None
+    return {
+        "recent_user_instruction": original[:2000],
+        "source_message_id": pending.get("source_message_id"),
+        "context_kind": "PENDING_ITEM",
+        "context_id": pending.get("item_id"),
+        "pending_item": {
+            "item_id": pending.get("item_id"),
+            "kind": pending.get("kind"),
+            "media_id": pending.get("media_id"),
+            "source_message_id": pending.get("source_message_id"),
+        },
+    }
+
+
+def _maybe_create_reminder_draft(actor, reply: str) -> dict | None:
+    if not _is_reminder_request(getattr(actor, "trusted_text", "")):
+        return None
+    if _reminder_created_by_turn(actor):
+        return None
+    if not _reply_is_reminder_clarification(reply):
+        return None
+    return db.create_pending_item(
+        actor,
+        "REMINDER_DRAFT",
+        note="Awaiting typed date/time clarification for this reminder request.",
+    )
 
 
 def _created_claimable_reminder_id(actor) -> str | None:
@@ -696,6 +951,10 @@ def process(payload: dict) -> dict:
         quoted_context = db.resolve_quoted_context(
             actor.conversation_id, payload.get("quoted_message_id"), actor.phone
         )
+        if not quoted_context:
+            quoted_context = _recover_reminder_draft_context(
+                actor, turn["trusted_text"]
+            )
         pending_item = db.pending_item_for_reference(actor, quoted_context)
         if pending_item:
             quoted_context = dict(quoted_context or {})
@@ -756,6 +1015,29 @@ def process(payload: dict) -> dict:
                 error_report=True,
             )
 
+        quoted_private_offer = (
+            pending_item
+            if pending_item
+            and str(pending_item.get("kind") or "").upper() == "PRIVATE_SEARCH_OFFER"
+            else None
+        )
+        private_offer = quoted_private_offer or db.latest_pending_item(
+            actor, "PRIVATE_SEARCH_OFFER", max_age_seconds=600
+        )
+        answer = _yes_no_answer(turn["trusted_text"])
+        offer_is_current = bool(
+            private_offer
+            and _private_offer_is_current_reference(
+                actor, private_offer, quoted_context
+            )
+        )
+        if private_offer and answer == "yes" and offer_is_current:
+            return _fulfill_private_search_offer(actor, private_offer)
+        if private_offer and answer == "no" and offer_is_current:
+            db.cancel_pending_item(
+                private_offer["item_id"], actor.user_id, actor.source_message_id
+            )
+
         if _is_selection_followup(turn["trusted_text"]):
             selection_context = quoted_context
             if not _selection_context_parts(selection_context):
@@ -796,6 +1078,7 @@ def process(payload: dict) -> dict:
             private_selection = _selection_context_for_offer(
                 dm_actor, private_reply, private_attachments
             )
+            private_report_context = _report_context_for_turn(dm_actor)
             if not private_attachments:
                 db.queue_outbound(
                     dm_conversation, "TEXT", text=private_reply,
@@ -820,8 +1103,13 @@ def process(payload: dict) -> dict:
                         local_path=path,
                         mime_type=item.get("mime_type"),
                         source_message_id=actor.source_message_id,
+                        context_kind="REPORT" if first_private_attachment and private_report_context else None,
+                        context_id=private_report_context if first_private_attachment and private_report_context else None,
                     )
                     first_private_attachment = False
+            _resolve_voice_pending_after_success(
+                actor, pending_item, turn["trusted_text"]
+            )
             group_reply = (
                 "I’m handling that in your private DM."
                 if private_attachments else "I sent that to you privately."
@@ -830,10 +1118,6 @@ def process(payload: dict) -> dict:
                 actor.conversation_id, "TEXT", text=group_reply,
                 source_message_id=actor.source_message_id,
             )
-            if pending_item and turn["trusted_text"].strip():
-                db.resolve_pending_item(
-                    pending_item["item_id"], actor.user_id, actor.source_message_id
-                )
             db.finish_inbound(actor.source_message_id, group_reply)
             return {"ok": True, "private_handoff": True}
 
@@ -844,20 +1128,37 @@ def process(payload: dict) -> dict:
             )
         )
         db.touch_inbound_processing(payload["message_id"])
+        private_search_offer, reply = _maybe_create_private_search_offer(
+            actor, turn["trusted_text"], reply, attachments
+        )
         selection_context = _selection_context_for_offer(
             actor, reply, attachments
         )
         reminder_setup_id = _created_claimable_reminder_id(actor)
+        reminder_draft = _maybe_create_reminder_draft(actor, reply)
         report_context = _report_context_for_turn(actor)
+
+        if (
+            pending_item
+            and str(pending_item.get("kind") or "").upper() == "REMINDER_DRAFT"
+            and _reminder_created_by_turn(actor)
+        ):
+            db.resolve_pending_item(
+                pending_item["item_id"], actor.user_id, actor.source_message_id
+            )
         if not attachments:
             context_kind = (
-                "SELECTION" if selection_context
+                "PENDING_ITEM" if private_search_offer
+                else "PENDING_ITEM" if reminder_draft
+                else "SELECTION" if selection_context
                 else "REMINDER_SETUP" if reminder_setup_id
                 else "REPORT" if report_context
                 else None
             )
             context_id = (
-                f"{selection_context['kind']}:{selection_context['id']}"
+                private_search_offer["item_id"] if private_search_offer
+                else reminder_draft["item_id"] if reminder_draft
+                else f"{selection_context['kind']}:{selection_context['id']}"
                 if selection_context
                 else reminder_setup_id if reminder_setup_id
                 else report_context
@@ -882,12 +1183,13 @@ def process(payload: dict) -> dict:
                     local_path=path,
                     mime_type=item.get("mime_type"),
                     source_message_id=actor.source_message_id,
+                    context_kind="REPORT" if first_attachment and report_context else None,
+                    context_id=report_context if first_attachment and report_context else None,
                 )
                 first_attachment = False
-        if pending_item and turn["trusted_text"].strip():
-            db.resolve_pending_item(
-                pending_item["item_id"], actor.user_id, actor.source_message_id
-            )
+        _resolve_voice_pending_after_success(
+            actor, pending_item, turn["trusted_text"]
+        )
         db.finish_inbound(actor.source_message_id, reply)
         return {"ok": True}
     except media.VoiceTranscriptionUncertain as exc:

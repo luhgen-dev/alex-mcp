@@ -25,7 +25,11 @@ import human_ai_lab
 
 # Frozen deterministic regression corpus. Any prompt/tool-surface change
 # invalidates this oracle until its regression expectations are reviewed.
-REVIEWED_CORPUS_FINGERPRINT = "7c14c73b2bd66da4349e96e7bed49b750a04b4f96356d18024c9f61ce4f101de"
+# 2026-10-02 v0.5.7 scope-policy recertification: compared the prior RC and
+# current 384-packet artifacts by packet_id. Exactly seven packets changed,
+# only in the public cash-pool tool descriptions/default scope; no tool names
+# were removed and the oracle's selected tools are unchanged.
+REVIEWED_CORPUS_FINGERPRINT = "7f66f5f30afc53f45d3a39a68274fd7cf4baf77cff121279f0702e86b1a13be4"
 
 
 def _low(value: str) -> str:

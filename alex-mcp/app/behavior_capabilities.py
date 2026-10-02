@@ -21,7 +21,9 @@ CAPABILITY_TO_TOOLS: dict[str, frozenset[str]] = {
     "receipt.get": frozenset({"get_receipt"}),
     "media.find": frozenset({"find_media"}),
     "media.get": frozenset({"get_media_original"}),
-    "media.pending": frozenset({"list_pending_items"}),
+    "media.pending": frozenset({
+        "list_pending_items", "resolve_pending_item", "cancel_pending_item"
+    }),
 
     # Saved memory / selection
     "memory.save": frozenset({"save_item"}),
@@ -33,7 +35,7 @@ CAPABILITY_TO_TOOLS: dict[str, frozenset[str]] = {
     # Reminders / shopping
     "reminder.create": frozenset({"create_reminder"}),
     "reminder.read": frozenset({"list_reminders"}),
-    "reminder.update": frozenset({"update_reminder"}),
+    "reminder.update": frozenset({"update_reminder", "nudge_reminder_claimant"}),
     "reminder.history": frozenset({"reminder_history"}),
     "reminder.claim.release": frozenset({"release_reminder_claim"}),
     "reminder.claim.handoff": frozenset({"handoff_reminder_claim"}),

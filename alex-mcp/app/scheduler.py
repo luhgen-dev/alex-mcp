@@ -26,6 +26,14 @@ def _owner_phone(conn, user_id: str) -> str | None:
     return row["phone_number"] if row else None
 
 
+def _user_display_name(conn, user_id: str) -> str:
+    row = conn.execute(
+        "SELECT display_name FROM users WHERE user_id=?",
+        (user_id,),
+    ).fetchone()
+    return str(row["display_name"] or user_id) if row else str(user_id)
+
+
 def _presence_state(phone: str) -> str:
     try:
         mapping = phase2_presence.owner_presence_mapping(phone, "DIRECT_DM")
@@ -249,37 +257,51 @@ def fire_due():
             ).isoformat()
             conn.execute(
                 """UPDATE reminders
-                   SET claimant_follow_up_at_utc=?,next_delivery_at_utc=?,defer_reason=NULL
+                   SET claimant_follow_up_at_utc=?,nudged_at_utc=?,
+                       next_delivery_at_utc=?,defer_reason=NULL
                    WHERE reminder_id=?""",
-                (now.isoformat(), later, row["reminder_id"]),
+                (now.isoformat(), now.isoformat(), later, row["reminder_id"]),
             )
 
-        # 3) If it is still not completed after the claimant follow-up, resurface
-        #    it to Family Shared once. Ownership remains with the claimant.
-        resurface_rows = conn.execute(
+        # 3) If it is still not completed after the claimant nudge, notify the
+        #    original initiator privately. Do not spam the family group. The
+        #    initiator can then remind again, complete/cancel, or reopen it.
+        escalation_rows = conn.execute(
             """SELECT * FROM reminders
                WHERE status='DUE' AND claimable=1
                  AND claimed_by_user_id IS NOT NULL
                  AND claimant_follow_up_at_utc IS NOT NULL
-                 AND family_resurfaced_at_utc IS NULL
+                 AND initiator_notified_at_utc IS NULL
                  AND next_delivery_at_utc IS NOT NULL
                  AND next_delivery_at_utc<=?
                ORDER BY next_delivery_at_utc LIMIT 40""",
             (now.isoformat(),),
         ).fetchall()
-        for row in resurface_rows:
-            resurface_text = f"↪️ Still outstanding with its claimant: {row['task_text']}"
-            _queue(
-                conn, row,
-                resurface_text,
-                "REMINDER_FAMILY_RESURFACE",
+        for row in escalation_rows:
+            initiator_phone = _owner_phone(conn, row["owner_id"])
+            if not initiator_phone:
+                continue
+            initiator_dm = initiator_phone.replace("+", "") + "@s.whatsapp.net"
+            claimant_name = _user_display_name(
+                conn, str(row["claimed_by_user_id"])
             )
-            _queue_ha_due(conn, row, resurface_text, "family-resurface")
+            escalation_text = (
+                f"↪️ Still unresolved: {row['task_text']}. "
+                f"It is still assigned to {claimant_name}. "
+                "You can ask me to remind them again, reopen it to the family, "
+                "mark it done, or cancel it."
+            )
+            _queue_to(
+                conn, initiator_dm, row["reminder_id"],
+                escalation_text,
+                "REMINDER_INITIATOR_ESCALATION",
+            )
             conn.execute(
                 """UPDATE reminders
-                   SET family_resurfaced_at_utc=?,next_delivery_at_utc=NULL
+                   SET initiator_notified_at_utc=?,family_resurfaced_at_utc=?,
+                       next_delivery_at_utc=NULL
                    WHERE reminder_id=?""",
-                (now.isoformat(), row["reminder_id"]),
+                (now.isoformat(), now.isoformat(), row["reminder_id"]),
             )
 
         # An acknowledged reminder may receive one quiet/presence-aware follow-up

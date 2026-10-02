@@ -269,7 +269,7 @@ def link_document(asset_id, document_type, evidence_ref, sender_phone,
 
 
 def list_assets(sender_phone, conversation_type="DIRECT_DM",
-                requested_scope="all", include_documents=False):
+                requested_scope="all", include_documents=False, query=None):
     ensure_schema()
     conn = tools.get_db()
     try:
@@ -302,6 +302,30 @@ def list_assets(sender_phone, conversation_type="DIRECT_DM",
             + clause + " ORDER BY name",
             args,
         ).fetchall()
+        wanted = [
+            token for token in re.findall(
+                r"[a-z0-9]+", str(query or "").casefold()
+            )
+            if len(token) > 1
+            and token not in {
+                "my", "the", "asset", "assets", "appliance", "appliances",
+                "when", "did", "buy", "bought", "warranty", "expire",
+                "expires", "expiry", "show", "find",
+            }
+        ]
+        if wanted:
+            filtered = []
+            for row in rows:
+                hay = " ".join(
+                    str(row[key] or "").casefold()
+                    for key in (
+                        "name", "category", "brand", "model",
+                        "serial_number", "note",
+                    )
+                )
+                if all(token in hay for token in wanted):
+                    filtered.append(row)
+            rows = filtered
         result = []
         for row in rows:
             item = dict(row)

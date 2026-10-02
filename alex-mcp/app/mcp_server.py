@@ -4,6 +4,7 @@ from typing import Annotated
 from functools import wraps
 import inspect
 import sqlite3
+import re
 
 from mcp.server import MCPServer
 from mcp.server.mcpserver import Resolve
@@ -25,7 +26,7 @@ import scope_policy
 
 mcp = MCPServer(
     "Alex Household Tools",
-    version="0.5.6",
+    version="0.5.7",
     instructions="Deterministic household tools. Identity and permissions are injected by Alex and are never model-controlled.",
 )
 
@@ -90,17 +91,98 @@ def confirm_expense(event_id: str, actor: Actor, approve: bool = True,
     return services.confirm_expense(actor, event_id, approve, category, amount)
 
 
+def _finance_followup_inherits_active_report(actor: Actor) -> bool:
+    """Whether this turn is a natural drill-down of the active finance report.
+
+    The active report is canonical state, not model memory. We inherit it only
+    for clear follow-up language and only when the current turn does not name a
+    new period/date. This prevents a category drill-down such as "food next"
+    from silently jumping from September to October.
+    """
+    text = str(getattr(actor, "trusted_text", "") or "").strip().casefold()
+    if not text:
+        return False
+    explicit_time = re.search(
+        r"\b(?:today|yesterday|tomorrow|tonight)\b"
+        r"|\b(?:this|last|next|previous|past)\s+(?:week|weekend|fortnight|month|quarter|year)s?\b"
+        r"|\b(?:last|past|previous|next)\s+"
+        r"(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|"
+        r"few|several|couple(?:\s+of)?)\s+"
+        r"(?:days?|weeks?|fortnights?|months?|quarters?|years?)\b"
+        r"|\b(?:week|weekend|quarter|year)\b"
+        r"|\b(?:mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|"
+        r"fri(?:day)?|sat(?:urday)?|sun(?:day)?)\b"
+        r"|\b(?:since|between|until)\b"
+        r"|\bfrom\b.{0,80}\bto\b"
+        r"|\b(?:19|20)\d{2}\b"
+        r"|\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|"
+        r"jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|"
+        r"oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b"
+        r"|\b(?:in|during|for)\s+may\b|\bmay\s+(?:\d{4}|\d{1,2}(?:st|nd|rd|th)?)\b"
+        r"|\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|"
+        r"apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|"
+        r"oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b"
+        r"|\b\d{4}-\d{2}(?:-\d{2})?\b"
+        r"|\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b",
+        text,
+    )
+    if explicit_time:
+        return False
+    return bool(re.search(
+        r"\b(?:breakdown|drill\s*down|next|same|what\s+about|how\s+about|"
+        r"that\s+category|those\s+expenses|the\s+expenses|category)\b",
+        text,
+    ))
+
+
 @alex_tool()
 def query_finances(actor: Actor, start_date: str | None = None, end_date: str | None = None,
                    category: str | None = None, search: str | None = None,
                    currency: str | None = None, limit: int = 20,
                    scope: str | None = None, source: str | None = None) -> dict:
-    """Read true ledger totals and matching transactions. Use ISO dates YYYY-MM-DD. scope may be all/family/private. source may be all/voice/receipt/text. For today/tomorrow/yesterday, resolve the runtime date and set both start_date and end_date."""
-    result = services.query_finances(
-        actor, start_date, end_date, category, search, currency, limit, scope, source
-    )
+    """Read true ledger totals and matching transactions. Use ISO dates YYYY-MM-DD. scope may be all/family/private. source may be all/voice/receipt/text. For today/tomorrow/yesterday, resolve the runtime date and set both start_date and end_date. Natural drill-downs inherit the active canonical report period unless the current turn names a different period."""
+    import calendar
+
     active = phase2_reports.load_active_report(actor.user_id, actor.conversation_id)
     active_spec = (active.get("spec") or {}) if active else {}
+    if (
+        active
+        and active.get("kind") in {"finance_query", "monthly_finance"}
+        and _finance_followup_inherits_active_report(actor)
+    ):
+        # The trusted current text did not name a new period. Therefore the
+        # canonical active report period outranks dates guessed by the model.
+        active_period = active.get("period") or active_spec.get("period")
+        if active_period and re.fullmatch(r"\d{4}-\d{2}", str(active_period)):
+            year, month = (int(x) for x in str(active_period).split("-", 1))
+            start_date = f"{year:04d}-{month:02d}-01"
+            end_date = (
+                f"{year:04d}-{month:02d}-"
+                f"{calendar.monthrange(year, month)[1]:02d}"
+            )
+        else:
+            start_date = active_spec.get("start_date")
+            end_date = active_spec.get("end_date")
+
+        # A new category drill-down replaces the previous semantic filter. In
+        # particular, never carry a prior search such as "transport" into a
+        # new category such as Food & Drink.
+        if category is not None:
+            search = None
+        elif search is None:
+            search = active_spec.get("search")
+        if currency is None:
+            currency = active_spec.get("currency")
+        if source is None:
+            source = active_spec.get("source")
+        if scope is None:
+            scope = active_spec.get("scope")
+
+    effective_scope = scope_policy.effective_read_scope(actor, scope)
+    result = services.query_finances(
+        actor, start_date, end_date, category, search, currency, limit,
+        effective_scope, source,
+    )
     preserve_presented_monthly = bool(
         active
         and active.get("kind") == "monthly_finance"
@@ -116,7 +198,7 @@ def query_finances(actor: Actor, start_date: str | None = None, end_date: str | 
             spec={
                 "start_date": start_date, "end_date": end_date, "category": category,
                 "search": search, "currency": currency, "limit": limit,
-                "scope": scope, "source": source,
+                "scope": effective_scope, "source": source,
                 "source_message_id": actor.source_message_id,
             },
         )
@@ -167,8 +249,76 @@ def get_media_original(media_id: str, actor: Actor) -> dict:
 
 @alex_tool()
 def list_pending_items(actor: Actor, kind: str | None = None, limit: int = 20) -> dict:
-    """List this owner's unresolved deferred items. Use kind=VOICE for unresolved voice notes."""
-    return {"items": db.list_pending_items(actor, kind, limit)}
+    """List this owner's unresolved deferred items. Use kind=VOICE for unresolved voice notes. Results are numbered and use local time; internal IDs are intentionally hidden."""
+    rows = db.list_pending_items(actor, kind, limit)
+    items = [
+        {
+            "choice": row.get("choice"),
+            "kind": row.get("kind"),
+            "received": row.get("display_time"),
+            "media_type": row.get("media_type"),
+        }
+        for row in rows
+    ]
+    return {
+        "items": items,
+        "presentation_rule": (
+            "Present the numbered items with their local received date/time. "
+            "Never expose pending-item IDs, media IDs, source IDs or UTC."
+        ),
+    }
+
+
+@alex_tool()
+def resolve_pending_item(actor: Actor, choice: int | None = None,
+                         item_id: str | None = None) -> dict:
+    """Explicitly mark one owner's pending item resolved. Prefer the numbered choice from the latest pending list; item_id is used only for trusted quoted context."""
+    if item_id:
+        pending = db.pending_item_for_reference(
+            actor, {"context_kind": "PENDING_ITEM", "context_id": item_id}
+        )
+    elif choice is not None:
+        pending = db.pending_item_by_choice(actor, choice)
+    else:
+        raise ValueError("provide a pending-item choice or trusted item reference")
+    if not pending:
+        raise ValueError("pending item is no longer unresolved")
+    changed = db.resolve_pending_item(
+        pending["item_id"], actor.user_id, actor.source_message_id
+    )
+    if not changed:
+        raise ValueError("pending item is no longer unresolved")
+    return {
+        "status": "resolved",
+        "choice": choice,
+        "kind": pending.get("kind"),
+    }
+
+
+@alex_tool()
+def cancel_pending_item(actor: Actor, choice: int | None = None,
+                        item_id: str | None = None) -> dict:
+    """Explicitly cancel one owner's pending item without deleting its preserved provenance."""
+    if item_id:
+        pending = db.pending_item_for_reference(
+            actor, {"context_kind": "PENDING_ITEM", "context_id": item_id}
+        )
+    elif choice is not None:
+        pending = db.pending_item_by_choice(actor, choice)
+    else:
+        raise ValueError("provide a pending-item choice or trusted item reference")
+    if not pending:
+        raise ValueError("pending item is no longer unresolved")
+    changed = db.cancel_pending_item(
+        pending["item_id"], actor.user_id, actor.source_message_id
+    )
+    if not changed:
+        raise ValueError("pending item is no longer unresolved")
+    return {
+        "status": "cancelled",
+        "choice": choice,
+        "kind": pending.get("kind"),
+    }
 
 
 @alex_tool()
@@ -268,6 +418,12 @@ def handoff_reminder_claim(reminder_id: str, recipient: str, actor: Actor) -> di
 def release_reminder_claim(reminder_id: str, actor: Actor) -> dict:
     """Explicitly release a claimable family reminder after the claimant says they cannot do it / release it. Removing a WhatsApp reaction never releases ownership."""
     return services.release_reminder_claim(actor, reminder_id)
+
+
+@alex_tool()
+def nudge_reminder_claimant(reminder_id: str, actor: Actor) -> dict:
+    """Privately remind the current claimant again when the original initiator explicitly asks. Ownership and unresolved state remain unchanged."""
+    return services.nudge_reminder_claimant(actor, reminder_id)
 
 
 @alex_tool()
@@ -826,11 +982,12 @@ def planning_allocate_cash_to_goal(amount: float, actor: Actor,
 def planning_create_cash_pool(name: str, actor: Actor, currency: str = "MYR",
                               shared: bool = False,
                               opening_balance: float | None = None) -> dict:
-    """Create the caller's private stash/cash pool. Stash is inherently private per household policy; shared is accepted only for backward-compatible tool calls and never widens visibility. If the user says to create it with/put an amount in it, pass that amount as opening_balance so creation + funding are one atomic action."""
+    """Create a stash/cash pool in the space selected by the current trusted command. Plain DM/group wording follows Family Shared; explicit private wording or emoji selects owner-private. If the user says to create it with/put an amount in it, pass that amount as opening_balance so creation + funding are one atomic action."""
     import runtime_clock
+    visibility = scope_policy.visibility_for_new_write(actor, shared)
     return phase2_finance.create_cash_pool(
         name, actor.phone, actor.conversation_type,
-        "private",
+        visibility,
         currency, opening_balance,
         runtime_clock.today(actor.timezone).isoformat(),
         actor.source_message_id,
@@ -838,11 +995,12 @@ def planning_create_cash_pool(name: str, actor: Actor, currency: str = "MYR",
 
 
 @alex_tool()
-def planning_list_cash_pools(actor: Actor, scope: str = "private") -> dict:
-    """List the authenticated user's private active stash/cash pools and exact balances. Stash is never exposed as Family Shared."""
+def planning_list_cash_pools(actor: Actor, scope: str = "all") -> dict:
+    """List active stash/cash pools visible in the current trusted read scope. Model scope arguments may narrow but never widen that boundary."""
+    effective_scope = scope_policy.effective_read_scope(actor, scope)
     return {
         "pools": phase2_finance.list_cash_pools(
-            actor.phone, actor.conversation_type, "private"
+            actor.phone, actor.conversation_type, effective_scope
         )
     }
 
@@ -1241,10 +1399,11 @@ def asset_link_document(document_type: str, actor: Actor,
 
 
 @alex_tool()
-def asset_list(actor: Actor, include_documents: bool = False) -> dict:
-    """List authorized household/private assets without leaking another person's private assets."""
+def asset_list(actor: Actor, include_documents: bool = False,
+               query: str | None = None) -> dict:
+    """List/filter authorized assets by natural name, brand, model, serial or note without widening the trusted privacy scope."""
     assets = phase2_library.list_assets(
-        actor.phone, actor.conversation_type, "all", include_documents
+        actor.phone, actor.conversation_type, "all", include_documents, query
     )
     for item in assets:
         item["warranty_end_known"] = bool(item.get("warranty_end"))
@@ -1354,26 +1513,28 @@ def finance_report(actor: Actor, period: str | None = None,
         raise ValueError("period must be YYYY-MM") from exc
     start_date = f"{year:04d}-{month:02d}-01"
     end_date = f"{year:04d}-{month:02d}-{last_day:02d}"
+    effective_scope = scope_policy.effective_read_scope(actor, scope)
     ledger = services.query_finances(
         actor, start_date=start_date, end_date=end_date,
         category=category, search=search,
-        scope=scope, include_all_records=True,
+        scope=effective_scope, include_all_records=True,
     )
     try:
         phase2_finance.ensure_obligation_instances(
-            effective_period, actor.phone, actor.conversation_type, scope
+            effective_period, actor.phone, actor.conversation_type, effective_scope
         )
     except ValueError:
         # Missing recurring-payment configuration must not hide real ledger data.
         pass
     result = phase2_reports.build_monthly_finance_report(
-        ledger, effective_period, actor.phone, actor.conversation_type, scope
+        ledger, effective_period, actor.phone, actor.conversation_type,
+        effective_scope,
     )
     phase2_reports.remember_active_report(
         actor.user_id, actor.conversation_id, "monthly_finance", result,
         period=effective_period,
         spec={
-            "period": effective_period, "scope": scope,
+            "period": effective_period, "scope": effective_scope,
             "category": category, "search": search,
             "source_message_id": actor.source_message_id,
         },
@@ -1405,7 +1566,12 @@ def report_export(format: str, actor: Actor, period: str | None = None,
                   category: str | None = None,
                   search: str | None = None,
                   scope: str | None = None,
-                  full_report: bool = False) -> dict:
+                  full_report: bool = False,
+                  start_date: str | None = None,
+                  end_date: str | None = None,
+                  currency: str | None = None,
+                  source: str | None = None,
+                  use_active_context: bool = True) -> dict:
     """Export PDF/CSV/JSON from the active canonical report.
 
     report_type may be finance or snapshot when the user explicitly names the
@@ -1431,9 +1597,23 @@ def report_export(format: str, actor: Actor, period: str | None = None,
     if requested_type not in {"", "finance", "snapshot"}:
         raise ValueError("report_type must be finance or snapshot")
 
+    frozen_scope = str(scope or "").strip().casefold()
+    if not use_active_context and frozen_scope in {"family", "private"}:
+        authorized_scope = scope_policy.effective_read_scope(actor, frozen_scope)
+        if authorized_scope != frozen_scope:
+            if frozen_scope == "private":
+                raise PermissionError(
+                    "That quoted report is private. Say private or include an emoji "
+                    "in this export request to authorize the same private dataset."
+                )
+            raise PermissionError(
+                "That quoted report is Family Shared. Remove the private marker "
+                "to export that same shared dataset."
+            )
+
     active = (
         phase2_reports.load_active_report(actor.user_id, actor.conversation_id)
-        if not include_raw_income else None
+        if (not include_raw_income and use_active_context) else None
     )
     active_kind = active.get("kind") if active else None
     active_period = active.get("period") if active else None
@@ -1468,12 +1648,20 @@ def report_export(format: str, actor: Actor, period: str | None = None,
 
     effective_period = period or active_period
     spec = (active.get("spec") or {}) if active and report_kind == active_kind else {}
-    explicit_filter = any(value is not None for value in (category, search, scope))
+    explicit_filter = any(
+        value is not None
+        for value in (category, search, scope, start_date, end_date, currency, source)
+    )
     if full_report:
         spec = {
             "period": effective_period,
             "scope": scope or "all",
         }
+        if not use_active_context:
+            # A frozen quoted monthly report may itself be filtered. Keep those
+            # exact filters while preserving the monthly report layout.
+            spec["category"] = category
+            spec["search"] = search
         report_kind = "monthly_finance"
     elif explicit_filter:
         report_kind = "finance_query"
@@ -1483,6 +1671,10 @@ def report_export(format: str, actor: Actor, period: str | None = None,
             "scope": scope if scope is not None else spec.get("scope"),
             "category": category if category is not None else spec.get("category"),
             "search": search if search is not None else spec.get("search"),
+            "start_date": start_date if start_date is not None else spec.get("start_date"),
+            "end_date": end_date if end_date is not None else spec.get("end_date"),
+            "currency": currency if currency is not None else spec.get("currency"),
+            "source": source if source is not None else spec.get("source"),
         }
     if report_kind == "monthly_finance":
         spec = {
@@ -1511,10 +1703,25 @@ def report_export(format: str, actor: Actor, period: str | None = None,
             )
         else:
             scope = spec.get("scope")
+            query_start = spec.get("start_date")
+            query_end = spec.get("end_date")
+            # A frozen monthly report may carry category/scope filters without
+            # explicit start/end fields. The period still bounds the dataset.
+            if (
+                effective_period
+                and re.fullmatch(r"\d{4}-\d{2}", str(effective_period))
+                and not query_start and not query_end
+            ):
+                year, month = (int(x) for x in str(effective_period).split("-", 1))
+                query_start = f"{year:04d}-{month:02d}-01"
+                query_end = (
+                    f"{year:04d}-{month:02d}-"
+                    f"{calendar.monthrange(year, month)[1]:02d}"
+                )
             ledger = services.query_finances(
                 actor,
-                start_date=spec.get("start_date"),
-                end_date=spec.get("end_date"),
+                start_date=query_start,
+                end_date=query_end,
                 category=spec.get("category"),
                 search=spec.get("search"),
                 currency=spec.get("currency"),
@@ -1572,6 +1779,20 @@ def report_export(format: str, actor: Actor, period: str | None = None,
         payload = json.dumps(canonical, ensure_ascii=False, indent=2, sort_keys=True)
         path.write_text(payload, encoding="utf-8")
         mime = "application/json"
+
+    remembered_spec = {
+        **spec,
+        "period": effective_period,
+        "source_message_id": actor.source_message_id,
+    }
+    phase2_reports.remember_active_report(
+        actor.user_id,
+        actor.conversation_id,
+        report_kind,
+        canonical,
+        period=effective_period,
+        spec=remembered_spec,
+    )
 
     return {
         "status": "ready",

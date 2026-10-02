@@ -137,21 +137,58 @@ def _control_outbound(row, kind: str) -> bool:
         "to": row["conversation_id"],
         "kind": kind,
         "target_message_id": target,
+        "target_from_me": True,
     }
     ok, _detail = _send(payload)
     return ok
 
 
+def _expire_transient_pending_items(conn) -> None:
+    """Expire prompt continuations; only VOICE is a durable pending inbox item."""
+    now = _now()
+    expired = conn.execute(
+        """SELECT item_id FROM pending_items
+           WHERE status='PENDING'
+             AND (
+               (kind='PRIVATE_SEARCH_OFFER'
+                AND datetime(created_at_utc)<=datetime('now','-10 minutes'))
+               OR
+               (kind='REMINDER_DRAFT'
+                AND datetime(created_at_utc)<=datetime('now','-30 minutes'))
+             )"""
+    ).fetchall()
+    if not expired:
+        return
+    ids = [str(row["item_id"]) for row in expired]
+    marks = ",".join("?" for _ in ids)
+    conn.execute(
+        f"""UPDATE pending_items
+            SET status='CANCELLED',resolved_at_utc=?,resolution_message_id='expired'
+            WHERE item_id IN ({marks}) AND status='PENDING'""",
+        [now] + ids,
+    )
+    # An expired prompt should never be delivered late after transport recovery.
+    conn.execute(
+        f"""UPDATE outbound_messages
+            SET delivery_status='FAILED',last_error='pending_prompt_expired',
+                next_attempt_at_utc=NULL
+            WHERE context_kind='PENDING_ITEM' AND context_id IN ({marks})
+              AND delivery_status='PENDING'""",
+        ids,
+    )
+    conn.commit()
+
+
 def _reconcile_pending_item_markers(conn) -> None:
     rows = conn.execute(
-        """SELECT o.*,p.status AS pending_status
+        """SELECT o.*,p.status AS pending_status,p.kind AS pending_kind
            FROM outbound_messages o
            JOIN pending_items p ON p.item_id=o.context_id
            WHERE o.context_kind='PENDING_ITEM'
              AND (
-                p.status='PENDING'
+                (p.status='PENDING' AND p.kind='VOICE')
                 OR (
-                    p.status IN ('RESOLVED','CANCELLED')
+                    (p.status IN ('RESOLVED','CANCELLED') OR p.kind<>'VOICE')
                     AND (
                         (o.job_reacted_at_utc IS NOT NULL AND o.job_reaction_cleared_at_utc IS NULL)
                         OR (o.job_pinned_at_utc IS NOT NULL AND o.job_unpinned_at_utc IS NULL)
@@ -160,14 +197,15 @@ def _reconcile_pending_item_markers(conn) -> None:
              )"""
     ).fetchall()
     for row in rows:
-        if row["pending_status"] == "PENDING":
+        if row["pending_status"] == "PENDING" and row["pending_kind"] == "VOICE":
             _ensure_unresolved_markers(conn, row)
         else:
+            # Also cleans stale RC3 markers from transient offer/draft prompts.
             _cleanup_resolved_markers(conn, row)
 
 
 def _reconcile_reminder_pins(conn) -> None:
-    """Keep only unresolved, unclaimed fired Family reminders pinned."""
+    """Keep fired claimable reminders pinned until they leave DUE."""
     rows = conn.execute(
         """SELECT o.*,r.status AS reminder_status,r.claimable,r.claimed_by_user_id
            FROM outbound_messages o
@@ -179,9 +217,7 @@ def _reconcile_reminder_pins(conn) -> None:
     ).fetchall()
     for row in rows:
         unresolved = (
-            str(row["conversation_id"]).endswith("@g.us")
-            and int(row["claimable"] or 0) == 1
-            and not row["claimed_by_user_id"]
+            int(row["claimable"] or 0) == 1
             and row["reminder_status"] == "DUE"
         )
         if not unresolved and _control_outbound(row, "unpin"):
@@ -193,8 +229,17 @@ def _reconcile_reminder_pins(conn) -> None:
 
 
 def _ensure_unresolved_markers(conn, row) -> None:
-    """Mark a managed unresolved source message with ⏳ + pin."""
-    managed = row["kind"] == "DOCUMENT" or row["context_kind"] == "PENDING_ITEM"
+    """Mark only durable managed work: documents and unresolved VOICE items."""
+    managed = row["kind"] == "DOCUMENT"
+    if row["context_kind"] == "PENDING_ITEM":
+        pending_kind = _row_value(row, "pending_kind")
+        if pending_kind is None and row["context_id"]:
+            pending = conn.execute(
+                "SELECT kind FROM pending_items WHERE item_id=?",
+                (row["context_id"],),
+            ).fetchone()
+            pending_kind = pending["kind"] if pending else None
+        managed = str(pending_kind or "").upper() == "VOICE"
     if not managed or not row["source_message_id"]:
         return
     now = _now()
@@ -296,6 +341,7 @@ def sweep():
     global _STARTUP_MANAGED_JOB_RECONCILED
     conn = connect()
     try:
+        _expire_transient_pending_items(conn)
         now_iso = _now()
         rows = conn.execute(
             """SELECT o.*,i.sender_provider_jid AS source_sender_provider_jid,
@@ -313,6 +359,7 @@ def sweep():
             if row["context_kind"] in (
                 "REMINDER_INITIAL", "REMINDER_FOLLOWUP",
                 "REMINDER_CLAIMANT_FOLLOWUP", "REMINDER_FAMILY_RESURFACE",
+                "REMINDER_INITIATOR_ESCALATION",
             ) and row["context_id"]:
                 reminder = conn.execute(
                     "SELECT status FROM reminders WHERE reminder_id=?",
@@ -355,6 +402,7 @@ def sweep():
                 if row["context_kind"] in (
                     "REMINDER_INITIAL", "REMINDER_FOLLOWUP",
                     "REMINDER_CLAIMANT_FOLLOWUP", "REMINDER_FAMILY_RESURFACE",
+                    "REMINDER_INITIATOR_ESCALATION",
                 ) and row["context_id"]:
                     if row["context_kind"] == "REMINDER_INITIAL":
                         conn.execute(
@@ -368,15 +416,19 @@ def sweep():
                             (delivered, row["context_id"]),
                         )
                         event_type = "FOLLOW_UP_DELIVERED"
-                    elif row["context_kind"] == "REMINDER_CLAIMANT_FOLLOWUP":
-                        event_type = "CLAIMANT_FOLLOW_UP_DELIVERED"
                     else:
-                        event_type = "FAMILY_RESURFACED_DELIVERED"
+                        # reminder_events has one durable follow-up event type;
+                        # the outbound context records which follow-up surface
+                        # was delivered without violating the table CHECK.
+                        event_type = "FOLLOW_UP_DELIVERED"
                     conn.execute(
                         """INSERT INTO reminder_events(
                                event_id,reminder_id,event_type,note
                            ) VALUES(lower(hex(randomblob(16))),?,?,?)""",
-                        (row["context_id"], event_type, "confirmed by WhatsApp egress"),
+                        (
+                            row["context_id"], event_type,
+                            f"confirmed by WhatsApp egress: {row['context_kind']}",
+                        ),
                     )
                 elif row["context_kind"] == "MONITOR" and row["context_id"]:
                     conn.execute(
@@ -390,7 +442,6 @@ def sweep():
                 if (
                     refreshed
                     and refreshed["context_kind"] == "REMINDER_INITIAL"
-                    and str(refreshed["conversation_id"]).endswith("@g.us")
                     and refreshed["context_id"]
                 ):
                     reminder = conn.execute(
@@ -402,7 +453,6 @@ def sweep():
                         reminder
                         and reminder["status"] == "DUE"
                         and int(reminder["claimable"] or 0) == 1
-                        and not reminder["claimed_by_user_id"]
                         and not refreshed["job_pinned_at_utc"]
                         and _control_outbound(refreshed, "pin")
                     ):

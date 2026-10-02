@@ -247,60 +247,10 @@ def ensure_schema(conn=None):
             FROM alex_phase2_goals
         """)
 
-        # Stash/cash pools are an inherently private money domain. Repair any
-        # earlier Family Shared pools before legacy bridging so an upgrade
-        # cannot leave a personal stash visible in the household group.
-        shared_pools = conn.execute(
-            """SELECT pool_id,owner_user_id,name,status
-               FROM alex_phase2_cash_pools
-               WHERE space_id='FAMILY_SHARED'"""
-        ).fetchall()
-        for shared_pool in shared_pools:
-            private_space = (
-                "HUSBAND_PVT"
-                if shared_pool["owner_user_id"] == "USR_HUSBAND"
-                else "WIFE_PVT"
-            )
-            duplicate = conn.execute(
-                """SELECT pool_id FROM alex_phase2_cash_pools
-                   WHERE owner_user_id=? AND space_id=?
-                     AND LOWER(TRIM(name))=LOWER(TRIM(?))
-                     AND status='ACTIVE' AND pool_id<>?
-                   ORDER BY created_at_utc LIMIT 1""",
-                (
-                    shared_pool["owner_user_id"], private_space,
-                    shared_pool["name"], shared_pool["pool_id"],
-                ),
-            ).fetchone()
-            if duplicate and shared_pool["status"] == "ACTIVE":
-                # Merge the accidentally shared pool into the existing private
-                # pool while preserving every allocation/adjustment row.
-                conn.execute(
-                    """UPDATE alex_phase2_cash_pool_allocations
-                       SET pool_id=? WHERE pool_id=?""",
-                    (duplicate["pool_id"], shared_pool["pool_id"]),
-                )
-                conn.execute(
-                    """UPDATE alex_phase2_cash_pool_adjustments
-                       SET pool_id=?,space_id=? WHERE pool_id=?""",
-                    (duplicate["pool_id"], private_space, shared_pool["pool_id"]),
-                )
-                conn.execute(
-                    """UPDATE alex_phase2_cash_pools
-                       SET status='CLOSED' WHERE pool_id=?""",
-                    (shared_pool["pool_id"],),
-                )
-            else:
-                conn.execute(
-                    """UPDATE alex_phase2_cash_pools
-                       SET space_id=? WHERE pool_id=?""",
-                    (private_space, shared_pool["pool_id"]),
-                )
-                conn.execute(
-                    """UPDATE alex_phase2_cash_pool_adjustments
-                       SET space_id=? WHERE pool_id=?""",
-                    (private_space, shared_pool["pool_id"]),
-                )
+        # Cash-pool visibility is persisted data. Never rewrite an existing
+        # pool's Family/private space merely because the runtime policy changed;
+        # current trusted scope controls access and new writes choose their
+        # space through the central scope policy.
 
         # Bridge only genuine legacy stash/cash-pool buckets into the Phase-2
         # pool engine. Allowances/reserves remain separate concepts. Matching
@@ -317,18 +267,52 @@ def ensure_schema(conn=None):
                 legacy_name = str(legacy["bucket_name"] or "").strip()
                 if not re.search(r"\b(?:stash|cash\s*pool|buffer)\b", legacy_name, re.I):
                     continue
-                private_space = (
-                    "HUSBAND_PVT"
-                    if legacy["owner_id"] == "USR_HUSBAND"
-                    else "WIFE_PVT"
+                target_space = (
+                    "FAMILY_SHARED"
+                    if legacy["space_id"] == "FAMILY_SHARED"
+                    else (
+                        "HUSBAND_PVT"
+                        if legacy["owner_id"] == "USR_HUSBAND"
+                        else "WIFE_PVT"
+                    )
                 )
-                existing = conn.execute(
-                    """SELECT pool_id FROM alex_phase2_cash_pools
-                       WHERE owner_user_id=? AND space_id=?
-                         AND LOWER(TRIM(name))=LOWER(TRIM(?))
-                         AND status='ACTIVE' LIMIT 1""",
-                    (legacy["owner_id"], private_space, legacy_name),
+                legacy_source = "legacy-money-bucket:" + str(legacy["bucket_id"])
+
+                # Upgrade identity is the legacy bucket itself, not the pool's
+                # current name/space. Older releases may already have bridged a
+                # Family bucket into a private pool. If that exact bucket marker
+                # exists anywhere, never bridge its balance a second time.
+                bridged = conn.execute(
+                    """SELECT 1 FROM alex_phase2_cash_pool_adjustments
+                       WHERE source_message_id=? LIMIT 1""",
+                    (legacy_source,),
                 ).fetchone()
+                if bridged:
+                    continue
+
+                amount_minor = int(legacy["amount_minor"] or 0)
+                if amount_minor == 0:
+                    # Zero-balance legacy bridges never wrote an adjustment
+                    # marker. For those rows only, a same-owner/same-name active
+                    # pool in any space is sufficient upgrade identity.
+                    existing = conn.execute(
+                        """SELECT pool_id FROM alex_phase2_cash_pools
+                           WHERE owner_user_id=?
+                             AND LOWER(TRIM(name))=LOWER(TRIM(?))
+                             AND status='ACTIVE' LIMIT 1""",
+                        (legacy["owner_id"], legacy_name),
+                    ).fetchone()
+                else:
+                    # For funded unmarked rows, do not suppress a legitimate
+                    # Family balance merely because a distinct private pool has
+                    # the same human name.
+                    existing = conn.execute(
+                        """SELECT pool_id FROM alex_phase2_cash_pools
+                           WHERE owner_user_id=? AND space_id=?
+                             AND LOWER(TRIM(name))=LOWER(TRIM(?))
+                             AND status='ACTIVE' LIMIT 1""",
+                        (legacy["owner_id"], target_space, legacy_name),
+                    ).fetchone()
                 if existing:
                     continue
                 pool_id = str(uuid.uuid4())
@@ -337,11 +321,10 @@ def ensure_schema(conn=None):
                            pool_id,space_id,owner_user_id,name,currency
                        ) VALUES(?,?,?,?,?)""",
                     (
-                        pool_id, private_space, legacy["owner_id"],
+                        pool_id, target_space, legacy["owner_id"],
                         legacy_name, str(legacy["currency"] or "MYR").upper(),
                     ),
                 )
-                amount_minor = int(legacy["amount_minor"] or 0)
                 if amount_minor:
                     conn.execute(
                         """INSERT INTO alex_phase2_cash_pool_adjustments(
@@ -349,11 +332,11 @@ def ensure_schema(conn=None):
                                adjustment_kind,event_date,note,source_message_id
                            ) VALUES(?,?,?,?,?,'OPENING_BALANCE',?,?,?)""",
                         (
-                            str(uuid.uuid4()), pool_id, private_space,
+                            str(uuid.uuid4()), pool_id, target_space,
                             legacy["owner_id"], amount_minor,
                             runtime_clock.today().isoformat(),
                             "Migrated from legacy stash bucket",
-                            "legacy-money-bucket:" + str(legacy["bucket_id"]),
+                            legacy_source,
                         ),
                     )
         if own:
@@ -690,15 +673,9 @@ def resolve_cash_pool_reference(pool_id, pool_name, sender_phone,
             return _get_authorized_pool(
                 conn, pool_id, sender_phone, conversation_type
             )["pool_id"]
-        user_id, private_space, shared = _context(
-            conn, sender_phone, conversation_type
+        _user_id, _private_space, clause, args = _authorized_space_clause(
+            conn, sender_phone, conversation_type, "all"
         )
-        if conversation_type == "GROUP":
-            clause, args = "space_id='FAMILY_SHARED'", []
-        elif shared:
-            clause, args = "(space_id=? OR space_id='FAMILY_SHARED')", [private_space]
-        else:
-            clause, args = "space_id=?", [private_space]
         rows = conn.execute(
             "SELECT * FROM alex_phase2_cash_pools WHERE status='ACTIVE' AND "
             + clause + " ORDER BY name",
@@ -709,7 +686,7 @@ def resolve_cash_pool_reference(pool_id, pool_name, sender_phone,
             if len(rows) == 1:
                 return rows[0]["pool_id"]
             if not rows:
-                raise ValueError("No authorized stash or cash pool is configured.")
+                raise ValueError("No matching stash or cash pool was found in the current authorized scope.")
             names = ", ".join(row["name"] for row in rows[:8])
             raise ValueError("More than one stash/cash pool exists; ask which one: " + names)
         exact = [
@@ -723,7 +700,7 @@ def resolve_cash_pool_reference(pool_id, pool_name, sender_phone,
         if len(candidates) == 1:
             return candidates[0]["pool_id"]
         if not candidates:
-            raise ValueError(f"No authorized cash pool uniquely matches {pool_name!r}.")
+            raise ValueError(f"No matching cash pool was found for {pool_name!r} in the current authorized scope.")
         names = ", ".join(row["name"] for row in candidates[:5])
         raise ValueError("Cash-pool name is ambiguous; ask which one: " + names)
     finally:
@@ -1186,7 +1163,7 @@ def _get_authorized_pool(conn, pool_id, sender_phone, conversation_type):
         "SELECT * FROM alex_phase2_cash_pools WHERE pool_id=?", (pool_id,)
     ).fetchone()
     if not row:
-        raise ValueError("Cash pool not found")
+        raise ValueError("Cash pool not found in the records available to the current scope")
     if row["space_id"] == "FAMILY_SHARED":
         if not shared:
             raise PermissionError("Cash pool is not authorized")
@@ -1194,6 +1171,19 @@ def _get_authorized_pool(conn, pool_id, sender_phone, conversation_type):
         raise PermissionError("Cash pool is not authorized")
     if conversation_type == "GROUP" and row["space_id"] != "FAMILY_SHARED":
         raise PermissionError("Private cash pool cannot be used in group")
+
+    # A live MCP turn is also constrained by the current trusted read/privacy
+    # scope. This prevents a remembered/private pool id from bypassing the
+    # global Family-by-default rule. Direct backend/admin calls with no actor
+    # retain the legacy owner authorization above.
+    try:
+        scope = scope_policy.effective_read_scope(current_actor(), "all")
+    except RuntimeError:
+        scope = None
+    if scope == "family" and row["space_id"] != "FAMILY_SHARED":
+        raise ValueError("Cash pool not found in the records available to the current scope")
+    if scope == "private" and row["space_id"] != private_space:
+        raise ValueError("Cash pool not found in the records available to the current scope")
     return row
 
 
