@@ -26,7 +26,7 @@ import scope_policy
 
 mcp = MCPServer(
     "Alex Household Tools",
-    version="0.5.7",
+    version="0.5.8",
     instructions="Deterministic household tools. Identity and permissions are injected by Alex and are never model-controlled.",
 )
 
@@ -869,16 +869,36 @@ def planning_record_goal_contribution(amount: float, actor: Actor,
     )
 
 
+def _structured_scoped_miss(actor: Actor, domain: str) -> dict:
+    """Represent an authorized-scope miss as data, never as a tool failure.
+
+    private_search_available describes a safe follow-up capability only. It
+    deliberately does not probe whether a private match exists.
+    """
+    effective_scope = scope_policy.effective_read_scope(actor, "all")
+    return {
+        "status": "not_found_in_current_scope",
+        "domain": domain,
+        "scope": effective_scope,
+        "private_search_available": effective_scope == "family",
+    }
+
+
 @alex_tool()
 def planning_goal_progress(actor: Actor, goal_id: str | None = None,
                            goal_name: str | None = None) -> dict:
-    """Read goal target, actual funding, remaining amount and recurring baseline. Natural goal_name is accepted."""
-    resolved = phase2_finance.resolve_goal_reference(
-        goal_id, goal_name, actor.phone, actor.conversation_type
-    )
-    return phase2_finance.goal_progress(
-        resolved, actor.phone, actor.conversation_type
-    )
+    """Read goal target, actual funding, remaining amount and recurring baseline. A scoped miss is returned as normal data so privacy-safe private search can be offered deterministically."""
+    try:
+        resolved = phase2_finance.resolve_goal_reference(
+            goal_id, goal_name, actor.phone, actor.conversation_type
+        )
+        return phase2_finance.goal_progress(
+            resolved, actor.phone, actor.conversation_type
+        )
+    except ValueError as exc:
+        if "No authorized goal uniquely matches" in str(exc):
+            return _structured_scoped_miss(actor, "goal")
+        raise
 
 
 @alex_tool()
@@ -1008,13 +1028,22 @@ def planning_list_cash_pools(actor: Actor, scope: str = "all") -> dict:
 @alex_tool()
 def planning_cash_pool_balance(actor: Actor, pool_id: str | None = None,
                                pool_name: str | None = None) -> dict:
-    """Read the exact balance of one authorized stash/cash pool. Natural pool_name is accepted instead of an opaque id."""
-    resolved = phase2_finance.resolve_cash_pool_reference(
-        pool_id, pool_name, actor.phone, actor.conversation_type
-    )
-    return phase2_finance.cash_pool_balance(
-        resolved, actor.phone, actor.conversation_type
-    )
+    """Read one authorized stash/cash-pool balance. A scoped miss is normal data, never a privacy-leaking tool error."""
+    try:
+        resolved = phase2_finance.resolve_cash_pool_reference(
+            pool_id, pool_name, actor.phone, actor.conversation_type
+        )
+        return phase2_finance.cash_pool_balance(
+            resolved, actor.phone, actor.conversation_type
+        )
+    except ValueError as exc:
+        message = str(exc)
+        if (
+            "No matching cash pool was found" in message
+            or "Cash pool not found in the records available to the current scope" in message
+        ):
+            return _structured_scoped_miss(actor, "cash_pool")
+        raise
 
 
 @alex_tool()
