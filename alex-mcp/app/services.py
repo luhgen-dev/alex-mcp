@@ -2250,7 +2250,7 @@ def claim_reminder_from_reaction(
                  AND context_kind IN (
                      'REMINDER_SETUP','REMINDER_INITIAL','REMINDER_FOLLOWUP',
                      'REMINDER_CLAIMANT_FOLLOWUP','REMINDER_FAMILY_RESURFACE',
-                     'REMINDER_HANDOFF'
+                     'REMINDER_INITIATOR_ESCALATION','REMINDER_HANDOFF'
                  )
                ORDER BY delivered_at_utc DESC,created_at_utc DESC LIMIT 1""",
             (actor.conversation_id, provider_message_id),
@@ -2263,7 +2263,7 @@ def claim_reminder_from_reaction(
                      AND context_kind IN (
                          'REMINDER_SETUP','REMINDER_INITIAL','REMINDER_FOLLOWUP',
                          'REMINDER_CLAIMANT_FOLLOWUP','REMINDER_FAMILY_RESURFACE',
-                         'REMINDER_HANDOFF'
+                         'REMINDER_INITIATOR_ESCALATION','REMINDER_HANDOFF'
                      )
                    ORDER BY delivered_at_utc DESC,created_at_utc DESC""",
                 (actor.conversation_id,),
