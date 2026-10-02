@@ -208,6 +208,11 @@ CREATE TABLE IF NOT EXISTS reminders (
     claimed_at_utc TEXT,
     claimant_follow_up_at_utc TEXT,
     family_resurfaced_at_utc TEXT,
+    seen_at_utc TEXT,
+    seen_by_user_id TEXT,
+    nudged_at_utc TEXT,
+    initiator_notified_at_utc TEXT,
+    relinquished_at_utc TEXT,
     created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(source_message_id) REFERENCES inbound_messages(message_id),
     FOREIGN KEY(owner_id) REFERENCES users(user_id),
@@ -242,6 +247,18 @@ CREATE TABLE IF NOT EXISTS media_selection_sets (
 );
 CREATE INDEX IF NOT EXISTS idx_media_selection_context
 ON media_selection_sets(user_id,conversation_id,created_at_utc);
+
+CREATE TABLE IF NOT EXISTS pending_selection_sets (
+    selection_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    items_json TEXT NOT NULL,
+    created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at_utc TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_pending_selection_context
+ON pending_selection_sets(user_id,conversation_id,created_at_utc);
 
 CREATE TABLE IF NOT EXISTS active_report_contexts (
     user_id TEXT NOT NULL,
