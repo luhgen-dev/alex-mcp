@@ -4,6 +4,7 @@ from typing import Annotated
 from functools import wraps
 import inspect
 import sqlite3
+import re
 
 from mcp.server import MCPServer
 from mcp.server.mcpserver import Resolve
@@ -90,17 +91,74 @@ def confirm_expense(event_id: str, actor: Actor, approve: bool = True,
     return services.confirm_expense(actor, event_id, approve, category, amount)
 
 
+def _finance_followup_inherits_active_report(actor: Actor) -> bool:
+    """Whether this turn is a natural drill-down of the active finance report.
+
+    The active report is canonical state, not model memory. We inherit it only
+    for clear follow-up language and only when the current turn does not name a
+    new period/date. This prevents a category drill-down such as "food next"
+    from silently jumping from September to October.
+    """
+    text = str(getattr(actor, "trusted_text", "") or "").strip().casefold()
+    if not text:
+        return False
+    explicit_time = re.search(
+        r"\b(?:today|yesterday|tomorrow|this\s+month|last\s+month|next\s+month|"
+        r"jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|"
+        r"jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b"
+        r"|\b\d{4}-\d{2}(?:-\d{2})?\b"
+        r"|\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b",
+        text,
+    )
+    if explicit_time:
+        return False
+    return bool(re.search(
+        r"\b(?:breakdown|drill\s*down|next|same|what\s+about|how\s+about|"
+        r"that\s+category|those\s+expenses|the\s+expenses|category)\b",
+        text,
+    ))
+
+
 @alex_tool()
 def query_finances(actor: Actor, start_date: str | None = None, end_date: str | None = None,
                    category: str | None = None, search: str | None = None,
                    currency: str | None = None, limit: int = 20,
                    scope: str | None = None, source: str | None = None) -> dict:
-    """Read true ledger totals and matching transactions. Use ISO dates YYYY-MM-DD. scope may be all/family/private. source may be all/voice/receipt/text. For today/tomorrow/yesterday, resolve the runtime date and set both start_date and end_date."""
+    """Read true ledger totals and matching transactions. Use ISO dates YYYY-MM-DD. scope may be all/family/private. source may be all/voice/receipt/text. For today/tomorrow/yesterday, resolve the runtime date and set both start_date and end_date. Natural drill-downs inherit the active canonical report period unless the current turn names a different period."""
+    import calendar
+
+    active = phase2_reports.load_active_report(actor.user_id, actor.conversation_id)
+    active_spec = (active.get("spec") or {}) if active else {}
+    if (
+        active
+        and active.get("kind") in {"finance_query", "monthly_finance"}
+        and not start_date
+        and not end_date
+        and _finance_followup_inherits_active_report(actor)
+    ):
+        active_period = active.get("period") or active_spec.get("period")
+        if active_period and re.fullmatch(r"\d{4}-\d{2}", str(active_period)):
+            year, month = (int(x) for x in str(active_period).split("-", 1))
+            start_date = f"{year:04d}-{month:02d}-01"
+            end_date = (
+                f"{year:04d}-{month:02d}-"
+                f"{calendar.monthrange(year, month)[1]:02d}"
+            )
+        else:
+            start_date = active_spec.get("start_date") or start_date
+            end_date = active_spec.get("end_date") or end_date
+        if search is None:
+            search = active_spec.get("search")
+        if currency is None:
+            currency = active_spec.get("currency")
+        if source is None:
+            source = active_spec.get("source")
+        if scope is None:
+            scope = active_spec.get("scope")
+
     result = services.query_finances(
         actor, start_date, end_date, category, search, currency, limit, scope, source
     )
-    active = phase2_reports.load_active_report(actor.user_id, actor.conversation_id)
-    active_spec = (active.get("spec") or {}) if active else {}
     preserve_presented_monthly = bool(
         active
         and active.get("kind") == "monthly_finance"
@@ -1572,6 +1630,20 @@ def report_export(format: str, actor: Actor, period: str | None = None,
         payload = json.dumps(canonical, ensure_ascii=False, indent=2, sort_keys=True)
         path.write_text(payload, encoding="utf-8")
         mime = "application/json"
+
+    remembered_spec = {
+        **spec,
+        "period": effective_period,
+        "source_message_id": actor.source_message_id,
+    }
+    phase2_reports.remember_active_report(
+        actor.user_id,
+        actor.conversation_id,
+        report_kind,
+        canonical,
+        period=effective_period,
+        spec=remembered_spec,
+    )
 
     return {
         "status": "ready",
