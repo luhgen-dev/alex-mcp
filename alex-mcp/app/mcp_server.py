@@ -979,9 +979,10 @@ def planning_create_cash_pool(name: str, actor: Actor, currency: str = "MYR",
 @alex_tool()
 def planning_list_cash_pools(actor: Actor, scope: str = "all") -> dict:
     """List active stash/cash pools visible in the current trusted read scope. Model scope arguments may narrow but never widen that boundary."""
+    effective_scope = scope_policy.effective_read_scope(actor, scope)
     return {
         "pools": phase2_finance.list_cash_pools(
-            actor.phone, actor.conversation_type, scope
+            actor.phone, actor.conversation_type, effective_scope
         )
     }
 
