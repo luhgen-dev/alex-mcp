@@ -1669,10 +1669,14 @@ def update_reminder(actor: ActorContext, reminder_id: str, status: str = "open",
             claim_clear_event = "CLEARED_CANCELLED"
 
         if resolved == "ACK":
+            # Seen/acknowledged is metadata, not a lifecycle state. Keep the
+            # reminder open/due so pins, listing and escalation continue.
             conn.execute(
-                """UPDATE reminders SET status=?,due_at_utc=?,acknowledged_at_utc=?,
-                   next_delivery_at_utc=NULL,defer_reason=NULL WHERE reminder_id=?""",
-                (resolved, new_due, acknowledged, reminder_id),
+                """UPDATE reminders
+                   SET due_at_utc=?,acknowledged_at_utc=?,
+                       seen_at_utc=?,seen_by_user_id=?
+                   WHERE reminder_id=?""",
+                (new_due, acknowledged, acknowledged, actor.user_id, reminder_id),
             )
         elif resolved in {"COMP", "CANC"}:
             conn.execute(
@@ -1707,7 +1711,9 @@ def update_reminder(actor: ActorContext, reminder_id: str, status: str = "open",
         _record_reminder_event(
             conn, reminder_id,
             event_map[resolved],
-            previous_state, resolved, previous_due, new_due, snooze_note,
+            previous_state,
+            previous_state if resolved == "ACK" else resolved,
+            previous_due, new_due, snooze_note,
         )
         if resolved in {"ACK", "COMP", "CANC"} or snooze_note:
             try:
@@ -1724,8 +1730,13 @@ def update_reminder(actor: ActorContext, reminder_id: str, status: str = "open",
             except Exception:
                 pass
         conn.commit()
-        return {"status": "updated", "reminder_id": reminder_id, "state": resolved,
-                "due_at_utc": new_due}
+        return {
+            "status": "seen" if resolved == "ACK" else "updated",
+            "reminder_id": reminder_id,
+            "state": previous_state if resolved == "ACK" else resolved,
+            "seen": resolved == "ACK",
+            "due_at_utc": new_due,
+        }
     finally:
         conn.close()
 
@@ -2371,14 +2382,8 @@ def claim_reminder_from_reaction(
             conn.commit()
             return result
 
-        # Direct-message reminder reactions keep the existing explicit-text
-        # semantics. The claim/ack reaction contract applies to Family Shared.
-        if actor.conversation_type != "GROUP":
-            conn.rollback()
-            return {"status": "ignored_direct_reminder_reaction"}
-
-        # The reminder has already fired. Under the current household contract,
-        # a group reaction now means acknowledgement/handled, never a new claim.
+        # The reminder has already fired. Reactions after due are completion
+        # or seen signals; they are never late claims.
         reminder = conn.execute(
             """SELECT reminder_id,status,task_text,owner_id,claimed_by_user_id
                FROM reminders WHERE reminder_id=?""",
@@ -2390,33 +2395,97 @@ def claim_reminder_from_reaction(
         if reminder["status"] in {"COMP", "CANC"}:
             conn.rollback()
             return {"status": "closed", "reminder_id": reminder_id}
-        if reminder["status"] == "ACK":
+
+        # A claimed reminder delivered in DM belongs to its claimant. Group
+        # resurfacing remains visible to both household members, and the
+        # initiator may explicitly complete it there.
+        if (
+            actor.conversation_type != "GROUP"
+            and reminder["claimed_by_user_id"]
+            and str(reminder["claimed_by_user_id"]) != actor.user_id
+        ):
             conn.rollback()
-            return {"status": "already_acknowledged", "reminder_id": reminder_id}
-        previous_state = reminder["status"]
-        acknowledged = utc_now()
+            return {"status": "not_assigned_to_you", "reminder_id": reminder_id}
+
+        normalized_reaction = reaction.replace("\ufe0f", "")
+        completion = normalized_reaction in {"✅", "✔", "☑"}
+        now = utc_now()
+
+        if completion:
+            previous_state = str(reminder["status"])
+            had_claim = str(reminder["claimed_by_user_id"] or "") or None
+            conn.execute(
+                """UPDATE reminders
+                   SET status='COMP',next_delivery_at_utc=NULL,defer_reason=NULL,
+                       acknowledged_at_utc=COALESCE(acknowledged_at_utc,?),
+                       seen_at_utc=COALESCE(seen_at_utc,?),seen_by_user_id=?,
+                       claimed_by_user_id=NULL,claimed_at_utc=NULL
+                   WHERE reminder_id=?""",
+                (now, now, actor.user_id, reminder_id),
+            )
+            conn.execute(
+                """UPDATE reminder_handoffs
+                   SET status='CANCELLED',cancelled_at_utc=?
+                   WHERE reminder_id=? AND status='PENDING'""",
+                (now, reminder_id),
+            )
+            if had_claim:
+                conn.execute(
+                    """INSERT INTO reminder_claim_events(
+                           claim_event_id,reminder_id,actor_user_id,event_type,
+                           provider_message_id,reaction_text,note
+                       ) VALUES(?,?,?,?,?,?,?)""",
+                    (
+                        str(uuid.uuid4()), reminder_id, actor.user_id,
+                        "CLEARED_COMPLETED", provider_message_id, reaction,
+                        "completed by explicit post-due completion reaction",
+                    ),
+                )
+            _record_reminder_event(
+                conn, reminder_id, "COMPLETED", previous_state, "COMP",
+                note="explicit completion reaction after reminder delivery",
+            )
+            try:
+                import ha_mobile
+                notify_user = str(had_claim or reminder["owner_id"])
+                ha_mobile.queue_state(
+                    conn, notify_user, reminder_id, reminder["task_text"], "COMP",
+                    event_key=f"wa-done:{provider_message_id}",
+                )
+            except Exception:
+                pass
+            conn.commit()
+            return {
+                "status": "completed", "reminder_id": reminder_id,
+                "state": "COMP", "task": reminder["task_text"],
+            }
+
+        # Any other post-due reaction only means seen/acknowledged. It must not
+        # remove the reminder from open lists, stop escalation, or unpin it.
+        previous_state = str(reminder["status"])
         conn.execute(
-            """UPDATE reminders SET status='ACK',acknowledged_at_utc=?,
-               next_delivery_at_utc=NULL,defer_reason=NULL WHERE reminder_id=?""",
-            (acknowledged, reminder_id),
+            """UPDATE reminders
+               SET acknowledged_at_utc=?,seen_at_utc=?,seen_by_user_id=?
+               WHERE reminder_id=?""",
+            (now, now, actor.user_id, reminder_id),
         )
         _record_reminder_event(
-            conn, reminder_id, "ACKNOWLEDGED", previous_state, "ACK",
-            note="WhatsApp reaction after reminder delivery",
+            conn, reminder_id, "ACKNOWLEDGED", previous_state, previous_state,
+            note="non-terminal WhatsApp reaction after reminder delivery",
         )
         try:
             import ha_mobile
             notify_user = str(reminder["claimed_by_user_id"] or reminder["owner_id"])
             ha_mobile.queue_state(
-                conn, notify_user, reminder_id, reminder["task_text"], "ACK",
-                event_key=f"wa-ack:{provider_message_id}",
+                conn, notify_user, reminder_id, reminder["task_text"], previous_state,
+                event_key=f"wa-seen:{provider_message_id}",
             )
         except Exception:
             pass
         conn.commit()
         return {
-            "status": "acknowledged", "reminder_id": reminder_id,
-            "state": "ACK", "task": reminder["task_text"],
+            "status": "seen", "reminder_id": reminder_id,
+            "state": previous_state, "task": reminder["task_text"],
         }
     except Exception:
         conn.rollback()
