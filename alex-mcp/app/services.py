@@ -1071,6 +1071,7 @@ _SAVED_KIND_ALIASES = {
 
 
 def _saved_local_date(value: str | None, tz_name: str) -> str | None:
+    """Human local save timestamp for browse/search presentation."""
     if not value:
         return None
     try:
@@ -1078,7 +1079,12 @@ def _saved_local_date(value: str | None, tz_name: str) -> str | None:
         dt = datetime.fromisoformat(text)
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
-        return dt.astimezone(ZoneInfo(tz_name)).strftime("%d %b %Y")
+        local = dt.astimezone(ZoneInfo(tz_name))
+        hour = local.strftime("%I").lstrip("0") or "12"
+        return (
+            f"{local.day} {local.strftime('%B %Y')}, "
+            f"{hour}:{local.strftime('%M')} {local.strftime('%p')}"
+        )
     except Exception:
         return None
 
