@@ -5245,5 +5245,237 @@ class AlexCoreTests(unittest.TestCase):
         self.assertIn("still unresolved", outbound["text_body"])
 
 
+    def test_v057_rc3_transient_prompts_never_pin_and_expire(self):
+        self.claim("rc3-offer-src", "+60111111111", "show missing thing")
+        actor = self.actor("rc3-offer-src", "+60111111111")
+        offer = db.create_pending_item(
+            actor, "PRIVATE_SEARCH_OFFER",
+            note=json.dumps({"query": "show missing thing"}),
+        )
+        offer_oid = db.queue_outbound(
+            actor.conversation_id, "TEXT",
+            text="I can also check your private records if you want.",
+            source_message_id=actor.source_message_id,
+            context_kind="PENDING_ITEM", context_id=offer["item_id"],
+        )
+
+        self.claim("rc3-draft-src", "+60111111111", "remind me this weekend")
+        draft_actor = self.actor("rc3-draft-src", "+60111111111")
+        draft = db.create_pending_item(
+            draft_actor, "REMINDER_DRAFT", note="awaiting date/time"
+        )
+        draft_oid = db.queue_outbound(
+            draft_actor.conversation_id, "TEXT",
+            text="What day and time?",
+            source_message_id=draft_actor.source_message_id,
+            context_kind="PENDING_ITEM", context_id=draft["item_id"],
+        )
+
+        sent = []
+        conn = db.connect()
+        try:
+            with patch.object(
+                outbox, "_send",
+                side_effect=lambda payload: (sent.append(payload) or True, "{}"),
+            ):
+                outbox._reconcile_pending_item_markers(conn)
+            self.assertEqual(sent, [])
+
+            # Simulate markers left by RC3 before this fix, then age both prompts
+            # past their validity windows. Expiry must cancel them and cleanup
+            # the stale reaction/pin state.
+            conn.execute(
+                """UPDATE pending_items
+                   SET created_at_utc=datetime('now','-31 minutes')
+                   WHERE item_id=?""",
+                (draft["item_id"],),
+            )
+            conn.execute(
+                """UPDATE pending_items
+                   SET created_at_utc=datetime('now','-11 minutes')
+                   WHERE item_id=?""",
+                (offer["item_id"],),
+            )
+            conn.execute(
+                """UPDATE outbound_messages
+                   SET delivery_status='SENT',
+                       job_reacted_at_utc=CURRENT_TIMESTAMP,
+                       job_pinned_at_utc=CURRENT_TIMESTAMP
+                   WHERE outbound_id IN (?,?)""",
+                (offer_oid, draft_oid),
+            )
+            conn.commit()
+
+            sent.clear()
+            with patch.object(
+                outbox, "_send",
+                side_effect=lambda payload: (sent.append(payload) or True, "{}"),
+            ):
+                outbox._expire_transient_pending_items(conn)
+                outbox._reconcile_pending_item_markers(conn)
+
+            states = {
+                row["kind"]: row["status"]
+                for row in conn.execute(
+                    """SELECT kind,status FROM pending_items
+                       WHERE item_id IN (?,?)""",
+                    (offer["item_id"], draft["item_id"]),
+                ).fetchall()
+            }
+            markers = conn.execute(
+                """SELECT job_reaction_cleared_at_utc,job_unpinned_at_utc
+                   FROM outbound_messages WHERE outbound_id IN (?,?)""",
+                (offer_oid, draft_oid),
+            ).fetchall()
+        finally:
+            conn.close()
+        self.assertEqual(states["PRIVATE_SEARCH_OFFER"], "CANCELLED")
+        self.assertEqual(states["REMINDER_DRAFT"], "CANCELLED")
+        self.assertTrue(all(row["job_reaction_cleared_at_utc"] for row in markers))
+        self.assertTrue(all(row["job_unpinned_at_utc"] for row in markers))
+        self.assertEqual(
+            sorted(payload["kind"] for payload in sent),
+            ["reaction", "reaction", "unpin", "unpin"],
+        )
+
+    def test_v057_rc3_voice_remains_the_only_default_pinned_pending_inbox(self):
+        self.claim("rc3-voice-src", "+60111111111", "")
+        actor = self.actor("rc3-voice-src", "+60111111111")
+        voice = db.create_pending_item(actor, "VOICE", note="voice review")
+        voice_oid = db.queue_outbound(
+            actor.conversation_id, "TEXT",
+            text="Voice saved for review.",
+            source_message_id=actor.source_message_id,
+            context_kind="PENDING_ITEM", context_id=voice["item_id"],
+        )
+
+        self.claim("rc3-hidden-offer", "+60111111111", "find missing")
+        offer_actor = self.actor("rc3-hidden-offer", "+60111111111")
+        db.create_pending_item(
+            offer_actor, "PRIVATE_SEARCH_OFFER",
+            note=json.dumps({"query": "find missing"}),
+        )
+
+        sent = []
+        conn = db.connect()
+        try:
+            with patch.object(
+                outbox, "_send",
+                side_effect=lambda payload: (sent.append(payload) or True, "{}"),
+            ):
+                outbox._reconcile_pending_item_markers(conn)
+            marked = conn.execute(
+                """SELECT job_reacted_at_utc,job_pinned_at_utc
+                   FROM outbound_messages WHERE outbound_id=?""",
+                (voice_oid,),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertIsNotNone(marked["job_reacted_at_utc"])
+        self.assertIsNotNone(marked["job_pinned_at_utc"])
+        self.assertEqual(
+            sorted(payload["kind"] for payload in sent),
+            ["pin", "reaction"],
+        )
+
+        default_items = db.list_pending_items(actor)
+        self.assertEqual([row["kind"] for row in default_items], ["VOICE"])
+
+    def test_v057_rc3_zero_balance_legacy_stash_does_not_duplicate_across_spaces(self):
+        conn = db.connect()
+        try:
+            conn.execute(
+                """INSERT INTO money_buckets(
+                       bucket_id,owner_id,space_id,bucket_name,amount_minor,currency
+                   ) VALUES('legacy-zero','USR_HUSBAND','FAMILY_SHARED',
+                            'v05 zero stash',0,'MYR')"""
+            )
+            conn.execute(
+                """INSERT INTO alex_phase2_cash_pools(
+                       pool_id,space_id,owner_user_id,name,currency
+                   ) VALUES('legacy-zero-private','HUSBAND_PVT','USR_HUSBAND',
+                            'v05 zero stash','MYR')"""
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        phase2_finance.ensure_schema()
+        phase2_finance.ensure_schema()
+        conn = db.connect()
+        try:
+            pools = conn.execute(
+                """SELECT pool_id,space_id FROM alex_phase2_cash_pools
+                   WHERE owner_user_id='USR_HUSBAND'
+                     AND LOWER(TRIM(name))='v05 zero stash'
+                     AND status='ACTIVE'"""
+            ).fetchall()
+        finally:
+            conn.close()
+        self.assertEqual(len(pools), 1)
+        self.assertEqual(pools[0]["space_id"], "HUSBAND_PVT")
+
+    def test_v057_rc3_word_quantity_periods_and_legacy_ack_migration(self):
+        self.claim("rc3-word-period", "+60111111111", "period test")
+        base = self.actor("rc3-word-period", "+60111111111")
+        for phrase in (
+            "Show food for the past fortnight",
+            "Give me transport for the last few months",
+            "Show fuel for the last couple of weeks",
+            "Break down food for the previous several days",
+            "Show expenses for the past two months",
+        ):
+            actor = replace(base, trusted_text=phrase, read_scope="family")
+            self.assertFalse(
+                mcp_server._finance_followup_inherits_active_report(actor),
+                phrase,
+            )
+
+        self.claim("rc3-ack-src", "+60111111111", "legacy reminder")
+        reminder_actor = with_action_key(
+            self.actor("rc3-ack-src", "+60111111111"),
+            "rc3-ack-action",
+        )
+        reminder = services.create_reminder(
+            reminder_actor, "legacy ACK reminder",
+            "2026-10-01T09:00:00+08:00",
+        )
+        conn = db.connect()
+        try:
+            conn.execute(
+                """UPDATE reminders
+                   SET status='ACK',
+                       acknowledged_at_utc='2026-10-01T01:05:00+00:00',
+                       seen_at_utc=NULL
+                   WHERE reminder_id=?""",
+                (reminder["reminder_id"],),
+            )
+            conn.execute(
+                """DELETE FROM schema_migrations
+                   WHERE migration_key='v057_reopen_legacy_ack_reminders'"""
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        db.initialize()
+        conn = db.connect()
+        try:
+            row = conn.execute(
+                """SELECT status,acknowledged_at_utc,seen_at_utc
+                   FROM reminders WHERE reminder_id=?""",
+                (reminder["reminder_id"],),
+            ).fetchone()
+            guard = conn.execute(
+                """SELECT 1 FROM schema_migrations
+                   WHERE migration_key='v057_reopen_legacy_ack_reminders'"""
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(row["status"], "DUE")
+        self.assertEqual(row["seen_at_utc"], row["acknowledged_at_utc"])
+        self.assertIsNotNone(guard)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
