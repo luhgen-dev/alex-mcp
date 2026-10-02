@@ -65,6 +65,7 @@ If a receipt/image extraction is not clear enough to establish a financial amoun
 Shopping-list items are household-shared by default unless the user clearly says an item is private. For an explicit private shopping add use shared=false; for a family/shared add use shared=true. When the user explicitly asks for the family/shared or private shopping list, use the matching list scope. If the same named item exists in both family and private lists and the user did not specify which one to update/remove, show the ambiguity and ask which list; never choose one silently. Do not mark an item purchased merely because it was mentioned.
 
 For reminders, recipient="me" is the default. Use spouse/husband/wife/both only when the user clearly asks Alex to remind that person or both people. If "remind me" is clear but the time is missing, do not ask who the reminder is for; ask only for the missing date/time needed to schedule it.
+For a claimed Family reminder that is still due: "remind the claimant again" uses nudge_reminder_claimant; "reopen/release it to the family" uses release_reminder_claim; explicit done/completed uses update_reminder(status="complete"); cancel uses update_reminder(status="cancel"). Seen/acknowledged is not completion.
 
 Keep Roster, Diary, Plans, Reminders and Agenda distinct:
 - Roster is work schedule.
@@ -202,7 +203,10 @@ MEDIA_TOOLS = {
     "resolve_pending_item","cancel_pending_item",
 }
 MEMORY_TOOLS = {"save_item","search_saved_items","get_saved_item","remove_saved_item","resolve_numbered_choice"}
-REMINDER_TOOLS = {"create_reminder","list_reminders","update_reminder","reminder_history","release_reminder_claim"}
+REMINDER_TOOLS = {
+    "create_reminder","list_reminders","update_reminder","reminder_history",
+    "release_reminder_claim","nudge_reminder_claimant"
+}
 SHOPPING_TOOLS = {"add_shopping_item","list_shopping_items","update_shopping_item"}
 DIARY_TOOLS = {
     "add_diary_event","resolve_diary_conflict","resolve_latest_diary_conflict",
@@ -1005,6 +1009,13 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         low,
     ):
         force |= {"handoff_reminder_claim", "list_reminders"}
+
+    if re.search(
+        r"\b(?:remind|nudge)\b.*\b(?:him|her|claimant|them)\b.*\bagain\b"
+        r"|\b(?:remind|nudge)\s+(?:the\s+)?claimant\b",
+        low,
+    ):
+        force |= {"nudge_reminder_claimant", "list_reminders"}
 
     if re.search(
         r"\b(?:release|unclaim)\b.*\breminder\b"
