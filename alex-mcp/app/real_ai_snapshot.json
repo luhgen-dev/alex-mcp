@@ -1,9 +1,9 @@
 {
   "snapshot_version": 3,
-  "corpus_fingerprint": "32a6fa4c4bd0dee73e33e6ec18503446d64a2d0bf9aac318ed7db7db11cda842",
+  "corpus_fingerprint": "7f66f5f30afc53f45d3a39a68274fd7cf4baf77cff121279f0702e86b1a13be4",
   "reviewer": "GPT-5.6 Sol",
   "review_date": "2026-10-02",
-  "method": "v0.5.7 repair compatibility recertification. The exact successful v0.5.6 Alex Lab artifact and the current v0.5.7 repair artifact were compared by packet_id: all 384 packet identities are unchanged; 262 packets are byte-identical and 122 differ only in available_tools, with prompt, visible history, actor, source and conversation type unchanged. GPT-5.6 Sol reviewed those 122 changed tool surfaces. Every prior selected tool remains available. Four packets where the deterministic oracle selected a different valid route were manually re-reviewed and the prior snapshot decisions were retained: original recordings -> find_media; pending expense approval -> list_pending_expenses + confirm_expense; warranty query -> warranty_expiring; saved pictures -> search_saved_items. No decision changes were required. The fingerprint now binds the snapshot to the exact current 384-packet corpus.",
+  "method": "v0.5.7 repair compatibility recertification. The previous exact RC corpus 32a6fa4c4bd0dee73e33e6ec18503446d64a2d0bf9aac318ed7db7db11cda842 and the current corpus were compared by packet_id. All 384 packet identities are unchanged; 377 packets are byte-identical and 7 differ only in available_tools. Those seven changes are limited to the planning_create_cash_pool / planning_list_cash_pools public descriptions and the list scope default, aligning the tool surface with the locked global Family-by-default privacy policy. Prompt, visible history, actor, source and conversation type are unchanged. GPT-5.6 Sol re-reviewed the seven changed tool surfaces; every prior selected tool remains available and the prior decision remains appropriate. The current 384 decisions also rescore 384/384 against the current packet set when fingerprint gating alone is ignored. No decision changes were required. The fingerprint now binds the snapshot to the exact current corpus.",
   "decision_count": 384,
   "v055_compatibility_review": {
     "parent_corpus_fingerprint": "efd2a14c796bb4bf1aabe38b9d121de12a2727f73bf0135b1ef6e5ddddca8838",
@@ -18,10 +18,10 @@
     "decision_count": 384,
     "independent_model_pass": false,
     "carried_forward_unchanged": 124,
-    "ancestor_engineering_review_carried": 138
+    "ancestor_engineering_review_carried": 132
   },
   "delta_review": {
-    "changed_existing": 122,
+    "changed_existing": 128,
     "newly_added": 0,
     "reviewed_packet_ids": [
       "hai-67cc9abde97b9547d4",
@@ -145,7 +145,13 @@
       "hai-bcdc99b3afbc654a18",
       "hai-48095b10023cca227f",
       "hai-a275be22c14638b7de",
-      "hai-db91940f8199e9d8a2"
+      "hai-db91940f8199e9d8a2",
+      "hai-6da98a13773c69bc4b",
+      "hai-f972e359daeebb5802",
+      "hai-bec55f4593a861adda",
+      "hai-8c4625f124552f9d95",
+      "hai-8204d2b3225f91a1ca",
+      "hai-e66a2dac349618a775"
     ]
   },
   "decisions_by_packet_id": {
@@ -2155,7 +2161,7 @@
         "planning_create_cash_pool"
       ],
       "reply_language": "en",
-      "provenance": "ancestor_engineering_review"
+      "provenance": "delta_engineering_review"
     },
     "hai-f972e359daeebb5802": {
       "decision": "tools",
@@ -2163,7 +2169,7 @@
         "planning_create_cash_pool"
       ],
       "reply_language": "en",
-      "provenance": "ancestor_engineering_review"
+      "provenance": "delta_engineering_review"
     },
     "hai-408e5ad6eb090d9eb4": {
       "decision": "tools",
@@ -2179,7 +2185,7 @@
         "planning_cash_pool_balance"
       ],
       "reply_language": "en",
-      "provenance": "ancestor_engineering_review"
+      "provenance": "delta_engineering_review"
     },
     "hai-7a2acc000068abd1a1": {
       "decision": "tools",
@@ -3235,7 +3241,7 @@
         "planning_list_cash_pools"
       ],
       "reply_language": "en",
-      "provenance": "ancestor_engineering_review"
+      "provenance": "delta_engineering_review"
     },
     "hai-8c4625f124552f9d95": {
       "decision": "tools",
@@ -3243,7 +3249,7 @@
         "planning_list_cash_pools"
       ],
       "reply_language": "en",
-      "provenance": "ancestor_engineering_review"
+      "provenance": "delta_engineering_review"
     },
     "hai-bec55f4593a861adda": {
       "decision": "tools",
@@ -3251,7 +3257,7 @@
         "planning_create_cash_pool"
       ],
       "reply_language": "en",
-      "provenance": "ancestor_engineering_review"
+      "provenance": "delta_engineering_review"
     },
     "hai-d196cfb9c08df22c35": {
       "decision": "tools",
@@ -3303,5 +3309,23 @@
     "deterministic_oracle_decision_differences_re_reviewed": 4,
     "decision_changes": 0,
     "fresh_independent_full_corpus_pass": false
+  },
+  "post_rc_scope_review": {
+    "parent_corpus_fingerprint": "32a6fa4c4bd0dee73e33e6ec18503446d64a2d0bf9aac318ed7db7db11cda842",
+    "current_corpus_fingerprint": "7f66f5f30afc53f45d3a39a68274fd7cf4baf77cff121279f0702e86b1a13be4",
+    "packet_ids_unchanged": 384,
+    "byte_identical_packets": 377,
+    "changed_existing": 7,
+    "changed_fields": [
+      "available_tools"
+    ],
+    "affected_tools": [
+      "planning_create_cash_pool",
+      "planning_list_cash_pools"
+    ],
+    "selected_tool_removals": 0,
+    "decision_changes": 0,
+    "reviewer": "GPT-5.6 Sol",
+    "review_kind": "engineering_contract_compatibility"
   }
 }
