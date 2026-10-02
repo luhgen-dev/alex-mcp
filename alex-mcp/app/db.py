@@ -511,6 +511,34 @@ def has_completed_mutation(source_message_id: str) -> bool:
         conn.close()
 
 
+def has_completed_non_pending_mutation(source_message_id: str) -> bool:
+    """Verified mutation excluding pending-item lifecycle bookkeeping.
+
+    A typed clarification of one deferred voice item must not auto-resolve that
+    item merely because the same turn resolved/cancelled a different pending
+    item. Explicit pending resolve/cancel tools already update their own target.
+    """
+    message_id = str(source_message_id or "").strip()
+    if not message_id:
+        return False
+    conn = connect()
+    try:
+        row = conn.execute(
+            """SELECT 1
+               FROM tool_audit a
+               JOIN tool_execution_claims c ON c.action_key=a.action_key
+               WHERE a.source_message_id=?
+                 AND a.status='OK'
+                 AND c.state='COMPLETED'
+                 AND c.tool_name NOT IN ('resolve_pending_item','cancel_pending_item')
+               LIMIT 1""",
+            (message_id,),
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
 def record_usage(source_message_id: str, provider: str, model: str,
                  input_tokens: int, output_tokens: int, tool_rounds: int,
                  latency_ms: int, estimated_cost_usd: float | None = None,
