@@ -164,6 +164,27 @@ def initialize() -> None:
                 (pin_migration,),
             )
 
+        # v0.5.6 treated post-due acknowledgement as a terminal ACK state.
+        # v0.5.7 makes acknowledgement metadata-only, so reopen those legacy
+        # non-terminal rows exactly once and preserve their acknowledgement time
+        # as seen metadata. COMP/CANC are untouched.
+        ack_migration = "v057_reopen_legacy_ack_reminders"
+        already_reopened = conn.execute(
+            "SELECT 1 FROM schema_migrations WHERE migration_key=?",
+            (ack_migration,),
+        ).fetchone()
+        if not already_reopened:
+            conn.execute(
+                """UPDATE reminders
+                   SET status='DUE',
+                       seen_at_utc=COALESCE(seen_at_utc,acknowledged_at_utc)
+                   WHERE status='ACK'"""
+            )
+            conn.execute(
+                "INSERT INTO schema_migrations(migration_key) VALUES(?)",
+                (ack_migration,),
+            )
+
         # Privacy is a scope, never an expense category. Clean historical rows
         # created by the old presenter bug without changing amount/date/scope.
         conn.execute(
@@ -904,9 +925,9 @@ def list_pending_items(actor: ActorContext, kind: str | None = None, limit: int 
     try:
         where = ["p.owner_id=?", "p.status='PENDING'"]
         args: list = [actor.user_id]
-        if kind:
-            where.append("p.kind=?")
-            args.append(str(kind).strip().upper())
+        effective_kind = str(kind or "VOICE").strip().upper()
+        where.append("p.kind=?")
+        args.append(effective_kind)
         rows = conn.execute(
             """SELECT p.item_id,p.kind,p.source_message_id,p.media_id,p.created_at_utc,
                       m.media_type,m.mime_type
