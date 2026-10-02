@@ -132,10 +132,10 @@ def query_finances(actor: Actor, start_date: str | None = None, end_date: str | 
     if (
         active
         and active.get("kind") in {"finance_query", "monthly_finance"}
-        and not start_date
-        and not end_date
         and _finance_followup_inherits_active_report(actor)
     ):
+        # The trusted current text did not name a new period. Therefore the
+        # canonical active report period outranks dates guessed by the model.
         active_period = active.get("period") or active_spec.get("period")
         if active_period and re.fullmatch(r"\d{4}-\d{2}", str(active_period)):
             year, month = (int(x) for x in str(active_period).split("-", 1))
@@ -145,9 +145,15 @@ def query_finances(actor: Actor, start_date: str | None = None, end_date: str | 
                 f"{calendar.monthrange(year, month)[1]:02d}"
             )
         else:
-            start_date = active_spec.get("start_date") or start_date
-            end_date = active_spec.get("end_date") or end_date
-        if search is None:
+            start_date = active_spec.get("start_date")
+            end_date = active_spec.get("end_date")
+
+        # A new category drill-down replaces the previous semantic filter. In
+        # particular, never carry a prior search such as "transport" into a
+        # new category such as Food & Drink.
+        if category is not None:
+            search = None
+        elif search is None:
             search = active_spec.get("search")
         if currency is None:
             currency = active_spec.get("currency")
@@ -1463,7 +1469,12 @@ def report_export(format: str, actor: Actor, period: str | None = None,
                   category: str | None = None,
                   search: str | None = None,
                   scope: str | None = None,
-                  full_report: bool = False) -> dict:
+                  full_report: bool = False,
+                  start_date: str | None = None,
+                  end_date: str | None = None,
+                  currency: str | None = None,
+                  source: str | None = None,
+                  use_active_context: bool = True) -> dict:
     """Export PDF/CSV/JSON from the active canonical report.
 
     report_type may be finance or snapshot when the user explicitly names the
@@ -1491,7 +1502,7 @@ def report_export(format: str, actor: Actor, period: str | None = None,
 
     active = (
         phase2_reports.load_active_report(actor.user_id, actor.conversation_id)
-        if not include_raw_income else None
+        if (not include_raw_income and use_active_context) else None
     )
     active_kind = active.get("kind") if active else None
     active_period = active.get("period") if active else None
@@ -1526,7 +1537,10 @@ def report_export(format: str, actor: Actor, period: str | None = None,
 
     effective_period = period or active_period
     spec = (active.get("spec") or {}) if active and report_kind == active_kind else {}
-    explicit_filter = any(value is not None for value in (category, search, scope))
+    explicit_filter = any(
+        value is not None
+        for value in (category, search, scope, start_date, end_date, currency, source)
+    )
     if full_report:
         spec = {
             "period": effective_period,
@@ -1541,6 +1555,10 @@ def report_export(format: str, actor: Actor, period: str | None = None,
             "scope": scope if scope is not None else spec.get("scope"),
             "category": category if category is not None else spec.get("category"),
             "search": search if search is not None else spec.get("search"),
+            "start_date": start_date if start_date is not None else spec.get("start_date"),
+            "end_date": end_date if end_date is not None else spec.get("end_date"),
+            "currency": currency if currency is not None else spec.get("currency"),
+            "source": source if source is not None else spec.get("source"),
         }
     if report_kind == "monthly_finance":
         spec = {
