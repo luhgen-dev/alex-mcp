@@ -3291,9 +3291,11 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                         args["report_type"] = "finance"
                     elif quoted_kind == "snapshot":
                         args["report_type"] = "snapshot"
-                    # A frozen quote represents exactly the report the user
-                    # replied to; never widen it into an unfiltered report.
-                    args["full_report"] = False
+                    # Preserve the quoted report's presentation kind as well as
+                    # its dataset. For a monthly report, full_report is an
+                    # internal kind signal here; report_export keeps any frozen
+                    # category/search filters when use_active_context is false.
+                    args["full_report"] = quoted_kind == "monthly_finance"
 
             signature = name + "|" + json.dumps(args, sort_keys=True, ensure_ascii=False)
             occurrence[signature] = occurrence.get(signature, 0) + 1
