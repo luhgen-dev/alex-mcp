@@ -812,7 +812,7 @@ function startEgress() {
           const targetKey = {
             remoteJid: to,
             id: String(payload.target_message_id || ''),
-            fromMe: false,
+            fromMe: Boolean(payload.target_from_me),
           };
           if (!targetKey.id) throw new Error('Missing target message id');
           if (payload.target_participant_jid) targetKey.participant = String(payload.target_participant_jid);
@@ -822,11 +822,9 @@ function startEgress() {
             });
           } else {
             sent = await currentSock.sendMessage(to, {
-              pin: {
-                type: payload.kind === 'pin' ? 1 : 0,
-                time: payload.kind === 'pin' ? 2592000 : undefined,
-                key: targetKey,
-              },
+              pin: targetKey,
+              type: payload.kind === 'pin' ? 1 : 2,
+              time: payload.kind === 'pin' ? 2592000 : undefined,
             });
           }
         } else if (payload.kind === 'image') {
