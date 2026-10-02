@@ -1373,10 +1373,11 @@ def asset_link_document(document_type: str, actor: Actor,
 
 
 @alex_tool()
-def asset_list(actor: Actor, include_documents: bool = False) -> dict:
-    """List authorized household/private assets without leaking another person's private assets."""
+def asset_list(actor: Actor, include_documents: bool = False,
+               query: str | None = None) -> dict:
+    """List/filter authorized assets by natural name, brand, model, serial or note without widening the trusted privacy scope."""
     assets = phase2_library.list_assets(
-        actor.phone, actor.conversation_type, "all", include_documents
+        actor.phone, actor.conversation_type, "all", include_documents, query
     )
     for item in assets:
         item["warranty_end_known"] = bool(item.get("warranty_end"))
