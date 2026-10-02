@@ -3910,5 +3910,115 @@ class AlexCoreTests(unittest.TestCase):
 
 
 
+    def test_v057_baileys_pin_contract_and_self_target(self):
+        bridge_path = os.path.join(
+            os.path.dirname(__file__), "..", "alex-mcp", "app", "connect.js"
+        )
+        bridge = open(bridge_path, encoding="utf-8").read()
+        self.assertIn("pin: targetKey", bridge)
+        self.assertIn("type: payload.kind === 'pin' ? 1 : 2", bridge)
+        self.assertIn("fromMe: Boolean(payload.target_from_me)", bridge)
+
+        row = {
+            "provider_message_id": "wa-own-message",
+            "outbound_id": "outbound-1",
+            "conversation_id": "60111111111@s.whatsapp.net",
+        }
+        sent = []
+        with patch.object(
+            outbox, "_send",
+            side_effect=lambda payload: (sent.append(payload) or True, "{}"),
+        ):
+            self.assertTrue(outbox._control_outbound(row, "pin"))
+        self.assertTrue(sent[0]["target_from_me"])
+        self.assertEqual(sent[0]["target_message_id"], "wa-own-message")
+
+    def test_v057_empty_read_reply_uses_tool_evidence_not_done(self):
+        class FakeFunction:
+            def __init__(self, name, arguments="{}"):
+                self.name = name
+                self.arguments = arguments
+
+        class FakeCall:
+            def __init__(self, call_id, name):
+                self.id = call_id
+                self.function = FakeFunction(name)
+
+        class FakeMessage:
+            def __init__(self, content="", calls=None):
+                self.content = content
+                self.tool_calls = calls or []
+
+            def model_dump(self, exclude_none=True):
+                payload = {"role": "assistant", "content": self.content}
+                if self.tool_calls:
+                    payload["tool_calls"] = [
+                        {
+                            "id": call.id,
+                            "type": "function",
+                            "function": {
+                                "name": call.function.name,
+                                "arguments": call.function.arguments,
+                            },
+                        }
+                        for call in self.tool_calls
+                    ]
+                return payload
+
+        class FakeResponse:
+            def __init__(self, message):
+                self.choices = [type("Choice", (), {"message": message})()]
+                self.usage = None
+
+        class FakeCompletions:
+            def __init__(self):
+                self.calls = 0
+
+            def create(self, **kwargs):
+                self.calls += 1
+                if self.calls == 1:
+                    return FakeResponse(
+                        FakeMessage(calls=[FakeCall("read-1", "query_finances")])
+                    )
+                return FakeResponse(FakeMessage(content=""))
+
+        fake_client = type(
+            "FakeClient",
+            (),
+            {"chat": type("FakeChat", (), {"completions": FakeCompletions()})()},
+        )()
+        route = {
+            "provider": "grok",
+            "model": "stub",
+            "reasoning_effort": "low",
+            "role": "manual",
+        }
+
+        async def fake_call_mcp(actor, name, args, action_key):
+            return ({
+                "spending_totals": {"MYR": 30.49},
+                "income_totals": {},
+                "net_outflow": {"MYR": 30.49},
+                "category_totals": [],
+                "count": 4,
+                "returned_records": 4,
+                "latest_record": None,
+                "records": [],
+            }, [])
+
+        self.claim("v057-empty-read", "+60111111111", "show transport expenses")
+        actor = self.actor("v057-empty-read", "+60111111111")
+        with patch.object(brain, "_provider_routes", return_value=[route]), \
+             patch.object(brain, "_client_for", return_value=fake_client), \
+             patch.object(brain, "_call_mcp", new=fake_call_mcp):
+            reply, attachments = asyncio.run(
+                brain.respond(actor, "show transport expenses")
+            )
+        self.assertEqual(attachments, [])
+        self.assertNotEqual(reply.strip().casefold().rstrip(".!"), "done")
+        self.assertIn("MYR 30.49", reply)
+        self.assertIn("4 matching finance records", reply)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
