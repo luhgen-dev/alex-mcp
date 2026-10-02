@@ -2595,11 +2595,15 @@ def nudge_reminder_claimant(actor: ActorContext, reminder_id: str) -> dict:
             raise ValueError("the claimant has no active household number configured")
         conversation_id = phone.replace("+", "") + "@s.whatsapp.net"
         text = f"↪️ Family reminder still unresolved: {row['task_text']}"
-        db.queue_outbound(
-            conversation_id, "TEXT", text=text,
-            source_message_id=actor.source_message_id,
-            context_kind="REMINDER_CLAIMANT_FOLLOWUP",
-            context_id=reminder_id,
+        conn.execute(
+            """INSERT INTO outbound_messages(
+                   outbound_id,source_message_id,conversation_id,kind,text_body,
+                   context_kind,context_id
+               ) VALUES(?,?,?,'TEXT',?,'REMINDER_CLAIMANT_FOLLOWUP',?)""",
+            (
+                str(uuid.uuid4()), actor.source_message_id, conversation_id,
+                text, reminder_id,
+            ),
         )
         now = runtime_clock.now_utc().isoformat()
         conn.execute(
