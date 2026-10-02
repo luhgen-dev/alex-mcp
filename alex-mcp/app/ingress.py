@@ -448,6 +448,30 @@ def _is_selection_followup(text: str) -> bool:
     ))
 
 
+def _typed_reply_completes_pending_item(text: str) -> bool:
+    """A typed clarification may resolve a deferred item; retrieval never does.
+
+    Voice/media provenance is immutable. Commands such as play/listen/show/details
+    inspect the pending item and must leave it pending. A real typed clarification
+    or an explicit resolve/cancel command may close it after the turn succeeds.
+    """
+    value = str(text or "").strip()
+    if not value:
+        return False
+    if re.fullmatch(
+        r"(?is)\s*(?:(?:play|listen(?:\s+to)?|show|open|send|get|details?|info)\s+)?\d+\s*[.!]?\s*",
+        value,
+    ):
+        return False
+    if re.search(
+        r"(?i)\b(?:play|listen(?:\s+to)?|show|open|send|get|details?|information)\b"
+        r".*\b(?:voice|audio|recording|note|it|this|that)\b",
+        value,
+    ):
+        return False
+    return True
+
+
 def _selection_context_for_offer(actor, reply: str, attachments: list[dict]) -> dict | None:
     if attachments:
         return None
@@ -820,6 +844,8 @@ def process(payload: dict) -> dict:
                         local_path=path,
                         mime_type=item.get("mime_type"),
                         source_message_id=actor.source_message_id,
+                        context_kind="REPORT" if first_private_attachment and report_context else None,
+                        context_id=report_context if first_private_attachment and report_context else None,
                     )
                     first_private_attachment = False
             group_reply = (
@@ -830,7 +856,10 @@ def process(payload: dict) -> dict:
                 actor.conversation_id, "TEXT", text=group_reply,
                 source_message_id=actor.source_message_id,
             )
-            if pending_item and turn["trusted_text"].strip():
+            if (
+                pending_item
+                and _typed_reply_completes_pending_item(turn["trusted_text"])
+            ):
                 db.resolve_pending_item(
                     pending_item["item_id"], actor.user_id, actor.source_message_id
                 )
@@ -882,9 +911,14 @@ def process(payload: dict) -> dict:
                     local_path=path,
                     mime_type=item.get("mime_type"),
                     source_message_id=actor.source_message_id,
+                    context_kind="REPORT" if first_attachment and report_context else None,
+                    context_id=report_context if first_attachment and report_context else None,
                 )
                 first_attachment = False
-        if pending_item and turn["trusted_text"].strip():
+        if (
+            pending_item
+            and _typed_reply_completes_pending_item(turn["trusted_text"])
+        ):
             db.resolve_pending_item(
                 pending_item["item_id"], actor.user_id, actor.source_message_id
             )
