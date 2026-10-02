@@ -2260,10 +2260,14 @@ class AlexCoreTests(unittest.TestCase):
             ),
             "handoff-create-action",
         )
-        reminder = services.create_reminder(
-            creator, "pick up parcel", "2026-10-01T18:00:00+08:00",
-            destination="group",
-        )
+        with patch.object(
+            runtime_clock, "now_utc",
+            return_value=datetime(2026, 10, 1, 9, 0, tzinfo=timezone.utc),
+        ):
+            reminder = services.create_reminder(
+                creator, "pick up parcel", "2026-10-01T18:00:00+08:00",
+                destination="group",
+            )
 
         reminder_outbound_id = db.queue_outbound(
             group_id, "TEXT", text="Reminder: pick up parcel",
@@ -3510,13 +3514,17 @@ class AlexCoreTests(unittest.TestCase):
             ),
             "v055-assigned-reminder-action",
         )
-        reminder = services.create_reminder(
-            group_actor,
-            "Luhgen to take the parcel",
-            "2026-10-01T15:00:00+08:00",
-            recipient="me",
-            destination="group",
-        )
+        with patch.object(
+            runtime_clock, "now_utc",
+            return_value=datetime(2026, 10, 1, 6, 58, tzinfo=timezone.utc),
+        ):
+            reminder = services.create_reminder(
+                group_actor,
+                "Luhgen to take the parcel",
+                "2026-10-01T15:00:00+08:00",
+                recipient="me",
+                destination="group",
+            )
         self.assertEqual(reminder["recipient_user_id"], "USR_HUSBAND")
         self.assertEqual(reminder["destination"], "dm")
         self.assertEqual(reminder["conversation_id"], "60111111111@s.whatsapp.net")
@@ -3724,10 +3732,14 @@ class AlexCoreTests(unittest.TestCase):
             ),
             "ha-claim-create-action",
         )
-        reminder = services.create_reminder(
-            group_actor, "collect parcel", "2026-10-02T15:00:00+08:00",
-            destination="group",
-        )
+        with patch.object(
+            runtime_clock, "now_utc",
+            return_value=datetime(2026, 10, 1, 6, 0, tzinfo=timezone.utc),
+        ):
+            reminder = services.create_reminder(
+                group_actor, "collect parcel", "2026-10-02T15:00:00+08:00",
+                destination="group",
+            )
         self.claim("ha-claim-h", "+60111111111", "claim")
         self.claim("ha-claim-w", "+60222222222", "claim")
         first = services.claim_reminder(
@@ -3752,9 +3764,13 @@ class AlexCoreTests(unittest.TestCase):
             ),
             "ha-action-create-key",
         )
-        reminder = services.create_reminder(
-            actor, "take parcel", "2026-10-02T15:00:00+08:00"
-        )
+        with patch.object(
+            runtime_clock, "now_utc",
+            return_value=datetime(2026, 10, 1, 6, 0, tzinfo=timezone.utc),
+        ):
+            reminder = services.create_reminder(
+                actor, "take parcel", "2026-10-02T15:00:00+08:00"
+            )
         token = ha_mobile.action_token(
             "ACK", "reminder", reminder["reminder_id"], "USR_HUSBAND"
         )
@@ -3789,9 +3805,13 @@ class AlexCoreTests(unittest.TestCase):
             ),
             "ha-stale-create-key",
         )
-        reminder = services.create_reminder(
-            actor, "closed task", "2026-10-02T16:00:00+08:00"
-        )
+        with patch.object(
+            runtime_clock, "now_utc",
+            return_value=datetime(2026, 10, 1, 6, 0, tzinfo=timezone.utc),
+        ):
+            reminder = services.create_reminder(
+                actor, "closed task", "2026-10-02T16:00:00+08:00"
+            )
         services.update_reminder(actor, reminder["reminder_id"], status="complete")
         token = ha_mobile.action_token(
             "ACK", "reminder", reminder["reminder_id"], "USR_HUSBAND"
@@ -5635,7 +5655,7 @@ class AlexCoreTests(unittest.TestCase):
             created = services.create_reminder(
                 actor, "test kettle", "2026-10-03T09:00:00+08:00"
             )
-        self.assertEqual(created["state"], "OPEN")
+        self.assertEqual(created["status"], "created")
 
         ambiguous = replace(actor, trusted_text="next Saturday 9am")
         with patch.object(runtime_clock, "now_utc", return_value=frozen):
