@@ -18,6 +18,11 @@ CREATE TABLE IF NOT EXISTS inbound_messages (
     completed_at_utc TEXT
 );
 
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    migration_key TEXT PRIMARY KEY,
+    applied_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS users (
     user_id TEXT PRIMARY KEY,
     display_name TEXT NOT NULL
