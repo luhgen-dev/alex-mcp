@@ -180,6 +180,11 @@ def _validate_reminder_time_intent(actor: ActorContext, due_utc: str) -> None:
         raise ValueError(
             "REMINDER_NEEDS_TIME: ask the user for an exact time before creating the reminder"
         )
+    # Trusted conversational text is the contract being validated. Internal
+    # migrations/admin fixtures with no user utterance retain their historical
+    # ability to construct deterministic rows for recovery/testing.
+    if not trusted:
+        return
 
     due = datetime.fromisoformat(str(due_utc).replace("Z", "+00:00"))
     if due.tzinfo is None:
