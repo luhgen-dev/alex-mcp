@@ -276,6 +276,20 @@ def ensure_schema(conn=None):
                         else "WIFE_PVT"
                     )
                 )
+                legacy_source = "legacy-money-bucket:" + str(legacy["bucket_id"])
+
+                # Upgrade identity is the legacy bucket itself, not the pool's
+                # current name/space. Older releases may already have bridged a
+                # Family bucket into a private pool. If that exact bucket marker
+                # exists anywhere, never bridge its balance a second time.
+                bridged = conn.execute(
+                    """SELECT 1 FROM alex_phase2_cash_pool_adjustments
+                       WHERE source_message_id=? LIMIT 1""",
+                    (legacy_source,),
+                ).fetchone()
+                if bridged:
+                    continue
+
                 existing = conn.execute(
                     """SELECT pool_id FROM alex_phase2_cash_pools
                        WHERE owner_user_id=? AND space_id=?
@@ -307,7 +321,7 @@ def ensure_schema(conn=None):
                             legacy["owner_id"], amount_minor,
                             runtime_clock.today().isoformat(),
                             "Migrated from legacy stash bucket",
-                            "legacy-money-bucket:" + str(legacy["bucket_id"]),
+                            legacy_source,
                         ),
                     )
         if own:
