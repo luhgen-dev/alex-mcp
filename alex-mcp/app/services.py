@@ -1262,7 +1262,7 @@ def get_selection_target(actor: ActorContext, kind: str, target_id: str) -> dict
 
 
 def resolve_numbered_choice(actor: ActorContext, choice: int) -> dict:
-    """Resolve the newest unexpired receipt/saved-memory/original-media list."""
+    """Resolve the newest unexpired numbered list across household read domains."""
     index = int(choice)
     if index < 1:
         raise ValueError("choice must be 1 or greater")
@@ -1277,14 +1277,21 @@ def resolve_numbered_choice(actor: ActorContext, choice: int) -> dict:
                SELECT 'MEDIA' AS selection_kind,items_json,created_at_utc
                  FROM media_selection_sets
                 WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
+               UNION ALL
+               SELECT 'PENDING_ITEM' AS selection_kind,items_json,created_at_utc
+                 FROM pending_selection_sets
+                WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
                ORDER BY created_at_utc DESC LIMIT 1""",
             (
+                actor.user_id, actor.conversation_id, now,
                 actor.user_id, actor.conversation_id, now,
                 actor.user_id, actor.conversation_id, now,
             ),
         ).fetchall()
         if not rows:
-            raise ValueError("no numbered receipt, saved-memory, or media list is waiting")
+            raise ValueError(
+                "no numbered receipt, saved-memory, media, or pending-item list is waiting"
+            )
         latest = rows[0]
         ids = json.loads(latest["items_json"])
         if index > len(ids):
@@ -1299,6 +1306,16 @@ def resolve_numbered_choice(actor: ActorContext, choice: int) -> dict:
         return get_saved_item(actor, target)
     if kind == "MEDIA":
         return get_media_original(actor, target)
+    if kind == "PENDING_ITEM":
+        pending = db.pending_item_by_choice(actor, index)
+        media_id = str(pending.get("media_id") or "")
+        if media_id:
+            return get_media_original(actor, media_id)
+        return {
+            "status": "found",
+            "kind": pending.get("kind"),
+            "note": pending.get("note"),
+        }
     raise ValueError("unsupported numbered choice type")
 
 
