@@ -2564,6 +2564,64 @@ def release_reminder_claim(actor: ActorContext, reminder_id: str) -> dict:
         conn.close()
 
 
+def nudge_reminder_claimant(actor: ActorContext, reminder_id: str) -> dict:
+    """Send one explicit private follow-up to the current claimant."""
+    marks, spaces = _spaces_sql(actor)
+    conn = connect()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            f"""SELECT reminder_id,owner_id,status,task_text,claimed_by_user_id
+                FROM reminders
+                WHERE reminder_id=? AND space_id IN ({marks})""",
+            [reminder_id] + spaces,
+        ).fetchone()
+        if not row:
+            conn.rollback()
+            raise PermissionError("reminder not found in your accessible spaces")
+        if actor.user_id != row["owner_id"]:
+            conn.rollback()
+            raise PermissionError("only the reminder initiator can remind the claimant again")
+        if row["status"] != "DUE":
+            conn.rollback()
+            raise ValueError("only a due unresolved reminder can be followed up")
+        claimant = str(row["claimed_by_user_id"] or "")
+        if not claimant:
+            conn.rollback()
+            raise ValueError("this reminder has no claimant")
+        phone = _active_user_phone(conn, claimant)
+        if not phone:
+            conn.rollback()
+            raise ValueError("the claimant has no active household number configured")
+        conversation_id = phone.replace("+", "") + "@s.whatsapp.net"
+        text = f"↪️ Family reminder still unresolved: {row['task_text']}"
+        db.queue_outbound(
+            conversation_id, "TEXT", text=text,
+            source_message_id=actor.source_message_id,
+            context_kind="REMINDER_CLAIMANT_FOLLOWUP",
+            context_id=reminder_id,
+        )
+        now = runtime_clock.now_utc().isoformat()
+        conn.execute(
+            """UPDATE reminders
+               SET nudged_at_utc=?,claimant_follow_up_at_utc=?
+               WHERE reminder_id=?""",
+            (now, now, reminder_id),
+        )
+        conn.commit()
+        return {
+            "status": "nudged",
+            "reminder_id": reminder_id,
+            "task": row["task_text"],
+            "claimed_by_user_id": claimant,
+        }
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 def set_goal(actor: ActorContext, name: str, target_amount: float | None = None,
              current_amount: float | None = None, currency: str = "MYR",
              target_date: str | None = None, notes: str | None = None,
