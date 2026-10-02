@@ -5,7 +5,8 @@ import json
 import os
 import sqlite3
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import runtime_clock
 
@@ -703,16 +704,94 @@ def pending_item_for_reference(actor: ActorContext, quoted_context: dict | None)
         conn.close()
 
 
-def resolve_pending_item(item_id: str, owner_id: str, resolution_message_id: str) -> bool:
+def set_pending_item_status(item_id: str, owner_id: str, status: str,
+                            resolution_message_id: str) -> bool:
+    target = str(status or "").strip().upper()
+    if target not in {"RESOLVED", "CANCELLED"}:
+        raise ValueError("pending item status must be RESOLVED or CANCELLED")
     conn = connect()
     try:
         cur = conn.execute(
-            """UPDATE pending_items SET status='RESOLVED',resolved_at_utc=?,resolution_message_id=?
+            """UPDATE pending_items
+               SET status=?,resolved_at_utc=?,resolution_message_id=?
                WHERE item_id=? AND owner_id=? AND status='PENDING'""",
-            (utc_now(), resolution_message_id, item_id, owner_id),
+            (target, utc_now(), resolution_message_id, item_id, owner_id),
         )
         conn.commit()
         return cur.rowcount == 1
+    finally:
+        conn.close()
+
+
+def resolve_pending_item(item_id: str, owner_id: str, resolution_message_id: str) -> bool:
+    return set_pending_item_status(
+        item_id, owner_id, "RESOLVED", resolution_message_id
+    )
+
+
+def cancel_pending_item(item_id: str, owner_id: str, resolution_message_id: str) -> bool:
+    return set_pending_item_status(
+        item_id, owner_id, "CANCELLED", resolution_message_id
+    )
+
+
+def _pending_local_display(value: str, timezone_name: str) -> tuple[str | None, str | None]:
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        local = parsed.astimezone(ZoneInfo(timezone_name))
+        hour = local.strftime("%I").lstrip("0") or "12"
+        return (
+            local.isoformat(),
+            f"{local.day} {local.strftime('%B %Y')}, {hour}:{local.strftime('%M')} {local.strftime('%p')}",
+        )
+    except Exception:
+        return None, None
+
+
+def _store_pending_selection(conn, actor: ActorContext, item_ids: list[str]) -> None:
+    if not item_ids:
+        return
+    expires = (runtime_clock.now_utc() + timedelta(minutes=10)).isoformat()
+    conn.execute(
+        """INSERT INTO pending_selection_sets(
+               selection_id,user_id,conversation_id,items_json,expires_at_utc
+           ) VALUES(?,?,?,?,?)""",
+        (
+            str(uuid.uuid4()), actor.user_id, actor.conversation_id,
+            json.dumps(item_ids), expires,
+        ),
+    )
+
+
+def pending_item_by_choice(actor: ActorContext, choice: int) -> dict:
+    if actor.conversation_type == "GROUP":
+        raise PermissionError("Pending personal items are available only in the owner's DM")
+    index = int(choice)
+    if index < 1:
+        raise ValueError("choice must be 1 or greater")
+    conn = connect()
+    try:
+        row = conn.execute(
+            """SELECT items_json FROM pending_selection_sets
+               WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
+               ORDER BY created_at_utc DESC,rowid DESC LIMIT 1""",
+            (actor.user_id, actor.conversation_id, utc_now()),
+        ).fetchone()
+        if not row:
+            raise ValueError("no pending-item numbered list is waiting")
+        ids = json.loads(row["items_json"] or "[]")
+        if index > len(ids):
+            raise ValueError("choice is outside the latest pending-item list")
+        item = conn.execute(
+            """SELECT * FROM pending_items
+               WHERE item_id=? AND owner_id=? AND status='PENDING'""",
+            (ids[index - 1], actor.user_id),
+        ).fetchone()
+        if not item:
+            raise ValueError("that pending item is no longer unresolved")
+        return dict(item)
     finally:
         conn.close()
 
@@ -736,7 +815,22 @@ def list_pending_items(actor: ActorContext, kind: str | None = None, limit: int 
             + " ORDER BY p.created_at_utc DESC LIMIT ?",
             args + [max(1, min(100, int(limit)))],
         ).fetchall()
-        return [dict(row) for row in rows]
+        items = []
+        for index, row in enumerate(rows, 1):
+            item = dict(row)
+            local_iso, display_time = _pending_local_display(
+                item.get("created_at_utc"), actor.timezone
+            )
+            item["choice"] = index
+            item["created_local"] = local_iso
+            item["display_time"] = display_time
+            items.append(item)
+        if items:
+            _store_pending_selection(
+                conn, actor, [str(item["item_id"]) for item in items]
+            )
+            conn.commit()
+        return items
     finally:
         conn.close()
 
