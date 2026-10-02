@@ -5607,6 +5607,15 @@ class AlexCoreTests(unittest.TestCase):
         self.assertIn("planning_baseline", blocked)
         self.assertIn("planning_allocate_cash_to_pool", blocked)
 
+        declare_forced, declare_blocked = brain._routing_refinements(
+            "Set my stash balance to RM300."
+        )
+        declare_selected = brain._select_tool_names(
+            "Set my stash balance to RM300."
+        )
+        self.assertNotIn("planning_declare_cash_pool_balance", declare_blocked)
+        self.assertIn("planning_declare_cash_pool_balance", declare_selected)
+
         conn = db.connect()
         try:
             conn.execute(
