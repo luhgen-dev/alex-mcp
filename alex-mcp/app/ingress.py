@@ -495,8 +495,8 @@ def _private_search_offer_candidate(actor, query: str, reply: str,
         return False
     value = str(reply or "")
     return bool(re.search(
-        r"(?i)\b(?:could(?:n't| not) find|can(?:'t|not) find|"
-        r"don(?:'t| not) (?:see|have|find)|no (?:matching|saved|record|records|"
+        r"(?i)\b(?:could(?:n't| not) (?:find|locate)|can(?:'t|not) (?:find|locate)|"
+        r"unable to (?:find|locate)|don(?:'t| not) (?:see|have|find)|no (?:matching|saved|record|records|"
         r"asset|assets|receipt|receipts|note|notes|pool|pools|stash|stashes|"
         r"reminder|reminders)|not found|nothing (?:matching|found))\b",
         value,
