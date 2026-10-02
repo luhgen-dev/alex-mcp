@@ -1656,10 +1656,25 @@ def report_export(format: str, actor: Actor, period: str | None = None,
             )
         else:
             scope = spec.get("scope")
+            query_start = spec.get("start_date")
+            query_end = spec.get("end_date")
+            # A frozen monthly report may carry category/scope filters without
+            # explicit start/end fields. The period still bounds the dataset.
+            if (
+                effective_period
+                and re.fullmatch(r"\d{4}-\d{2}", str(effective_period))
+                and not query_start and not query_end
+            ):
+                year, month = (int(x) for x in str(effective_period).split("-", 1))
+                query_start = f"{year:04d}-{month:02d}-01"
+                query_end = (
+                    f"{year:04d}-{month:02d}-"
+                    f"{calendar.monthrange(year, month)[1]:02d}"
+                )
             ledger = services.query_finances(
                 actor,
-                start_date=spec.get("start_date"),
-                end_date=spec.get("end_date"),
+                start_date=query_start,
+                end_date=query_end,
                 category=spec.get("category"),
                 search=spec.get("search"),
                 currency=spec.get("currency"),
