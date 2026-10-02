@@ -205,8 +205,12 @@ MEDIA_TOOLS = {
 MEMORY_TOOLS = {"save_item","search_saved_items","get_saved_item","remove_saved_item","resolve_numbered_choice"}
 REMINDER_TOOLS = {
     "create_reminder","list_reminders","update_reminder","reminder_history",
-    "release_reminder_claim","nudge_reminder_claimant"
 }
+# Accountability mutations are intentionally not part of every generic reminder
+# turn. Narrow trusted-text refinements expose them only for explicit
+# release/relinquish or nudge/follow-up requests. This preserves one discovery
+# slot for typo-heavy/novel reminder wording under the six-tool provider cap.
+
 SHOPPING_TOOLS = {"add_shopping_item","list_shopping_items","update_shopping_item"}
 DIARY_TOOLS = {
     "add_diary_event","resolve_diary_conflict","resolve_latest_diary_conflict",
