@@ -594,11 +594,17 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
     # Balance questions are exact scoped reads, not a planning/baseline turn.
     # Keep the Family-by-default boundary intact and prevent the model from
     # substituting baseline capacity or advertising write tools after a miss.
-    if re.search(
+    balance_read = re.search(
         r"\b(?:stash|pocket\s+cash|cash\s+pool|pool)\b.{0,45}\bbalance\b"
         r"|\bhow\s+much\b.{0,45}\b(?:stash|pocket\s+cash|cash\s+pool)\b",
         low,
-    ):
+    )
+    balance_write = re.search(
+        r"\b(?:set|declare|update|change|make|record)\b.{0,55}\b(?:stash|pocket\s+cash|cash\s+pool|pool|balance)\b"
+        r"|\bbalance\b\s*(?:is|=|to)\s*(?:rm|myr|sgd|\d)",
+        low,
+    )
+    if balance_read and not balance_write:
         force |= {"planning_cash_pool_balance", "planning_list_cash_pools"}
         block |= {
             "planning_baseline", "planning_add_reserve", "planning_update_reserve",
