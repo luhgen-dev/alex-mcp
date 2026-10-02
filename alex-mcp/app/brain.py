@@ -2658,6 +2658,125 @@ def _goal_progress_fallback(candidate: str, tool_evidence: list[dict]) -> str:
     return candidate
 
 
+def _format_scalar(value) -> str:
+    if isinstance(value, float):
+        return f"{value:,.2f}"
+    return str(value)
+
+
+def _tool_evidence_fallback(tool_evidence: list[dict]) -> str:
+    """Render deterministic read evidence when the final model answer is empty.
+
+    This is deliberately conservative: it never invents prose or values and
+    never exposes internal IDs. Prefer a tool-provided display block; otherwise
+    render a compact subset of authoritative payload fields.
+    """
+    hidden_keys = {
+        "_tool_name", "event_id", "item_id", "media_id", "asset_id", "goal_id",
+        "reminder_id", "pool_id", "source_message_id", "conversation_id",
+        "owner_id", "claimed_by_user_id", "provider_message_id", "space_id",
+        "action_key",
+    }
+    for evidence in reversed(tool_evidence):
+        if not isinstance(evidence, dict):
+            continue
+        tool_name = str(evidence.get("_tool_name") or "")
+        error = evidence.get("error")
+        if error:
+            return f"I couldn't complete that lookup: {str(error)[:240]}"
+
+        display = evidence.get("display")
+        if isinstance(display, str) and display.strip():
+            return display.strip()
+        if isinstance(display, list):
+            lines = [str(x).strip() for x in display if str(x).strip()]
+            if lines:
+                return "\n".join(lines[:12])
+
+        if tool_name == "planning_goal_progress":
+            rendered = _goal_progress_fallback("Done.", [evidence])
+            if rendered.strip().casefold().rstrip(".!") != "done":
+                return rendered
+
+        if tool_name == "query_finances":
+            count = int(evidence.get("count") or 0)
+            parts = [f"{count} matching finance record{'s' if count != 1 else ''}."]
+            spending = evidence.get("spending_totals") or {}
+            income = evidence.get("income_totals") or {}
+            if isinstance(spending, dict) and spending:
+                parts.append(
+                    "Spending: " + ", ".join(
+                        f"{cur} {float(amount):,.2f}"
+                        for cur, amount in spending.items()
+                    ) + "."
+                )
+            if isinstance(income, dict) and income:
+                parts.append(
+                    "Income: " + ", ".join(
+                        f"{cur} {float(amount):,.2f}"
+                        for cur, amount in income.items()
+                    ) + "."
+                )
+            latest = evidence.get("latest_record")
+            if count == 1 and isinstance(latest, dict):
+                amount = latest.get("amount")
+                currency = latest.get("currency") or ""
+                desc = latest.get("description") or latest.get("category") or "transaction"
+                when = latest.get("date_local")
+                detail = f"{currency} {float(amount):,.2f} — {desc}" if amount is not None else str(desc)
+                if when:
+                    detail += f" — {when}"
+                parts.append(detail + ".")
+            return " ".join(parts)
+
+        # Human-readable list payloads.
+        for key in ("reminders", "assets", "goals", "items", "matches", "records", "warranties"):
+            rows = evidence.get(key)
+            if not isinstance(rows, list):
+                continue
+            if not rows:
+                return "No matching records were found in the records available to this request."
+            lines = []
+            for index, row in enumerate(rows[:10], 1):
+                if not isinstance(row, dict):
+                    lines.append(f"{index}. {row}")
+                    continue
+                label = (
+                    row.get("task_text") or row.get("name") or row.get("title")
+                    or row.get("description") or row.get("label") or row.get("kind")
+                )
+                if not label:
+                    continue
+                details = []
+                for field in (
+                    "due_local", "saved_on", "purchase_date", "warranty_end",
+                    "status", "amount", "currency", "remaining", "balance"
+                ):
+                    value = row.get(field)
+                    if value is not None and value != "":
+                        details.append(_format_scalar(value))
+                suffix = f" — {' · '.join(details)}" if details else ""
+                lines.append(f"{index}. {label}{suffix}")
+            if lines:
+                return "\n".join(lines)
+
+        # Compact scalar fallback, explicitly excluding identifiers and internal
+        # state. This is preferable to the misleading generic word "Done."
+        scalars = []
+        for key, value in evidence.items():
+            if key in hidden_keys or key.startswith("_"):
+                continue
+            if isinstance(value, (str, int, float, bool)) and value not in ("", None):
+                label = key.replace("_", " ").strip().capitalize()
+                scalars.append(f"{label}: {_format_scalar(value)}")
+            if len(scalars) >= 6:
+                break
+        if scalars:
+            return "\n".join(scalars)
+
+    return "I found the record, but I couldn't produce a reliable summary from it."
+
+
 async def respond(actor: ActorContext, user_text: str, media_context: list[str] | None = None,
                   vision_parts: list[dict] | None = None,
                   quoted_context: dict | None = None) -> tuple[str, list[dict]]:
@@ -2901,7 +3020,17 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
         )
 
         if not calls:
-            candidate = _content_text(msg.content).strip() or ("Here it is." if attachments else "Done.")
+            raw_candidate = _content_text(msg.content).strip()
+            if raw_candidate:
+                candidate = raw_candidate
+            elif attachments:
+                candidate = "Here it is."
+            elif any(x.get("committed") for x in mutation_ledger):
+                candidate = "Done."
+            elif tool_evidence:
+                candidate = _tool_evidence_fallback(tool_evidence)
+            else:
+                candidate = "I couldn't produce a reliable answer for that request."
 
             # Real smoke tests exposed a dangerous model failure mode: the
             # model sometimes claimed Alex "doesn't have the ability" even
