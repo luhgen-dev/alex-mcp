@@ -335,7 +335,7 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
         "planning_cash_status": (r"unallocated|extra cash|cash.*left", 105),
         "planning_allocate_cash_to_goal": (r"allocate|put.*goal|channel.*goal", 118),
         "planning_create_cash_pool": (r"create.*(?:stash|pool)|new.*(?:stash|pool)|stash called", 130),
-        "planning_cash_pool_balance": (r"stash.*balance|pool.*balance|how much.*stash", 118),
+        "planning_cash_pool_balance": (r"stash.*balance|pool.*balance|how much.*(?:stash|pocket cash)|pocket cash.*balance", 118),
         "planning_allocate_cash_to_pool": (r"(?:put|allocate|channel).*?(?:stash|cash pool|buffer).*?(?:from|ot|bonus|cash event)", 120),
         "planning_declare_cash_pool_balance": (r"\b(?:my\s+)?(?:stash|cash pool|buffer)\b.*\b(?:is|has|balance)\b.*\b(?:rm|myr|sgd|\d)", 145),
         "planning_record_cash_pool_spend": (r"\b(?:spent|used|paid)\b.*\b(?:from|using)\b.*\b(?:stash|cash pool|buffer)\b", 145),
@@ -839,7 +839,7 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         low,
     ):
         force.add("planning_list_cash_pools")
-    if re.search(r"\b(?:balance|how much)\b.*\b(?:cash\s+pool|stash|buffer)\b", low):
+    if re.search(r"\b(?:balance|how much)\b.*\b(?:cash\s+pool|stash|buffer|pocket\s+cash)\b", low):
         force |= {"planning_cash_pool_balance", "planning_list_cash_pools"}
     if money and re.search(
         r"\b(?:got|received|credited|came in|record)\b.*\b(?:ot|overtime|bonus|salary|refund|extra cash)\b"
@@ -1123,7 +1123,7 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
         selected |= CORE_FINANCE if write_money else FINANCE_READ_TOOLS
     if re.search(r"\b(?:bill|bills|due|overdue|instalment|installment|obligation|tnb|water bill|electricity|unifi|insurance|road tax)\b", low):
         selected |= BILL_TOOLS | {"query_finances","find_receipts"}
-    if re.search(r"\b(?:goal|goals|saving|savings|budget|cashflow|cash flow|money plan|baseline|stash|allowance|salary|income|bonus|extra cash|allocate|allocation|reserve|reserves|ot money|overtime pay)\b", low):
+    if re.search(r"\b(?:goal|goals|saving|savings|budget|cashflow|cash flow|money plan|baseline|stash|pocket cash|allowance|salary|income|bonus|extra cash|allocate|allocation|reserve|reserves|ot money|overtime pay)\b", low):
         selected |= PLANNING_TOOLS
     if re.search(r"\b(?:roster|shift|working|work schedule|work today|work tomorrow|leave home.*work|departure|overtime|\bot\b|mc|medical leave|annual leave|leave balance|leave entries|leave records|swap shift)\b", low):
         selected |= WORK_TOOLS | {"set_leave_record","list_leave_records"}
@@ -2653,9 +2653,13 @@ def _guard_mutation_success(
 
 
 def _owned_cash_pool_name_mentioned(actor: ActorContext, user_text: str) -> bool:
-    """Cheap owner-scoped hint for natural stash names such as 'pocket cash'."""
+    """Owner-private name hint, only after current-turn private authorization."""
     low = str(user_text or "").casefold()
-    if not low.strip() or actor.conversation_type == "GROUP":
+    if (
+        not low.strip()
+        or actor.conversation_type == "GROUP"
+        or str(getattr(actor, "read_scope", "") or "").casefold() not in {"private", "all"}
+    ):
         return False
     conn = connect()
     try:
