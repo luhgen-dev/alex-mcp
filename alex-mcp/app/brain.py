@@ -283,7 +283,7 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
         "list_pending_expenses": (r"pending|clarif|which expense|that expense", 105),
         "find_receipts": (r"\b(?:find|show|receipt|reference|ref)\b", 110),
         "get_receipt": (r"receipt|original|show", 90),
-        "resolve_numbered_choice": (r"^\s*\d+\s*$|\b(?:play|listen(?:\s+to)?|hear|show|open|send|get|view)\s+(?:(?:voice|audio)\s*note\s*)?(?:number\s+|no\.?\s*|#\s*)?\d+\b", 140),
+        "resolve_numbered_choice": (r"^\s*\d+\s*$|\b(?:play|listen(?:\s+to)?|hear|show|open|send|get|view)\s+(?:(?:unresolved|pending)\s+)?(?:(?:voice|audio)\s*note\s*)?(?:number\s+|no\.?\s*|#\s*)?\d+\b", 140),
         "create_reminder": (r"remind|reminder|notify", 110),
         "list_reminders": (r"list|what reminders|reminders", 95),
         "update_reminder": (r"cancel|complete|ack|snooze|defer|reschedule", 115),
@@ -581,6 +581,7 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
     # pending-item mutators or drift into a fresh saved-memory search.
     if re.search(
         r"\b(?:play|listen(?:\s+to)?|hear|show|open|send|get|view)\s+"
+        r"(?:(?:unresolved|pending)\s+)?"
         r"(?:(?:voice|audio)\s*note\s*)?(?:number\s+|no\.?\s*|#\s*)?\d+\b",
         low,
     ):
@@ -1098,6 +1099,7 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
         selected.add("resolve_numbered_choice")
     if re.search(
         r"(?i)\b(?:play|listen(?:\s+to)?|hear|show|open|send|get|view)\s+"
+        r"(?:(?:unresolved|pending)\s+)?"
         r"(?:(?:voice|audio)\s*note\s*)?(?:number\s+|no\.?\s*|#\s*)?\d+\b",
         text,
     ):
