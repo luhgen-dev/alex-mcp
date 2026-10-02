@@ -657,7 +657,7 @@ def resolve_cash_pool_reference(pool_id, pool_name, sender_phone,
             if len(rows) == 1:
                 return rows[0]["pool_id"]
             if not rows:
-                raise ValueError("No matching stash or cash pool was found in the records available to this request.")
+                raise ValueError("No matching stash or cash pool was found in the current authorized scope.")
             names = ", ".join(row["name"] for row in rows[:8])
             raise ValueError("More than one stash/cash pool exists; ask which one: " + names)
         exact = [
@@ -671,7 +671,7 @@ def resolve_cash_pool_reference(pool_id, pool_name, sender_phone,
         if len(candidates) == 1:
             return candidates[0]["pool_id"]
         if not candidates:
-            raise ValueError(f"No matching cash pool was found for {pool_name!r} in the records available to this request.")
+            raise ValueError(f"No matching cash pool was found for {pool_name!r} in the current authorized scope.")
         names = ", ".join(row["name"] for row in candidates[:5])
         raise ValueError("Cash-pool name is ambiguous; ask which one: " + names)
     finally:
