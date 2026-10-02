@@ -143,6 +143,27 @@ def initialize() -> None:
         _ensure_column(conn, "ai_usage", "reasoning_tokens", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(conn, "ai_usage", "model_calls", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(conn, "media_objects", "transcript_meta_json", "TEXT")
+
+        # v0.5.6 used a malformed Baileys pin payload but still recorded
+        # job_pinned_at_utc after the transport returned success. Reset those
+        # false-positive flags exactly once so v0.5.7 reconciliation can issue
+        # real pins for still-unresolved managed items/reminders.
+        pin_migration = "v057_reset_false_pin_flags"
+        already_reset = conn.execute(
+            "SELECT 1 FROM schema_migrations WHERE migration_key=?",
+            (pin_migration,),
+        ).fetchone()
+        if not already_reset:
+            conn.execute(
+                """UPDATE outbound_messages
+                   SET job_pinned_at_utc=NULL,job_unpinned_at_utc=NULL
+                   WHERE job_pinned_at_utc IS NOT NULL"""
+            )
+            conn.execute(
+                "INSERT INTO schema_migrations(migration_key) VALUES(?)",
+                (pin_migration,),
+            )
+
         # Privacy is a scope, never an expense category. Clean historical rows
         # created by the old presenter bug without changing amount/date/scope.
         conn.execute(
