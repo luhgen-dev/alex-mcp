@@ -5540,7 +5540,9 @@ class AlexCoreTests(unittest.TestCase):
         saver = with_action_key(
             self.actor("v058-saved-src", "+60111111111"), "v058-save-action"
         )
-        services.save_item(saver, "v058 newer note", "newer numbered context")
+        services.save_item(
+            saver, "v058 newer note", "newer numbered context", shared=True
+        )
         services.search_saved_items(reader, "v058 newer note")
         newest = services.latest_selection_set_context(reader)
         self.assertEqual(newest["kind"], "SAVED_ITEM")
