@@ -592,6 +592,12 @@ CREATE TABLE IF NOT EXISTS outbound_messages (
     job_reaction_cleared_at_utc TEXT,
     job_unpinned_at_utc TEXT,
     job_failure_notice_at_utc TEXT,
+    job_control_attempts INTEGER NOT NULL DEFAULT 0,
+    job_control_next_attempt_at_utc TEXT,
+    job_control_last_error TEXT,
+    job_control_last_kind TEXT,
+    job_control_failed_at_utc TEXT,
+    job_unpin_failed_at_utc TEXT,
     FOREIGN KEY(source_message_id) REFERENCES inbound_messages(message_id)
 );
 
