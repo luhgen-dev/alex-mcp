@@ -857,13 +857,6 @@ def process(payload: dict) -> dict:
                 actor.conversation_id, "TEXT", text=group_reply,
                 source_message_id=actor.source_message_id,
             )
-            if (
-                pending_item
-                and _typed_reply_completes_pending_item(turn["trusted_text"])
-            ):
-                db.resolve_pending_item(
-                    pending_item["item_id"], actor.user_id, actor.source_message_id
-                )
             db.finish_inbound(actor.source_message_id, group_reply)
             return {"ok": True, "private_handoff": True}
 
@@ -916,13 +909,6 @@ def process(payload: dict) -> dict:
                     context_id=report_context if first_attachment and report_context else None,
                 )
                 first_attachment = False
-        if (
-            pending_item
-            and _typed_reply_completes_pending_item(turn["trusted_text"])
-        ):
-            db.resolve_pending_item(
-                pending_item["item_id"], actor.user_id, actor.source_message_id
-            )
         db.finish_inbound(actor.source_message_id, reply)
         return {"ok": True}
     except media.VoiceTranscriptionUncertain as exc:
