@@ -292,12 +292,16 @@ def ensure_schema(conn=None):
 
                 existing = conn.execute(
                     """SELECT pool_id FROM alex_phase2_cash_pools
-                       WHERE owner_user_id=? AND space_id=?
+                       WHERE owner_user_id=?
                          AND LOWER(TRIM(name))=LOWER(TRIM(?))
                          AND status='ACTIVE' LIMIT 1""",
-                    (legacy["owner_id"], target_space, legacy_name),
+                    (legacy["owner_id"], legacy_name),
                 ).fetchone()
                 if existing:
+                    # Older builds could already have bridged a zero-balance
+                    # legacy bucket without writing an adjustment marker. A
+                    # same-owner/same-name active pool in any space is enough
+                    # evidence that this legacy bucket was already represented.
                     continue
                 pool_id = str(uuid.uuid4())
                 conn.execute(
