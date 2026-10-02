@@ -35,7 +35,7 @@ CAPABILITY_TO_TOOLS: dict[str, frozenset[str]] = {
     # Reminders / shopping
     "reminder.create": frozenset({"create_reminder"}),
     "reminder.read": frozenset({"list_reminders"}),
-    "reminder.update": frozenset({"update_reminder"}),
+    "reminder.update": frozenset({"update_reminder", "nudge_reminder_claimant"}),
     "reminder.history": frozenset({"reminder_history"}),
     "reminder.claim.release": frozenset({"release_reminder_claim"}),
     "reminder.claim.handoff": frozenset({"handoff_reminder_claim"}),
