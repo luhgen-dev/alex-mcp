@@ -290,18 +290,30 @@ def ensure_schema(conn=None):
                 if bridged:
                     continue
 
-                existing = conn.execute(
-                    """SELECT pool_id FROM alex_phase2_cash_pools
-                       WHERE owner_user_id=?
-                         AND LOWER(TRIM(name))=LOWER(TRIM(?))
-                         AND status='ACTIVE' LIMIT 1""",
-                    (legacy["owner_id"], legacy_name),
-                ).fetchone()
+                amount_minor = int(legacy["amount_minor"] or 0)
+                if amount_minor == 0:
+                    # Zero-balance legacy bridges never wrote an adjustment
+                    # marker. For those rows only, a same-owner/same-name active
+                    # pool in any space is sufficient upgrade identity.
+                    existing = conn.execute(
+                        """SELECT pool_id FROM alex_phase2_cash_pools
+                           WHERE owner_user_id=?
+                             AND LOWER(TRIM(name))=LOWER(TRIM(?))
+                             AND status='ACTIVE' LIMIT 1""",
+                        (legacy["owner_id"], legacy_name),
+                    ).fetchone()
+                else:
+                    # For funded unmarked rows, do not suppress a legitimate
+                    # Family balance merely because a distinct private pool has
+                    # the same human name.
+                    existing = conn.execute(
+                        """SELECT pool_id FROM alex_phase2_cash_pools
+                           WHERE owner_user_id=? AND space_id=?
+                             AND LOWER(TRIM(name))=LOWER(TRIM(?))
+                             AND status='ACTIVE' LIMIT 1""",
+                        (legacy["owner_id"], target_space, legacy_name),
+                    ).fetchone()
                 if existing:
-                    # Older builds could already have bridged a zero-balance
-                    # legacy bucket without writing an adjustment marker. A
-                    # same-owner/same-name active pool in any space is enough
-                    # evidence that this legacy bucket was already represented.
                     continue
                 pool_id = str(uuid.uuid4())
                 conn.execute(
@@ -313,7 +325,6 @@ def ensure_schema(conn=None):
                         legacy_name, str(legacy["currency"] or "MYR").upper(),
                     ),
                 )
-                amount_minor = int(legacy["amount_minor"] or 0)
                 if amount_minor:
                     conn.execute(
                         """INSERT INTO alex_phase2_cash_pool_adjustments(
