@@ -18,10 +18,10 @@
     "decision_count": 384,
     "independent_model_pass": false,
     "carried_forward_unchanged": 124,
-    "ancestor_engineering_review_carried": 139
+    "ancestor_engineering_review_carried": 138
   },
   "delta_review": {
-    "changed_existing": 121,
+    "changed_existing": 122,
     "newly_added": 0,
     "reviewed_packet_ids": [
       "hai-67cc9abde97b9547d4",
@@ -144,7 +144,8 @@
       "hai-83b6ef8cf66b0a3b13",
       "hai-bcdc99b3afbc654a18",
       "hai-48095b10023cca227f",
-      "hai-a275be22c14638b7de"
+      "hai-a275be22c14638b7de",
+      "hai-db91940f8199e9d8a2"
     ]
   },
   "decisions_by_packet_id": {
@@ -258,7 +259,7 @@
         "query_finances"
       ],
       "reply_language": "en",
-      "provenance": "ancestor_engineering_review"
+      "provenance": "delta_engineering_review"
     },
     "hai-d9bb4b14d0a865274e": {
       "decision": "tools",
