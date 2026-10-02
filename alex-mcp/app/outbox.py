@@ -137,6 +137,7 @@ def _control_outbound(row, kind: str) -> bool:
         "to": row["conversation_id"],
         "kind": kind,
         "target_message_id": target,
+        "target_from_me": True,
     }
     ok, _detail = _send(payload)
     return ok
