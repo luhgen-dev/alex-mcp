@@ -1883,7 +1883,7 @@ class AlexCoreTests(unittest.TestCase):
             "conversation_id": group_id,
             "conversation_type": "GROUP",
             "sender_phone": "+60111111111",
-            "text": "show me my salary",
+            "text": "show me my private salary",
         }
         with patch.object(brain, "respond", new=fake_respond):
             result = ingress.process(payload)
@@ -2900,7 +2900,11 @@ class AlexCoreTests(unittest.TestCase):
         self.assertFalse(ingress._private_group_handoff_requested("show me the latest expenses"))
         self.assertFalse(ingress._private_group_handoff_requested("show me the receipt for our blender"))
         self.assertTrue(ingress._private_group_handoff_requested("how much did I spend privately this month?"))
-        self.assertTrue(ingress._private_group_handoff_requested("show me my salary"))
+        # Global v0.5.7 rule: plain wording stays Family Shared even for
+        # historically-sensitive domains. Explicit private wording/emoji is
+        # what authorizes owner-DM handoff.
+        self.assertFalse(ingress._private_group_handoff_requested("show me my salary"))
+        self.assertTrue(ingress._private_group_handoff_requested("show me my private salary"))
         self.assertTrue(ingress._private_group_handoff_requested("save this privately: test note"))
 
     def test_v054_shared_saved_receipt_is_retrievable_from_family_group(self):
