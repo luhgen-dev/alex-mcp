@@ -369,17 +369,19 @@ def sweep():
                             (delivered, row["context_id"]),
                         )
                         event_type = "FOLLOW_UP_DELIVERED"
-                    elif row["context_kind"] == "REMINDER_CLAIMANT_FOLLOWUP":
-                        event_type = "CLAIMANT_FOLLOW_UP_DELIVERED"
-                    elif row["context_kind"] == "REMINDER_INITIATOR_ESCALATION":
-                        event_type = "FOLLOW_UP_DELIVERED"
                     else:
-                        event_type = "FAMILY_RESURFACED_DELIVERED"
+                        # reminder_events has one durable follow-up event type;
+                        # the outbound context records which follow-up surface
+                        # was delivered without violating the table CHECK.
+                        event_type = "FOLLOW_UP_DELIVERED"
                     conn.execute(
                         """INSERT INTO reminder_events(
                                event_id,reminder_id,event_type,note
                            ) VALUES(lower(hex(randomblob(16))),?,?,?)""",
-                        (row["context_id"], event_type, "confirmed by WhatsApp egress"),
+                        (
+                            row["context_id"], event_type,
+                            f"confirmed by WhatsApp egress: {row['context_kind']}",
+                        ),
                     )
                 elif row["context_kind"] == "MONITOR" and row["context_id"]:
                     conn.execute(
