@@ -671,6 +671,30 @@ def create_pending_item(actor: ActorContext, kind: str, media_id: str | None = N
         conn.close()
 
 
+def latest_pending_item(actor: ActorContext, kind: str,
+                        max_age_seconds: int = 600) -> dict | None:
+    """Return the newest unresolved owner item in this conversation."""
+    bounded = max(30, min(3600, int(max_age_seconds)))
+    conn = connect()
+    try:
+        row = conn.execute(
+            """SELECT p.*,i.raw_text AS original_text
+               FROM pending_items p
+               LEFT JOIN inbound_messages i ON i.message_id=p.source_message_id
+               WHERE p.owner_id=? AND p.conversation_id=? AND p.status='PENDING'
+                 AND p.kind=?
+                 AND datetime(p.created_at_utc)>=datetime('now', ?)
+               ORDER BY p.created_at_utc DESC,p.rowid DESC LIMIT 1""",
+            (
+                actor.user_id, actor.conversation_id, str(kind).strip().upper(),
+                f"-{bounded} seconds",
+            ),
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
 def pending_item_for_reference(actor: ActorContext, quoted_context: dict | None) -> dict | None:
     if not quoted_context:
         return None
