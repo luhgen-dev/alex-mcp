@@ -407,7 +407,7 @@ def _resolve_voice_pending_after_success(actor, pending: dict | None,
         return False
     if not _typed_reply_completes_pending_item(typed_text):
         return False
-    if not db.has_completed_mutation(actor.source_message_id):
+    if not db.has_completed_non_pending_mutation(actor.source_message_id):
         return False
     return db.resolve_pending_item(
         pending["item_id"], actor.user_id, actor.source_message_id
@@ -473,6 +473,45 @@ def _private_offer_query(pending: dict) -> str | None:
         return None
     query = str(payload.get("query") or "").strip() if isinstance(payload, dict) else ""
     return query or None
+
+
+def _pending_item_recent(pending: dict, max_age_seconds: int) -> bool:
+    raw = str(pending.get("created_at_utc") or "").strip()
+    if not raw:
+        return False
+    try:
+        created = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+        return (
+            runtime_clock.now_utc() - created.astimezone(timezone.utc)
+            <= timedelta(seconds=max_age_seconds)
+        )
+    except Exception:
+        return False
+
+
+def _private_offer_is_current_reference(actor, pending: dict,
+                                        quoted_context: dict | None) -> bool:
+    """A bare Yes belongs only to the offer it visibly follows.
+
+    An explicit quote may select that offer directly. Otherwise the offer must
+    still be Alex's newest outbound in the conversation. This prevents an older
+    private-search offer from stealing a Yes meant for a later prompt.
+    """
+    if not _pending_item_recent(pending, 600):
+        return False
+    item_id = str(pending.get("item_id") or "")
+    if (
+        quoted_context
+        and quoted_context.get("context_kind") == "PENDING_ITEM"
+        and str(quoted_context.get("context_id") or "") == item_id
+    ):
+        return True
+    latest = db.resolve_recent_outbound_context(
+        actor.conversation_id, "PENDING_ITEM", max_age_seconds=600
+    )
+    return bool(latest and str(latest.get("context_id") or "") == item_id)
 
 
 def _fulfill_private_search_offer(actor, pending: dict) -> dict:
@@ -604,26 +643,65 @@ def _reply_is_reminder_clarification(reply: str) -> bool:
 
 
 def _looks_like_reminder_clarification_reply(text: str) -> bool:
+    """Accept a concise date/time answer, not an unrelated dated sentence."""
     value = str(text or "").strip()
-    if not value or len(value) > 120:
+    if not value or len(value) > 120 or "?" in value:
         return False
-    return bool(re.search(
+    if re.search(
+        r"(?i)\b(?:spent|paid|bought|expense|expenses|agenda|appointment|diary|"
+        r"meeting|event|add|log|record|show|find|search|what|when|where|how|why)\b"
+        r"|\b(?:rm|myr|sgd)\s*\d",
+        value,
+    ):
+        return False
+
+    temporal = (
         r"(?i)\b(?:mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|"
         r"fri(?:day)?|sat(?:urday)?|sun(?:day)?|today|tomorrow|tonight|"
-        r"morning|afternoon|evening|noon|midnight|"
-        r"\d{1,2}(?::\d{2})?\s*(?:am|pm)|"
-        r"\d{1,2}(?:st|nd|rd|th)?\s+(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|"
+        r"morning|afternoon|evening|noon|midnight)\b"
+        r"|\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b"
+        r"|\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|"
         r"apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|"
-        r"oct(?:ober)?|nov(?:ember)?|dec(?:ember)?))\b",
-        value,
-    ))
+        r"oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b"
+        r"|\b\d{1,2}(?::\d{2})?\b"
+    )
+    if not re.search(temporal, value):
+        return False
+    remainder = re.sub(temporal, " ", value)
+    remainder = re.sub(
+        r"(?i)\b(?:at|on|around|about|please|this|next|the|in|by|for)\b",
+        " ",
+        remainder,
+    )
+    remainder = re.sub(r"[\s,./()\-]+", "", remainder)
+    return not remainder
+
+
+def _pending_is_immediate_previous_turn(actor, pending: dict) -> bool:
+    """Only the very next unquoted user turn may inherit a reminder draft."""
+    conn = db.connect()
+    try:
+        row = conn.execute(
+            """SELECT message_id FROM inbound_messages
+               WHERE conversation_id=? AND sender_phone=? AND message_id<>?
+               ORDER BY received_at_utc DESC,rowid DESC LIMIT 1""",
+            (actor.conversation_id, actor.phone, actor.source_message_id),
+        ).fetchone()
+        return bool(
+            row
+            and str(row["message_id"]) == str(pending.get("source_message_id") or "")
+        )
+    finally:
+        conn.close()
 
 
 def _recover_reminder_draft_context(actor, text: str) -> dict | None:
-    if not _looks_like_reminder_clarification_reply(text):
-        return None
     pending = db.latest_pending_item(actor, "REMINDER_DRAFT", max_age_seconds=1800)
     if not pending:
+        return None
+    if not _pending_is_immediate_previous_turn(actor, pending):
+        return None
+    if not _looks_like_reminder_clarification_reply(text):
         return None
     original = str(pending.get("original_text") or "").strip()
     if not original:
@@ -937,13 +1015,25 @@ def process(payload: dict) -> dict:
                 error_report=True,
             )
 
-        private_offer = db.latest_pending_item(
+        quoted_private_offer = (
+            pending_item
+            if pending_item
+            and str(pending_item.get("kind") or "").upper() == "PRIVATE_SEARCH_OFFER"
+            else None
+        )
+        private_offer = quoted_private_offer or db.latest_pending_item(
             actor, "PRIVATE_SEARCH_OFFER", max_age_seconds=600
         )
         answer = _yes_no_answer(turn["trusted_text"])
-        if private_offer and answer == "yes":
+        offer_is_current = bool(
+            private_offer
+            and _private_offer_is_current_reference(
+                actor, private_offer, quoted_context
+            )
+        )
+        if private_offer and answer == "yes" and offer_is_current:
             return _fulfill_private_search_offer(actor, private_offer)
-        if private_offer and answer == "no":
+        if private_offer and answer == "no" and offer_is_current:
             db.cancel_pending_item(
                 private_offer["item_id"], actor.user_id, actor.source_message_id
             )
