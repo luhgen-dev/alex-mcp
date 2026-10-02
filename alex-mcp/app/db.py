@@ -884,11 +884,12 @@ def _store_pending_selection(conn, actor: ActorContext, item_ids: list[str]) -> 
     expires = (runtime_clock.now_utc() + timedelta(minutes=10)).isoformat()
     conn.execute(
         """INSERT INTO pending_selection_sets(
-               selection_id,user_id,conversation_id,items_json,expires_at_utc
-           ) VALUES(?,?,?,?,?)""",
+               selection_id,user_id,conversation_id,items_json,
+               created_at_utc,expires_at_utc
+           ) VALUES(?,?,?,?,?,?)""",
         (
             str(uuid.uuid4()), actor.user_id, actor.conversation_id,
-            json.dumps(item_ids), expires,
+            json.dumps(item_ids), utc_now(), expires,
         ),
     )
 
