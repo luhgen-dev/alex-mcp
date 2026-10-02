@@ -657,7 +657,7 @@ def resolve_cash_pool_reference(pool_id, pool_name, sender_phone,
             if len(rows) == 1:
                 return rows[0]["pool_id"]
             if not rows:
-                raise ValueError("No authorized stash or cash pool is configured.")
+                raise ValueError("No matching stash or cash pool was found in the records available to this request.")
             names = ", ".join(row["name"] for row in rows[:8])
             raise ValueError("More than one stash/cash pool exists; ask which one: " + names)
         exact = [
@@ -671,7 +671,7 @@ def resolve_cash_pool_reference(pool_id, pool_name, sender_phone,
         if len(candidates) == 1:
             return candidates[0]["pool_id"]
         if not candidates:
-            raise ValueError(f"No authorized cash pool uniquely matches {pool_name!r}.")
+            raise ValueError(f"No matching cash pool was found for {pool_name!r} in the records available to this request.")
         names = ", ".join(row["name"] for row in candidates[:5])
         raise ValueError("Cash-pool name is ambiguous; ask which one: " + names)
     finally:
@@ -1134,7 +1134,7 @@ def _get_authorized_pool(conn, pool_id, sender_phone, conversation_type):
         "SELECT * FROM alex_phase2_cash_pools WHERE pool_id=?", (pool_id,)
     ).fetchone()
     if not row:
-        raise ValueError("Cash pool not found in the current scope")
+        raise ValueError("Cash pool not found in the records available to the current scope")
     if row["space_id"] == "FAMILY_SHARED":
         if not shared:
             raise PermissionError("Cash pool is not authorized")
@@ -1152,9 +1152,9 @@ def _get_authorized_pool(conn, pool_id, sender_phone, conversation_type):
     except RuntimeError:
         scope = None
     if scope == "family" and row["space_id"] != "FAMILY_SHARED":
-        raise ValueError("Cash pool not found in the current scope")
+        raise ValueError("Cash pool not found in the records available to the current scope")
     if scope == "private" and row["space_id"] != private_space:
-        raise ValueError("Cash pool not found in the current scope")
+        raise ValueError("Cash pool not found in the records available to the current scope")
     return row
 
 
