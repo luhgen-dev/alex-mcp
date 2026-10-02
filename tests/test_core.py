@@ -4235,6 +4235,175 @@ class AlexCoreTests(unittest.TestCase):
             conn.close()
         self.assertEqual(state, "RESOLVED")
 
+    def test_v057_typed_voice_clarification_resolves_only_after_verified_action(self):
+        self.claim("v057-voice-auto-src", "+60111111111", "")
+        media_ids, _, _ = media.process_payload_media({
+            "message_id": "v057-voice-auto-src",
+            "audio_data": base64.b64encode(b"voice-auto-v057").decode("ascii"),
+            "audio_mime_type": "audio/ogg",
+        })
+        source_actor = self.actor(
+            "v057-voice-auto-src", "+60111111111", media_ids
+        )
+        pending = db.create_pending_item(
+            source_actor, "VOICE", media_id=media_ids[0],
+            note="deferred voice",
+        )
+        oid = db.queue_outbound(
+            source_actor.conversation_id,
+            "TEXT",
+            text="I saved this voice note for review.",
+            source_message_id="v057-voice-auto-src",
+            context_kind="PENDING_ITEM",
+            context_id=pending["item_id"],
+        )
+        conn = db.connect()
+        try:
+            conn.execute(
+                """UPDATE outbound_messages
+                   SET provider_message_id='wa-v057-voice-auto',
+                       delivery_status='SENT',delivered_at_utc=CURRENT_TIMESTAMP
+                   WHERE outbound_id=?""",
+                (oid,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        async def successful_typed_action(actor, *args, **kwargs):
+            action_key = "v057-voice-auto-action"
+            conn = db.connect()
+            try:
+                conn.execute(
+                    """INSERT INTO tool_execution_claims(
+                           action_key,tool_name,state,result_json,attachments_json,
+                           completed_at_utc
+                       ) VALUES(?,?,'COMPLETED','{}','[]',CURRENT_TIMESTAMP)""",
+                    (action_key, "save_item"),
+                )
+                conn.execute(
+                    """INSERT INTO tool_audit(
+                           audit_id,action_key,source_message_id,user_id,tool_name,
+                           arguments_json,result_json,status,latency_ms
+                       ) VALUES(?,?,?,?,?,'{}','{}','OK',0)""",
+                    (
+                        "v057-voice-auto-audit", action_key,
+                        actor.source_message_id, actor.user_id, "save_item",
+                    ),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+            return "Saved that.", []
+
+        payload = {
+            "message_id": "v057-voice-auto-clarify",
+            "provider": "WHATSAPP",
+            "conversation_id": source_actor.conversation_id,
+            "conversation_type": "DIRECT_DM",
+            "sender_phone": "+60111111111",
+            "text": "Save this as a note: the spare key is in the drawer.",
+            "quoted_message_id": "wa-v057-voice-auto",
+        }
+        with patch.object(brain, "respond", new=successful_typed_action):
+            result = ingress.process(payload)
+        self.assertTrue(result["ok"])
+        conn = db.connect()
+        try:
+            state = conn.execute(
+                "SELECT status FROM pending_items WHERE item_id=?",
+                (pending["item_id"],),
+            ).fetchone()["status"]
+        finally:
+            conn.close()
+        self.assertEqual(state, "RESOLVED")
+
+        # A second typed clarification with no verified mutation must stay
+        # pending even when the model returns a fluent answer.
+        self.claim("v057-voice-fail-src", "+60111111111", "")
+        failed_pending = db.create_pending_item(
+            self.actor("v057-voice-fail-src", "+60111111111"),
+            "VOICE", note="deferred voice",
+        )
+        failed_oid = db.queue_outbound(
+            source_actor.conversation_id,
+            "TEXT",
+            text="I saved this voice note for review.",
+            source_message_id="v057-voice-fail-src",
+            context_kind="PENDING_ITEM",
+            context_id=failed_pending["item_id"],
+        )
+        conn = db.connect()
+        try:
+            conn.execute(
+                """UPDATE outbound_messages
+                   SET provider_message_id='wa-v057-voice-fail',
+                       delivery_status='SENT',delivered_at_utc=CURRENT_TIMESTAMP
+                   WHERE outbound_id=?""",
+                (failed_oid,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        async def no_action(*args, **kwargs):
+            return "I couldn't complete that request.", []
+
+        failed_payload = {
+            "message_id": "v057-voice-fail-clarify",
+            "provider": "WHATSAPP",
+            "conversation_id": source_actor.conversation_id,
+            "conversation_type": "DIRECT_DM",
+            "sender_phone": "+60111111111",
+            "text": "Save this as a note.",
+            "quoted_message_id": "wa-v057-voice-fail",
+        }
+        with patch.object(brain, "respond", new=no_action):
+            result = ingress.process(failed_payload)
+        self.assertTrue(result["ok"])
+        conn = db.connect()
+        try:
+            state = conn.execute(
+                "SELECT status FROM pending_items WHERE item_id=?",
+                (failed_pending["item_id"],),
+            ).fetchone()["status"]
+        finally:
+            conn.close()
+        self.assertEqual(state, "PENDING")
+
+    def test_v057_cancel_pending_voice_preserves_original_provenance(self):
+        self.claim("v057-voice-cancel-src", "+60111111111", "")
+        media_ids, _, _ = media.process_payload_media({
+            "message_id": "v057-voice-cancel-src",
+            "audio_data": base64.b64encode(b"voice-cancel-v057").decode("ascii"),
+            "audio_mime_type": "audio/ogg",
+        })
+        actor = self.actor(
+            "v057-voice-cancel-src", "+60111111111", media_ids
+        )
+        pending = db.create_pending_item(
+            actor, "VOICE", media_id=media_ids[0], note="deferred voice"
+        )
+        listed = mcp_server.list_pending_items(actor, "VOICE")
+        choice = next(
+            item["choice"] for item in listed["items"]
+            if item["kind"] == "VOICE"
+        )
+        cancelled = mcp_server.cancel_pending_item(actor, choice=choice)
+        self.assertEqual(cancelled["status"], "cancelled")
+        conn = db.connect()
+        try:
+            state = conn.execute(
+                "SELECT status FROM pending_items WHERE item_id=?",
+                (pending["item_id"],),
+            ).fetchone()["status"]
+        finally:
+            conn.close()
+        self.assertEqual(state, "CANCELLED")
+        original = services.get_media_original(actor, media_ids[0])
+        self.assertEqual(original["media_type"], "AUDIO")
+        self.assertTrue(original["_attachments"])
+
     def test_v057_post_due_reaction_seen_vs_complete(self):
         group_id = "120363575757@g.us"
         with open(os.path.join(TEST_DIR, "family_group.json"), "w", encoding="utf-8") as handle:
