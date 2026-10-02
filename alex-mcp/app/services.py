@@ -2401,6 +2401,9 @@ def claim_reminder_from_reaction(
         if reminder["status"] in {"COMP", "CANC"}:
             conn.rollback()
             return {"status": "closed", "reminder_id": reminder_id}
+        if actor.conversation_type != "GROUP" and reminder["status"] != "DUE":
+            conn.rollback()
+            return {"status": "ignored_direct_reminder_reaction"}
 
         # A claimed reminder delivered in DM belongs to its claimant. Group
         # resurfacing remains visible to both household members, and the
