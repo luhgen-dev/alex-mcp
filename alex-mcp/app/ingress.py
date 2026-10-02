@@ -820,6 +820,7 @@ def process(payload: dict) -> dict:
             private_selection = _selection_context_for_offer(
                 dm_actor, private_reply, private_attachments
             )
+            private_report_context = _report_context_for_turn(dm_actor)
             if not private_attachments:
                 db.queue_outbound(
                     dm_conversation, "TEXT", text=private_reply,
@@ -844,8 +845,8 @@ def process(payload: dict) -> dict:
                         local_path=path,
                         mime_type=item.get("mime_type"),
                         source_message_id=actor.source_message_id,
-                        context_kind="REPORT" if first_private_attachment and report_context else None,
-                        context_id=report_context if first_private_attachment and report_context else None,
+                        context_kind="REPORT" if first_private_attachment and private_report_context else None,
+                        context_id=private_report_context if first_private_attachment and private_report_context else None,
                     )
                     first_private_attachment = False
             group_reply = (
