@@ -3172,18 +3172,27 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
             if name == "report_export" and quoted_context:
                 quoted_report = quoted_context.get("report_context")
                 if isinstance(quoted_report, dict):
+                    # A direct WhatsApp quote is a stronger reference than
+                    # model memory or the mutable active-report slot. Freeze the
+                    # quoted dataset and let the model choose only the output
+                    # file format.
                     quoted_spec = quoted_report.get("spec")
                     quoted_spec = quoted_spec if isinstance(quoted_spec, dict) else {}
-                    if quoted_report.get("period") is not None:
-                        args.setdefault("period", quoted_report.get("period"))
-                    for key in ("category", "search", "scope"):
-                        if quoted_spec.get(key) is not None:
-                            args.setdefault(key, quoted_spec.get(key))
+                    args["use_active_context"] = False
+                    args["period"] = quoted_report.get("period")
+                    for key in (
+                        "category", "search", "scope", "start_date", "end_date",
+                        "currency", "source",
+                    ):
+                        args[key] = quoted_spec.get(key)
                     quoted_kind = str(quoted_report.get("kind") or "")
                     if quoted_kind in {"finance_query", "monthly_finance"}:
-                        args.setdefault("report_type", "finance")
+                        args["report_type"] = "finance"
                     elif quoted_kind == "snapshot":
-                        args.setdefault("report_type", "snapshot")
+                        args["report_type"] = "snapshot"
+                    # A frozen quote represents exactly the report the user
+                    # replied to; never widen it into an unfiltered report.
+                    args["full_report"] = False
 
             signature = name + "|" + json.dumps(args, sort_keys=True, ensure_ascii=False)
             occurrence[signature] = occurrence.get(signature, 0) + 1
