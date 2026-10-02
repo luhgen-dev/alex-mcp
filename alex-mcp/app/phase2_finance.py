@@ -690,15 +690,9 @@ def resolve_cash_pool_reference(pool_id, pool_name, sender_phone,
             return _get_authorized_pool(
                 conn, pool_id, sender_phone, conversation_type
             )["pool_id"]
-        user_id, private_space, shared = _context(
-            conn, sender_phone, conversation_type
+        _user_id, _private_space, clause, args = _authorized_space_clause(
+            conn, sender_phone, conversation_type, "all"
         )
-        if conversation_type == "GROUP":
-            clause, args = "space_id='FAMILY_SHARED'", []
-        elif shared:
-            clause, args = "(space_id=? OR space_id='FAMILY_SHARED')", [private_space]
-        else:
-            clause, args = "space_id=?", [private_space]
         rows = conn.execute(
             "SELECT * FROM alex_phase2_cash_pools WHERE status='ACTIVE' AND "
             + clause + " ORDER BY name",
@@ -1186,7 +1180,7 @@ def _get_authorized_pool(conn, pool_id, sender_phone, conversation_type):
         "SELECT * FROM alex_phase2_cash_pools WHERE pool_id=?", (pool_id,)
     ).fetchone()
     if not row:
-        raise ValueError("Cash pool not found")
+        raise ValueError("Cash pool not found in the current scope")
     if row["space_id"] == "FAMILY_SHARED":
         if not shared:
             raise PermissionError("Cash pool is not authorized")
@@ -1194,6 +1188,19 @@ def _get_authorized_pool(conn, pool_id, sender_phone, conversation_type):
         raise PermissionError("Cash pool is not authorized")
     if conversation_type == "GROUP" and row["space_id"] != "FAMILY_SHARED":
         raise PermissionError("Private cash pool cannot be used in group")
+
+    # A live MCP turn is also constrained by the current trusted read/privacy
+    # scope. This prevents a remembered/private pool id from bypassing the
+    # global Family-by-default rule. Direct backend/admin calls with no actor
+    # retain the legacy owner authorization above.
+    try:
+        scope = scope_policy.effective_read_scope(current_actor(), "all")
+    except RuntimeError:
+        scope = None
+    if scope == "family" and row["space_id"] != "FAMILY_SHARED":
+        raise ValueError("Cash pool not found in the current scope")
+    if scope == "private" and row["space_id"] != private_space:
+        raise ValueError("Cash pool not found in the current scope")
     return row
 
 
