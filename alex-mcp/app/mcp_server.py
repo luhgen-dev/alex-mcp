@@ -104,8 +104,11 @@ def _finance_followup_inherits_active_report(actor: Actor) -> bool:
         return False
     explicit_time = re.search(
         r"\b(?:today|yesterday|tomorrow|tonight)\b"
-        r"|\b(?:this|last|next|previous)\s+(?:week|weekend|month|quarter|year)\b"
-        r"|\b(?:last|past|previous|next)\s+\d+\s+(?:days?|weeks?|months?|quarters?|years?)\b"
+        r"|\b(?:this|last|next|previous|past)\s+(?:week|weekend|fortnight|month|quarter|year)s?\b"
+        r"|\b(?:last|past|previous|next)\s+"
+        r"(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|"
+        r"few|several|couple(?:\s+of)?)\s+"
+        r"(?:days?|weeks?|fortnights?|months?|quarters?|years?)\b"
         r"|\b(?:week|weekend|quarter|year)\b"
         r"|\b(?:mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|"
         r"fri(?:day)?|sat(?:urday)?|sun(?:day)?)\b"
