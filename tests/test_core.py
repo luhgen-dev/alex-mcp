@@ -4469,7 +4469,7 @@ class AlexCoreTests(unittest.TestCase):
         pending, reply = ingress._maybe_create_private_search_offer(
             source_actor,
             "Show me my Philips asset",
-            "I couldn't find that asset in the records available to this request.",
+            "I couldn't locate a specific Philips Air Fryer in the records available to this request.",
             [],
         )
         self.assertIsNotNone(pending)
@@ -4547,6 +4547,114 @@ class AlexCoreTests(unittest.TestCase):
             found["matches"][0]["saved_on"],
             r"^\d{1,2} [A-Za-z]+ 2026, \d{1,2}:\d{2} (?:AM|PM)$",
         )
+
+
+    def test_v057_frozen_filtered_export_stays_inside_quoted_month(self):
+        self.claim("v057-exp-sep", "+60111111111", "spent RM10 on transport")
+        sep = with_action_key(
+            replace(
+                self.actor("v057-exp-sep", "+60111111111"),
+                trusted_text="spent RM10 on transport",
+                read_scope="family",
+            ),
+            "v057-exp-sep-action",
+        )
+        services.log_expense(
+            sep, "September transport", 10.0, "transport",
+            currency="MYR", event_date_local="2026-09-30T08:00:00+08:00",
+        )
+        self.claim("v057-exp-oct", "+60111111111", "spent RM20 on transport")
+        oct_actor = with_action_key(
+            replace(
+                self.actor("v057-exp-oct", "+60111111111"),
+                trusted_text="spent RM20 on transport",
+                read_scope="family",
+            ),
+            "v057-exp-oct-action",
+        )
+        services.log_expense(
+            oct_actor, "October transport", 20.0, "transport",
+            currency="MYR", event_date_local="2026-10-01T08:00:00+08:00",
+        )
+        self.claim("v057-exp-export", "+60111111111", "send this as csv")
+        exporter = replace(
+            self.actor("v057-exp-export", "+60111111111"),
+            trusted_text="send this as csv",
+            read_scope="family",
+        )
+        result = mcp_server.report_export(
+            "csv", exporter,
+            period="2026-09", report_type="finance",
+            category="transport", scope="family",
+            use_active_context=False,
+        )
+        self.assertEqual(result["record_count"], 1)
+        payload = open(
+            result["_attachments"][0]["path"], encoding="utf-8"
+        ).read()
+        self.assertIn("September transport", payload)
+        self.assertNotIn("October transport", payload)
+
+    def test_v057_initiator_can_privately_nudge_claimant_without_reopening(self):
+        group_id = "120363585858@g.us"
+        with open(os.path.join(TEST_DIR, "family_group.json"), "w", encoding="utf-8") as handle:
+            handle.write('{"group_jid":"%s"}' % group_id)
+        creator = self.group_actor("v057-nudge-create", "+60111111111")
+        creator = with_action_key(
+            replace(
+                creator,
+                trusted_text="remind the family on Saturday at 10 AM to collect parcel",
+            ),
+            "v057-nudge-create-action",
+        )
+        reminder = services.create_reminder(
+            creator, "collect parcel", "2026-10-03T10:00:00+08:00",
+            destination="group", claimable=True,
+        )
+        conn = db.connect()
+        try:
+            conn.execute(
+                """UPDATE reminders
+                   SET status='DUE',claimed_by_user_id='USR_WIFE',
+                       claimed_at_utc=CURRENT_TIMESTAMP
+                   WHERE reminder_id=?""",
+                (reminder["reminder_id"],),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        self.claim("v057-nudge-now", "+60111111111", "remind her again")
+        initiator = replace(
+            self.actor("v057-nudge-now", "+60111111111"),
+            trusted_text="remind her again",
+            read_scope="family",
+        )
+        result = services.nudge_reminder_claimant(
+            initiator, reminder["reminder_id"]
+        )
+        self.assertEqual(result["status"], "nudged")
+        conn = db.connect()
+        try:
+            row = conn.execute(
+                """SELECT status,claimed_by_user_id,nudged_at_utc
+                   FROM reminders WHERE reminder_id=?""",
+                (reminder["reminder_id"],),
+            ).fetchone()
+            outbound = conn.execute(
+                """SELECT conversation_id,context_kind,text_body
+                   FROM outbound_messages
+                   WHERE context_id=? AND context_kind='REMINDER_CLAIMANT_FOLLOWUP'
+                   ORDER BY rowid DESC LIMIT 1""",
+                (reminder["reminder_id"],),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(row["status"], "DUE")
+        self.assertEqual(row["claimed_by_user_id"], "USR_WIFE")
+        self.assertIsNotNone(row["nudged_at_utc"])
+        self.assertEqual(outbound["conversation_id"], "60222222222@s.whatsapp.net")
+        self.assertIn("still unresolved", outbound["text_body"])
 
 
 if __name__ == "__main__":
