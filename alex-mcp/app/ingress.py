@@ -445,9 +445,42 @@ def _private_search_offer_candidate(actor, query: str, reply: str,
     ))
 
 
+def _turn_structured_scope_miss(actor) -> dict | None:
+    """Read a privacy-safe scoped-miss result from this exact tool turn."""
+    conn = db.connect()
+    try:
+        rows = conn.execute(
+            """SELECT result_json FROM tool_audit
+               WHERE source_message_id=? AND status='OK'
+               ORDER BY created_at_utc DESC,rowid DESC""",
+            (actor.source_message_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+    for row in rows:
+        try:
+            payload = json.loads(row["result_json"] or "{}")
+        except (TypeError, json.JSONDecodeError):
+            continue
+        if (
+            isinstance(payload, dict)
+            and payload.get("status") == "not_found_in_current_scope"
+            and payload.get("private_search_available") is True
+        ):
+            return payload
+    return None
+
+
 def _maybe_create_private_search_offer(actor, query: str, reply: str,
                                        attachments: list[dict]) -> tuple[dict | None, str]:
-    if not _private_search_offer_candidate(actor, query, reply, attachments):
+    structured_miss = (
+        _turn_structured_scope_miss(actor)
+        if not attachments and getattr(actor, "read_scope", None) == "family"
+        else None
+    )
+    if not structured_miss and not _private_search_offer_candidate(
+        actor, query, reply, attachments
+    ):
         return None, reply
     pending = db.create_pending_item(
         actor,
@@ -457,12 +490,18 @@ def _maybe_create_private_search_offer(actor, query: str, reply: str,
             ensure_ascii=False, separators=(",", ":"),
         )[:4000],
     )
-    value = str(reply or "").rstrip()
-    if not re.search(r"(?i)\bcheck\b.{0,35}\bprivate\b", value):
-        value += (
-            "\n\nI only checked your shared records. "
+    if structured_miss:
+        value = (
+            "I couldn't find that in your shared records.\n\n"
             "I can also check your private records if you want."
         )
+    else:
+        value = str(reply or "").rstrip()
+        if not re.search(r"(?i)\bcheck\b.{0,35}\bprivate\b", value):
+            value += (
+                "\n\nI only checked your shared records. "
+                "I can also check your private records if you want."
+            )
     return pending, value
 
 
@@ -764,6 +803,81 @@ def _selection_context_parts(context: dict | None) -> tuple[str, str] | None:
     return kind, target_id
 
 
+def _selection_set_context_parts(context: dict | None) -> tuple[str, str] | None:
+    if not context or context.get("context_kind") != "SELECTION_SET":
+        return None
+    value = str(context.get("context_id") or "")
+    if ":" not in value:
+        return None
+    kind, set_id = value.split(":", 1)
+    if not kind or not set_id:
+        return None
+    return kind, set_id
+
+
+def _numbered_selection_request(text: str) -> tuple[int, bool] | None:
+    """Recognize read-only numbered retrieval; resolve/cancel are excluded."""
+    value = str(text or "").strip()
+    bare = re.fullmatch(r"(\d+)", value)
+    if bare:
+        return int(bare.group(1)), False
+    match = re.fullmatch(
+        r"(?is)\s*(?:play|listen(?:\s+to)?|hear|show|open|view|send|get)\s+"
+        r"(?:(?:unresolved|pending)\s+)?"
+        r"(?:(?:voice|audio)\s*note\s*)?"
+        r"(?:number\s+|no\.?\s*|#\s*)?(\d+)\s*[.!]?\s*",
+        value,
+    )
+    return (int(match.group(1)), True) if match else None
+
+
+def _deliver_numbered_selection(actor, choice: int,
+                                context: dict | None = None) -> dict:
+    parts = _selection_set_context_parts(context)
+    if parts:
+        result = services.resolve_numbered_choice(
+            actor, choice, selection_kind=parts[0], selection_id=parts[1]
+        )
+        set_context = {"kind": parts[0], "id": parts[1]}
+    else:
+        result = services.resolve_numbered_choice(actor, choice)
+        set_context = services.latest_selection_set_context(actor)
+
+    attachments = list(result.get("_attachments") or [])
+    reply = (
+        "Here it is."
+        if attachments
+        else str(result.get("content") or result.get("title") or result.get("note") or "Here it is.")
+    )
+    context_kind = "SELECTION_SET" if set_context else None
+    context_id = (
+        f"{set_context['kind']}:{set_context['id']}"
+        if set_context else None
+    )
+    db.queue_outbound(
+        actor.conversation_id, "TEXT", text=reply,
+        source_message_id=actor.source_message_id,
+        context_kind=context_kind, context_id=context_id,
+    )
+    sent_paths = set()
+    for item in attachments:
+        local_path = item.get("path")
+        if not local_path or local_path in sent_paths:
+            continue
+        sent_paths.add(local_path)
+        kind = item.get("kind", "DOCUMENT")
+        db.queue_outbound(
+            actor.conversation_id,
+            "IMAGE" if kind == "IMAGE" else "DOCUMENT",
+            local_path=local_path,
+            mime_type=item.get("mime_type"),
+            source_message_id=actor.source_message_id,
+            context_kind=context_kind, context_id=context_id,
+        )
+    db.finish_inbound(actor.source_message_id, reply)
+    return {"ok": True, "numbered_selection": True}
+
+
 def _deliver_selection_followup(actor, context: dict) -> dict:
     parts = _selection_context_parts(context)
     if not parts:
@@ -1038,6 +1152,20 @@ def process(payload: dict) -> dict:
                 private_offer["item_id"], actor.user_id, actor.source_message_id
             )
 
+        numbered_request = _numbered_selection_request(turn["trusted_text"])
+        if numbered_request:
+            choice, has_retrieval_verb = numbered_request
+            quoted_set = (
+                quoted_context
+                if _selection_set_context_parts(quoted_context)
+                else None
+            )
+            # Retrieval verbs are unambiguous read-only selection commands.
+            # Bare numbers stay available to diary-conflict resolution unless
+            # the user explicitly quoted a numbered-list response.
+            if has_retrieval_verb or quoted_set:
+                return _deliver_numbered_selection(actor, choice, quoted_set)
+
         if _is_selection_followup(turn["trusted_text"]):
             selection_context = quoted_context
             if not _selection_context_parts(selection_context):
@@ -1131,8 +1259,12 @@ def process(payload: dict) -> dict:
         private_search_offer, reply = _maybe_create_private_search_offer(
             actor, turn["trusted_text"], reply, attachments
         )
-        selection_context = _selection_context_for_offer(
-            actor, reply, attachments
+        selection_set_context = services.latest_selection_set_context(
+            actor, created_after_utc=actor.received_at_utc
+        )
+        selection_context = (
+            None if selection_set_context
+            else _selection_context_for_offer(actor, reply, attachments)
         )
         reminder_setup_id = _created_claimable_reminder_id(actor)
         reminder_draft = _maybe_create_reminder_draft(actor, reply)
@@ -1150,6 +1282,7 @@ def process(payload: dict) -> dict:
             context_kind = (
                 "PENDING_ITEM" if private_search_offer
                 else "PENDING_ITEM" if reminder_draft
+                else "SELECTION_SET" if selection_set_context
                 else "SELECTION" if selection_context
                 else "REMINDER_SETUP" if reminder_setup_id
                 else "REPORT" if report_context
@@ -1158,6 +1291,8 @@ def process(payload: dict) -> dict:
             context_id = (
                 private_search_offer["item_id"] if private_search_offer
                 else reminder_draft["item_id"] if reminder_draft
+                else f"{selection_set_context['kind']}:{selection_set_context['id']}"
+                if selection_set_context
                 else f"{selection_context['kind']}:{selection_context['id']}"
                 if selection_context
                 else reminder_setup_id if reminder_setup_id
