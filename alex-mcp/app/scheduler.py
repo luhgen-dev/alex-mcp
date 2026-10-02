@@ -26,6 +26,14 @@ def _owner_phone(conn, user_id: str) -> str | None:
     return row["phone_number"] if row else None
 
 
+def _user_display_name(conn, user_id: str) -> str:
+    row = conn.execute(
+        "SELECT display_name FROM users WHERE user_id=?",
+        (user_id,),
+    ).fetchone()
+    return str(row["display_name"] or user_id) if row else str(user_id)
+
+
 def _presence_state(phone: str) -> str:
     try:
         mapping = phase2_presence.owner_presence_mapping(phone, "DIRECT_DM")
@@ -274,7 +282,9 @@ def fire_due():
             if not initiator_phone:
                 continue
             initiator_dm = initiator_phone.replace("+", "") + "@s.whatsapp.net"
-            claimant_name = str(row["claimed_by_user_id"])
+            claimant_name = _user_display_name(
+                conn, str(row["claimed_by_user_id"])
+            )
             escalation_text = (
                 f"↪️ Still unresolved: {row['task_text']}. "
                 f"It is still assigned to {claimant_name}. "
