@@ -231,8 +231,76 @@ def get_media_original(media_id: str, actor: Actor) -> dict:
 
 @alex_tool()
 def list_pending_items(actor: Actor, kind: str | None = None, limit: int = 20) -> dict:
-    """List this owner's unresolved deferred items. Use kind=VOICE for unresolved voice notes."""
-    return {"items": db.list_pending_items(actor, kind, limit)}
+    """List this owner's unresolved deferred items. Use kind=VOICE for unresolved voice notes. Results are numbered and use local time; internal IDs are intentionally hidden."""
+    rows = db.list_pending_items(actor, kind, limit)
+    items = [
+        {
+            "choice": row.get("choice"),
+            "kind": row.get("kind"),
+            "received": row.get("display_time"),
+            "media_type": row.get("media_type"),
+        }
+        for row in rows
+    ]
+    return {
+        "items": items,
+        "presentation_rule": (
+            "Present the numbered items with their local received date/time. "
+            "Never expose pending-item IDs, media IDs, source IDs or UTC."
+        ),
+    }
+
+
+@alex_tool()
+def resolve_pending_item(actor: Actor, choice: int | None = None,
+                         item_id: str | None = None) -> dict:
+    """Explicitly mark one owner's pending item resolved. Prefer the numbered choice from the latest pending list; item_id is used only for trusted quoted context."""
+    if item_id:
+        pending = db.pending_item_for_reference(
+            actor, {"context_kind": "PENDING_ITEM", "context_id": item_id}
+        )
+    elif choice is not None:
+        pending = db.pending_item_by_choice(actor, choice)
+    else:
+        raise ValueError("provide a pending-item choice or trusted item reference")
+    if not pending:
+        raise ValueError("pending item is no longer unresolved")
+    changed = db.resolve_pending_item(
+        pending["item_id"], actor.user_id, actor.source_message_id
+    )
+    if not changed:
+        raise ValueError("pending item is no longer unresolved")
+    return {
+        "status": "resolved",
+        "choice": choice,
+        "kind": pending.get("kind"),
+    }
+
+
+@alex_tool()
+def cancel_pending_item(actor: Actor, choice: int | None = None,
+                        item_id: str | None = None) -> dict:
+    """Explicitly cancel one owner's pending item without deleting its preserved provenance."""
+    if item_id:
+        pending = db.pending_item_for_reference(
+            actor, {"context_kind": "PENDING_ITEM", "context_id": item_id}
+        )
+    elif choice is not None:
+        pending = db.pending_item_by_choice(actor, choice)
+    else:
+        raise ValueError("provide a pending-item choice or trusted item reference")
+    if not pending:
+        raise ValueError("pending item is no longer unresolved")
+    changed = db.cancel_pending_item(
+        pending["item_id"], actor.user_id, actor.source_message_id
+    )
+    if not changed:
+        raise ValueError("pending item is no longer unresolved")
+    return {
+        "status": "cancelled",
+        "choice": choice,
+        "kind": pending.get("kind"),
+    }
 
 
 @alex_tool()
