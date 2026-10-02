@@ -312,6 +312,7 @@ def sweep():
             if row["context_kind"] in (
                 "REMINDER_INITIAL", "REMINDER_FOLLOWUP",
                 "REMINDER_CLAIMANT_FOLLOWUP", "REMINDER_FAMILY_RESURFACE",
+                "REMINDER_INITIATOR_ESCALATION",
             ) and row["context_id"]:
                 reminder = conn.execute(
                     "SELECT status FROM reminders WHERE reminder_id=?",
@@ -354,6 +355,7 @@ def sweep():
                 if row["context_kind"] in (
                     "REMINDER_INITIAL", "REMINDER_FOLLOWUP",
                     "REMINDER_CLAIMANT_FOLLOWUP", "REMINDER_FAMILY_RESURFACE",
+                    "REMINDER_INITIATOR_ESCALATION",
                 ) and row["context_id"]:
                     if row["context_kind"] == "REMINDER_INITIAL":
                         conn.execute(
@@ -369,6 +371,8 @@ def sweep():
                         event_type = "FOLLOW_UP_DELIVERED"
                     elif row["context_kind"] == "REMINDER_CLAIMANT_FOLLOWUP":
                         event_type = "CLAIMANT_FOLLOW_UP_DELIVERED"
+                    elif row["context_kind"] == "REMINDER_INITIATOR_ESCALATION":
+                        event_type = "FOLLOW_UP_DELIVERED"
                     else:
                         event_type = "FAMILY_RESURFACED_DELIVERED"
                     conn.execute(
