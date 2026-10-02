@@ -103,9 +103,22 @@ def _finance_followup_inherits_active_report(actor: Actor) -> bool:
     if not text:
         return False
     explicit_time = re.search(
-        r"\b(?:today|yesterday|tomorrow|this\s+month|last\s+month|next\s+month|"
-        r"jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|"
-        r"jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b"
+        r"\b(?:today|yesterday|tomorrow|tonight)\b"
+        r"|\b(?:this|last|next|previous)\s+(?:week|weekend|month|quarter|year)\b"
+        r"|\b(?:last|past|previous|next)\s+\d+\s+(?:days?|weeks?|months?|quarters?|years?)\b"
+        r"|\b(?:week|weekend|quarter|year)\b"
+        r"|\b(?:mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|"
+        r"fri(?:day)?|sat(?:urday)?|sun(?:day)?)\b"
+        r"|\b(?:since|between|until)\b"
+        r"|\bfrom\b.{0,80}\bto\b"
+        r"|\b(?:19|20)\d{2}\b"
+        r"|\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|"
+        r"jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|"
+        r"oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b"
+        r"|\b(?:in|during|for)\s+may\b|\bmay\s+(?:\d{4}|\d{1,2}(?:st|nd|rd|th)?)\b"
+        r"|\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|"
+        r"apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|"
+        r"oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b"
         r"|\b\d{4}-\d{2}(?:-\d{2})?\b"
         r"|\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b",
         text,
@@ -162,8 +175,10 @@ def query_finances(actor: Actor, start_date: str | None = None, end_date: str | 
         if scope is None:
             scope = active_spec.get("scope")
 
+    effective_scope = scope_policy.effective_read_scope(actor, scope)
     result = services.query_finances(
-        actor, start_date, end_date, category, search, currency, limit, scope, source
+        actor, start_date, end_date, category, search, currency, limit,
+        effective_scope, source,
     )
     preserve_presented_monthly = bool(
         active
@@ -180,7 +195,7 @@ def query_finances(actor: Actor, start_date: str | None = None, end_date: str | 
             spec={
                 "start_date": start_date, "end_date": end_date, "category": category,
                 "search": search, "currency": currency, "limit": limit,
-                "scope": scope, "source": source,
+                "scope": effective_scope, "source": source,
                 "source_message_id": actor.source_message_id,
             },
         )
@@ -1495,26 +1510,28 @@ def finance_report(actor: Actor, period: str | None = None,
         raise ValueError("period must be YYYY-MM") from exc
     start_date = f"{year:04d}-{month:02d}-01"
     end_date = f"{year:04d}-{month:02d}-{last_day:02d}"
+    effective_scope = scope_policy.effective_read_scope(actor, scope)
     ledger = services.query_finances(
         actor, start_date=start_date, end_date=end_date,
         category=category, search=search,
-        scope=scope, include_all_records=True,
+        scope=effective_scope, include_all_records=True,
     )
     try:
         phase2_finance.ensure_obligation_instances(
-            effective_period, actor.phone, actor.conversation_type, scope
+            effective_period, actor.phone, actor.conversation_type, effective_scope
         )
     except ValueError:
         # Missing recurring-payment configuration must not hide real ledger data.
         pass
     result = phase2_reports.build_monthly_finance_report(
-        ledger, effective_period, actor.phone, actor.conversation_type, scope
+        ledger, effective_period, actor.phone, actor.conversation_type,
+        effective_scope,
     )
     phase2_reports.remember_active_report(
         actor.user_id, actor.conversation_id, "monthly_finance", result,
         period=effective_period,
         spec={
-            "period": effective_period, "scope": scope,
+            "period": effective_period, "scope": effective_scope,
             "category": category, "search": search,
             "source_message_id": actor.source_message_id,
         },
@@ -1577,6 +1594,20 @@ def report_export(format: str, actor: Actor, period: str | None = None,
     if requested_type not in {"", "finance", "snapshot"}:
         raise ValueError("report_type must be finance or snapshot")
 
+    frozen_scope = str(scope or "").strip().casefold()
+    if not use_active_context and frozen_scope in {"family", "private"}:
+        authorized_scope = scope_policy.effective_read_scope(actor, frozen_scope)
+        if authorized_scope != frozen_scope:
+            if frozen_scope == "private":
+                raise PermissionError(
+                    "That quoted report is private. Say private or include an emoji "
+                    "in this export request to authorize the same private dataset."
+                )
+            raise PermissionError(
+                "That quoted report is Family Shared. Remove the private marker "
+                "to export that same shared dataset."
+            )
+
     active = (
         phase2_reports.load_active_report(actor.user_id, actor.conversation_id)
         if (not include_raw_income and use_active_context) else None
@@ -1623,6 +1654,11 @@ def report_export(format: str, actor: Actor, period: str | None = None,
             "period": effective_period,
             "scope": scope or "all",
         }
+        if not use_active_context:
+            # A frozen quoted monthly report may itself be filtered. Keep those
+            # exact filters while preserving the monthly report layout.
+            spec["category"] = category
+            spec["search"] = search
         report_kind = "monthly_finance"
     elif explicit_filter:
         report_kind = "finance_query"
