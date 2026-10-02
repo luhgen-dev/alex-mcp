@@ -340,90 +340,14 @@ def _private_group_handoff_requested(text: str) -> bool:
     ))
     explicit_private = scope_policy.explicit_private(text)
     emoji_private = scope_policy.contains_emoji(text)
-    # Do not infer that ordinary Family Shared finance/receipt reads are
-    # private merely because they concern the authenticated sender. The group
-    # actor is already structurally restricted to FAMILY_SHARED. Automatic DM
-    # handoff is reserved for an explicit privacy signal or inherently private
-    # profile facts that have no meaningful shared interpretation.
-    sensitive_read = readish and bool(re.search(
-        r"\b(?:salary|paycheck|take[- ]home|ot rate|overtime rate|"
-        r"overtime pay|exact ot|bank balance|stash(?:es)?|cash\s+pool|cash\s+pools|"
-        r"my private (?:notes?|memory|data))\b",
-        low,
-    ))
-    return (
-        ((explicit_private or emoji_private) and (readish or writeish))
-        or sensitive_read
-    )
+    # Global scope rule: ordinary group wording remains Family Shared.
+    # No domain (salary, stash, asset, receipt, etc.) may silently infer private
+    # intent. Private DM handoff requires the current command's explicit
+    # private wording or emoji shortcut.
+    return (explicit_private or emoji_private) and (readish or writeish)
 
 def _dm_conversation_for_actor(actor) -> str:
     return actor.phone.replace("+", "") + "@s.whatsapp.net"
-
-
-def _private_group_match_available(actor, text: str) -> bool:
-    """Probe for a private-only receipt/note match without widening group ACLs.
-
-    Family Shared is checked first. Only when the same read has no shared match
-    do we probe the authenticated owner's private space, and only a boolean
-    escapes this helper.
-    """
-    if actor.conversation_type != "GROUP":
-        return False
-    low = str(text or "").casefold()
-    readish = bool(re.search(
-        r"\b(?:show|find|get|send|open|what|which|where|latest|recent|list|"
-        r"check|balance|how much|how many)\b",
-        low,
-    ))
-    if not readish:
-        return False
-    receiptish = bool(re.search(r"\b(?:receipt|receipts|invoice|invoices)\b", low))
-    savedish = bool(re.search(r"\b(?:note|notes|saved|memory|memories|remembered)\b", low))
-
-    # A user may refer to an inherently-private stash only by its configured
-    # name ("how much is in pocket cash?"). Recognize that name without
-    # exposing its balance or existence to the group response.
-    try:
-        conn = db.connect()
-        rows = conn.execute(
-            """SELECT name FROM alex_phase2_cash_pools
-               WHERE owner_user_id=? AND space_id=? AND status='ACTIVE'""",
-            (actor.user_id, actor.private_space),
-        ).fetchall()
-        conn.close()
-        for row in rows:
-            name = str(row["name"] or "").strip().casefold()
-            if name and re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", low):
-                return True
-    except Exception:
-        try:
-            conn.close()
-        except Exception:
-            pass
-
-    if not (receiptish or savedish):
-        return False
-
-    dm_actor = replace(
-        actor,
-        conversation_id=_dm_conversation_for_actor(actor),
-        conversation_type="DIRECT_DM",
-        allowed_spaces=(actor.private_space,),
-    )
-    try:
-        if receiptish:
-            shared = services.find_receipts(actor, query=text, limit=1)
-            if shared.get("matches"):
-                return False
-            private = services.find_receipts(dm_actor, query=text, limit=1)
-            return bool(private.get("matches"))
-        shared = services.search_saved_items(actor, query=text, limit=1)
-        if shared.get("matches"):
-            return False
-        private = services.search_saved_items(dm_actor, query=text, limit=1)
-        return bool(private.get("matches"))
-    except Exception:
-        return False
 
 
 def _error_report_command(text: str) -> tuple[bool, str]:
