@@ -83,7 +83,7 @@ class AlexCoreTests(unittest.TestCase):
                 "alex_phase2_work_events", "alex_phase2_delegations",
                 "alex_profile_config_versions",
                 "tool_audit", "tool_execution_claims", "ai_usage", "diagnostic_runs", "monitor_notifications",
-                "ha_notification_outbox", "outbound_messages", "conversation_turns", "selection_sets", "active_report_contexts",
+                "ha_notification_outbox", "outbound_messages", "conversation_turns", "selection_sets", "pending_selection_sets", "active_report_contexts",
                 "reminder_handoffs", "reminder_claim_events", "reminder_events",
                 "task_reminder_links", "task_events", "tasks",
                 "diary_reminder_links", "plan_diary_links", "schedule_conflicts", "diary_events", "plans",
@@ -2649,18 +2649,19 @@ class AlexCoreTests(unittest.TestCase):
 
         conn = db.connect()
         try:
-            resurfaced = conn.execute(
+            escalated = conn.execute(
                 """SELECT conversation_id,context_kind,text_body
                    FROM outbound_messages
-                   WHERE context_id=? AND context_kind='REMINDER_FAMILY_RESURFACE'
+                   WHERE context_id=? AND context_kind='REMINDER_INITIATOR_ESCALATION'
                    ORDER BY rowid DESC LIMIT 1""",
                 (reminder["reminder_id"],),
             ).fetchone()
         finally:
             conn.close()
-        self.assertIsNotNone(resurfaced)
-        self.assertEqual(resurfaced["conversation_id"], group_id)
-        self.assertIn("Still outstanding", resurfaced["text_body"])
+        self.assertIsNotNone(escalated)
+        self.assertEqual(escalated["conversation_id"], "60111111111@s.whatsapp.net")
+        self.assertIn("Still unresolved", escalated["text_body"])
+        self.assertIn("Wife", escalated["text_body"])
 
     def test_home_state_monitor_is_explicit_one_shot_candidate(self):
         self.claim("home-monitor-create", "+60111111111", "monitor hall ac")
@@ -3716,16 +3717,19 @@ class AlexCoreTests(unittest.TestCase):
                 "context": {"id": "ctx-ha-action-ack"},
             }
         })
-        self.assertEqual(result["state"], "ACK")
+        self.assertEqual(result["state"], "OPEN")
+        self.assertTrue(result["seen"])
         conn = db.connect()
         try:
             row = conn.execute(
-                "SELECT status FROM reminders WHERE reminder_id=?",
+                "SELECT status,seen_at_utc,seen_by_user_id FROM reminders WHERE reminder_id=?",
                 (reminder["reminder_id"],),
             ).fetchone()
         finally:
             conn.close()
-        self.assertEqual(row["status"], "ACK")
+        self.assertEqual(row["status"], "OPEN")
+        self.assertIsNotNone(row["seen_at_utc"])
+        self.assertEqual(row["seen_by_user_id"], "USR_HUSBAND")
 
 
 
