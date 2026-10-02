@@ -4241,7 +4241,10 @@ class AlexCoreTests(unittest.TestCase):
             handle.write('{"group_jid":"%s"}' % group_id)
         creator = self.group_actor("v057-due-create", "+60111111111")
         creator = with_action_key(
-            replace(creator, trusted_text="remind the family about v057 parcel"),
+            replace(
+                creator,
+                trusted_text="remind the family on Saturday at 10 AM about v057 parcel",
+            ),
             "v057-due-create-action",
         )
         reminder = services.create_reminder(
