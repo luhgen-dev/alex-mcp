@@ -483,6 +483,34 @@ def queue_outbound(conversation_id: str, kind: str, text: str | None = None,
         conn.close()
 
 
+def has_completed_mutation(source_message_id: str) -> bool:
+    """Whether this exact inbound turn has a verified completed mutation.
+
+    tool_execution_claims contains only mutating tools. Joining it to the
+    per-turn tool audit lets ingress close a deferred voice item only after the
+    typed clarification actually changed state, never after a read, failed tool,
+    empty model reply, or retrieval request.
+    """
+    message_id = str(source_message_id or "").strip()
+    if not message_id:
+        return False
+    conn = connect()
+    try:
+        row = conn.execute(
+            """SELECT 1
+               FROM tool_audit a
+               JOIN tool_execution_claims c ON c.action_key=a.action_key
+               WHERE a.source_message_id=?
+                 AND a.status='OK'
+                 AND c.state='COMPLETED'
+               LIMIT 1""",
+            (message_id,),
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
 def record_usage(source_message_id: str, provider: str, model: str,
                  input_tokens: int, output_tokens: int, tool_rounds: int,
                  latency_ms: int, estimated_cost_usd: float | None = None,
