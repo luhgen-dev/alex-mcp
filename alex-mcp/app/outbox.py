@@ -143,16 +143,52 @@ def _control_outbound(row, kind: str) -> bool:
     return ok
 
 
+def _expire_transient_pending_items(conn) -> None:
+    """Expire prompt continuations; only VOICE is a durable pending inbox item."""
+    now = _now()
+    expired = conn.execute(
+        """SELECT item_id FROM pending_items
+           WHERE status='PENDING'
+             AND (
+               (kind='PRIVATE_SEARCH_OFFER'
+                AND datetime(created_at_utc)<=datetime('now','-10 minutes'))
+               OR
+               (kind='REMINDER_DRAFT'
+                AND datetime(created_at_utc)<=datetime('now','-30 minutes'))
+             )"""
+    ).fetchall()
+    if not expired:
+        return
+    ids = [str(row["item_id"]) for row in expired]
+    marks = ",".join("?" for _ in ids)
+    conn.execute(
+        f"""UPDATE pending_items
+            SET status='CANCELLED',resolved_at_utc=?,resolution_message_id='expired'
+            WHERE item_id IN ({marks}) AND status='PENDING'""",
+        [now] + ids,
+    )
+    # An expired prompt should never be delivered late after transport recovery.
+    conn.execute(
+        f"""UPDATE outbound_messages
+            SET delivery_status='FAILED',last_error='pending_prompt_expired',
+                next_attempt_at_utc=NULL
+            WHERE context_kind='PENDING_ITEM' AND context_id IN ({marks})
+              AND delivery_status='PENDING'""",
+        ids,
+    )
+    conn.commit()
+
+
 def _reconcile_pending_item_markers(conn) -> None:
     rows = conn.execute(
-        """SELECT o.*,p.status AS pending_status
+        """SELECT o.*,p.status AS pending_status,p.kind AS pending_kind
            FROM outbound_messages o
            JOIN pending_items p ON p.item_id=o.context_id
            WHERE o.context_kind='PENDING_ITEM'
              AND (
-                p.status='PENDING'
+                (p.status='PENDING' AND p.kind='VOICE')
                 OR (
-                    p.status IN ('RESOLVED','CANCELLED')
+                    (p.status IN ('RESOLVED','CANCELLED') OR p.kind<>'VOICE')
                     AND (
                         (o.job_reacted_at_utc IS NOT NULL AND o.job_reaction_cleared_at_utc IS NULL)
                         OR (o.job_pinned_at_utc IS NOT NULL AND o.job_unpinned_at_utc IS NULL)
@@ -161,9 +197,10 @@ def _reconcile_pending_item_markers(conn) -> None:
              )"""
     ).fetchall()
     for row in rows:
-        if row["pending_status"] == "PENDING":
+        if row["pending_status"] == "PENDING" and row["pending_kind"] == "VOICE":
             _ensure_unresolved_markers(conn, row)
         else:
+            # Also cleans stale RC3 markers from transient offer/draft prompts.
             _cleanup_resolved_markers(conn, row)
 
 
@@ -192,8 +229,17 @@ def _reconcile_reminder_pins(conn) -> None:
 
 
 def _ensure_unresolved_markers(conn, row) -> None:
-    """Mark a managed unresolved source message with ⏳ + pin."""
-    managed = row["kind"] == "DOCUMENT" or row["context_kind"] == "PENDING_ITEM"
+    """Mark only durable managed work: documents and unresolved VOICE items."""
+    managed = row["kind"] == "DOCUMENT"
+    if row["context_kind"] == "PENDING_ITEM":
+        pending_kind = _row_value(row, "pending_kind")
+        if pending_kind is None and row["context_id"]:
+            pending = conn.execute(
+                "SELECT kind FROM pending_items WHERE item_id=?",
+                (row["context_id"],),
+            ).fetchone()
+            pending_kind = pending["kind"] if pending else None
+        managed = str(pending_kind or "").upper() == "VOICE"
     if not managed or not row["source_message_id"]:
         return
     now = _now()
@@ -295,6 +341,7 @@ def sweep():
     global _STARTUP_MANAGED_JOB_RECONCILED
     conn = connect()
     try:
+        _expire_transient_pending_items(conn)
         now_iso = _now()
         rows = conn.execute(
             """SELECT o.*,i.sender_provider_jid AS source_sender_provider_jid,
