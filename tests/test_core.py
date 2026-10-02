@@ -4024,5 +4024,527 @@ class AlexCoreTests(unittest.TestCase):
         self.assertIn("4 matching finance records", reply)
 
 
+    def test_v057_finance_followup_overrides_model_dates_and_drops_old_search(self):
+        self.claim("v057-fin-sep", "+60111111111", "spent RM15.67 on snacks")
+        sep_actor = with_action_key(
+            replace(
+                self.actor("v057-fin-sep", "+60111111111"),
+                trusted_text="spent RM15.67 on snacks",
+                read_scope="family",
+            ),
+            "v057-fin-sep-action",
+        )
+        services.log_expense(
+            sep_actor, "September family snacks", 15.67, "food",
+            currency="MYR", event_date_local="2026-09-30T12:00:00+08:00",
+        )
+        self.claim("v057-fin-oct", "+60111111111", "spent RM18.50 on lunch")
+        oct_actor = with_action_key(
+            replace(
+                self.actor("v057-fin-oct", "+60111111111"),
+                trusted_text="spent RM18.50 on lunch",
+                read_scope="family",
+            ),
+            "v057-fin-oct-action",
+        )
+        services.log_expense(
+            oct_actor, "October lunch", 18.50, "food",
+            currency="MYR", event_date_local="2026-10-01T12:00:00+08:00",
+        )
+
+        conversation = self.actor("v057-fin-sep", "+60111111111").conversation_id
+        phase2_reports.remember_active_report(
+            "USR_HUSBAND", conversation, "finance_query",
+            {"count": 1}, period="2026-09",
+            spec={
+                "period": "2026-09",
+                "start_date": "2026-09-01",
+                "end_date": "2026-09-30",
+                "search": "transport",
+                "scope": "family",
+            },
+        )
+        self.claim(
+            "v057-fin-follow", "+60111111111",
+            "Give me a breakdown on food expenses next",
+        )
+        follow = replace(
+            self.actor("v057-fin-follow", "+60111111111"),
+            trusted_text="Give me a breakdown on food expenses next",
+            read_scope="family",
+        )
+        result = mcp_server.query_finances(
+            follow,
+            start_date="2026-10-01", end_date="2026-10-01",
+            category="food", search="transport",
+        )
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["spending_totals"]["MYR"], 15.67)
+        self.assertIn("2026-09-30", result["records"][0]["date_local"])
+        self.assertEqual(result["records"][0]["description"], "September family snacks")
+
+    def test_v057_quoted_report_overrides_model_period_and_active_context(self):
+        class FakeFunction:
+            def __init__(self, name, arguments):
+                self.name = name
+                self.arguments = arguments
+
+        class FakeCall:
+            def __init__(self):
+                self.id = "export-1"
+                self.function = FakeFunction(
+                    "report_export",
+                    json.dumps({
+                        "format": "csv",
+                        "period": "2026-10",
+                        "report_type": "finance",
+                        "search": "pocket cash",
+                    }),
+                )
+
+        class FakeMessage:
+            def __init__(self, content="", calls=None):
+                self.content = content
+                self.tool_calls = calls or []
+
+            def model_dump(self, exclude_none=True):
+                payload = {"role": "assistant", "content": self.content}
+                if self.tool_calls:
+                    payload["tool_calls"] = [{
+                        "id": call.id,
+                        "type": "function",
+                        "function": {
+                            "name": call.function.name,
+                            "arguments": call.function.arguments,
+                        },
+                    } for call in self.tool_calls]
+                return payload
+
+        class FakeResponse:
+            def __init__(self, message):
+                self.choices = [type("Choice", (), {"message": message})()]
+                self.usage = None
+
+        class FakeCompletions:
+            def __init__(self):
+                self.n = 0
+            def create(self, **kwargs):
+                self.n += 1
+                if self.n == 1:
+                    return FakeResponse(FakeMessage(calls=[FakeCall()]))
+                return FakeResponse(FakeMessage(content="Here it is."))
+
+        fake_client = type(
+            "FakeClient", (),
+            {"chat": type("FakeChat", (), {"completions": FakeCompletions()})()},
+        )()
+        captured = {}
+
+        async def fake_call(actor, name, args, action_key):
+            captured.update(args)
+            return ({"status": "ready", "format": "csv"}, [])
+
+        self.claim("v057-quote-export", "+60111111111", "Send this as a csv")
+        actor = replace(
+            self.actor("v057-quote-export", "+60111111111"),
+            trusted_text="Send this as a csv",
+            read_scope="family",
+        )
+        route = {
+            "provider": "grok", "model": "stub",
+            "reasoning_effort": "low", "role": "manual",
+        }
+        quoted = {
+            "context_kind": "REPORT",
+            "context_id": "frozen",
+            "report_context": {
+                "kind": "finance_query",
+                "period": "2026-09",
+                "spec": {
+                    "start_date": "2026-09-01",
+                    "end_date": "2026-09-30",
+                    "category": "transport",
+                    "search": None,
+                    "scope": "family",
+                },
+            },
+        }
+        with patch.object(brain, "_provider_routes", return_value=[route]), \
+             patch.object(brain, "_client_for", return_value=fake_client), \
+             patch.object(brain, "_call_mcp", new=fake_call):
+            asyncio.run(brain.respond(
+                actor, "Send this as a csv", quoted_context=quoted
+            ))
+        self.assertEqual(captured["period"], "2026-09")
+        self.assertEqual(captured["category"], "transport")
+        self.assertIsNone(captured["search"])
+        self.assertEqual(captured["scope"], "family")
+        self.assertEqual(captured["report_type"], "finance")
+        self.assertFalse(captured["use_active_context"])
+        self.assertFalse(captured["full_report"])
+
+    def test_v057_pending_voice_numbers_bind_play_and_resolve(self):
+        self.claim("v057-voice-src", "+60111111111", "")
+        media_ids, _, _ = media.process_payload_media({
+            "message_id": "v057-voice-src",
+            "audio_data": base64.b64encode(b"voice-audio-v057").decode("ascii"),
+            "audio_mime_type": "audio/ogg",
+        })
+        actor = self.actor("v057-voice-src", "+60111111111", media_ids)
+        pending = db.create_pending_item(
+            actor, "VOICE", media_id=media_ids[0], note="deferred voice"
+        )
+
+        self.claim("v057-voice-list", "+60111111111", "Any unresolved voice notes?")
+        reader = replace(
+            self.actor("v057-voice-list", "+60111111111"),
+            trusted_text="Any unresolved voice notes?",
+            read_scope="family",
+        )
+        listed = mcp_server.list_pending_items(reader, "VOICE")
+        self.assertEqual(len(listed["items"]), 1)
+        self.assertEqual(
+            set(listed["items"][0]),
+            {"choice", "kind", "received", "media_type"},
+        )
+        self.assertEqual(listed["items"][0]["choice"], 1)
+        self.assertRegex(listed["items"][0]["received"], r", \d{1,2}:\d{2} (?:AM|PM)$")
+
+        played = services.resolve_numbered_choice(reader, 1)
+        self.assertEqual(played["media_type"], "AUDIO")
+        self.assertTrue(played["_attachments"])
+        conn = db.connect()
+        try:
+            state = conn.execute(
+                "SELECT status FROM pending_items WHERE item_id=?",
+                (pending["item_id"],),
+            ).fetchone()["status"]
+        finally:
+            conn.close()
+        self.assertEqual(state, "PENDING")
+
+        resolved = mcp_server.resolve_pending_item(reader, choice=1)
+        self.assertEqual(resolved["status"], "resolved")
+        conn = db.connect()
+        try:
+            state = conn.execute(
+                "SELECT status FROM pending_items WHERE item_id=?",
+                (pending["item_id"],),
+            ).fetchone()["status"]
+        finally:
+            conn.close()
+        self.assertEqual(state, "RESOLVED")
+
+    def test_v057_post_due_reaction_seen_vs_complete(self):
+        group_id = "120363575757@g.us"
+        with open(os.path.join(TEST_DIR, "family_group.json"), "w", encoding="utf-8") as handle:
+            handle.write('{"group_jid":"%s"}' % group_id)
+        creator = self.group_actor("v057-due-create", "+60111111111")
+        creator = with_action_key(
+            replace(creator, trusted_text="remind the family about v057 parcel"),
+            "v057-due-create-action",
+        )
+        reminder = services.create_reminder(
+            creator, "v057 parcel", "2026-10-03T10:00:00+08:00",
+            destination="group", claimable=True,
+        )
+        oid = db.queue_outbound(
+            group_id, "TEXT", text="Reminder: v057 parcel",
+            context_kind="REMINDER_INITIAL", context_id=reminder["reminder_id"],
+        )
+        conn = db.connect()
+        try:
+            conn.execute(
+                """UPDATE reminders SET status='DUE' WHERE reminder_id=?""",
+                (reminder["reminder_id"],),
+            )
+            conn.execute(
+                """UPDATE outbound_messages
+                   SET provider_message_id='wa-v057-due',delivery_status='SENT',
+                       delivered_at_utc=CURRENT_TIMESTAMP,job_pinned_at_utc=CURRENT_TIMESTAMP
+                   WHERE outbound_id=?""",
+                (oid,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        reactor = self.group_actor("v057-due-react", "+60111111111")
+        seen = services.claim_reminder_from_reaction(
+            reactor, "wa-v057-due", "👍"
+        )
+        self.assertEqual(seen["status"], "seen")
+        self.assertEqual(seen["state"], "DUE")
+        visible = services.list_reminders(reactor)["reminders"]
+        self.assertTrue(any(x["task_text"] == "v057 parcel" for x in visible))
+        conn = db.connect()
+        try:
+            row = conn.execute(
+                "SELECT status,seen_at_utc FROM reminders WHERE reminder_id=?",
+                (reminder["reminder_id"],),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(row["status"], "DUE")
+        self.assertIsNotNone(row["seen_at_utc"])
+
+        done = services.claim_reminder_from_reaction(
+            reactor, "wa-v057-due", "✅"
+        )
+        self.assertEqual(done["status"], "completed")
+        conn = db.connect()
+        try:
+            state = conn.execute(
+                "SELECT status FROM reminders WHERE reminder_id=?",
+                (reminder["reminder_id"],),
+            ).fetchone()["status"]
+        finally:
+            conn.close()
+        self.assertEqual(state, "COMP")
+
+    def test_v057_reminder_task_name_blocks_cross_domain_fallback(self):
+        self.claim("v057-reminder-seed", "+60111111111", "create reminder")
+        creator = with_action_key(
+            replace(
+                self.actor("v057-reminder-seed", "+60111111111"),
+                trusted_text="Remind me on Saturday at 10 AM: v056 unclaimed test",
+            ),
+            "v057-reminder-seed-action",
+        )
+        services.create_reminder(
+            creator, "v056 unclaimed test", "2026-10-03T10:00:00+08:00",
+            shared=True,
+        )
+        self.claim("v057-note-collision", "+60111111111", "save v056 note")
+        note_actor = with_action_key(
+            replace(
+                self.actor("v057-note-collision", "+60111111111"),
+                trusted_text="save v056 note",
+            ),
+            "v057-note-action",
+        )
+        services.save_item(note_actor, "v056 lighter location", "shared collision")
+
+        self.claim(
+            "v057-reminder-lookup", "+60111111111",
+            "Is v056 unclaimed test still unresolved?",
+        )
+        actor = replace(
+            self.actor("v057-reminder-lookup", "+60111111111"),
+            trusted_text="Is v056 unclaimed test still unresolved?",
+            read_scope="family",
+        )
+        self.assertTrue(
+            brain._accessible_reminder_name_mentioned(
+                actor, "Is v056 unclaimed test still unresolved?"
+            )
+        )
+
+        exposed = {}
+        class FakeResponse:
+            def __init__(self):
+                self.choices = [
+                    type("Choice", (), {
+                        "message": type("Msg", (), {
+                            "content": "It is still unresolved.",
+                            "tool_calls": [],
+                            "model_dump": lambda self, exclude_none=True: {
+                                "role": "assistant",
+                                "content": self.content,
+                            },
+                        })()
+                    })()
+                ]
+                self.usage = None
+        class FakeCompletions:
+            def create(self, **kwargs):
+                exposed["names"] = {
+                    x["function"]["name"] for x in kwargs.get("tools", [])
+                }
+                return FakeResponse()
+        fake_client = type(
+            "FakeClient", (),
+            {"chat": type("FakeChat", (), {"completions": FakeCompletions()})()},
+        )()
+        route = {
+            "provider": "grok", "model": "stub",
+            "reasoning_effort": "low", "role": "manual",
+        }
+        with patch.object(brain, "_provider_routes", return_value=[route]), \
+             patch.object(brain, "_client_for", return_value=fake_client):
+            asyncio.run(brain.respond(
+                actor, "Is v056 unclaimed test still unresolved?"
+            ))
+        self.assertIn("list_reminders", exposed["names"])
+        self.assertNotIn("search_saved_items", exposed["names"])
+        self.assertNotIn("query_finances", exposed["names"])
+
+    def test_v057_reminder_clarification_is_durable_pending_draft(self):
+        first = {
+            "message_id": "v057-draft-first",
+            "provider": "WHATSAPP",
+            "conversation_id": "60111111111@s.whatsapp.net",
+            "conversation_type": "DIRECT_DM",
+            "sender_phone": "+60111111111",
+            "text": "Remind me to water the plants this weekend.",
+        }
+        with patch.object(
+            brain, "respond",
+            return_value=(
+                "What day and time this weekend would you like me to set the reminder for?",
+                [],
+            ),
+        ):
+            result = ingress.process(first)
+        self.assertTrue(result["ok"])
+        conn = db.connect()
+        try:
+            draft = conn.execute(
+                """SELECT * FROM pending_items
+                   WHERE kind='REMINDER_DRAFT' AND status='PENDING'
+                   ORDER BY created_at_utc DESC LIMIT 1"""
+            ).fetchone()
+            outbound = conn.execute(
+                """SELECT context_kind,context_id FROM outbound_messages
+                   WHERE source_message_id='v057-draft-first'
+                   ORDER BY rowid DESC LIMIT 1"""
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertIsNotNone(draft)
+        self.assertEqual(outbound["context_kind"], "PENDING_ITEM")
+        self.assertEqual(outbound["context_id"], draft["item_id"])
+
+        second = {
+            "message_id": "v057-draft-second",
+            "provider": "WHATSAPP",
+            "conversation_id": "60111111111@s.whatsapp.net",
+            "conversation_type": "DIRECT_DM",
+            "sender_phone": "+60111111111",
+            "text": "Saturday at 9 AM",
+        }
+        async def finish_draft(actor, user_text, media_context=None,
+                               vision_parts=None, quoted_context=None):
+            self.assertEqual(
+                quoted_context["pending_item"]["kind"], "REMINDER_DRAFT"
+            )
+            self.assertIn(
+                "water the plants",
+                quoted_context["recent_user_instruction"].casefold(),
+            )
+            services.create_reminder(
+                with_action_key(actor, "v057-draft-final-action"),
+                "water the plants", "2026-10-03T09:00:00+08:00",
+            )
+            return ("OK. I've set the reminder for Saturday at 9:00 AM.", [])
+
+        with patch.object(brain, "respond", new=finish_draft):
+            result = ingress.process(second)
+        self.assertTrue(result["ok"])
+        conn = db.connect()
+        try:
+            draft_state = conn.execute(
+                "SELECT status FROM pending_items WHERE item_id=?",
+                (draft["item_id"],),
+            ).fetchone()["status"]
+            made = conn.execute(
+                """SELECT task_text FROM reminders
+                   WHERE source_message_id='v057-draft-second'"""
+            ).fetchall()
+        finally:
+            conn.close()
+        self.assertEqual(draft_state, "RESOLVED")
+        self.assertEqual([row["task_text"] for row in made], ["water the plants"])
+
+    def test_v057_private_search_offer_is_single_use_and_scope_safe(self):
+        self.claim("v057-private-offer-src", "+60111111111", "Show me my Philips asset")
+        source_actor = replace(
+            self.actor("v057-private-offer-src", "+60111111111"),
+            trusted_text="Show me my Philips asset",
+            read_scope="family",
+        )
+        pending, reply = ingress._maybe_create_private_search_offer(
+            source_actor,
+            "Show me my Philips asset",
+            "I couldn't find that asset in the records available to this request.",
+            [],
+        )
+        self.assertIsNotNone(pending)
+        self.assertIn("shared records", reply)
+        self.assertIn("private records", reply)
+        self.assertEqual(
+            ingress._private_offer_query(pending),
+            "Show me my Philips asset",
+        )
+
+        self.claim("v057-private-offer-yes", "+60111111111", "Yes")
+        yes_actor = replace(
+            self.actor("v057-private-offer-yes", "+60111111111"),
+            trusted_text="Yes",
+            read_scope="family",
+        )
+        seen_scope = {}
+        async def private_reply(actor, user_text, media_context=None,
+                                vision_parts=None, quoted_context=None):
+            seen_scope["scope"] = actor.read_scope
+            seen_scope["query"] = user_text
+            return ("I found the private Philips asset.", [])
+        with patch.object(brain, "respond", new=private_reply):
+            result = ingress._fulfill_private_search_offer(yes_actor, dict(pending))
+        self.assertTrue(result["ok"])
+        self.assertEqual(seen_scope["scope"], "private")
+        self.assertEqual(seen_scope["query"], "Show me my Philips asset")
+        conn = db.connect()
+        try:
+            state = conn.execute(
+                "SELECT status FROM pending_items WHERE item_id=?",
+                (pending["item_id"],),
+            ).fetchone()["status"]
+        finally:
+            conn.close()
+        self.assertEqual(state, "RESOLVED")
+
+    def test_v057_private_asset_is_searchable_without_crossing_family_scope(self):
+        phase2_library.create_asset(
+            "Philips Air Fryer", "+60111111111", "DIRECT_DM",
+            visibility="private", brand="Philips", model="HD9280/90",
+            serial_number="V05-12345", purchase_date="2026-09-27",
+        )
+        self.claim("v057-asset-family", "+60111111111", "show Philips Air Fryer")
+        base = self.actor("v057-asset-family", "+60111111111")
+        family_actor = replace(base, trusted_text="show Philips Air Fryer", read_scope="family")
+        private_actor = replace(base, trusted_text="show Philips Air Fryer 😊", read_scope="private")
+        with use_actor(family_actor):
+            shared = phase2_library.list_assets(
+                base.phone, base.conversation_type, "all", False, "Philips Air Fryer"
+            )
+        with use_actor(private_actor):
+            private = phase2_library.list_assets(
+                base.phone, base.conversation_type, "all", False, "Philips Air Fryer"
+            )
+        self.assertEqual(shared, [])
+        self.assertEqual(len(private), 1)
+        self.assertEqual(private[0]["model"], "HD9280/90")
+        self.assertIsNone(private[0]["warranty_end"])
+
+    def test_v057_saved_item_browse_uses_local_date_and_time(self):
+        self.claim("v057-saved-time", "+60111111111", "save lighter location")
+        actor = with_action_key(
+            replace(
+                self.actor("v057-saved-time", "+60111111111"),
+                trusted_text="save lighter location",
+                read_scope="family",
+            ),
+            "v057-saved-time-action",
+        )
+        services.save_item(actor, "Lighter location", "lighter is in the garage")
+        found = services.search_saved_items(actor, "lighter")
+        self.assertEqual(found["count"], 1)
+        self.assertRegex(
+            found["matches"][0]["saved_on"],
+            r"^\d{1,2} [A-Za-z]+ 2026, \d{1,2}:\d{2} (?:AM|PM)$",
+        )
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
