@@ -472,6 +472,24 @@ def _typed_reply_completes_pending_item(text: str) -> bool:
     return True
 
 
+def _resolve_voice_pending_after_success(actor, pending: dict | None,
+                                         typed_text: str) -> bool:
+    """Close a quoted voice inbox item only after a verified typed action.
+
+    Retrieval/detail questions never resolve it. A narration-only or failed
+    model turn has no completed mutating tool claim, so it also stays pending.
+    """
+    if not pending or str(pending.get("kind") or "").upper() != "VOICE":
+        return False
+    if not _typed_reply_completes_pending_item(typed_text):
+        return False
+    if not db.has_completed_mutation(actor.source_message_id):
+        return False
+    return db.resolve_pending_item(
+        pending["item_id"], actor.user_id, actor.source_message_id
+    )
+
+
 def _yes_no_answer(text: str) -> str | None:
     value = str(text or "").strip().casefold()
     if re.fullmatch(r"(?:yes|yep|yeah|sure|ok|okay|please|please do)[.!]?", value):
@@ -1075,6 +1093,9 @@ def process(payload: dict) -> dict:
                         context_id=private_report_context if first_private_attachment and private_report_context else None,
                     )
                     first_private_attachment = False
+            _resolve_voice_pending_after_success(
+                actor, pending_item, turn["trusted_text"]
+            )
             group_reply = (
                 "I’m handling that in your private DM."
                 if private_attachments else "I sent that to you privately."
@@ -1152,6 +1173,9 @@ def process(payload: dict) -> dict:
                     context_id=report_context if first_attachment and report_context else None,
                 )
                 first_attachment = False
+        _resolve_voice_pending_after_success(
+            actor, pending_item, turn["trusted_text"]
+        )
         db.finish_inbound(actor.source_message_id, reply)
         return {"ok": True}
     except media.VoiceTranscriptionUncertain as exc:
