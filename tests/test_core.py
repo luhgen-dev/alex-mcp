@@ -4272,7 +4272,17 @@ class AlexCoreTests(unittest.TestCase):
         finally:
             conn.close()
 
-        reactor = self.group_actor("v057-due-react", "+60111111111")
+        db.claim_inbound({
+            "message_id": "v057-due-react",
+            "provider": "WHATSAPP",
+            "conversation_id": group_id,
+            "conversation_type": "GROUP",
+            "sender_phone": "+60111111111",
+            "text": "",
+        })
+        reactor = db.resolve_actor(
+            "+60111111111", group_id, "GROUP", "v057-due-react", []
+        )
         seen = services.claim_reminder_from_reaction(
             reactor, "wa-v057-due", "👍"
         )
