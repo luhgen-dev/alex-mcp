@@ -2516,10 +2516,10 @@ def release_reminder_claim(actor: ActorContext, reminder_id: str) -> dict:
         if actor.user_id not in {row["claimed_by_user_id"], row["owner_id"]}:
             conn.rollback()
             raise PermissionError("only the claimant or reminder owner can release the claim")
-        next_delivery = (
-            runtime_clock.now_utc()
-            + timedelta(hours=max(1, int(row["follow_up_after_hours"] or 24)))
-        ).isoformat()
+        now = runtime_clock.now_utc()
+        # Releasing a due claim reopens it to the original family group on the
+        # next scheduler sweep. A pre-due release keeps the original due time.
+        next_delivery = now.isoformat() if row["status"] == "DUE" else None
         conn.execute(
             """UPDATE reminder_handoffs
                SET status='CANCELLED',cancelled_at_utc=?
@@ -2530,10 +2530,12 @@ def release_reminder_claim(actor: ActorContext, reminder_id: str) -> dict:
             """UPDATE reminders
                SET claimed_by_user_id=NULL,claimed_at_utc=NULL,
                    claimant_follow_up_at_utc=NULL,family_resurfaced_at_utc=NULL,
+                   nudged_at_utc=NULL,initiator_notified_at_utc=NULL,
+                   relinquished_at_utc=?,
                    status=CASE WHEN status='DUE' THEN 'OPEN' ELSE status END,
                    next_delivery_at_utc=?
                WHERE reminder_id=?""",
-            (next_delivery, reminder_id),
+            (now.isoformat(), next_delivery, reminder_id),
         )
         conn.execute(
             """INSERT INTO reminder_claim_events(
