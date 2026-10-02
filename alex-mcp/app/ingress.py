@@ -503,6 +503,91 @@ def _report_context_for_turn(actor) -> str | None:
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))[:4000]
 
 
+def _reminder_created_by_turn(actor) -> bool:
+    conn = db.connect()
+    try:
+        row = conn.execute(
+            """SELECT 1 FROM reminders
+               WHERE source_message_id=? LIMIT 1""",
+            (actor.source_message_id,),
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
+def _is_reminder_request(text: str) -> bool:
+    return bool(re.search(
+        r"(?i)\b(?:remind|reminder|rember|remnder|remidn|remindn|remidr)\b",
+        str(text or ""),
+    ))
+
+
+def _reply_is_reminder_clarification(reply: str) -> bool:
+    value = str(reply or "")
+    return bool(
+        "?" in value
+        and re.search(
+            r"(?i)\b(?:what|which|when)\b.{0,80}\b(?:day|date|time|morning|afternoon|evening)\b"
+            r"|\b(?:day|date|time)\b.{0,80}\b(?:would you like|should i|do you want)\b",
+            value,
+        )
+    )
+
+
+def _looks_like_reminder_clarification_reply(text: str) -> bool:
+    value = str(text or "").strip()
+    if not value or len(value) > 120:
+        return False
+    return bool(re.search(
+        r"(?i)\b(?:mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|"
+        r"fri(?:day)?|sat(?:urday)?|sun(?:day)?|today|tomorrow|tonight|"
+        r"morning|afternoon|evening|noon|midnight|"
+        r"\d{1,2}(?::\d{2})?\s*(?:am|pm)|"
+        r"\d{1,2}(?:st|nd|rd|th)?\s+(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|"
+        r"apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|"
+        r"oct(?:ober)?|nov(?:ember)?|dec(?:ember)?))\b",
+        value,
+    ))
+
+
+def _recover_reminder_draft_context(actor, text: str) -> dict | None:
+    if not _looks_like_reminder_clarification_reply(text):
+        return None
+    pending = db.latest_pending_item(actor, "REMINDER_DRAFT", max_age_seconds=1800)
+    if not pending:
+        return None
+    original = str(pending.get("original_text") or "").strip()
+    if not original:
+        return None
+    return {
+        "recent_user_instruction": original[:2000],
+        "source_message_id": pending.get("source_message_id"),
+        "context_kind": "PENDING_ITEM",
+        "context_id": pending.get("item_id"),
+        "pending_item": {
+            "item_id": pending.get("item_id"),
+            "kind": pending.get("kind"),
+            "media_id": pending.get("media_id"),
+            "source_message_id": pending.get("source_message_id"),
+        },
+    }
+
+
+def _maybe_create_reminder_draft(actor, reply: str) -> dict | None:
+    if not _is_reminder_request(getattr(actor, "trusted_text", "")):
+        return None
+    if _reminder_created_by_turn(actor):
+        return None
+    if not _reply_is_reminder_clarification(reply):
+        return None
+    return db.create_pending_item(
+        actor,
+        "REMINDER_DRAFT",
+        note="Awaiting typed date/time clarification for this reminder request.",
+    )
+
+
 def _created_claimable_reminder_id(actor) -> str | None:
     """Bind a group reminder setup reply to the reminder created by this turn."""
     if actor.conversation_type != "GROUP":
@@ -720,6 +805,10 @@ def process(payload: dict) -> dict:
         quoted_context = db.resolve_quoted_context(
             actor.conversation_id, payload.get("quoted_message_id"), actor.phone
         )
+        if not quoted_context:
+            quoted_context = _recover_reminder_draft_context(
+                actor, turn["trusted_text"]
+            )
         pending_item = db.pending_item_for_reference(actor, quoted_context)
         if pending_item:
             quoted_context = dict(quoted_context or {})
@@ -871,16 +960,28 @@ def process(payload: dict) -> dict:
             actor, reply, attachments
         )
         reminder_setup_id = _created_claimable_reminder_id(actor)
+        reminder_draft = _maybe_create_reminder_draft(actor, reply)
         report_context = _report_context_for_turn(actor)
+
+        if (
+            pending_item
+            and str(pending_item.get("kind") or "").upper() == "REMINDER_DRAFT"
+            and _reminder_created_by_turn(actor)
+        ):
+            db.resolve_pending_item(
+                pending_item["item_id"], actor.user_id, actor.source_message_id
+            )
         if not attachments:
             context_kind = (
-                "SELECTION" if selection_context
+                "PENDING_ITEM" if reminder_draft
+                else "SELECTION" if selection_context
                 else "REMINDER_SETUP" if reminder_setup_id
                 else "REPORT" if report_context
                 else None
             )
             context_id = (
-                f"{selection_context['kind']}:{selection_context['id']}"
+                reminder_draft["item_id"] if reminder_draft
+                else f"{selection_context['kind']}:{selection_context['id']}"
                 if selection_context
                 else reminder_setup_id if reminder_setup_id
                 else report_context
