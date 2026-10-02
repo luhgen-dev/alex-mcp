@@ -964,11 +964,12 @@ def planning_allocate_cash_to_goal(amount: float, actor: Actor,
 def planning_create_cash_pool(name: str, actor: Actor, currency: str = "MYR",
                               shared: bool = False,
                               opening_balance: float | None = None) -> dict:
-    """Create the caller's private stash/cash pool. Stash is inherently private per household policy; shared is accepted only for backward-compatible tool calls and never widens visibility. If the user says to create it with/put an amount in it, pass that amount as opening_balance so creation + funding are one atomic action."""
+    """Create a stash/cash pool in the space selected by the current trusted command. Plain DM/group wording follows Family Shared; explicit private wording or emoji selects owner-private. If the user says to create it with/put an amount in it, pass that amount as opening_balance so creation + funding are one atomic action."""
     import runtime_clock
+    visibility = scope_policy.visibility_for_new_write(actor, shared)
     return phase2_finance.create_cash_pool(
         name, actor.phone, actor.conversation_type,
-        "private",
+        visibility,
         currency, opening_balance,
         runtime_clock.today(actor.timezone).isoformat(),
         actor.source_message_id,
@@ -976,11 +977,11 @@ def planning_create_cash_pool(name: str, actor: Actor, currency: str = "MYR",
 
 
 @alex_tool()
-def planning_list_cash_pools(actor: Actor, scope: str = "private") -> dict:
-    """List the authenticated user's private active stash/cash pools and exact balances. Stash is never exposed as Family Shared."""
+def planning_list_cash_pools(actor: Actor, scope: str = "all") -> dict:
+    """List active stash/cash pools visible in the current trusted read scope. Model scope arguments may narrow but never widen that boundary."""
     return {
         "pools": phase2_finance.list_cash_pools(
-            actor.phone, actor.conversation_type, "private"
+            actor.phone, actor.conversation_type, scope
         )
     }
 
