@@ -403,6 +403,12 @@ def release_reminder_claim(reminder_id: str, actor: Actor) -> dict:
 
 
 @alex_tool()
+def nudge_reminder_claimant(reminder_id: str, actor: Actor) -> dict:
+    """Privately remind the current claimant again when the original initiator explicitly asks. Ownership and unresolved state remain unchanged."""
+    return services.nudge_reminder_claimant(actor, reminder_id)
+
+
+@alex_tool()
 def create_task(title: str, actor: Actor, notes: str | None = None,
                 assignee: str = "unassigned", shared: bool = False,
                 due_local: str | None = None, plan_id: str | None = None,
