@@ -746,7 +746,7 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
         phrase in text
         for phrase in (
             "goal", "savings", "saving", "extra cash", "cash pool", "stash",
-            "reserve", "baseline", "cash flow", "cashflow", "income outlook",
+            "pocket cash", "reserve", "baseline", "cash flow", "cashflow", "income outlook",
             "money plan", "financial plan", "ot money", "overtime pay", "bonus",
         )
     )
