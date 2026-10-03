@@ -5771,5 +5771,131 @@ class AlexCoreTests(unittest.TestCase):
 
 
 
+    def test_v0510_live_lamp_clarification_pins_then_creation_unpins(self):
+        first = {
+            "message_id": "v0510-r5-first",
+            "provider": "WHATSAPP",
+            "conversation_id": "60111111111@s.whatsapp.net",
+            "conversation_type": "DIRECT_DM",
+            "sender_phone": "+60111111111",
+            "text": "Remind me to test the lamp",
+        }
+        with patch.object(
+            brain, "respond",
+            return_value=("When would you like to be reminded to test the lamp?", []),
+        ):
+            self.assertTrue(ingress.process(first)["ok"])
+
+        conn = db.connect()
+        try:
+            draft = conn.execute(
+                """SELECT * FROM pending_items
+                   WHERE source_message_id='v0510-r5-first'
+                     AND kind='REMINDER_DRAFT'"""
+            ).fetchone()
+            outbound = conn.execute(
+                """SELECT * FROM outbound_messages
+                   WHERE source_message_id='v0510-r5-first'
+                   ORDER BY rowid DESC LIMIT 1"""
+            ).fetchone()
+            self.assertIsNotNone(draft)
+            self.assertEqual(outbound["context_kind"], "PENDING_ITEM")
+            self.assertEqual(outbound["context_id"], draft["item_id"])
+            conn.execute(
+                """UPDATE outbound_messages
+                   SET provider_message_id='wa-v0510-r5-question',
+                       delivery_status='SENT',delivered_at_utc=CURRENT_TIMESTAMP
+                   WHERE outbound_id=?""",
+                (outbound["outbound_id"],),
+            )
+            conn.commit()
+
+            controls = []
+            with patch.object(
+                outbox, "_send",
+                side_effect=lambda payload: (controls.append(payload) or True, "{}"),
+            ):
+                outbox._reconcile_pending_item_markers(conn)
+
+            marked = conn.execute(
+                """SELECT job_pinned_at_utc,job_pin_target,job_reacted_at_utc
+                   FROM outbound_messages WHERE outbound_id=?""",
+                (outbound["outbound_id"],),
+            ).fetchone()
+        finally:
+            conn.close()
+
+        self.assertEqual([p["kind"] for p in controls], ["pin"])
+        self.assertTrue(controls[0]["target_from_me"])
+        self.assertEqual(controls[0]["target_message_id"], "wa-v0510-r5-question")
+        self.assertIsNotNone(marked["job_pinned_at_utc"])
+        self.assertEqual(marked["job_pin_target"], "OUTBOUND")
+        self.assertIsNone(marked["job_reacted_at_utc"])
+
+        second = {
+            "message_id": "v0510-r5-second",
+            "provider": "WHATSAPP",
+            "conversation_id": "60111111111@s.whatsapp.net",
+            "conversation_type": "DIRECT_DM",
+            "sender_phone": "+60111111111",
+            "text": "Tomorrow at 9 AM",
+        }
+
+        async def finish(actor, user_text, media_context=None,
+                         vision_parts=None, quoted_context=None):
+            self.assertEqual(
+                quoted_context["pending_item"]["item_id"], draft["item_id"]
+            )
+            services.create_reminder(
+                with_action_key(actor, "v0510-r5-create-action"),
+                "test the lamp", "2026-10-04T09:00:00+08:00",
+            )
+            return ("OK. I've set the reminder for tomorrow at 9:00 AM.", [])
+
+        with patch.object(brain, "respond", new=finish), patch.object(
+            runtime_clock, "now_utc",
+            return_value=datetime(2026, 10, 3, 7, 50, tzinfo=timezone.utc),
+        ):
+            self.assertTrue(ingress.process(second)["ok"])
+
+        conn = db.connect()
+        try:
+            state = conn.execute(
+                "SELECT status FROM pending_items WHERE item_id=?",
+                (draft["item_id"],),
+            ).fetchone()["status"]
+            controls = []
+            with patch.object(
+                outbox, "_send",
+                side_effect=lambda payload: (controls.append(payload) or True, "{}"),
+            ):
+                outbox._reconcile_pending_item_markers(conn)
+            cleaned = conn.execute(
+                """SELECT job_unpinned_at_utc FROM outbound_messages
+                   WHERE outbound_id=?""",
+                (outbound["outbound_id"],),
+            ).fetchone()
+        finally:
+            conn.close()
+
+        self.assertEqual(state, "RESOLVED")
+        self.assertEqual([p["kind"] for p in controls], ["unpin"])
+        self.assertTrue(controls[0]["target_from_me"])
+        self.assertEqual(controls[0]["target_message_id"], "wa-v0510-r5-question")
+        self.assertIsNotNone(cleaned["job_unpinned_at_utc"])
+
+    def test_v0510_reminder_clarification_detection_covers_natural_when_wording(self):
+        for reply in (
+            "When would you like to be reminded to test the lamp?",
+            "When should I remind you?",
+            "When would you like me to remind you about this?",
+            "What time would you like me to set the reminder for?",
+        ):
+            self.assertTrue(
+                ingress._reply_is_reminder_clarification(reply), reply
+            )
+
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
