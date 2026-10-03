@@ -173,6 +173,119 @@ def _stated_weekday(text: str | None) -> int | None:
     return next(iter(values)) if len(values) == 1 else None
 
 
+def _stated_clock(text: str | None) -> tuple[int, int] | None:
+    """Extract one exact user-stated local clock value."""
+    value = str(text or "")
+    if re.search(r"(?i)\bnoon\b", value):
+        return (12, 0)
+    if re.search(r"(?i)\bmidnight\b", value):
+        return (0, 0)
+
+    m = re.search(
+        r"(?i)\b(\d{1,2})(?::|\.)(\d{2})\s*(am|pm|a\.m\.|p\.m\.)\b",
+        value,
+    )
+    if not m:
+        m = re.search(
+            r"(?i)\b(\d{1,2})\s*(am|pm|a\.m\.|p\.m\.)\b",
+            value,
+        )
+        if m:
+            hour = int(m.group(1))
+            minute = 0
+            meridiem = m.group(2).casefold().replace(".", "")
+        else:
+            m24 = re.search(r"\b([01]?\d|2[0-3]):([0-5]\d)\b", value)
+            if not m24:
+                return None
+            return (int(m24.group(1)), int(m24.group(2)))
+    else:
+        hour = int(m.group(1))
+        minute = int(m.group(2))
+        meridiem = m.group(3).casefold().replace(".", "")
+
+    if hour < 1 or hour > 12 or minute < 0 or minute > 59:
+        return None
+    if meridiem == "pm" and hour != 12:
+        hour += 12
+    elif meridiem == "am" and hour == 12:
+        hour = 0
+    return (hour, minute)
+
+
+def _canonicalize_relative_reminder_due(actor: ActorContext, due_utc: str) -> str:
+    """Anchor unambiguous relative reminder language to the runtime clock.
+
+    The model still supplies the task and nominal due value, but clear user
+    phrases such as "tomorrow at 9 AM", "Saturday at 9 AM", or "in 2 minutes"
+    are resolved deterministically here. This prevents model date arithmetic
+    from turning a valid continuation into a false past-date failure.
+    """
+    trusted = str(getattr(actor, "trusted_text", "") or "")
+    if not trusted:
+        return due_utc
+
+    now = runtime_clock.now_utc().astimezone(timezone.utc)
+    tz = ZoneInfo(actor.timezone)
+    now_local = now.astimezone(tz)
+
+    relative = _RELATIVE_REMINDER_TIME_RE.search(trusted)
+    if relative:
+        amount_match = re.search(
+            r"(?i)\b(?:in|after)\s+(\d+)\s*(minutes?|mins?|hours?|hrs?)\b",
+            relative.group(0),
+        )
+        if amount_match:
+            amount = int(amount_match.group(1))
+            unit = amount_match.group(2).casefold()
+            delta = (
+                timedelta(hours=amount)
+                if unit.startswith(("hour", "hr"))
+                else timedelta(minutes=amount)
+            )
+            return (now + delta).isoformat()
+
+    clock = _stated_clock(trusted)
+    if clock is None:
+        return due_utc
+    hour, minute = clock
+    target_date = None
+
+    if re.search(r"(?i)\btomorrow\b", trusted):
+        target_date = now_local.date() + timedelta(days=1)
+    elif re.search(r"(?i)\btoday\b", trusted):
+        target_date = now_local.date()
+    else:
+        wanted = _stated_weekday(trusted)
+        if wanted is not None:
+            weekday_token = _WEEKDAY_RE.search(trusted)
+            if weekday_token and re.search(
+                r"(?i)\bnext\s+" + re.escape(weekday_token.group(1)) + r"\b",
+                trusted,
+            ):
+                # "next Saturday" remains intentionally ambiguous and is
+                # rejected by _validate_reminder_time_intent.
+                return due_utc
+            delta_days = (wanted - now_local.weekday()) % 7
+            target_date = now_local.date() + timedelta(days=delta_days)
+            candidate = datetime.combine(
+                target_date, time(hour, minute), tzinfo=tz
+            )
+            if (
+                delta_days == 0
+                and candidate <= now_local + timedelta(seconds=60)
+            ):
+                target_date += timedelta(days=7)
+
+    if target_date is None:
+        return due_utc
+
+    local_due = datetime.combine(
+        target_date, time(hour, minute), tzinfo=tz
+    )
+    return local_due.astimezone(timezone.utc).isoformat()
+
+
 def _validate_reminder_time_intent(actor: ActorContext, due_utc: str) -> None:
     """Reject model-generated reminder times that contradict trusted user intent."""
     trusted = str(getattr(actor, "trusted_text", "") or "")
@@ -1613,6 +1726,7 @@ def create_reminder(actor: ActorContext, task: str, due_local: str,
     if not actor.action_key:
         raise RuntimeError("missing deterministic action key")
     due_utc = _parse_event_time(due_local, actor.timezone)
+    due_utc = _canonicalize_relative_reminder_due(actor, due_utc)
     _validate_reminder_time_intent(actor, due_utc)
     delivery_class = (delivery_class or "routine").strip().lower()
     if delivery_class not in {"routine", "time_critical"}:
