@@ -25,11 +25,12 @@ import human_ai_lab
 
 # Frozen deterministic regression corpus. Any prompt/tool-surface change
 # invalidates this oracle until its regression expectations are reviewed.
-# 2026-10-02 v0.5.7 scope-policy recertification: compared the prior RC and
-# current 384-packet artifacts by packet_id. Exactly seven packets changed,
-# only in the public cash-pool tool descriptions/default scope; no tool names
-# were removed and the oracle's selected tools are unchanged.
-REVIEWED_CORPUS_FINGERPRINT = "7f66f5f30afc53f45d3a39a68274fd7cf4baf77cff121279f0702e86b1a13be4"
+# 2026-10-03 v0.5.8 live-regression recertification: the public corpus has
+# 388 packets. Four packets are new (three numbered voice-retrieval prompts and
+# one pocket-cash balance prompt); twelve existing packets differ only in the
+# public descriptions of the scoped goal/cash-pool read tools. The deterministic
+# oracle remains a regression check, not an independent model test.
+REVIEWED_CORPUS_FINGERPRINT = "5be066338f5bfe91484cdcf000af5b6cb635818015440e1a474d602669dda87d"
 
 
 def _low(value: str) -> str:
@@ -115,6 +116,13 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
     if text == "compare this month's holiday contribution with the target.":
         return result("tools", _one(tools, "planning_goal_deviation"))
     if text == "show number 1.":
+        return result("tools", _one(tools, "resolve_numbered_choice"))
+    if re.fullmatch(
+        r"(?:play|listen(?:\s+to)?|hear|show|open|send|get)"
+        r"(?:\s+unresolved)?(?:\s+(?:voice|audio)\s*note)?"
+        r"(?:\s+number)?\s+\d+[.!]?",
+        text,
+    ):
         return result("tools", _one(tools, "resolve_numbered_choice"))
     if text.startswith(
         "i don't know the date yet. make it kid-friendly"
@@ -738,7 +746,7 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
         phrase in text
         for phrase in (
             "goal", "savings", "saving", "extra cash", "cash pool", "stash",
-            "reserve", "baseline", "cash flow", "cashflow", "income outlook",
+            "pocket cash", "reserve", "baseline", "cash flow", "cashflow", "income outlook",
             "money plan", "financial plan", "ot money", "overtime pay", "bonus",
         )
     )
@@ -822,7 +830,8 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
         if re.search(r"\b(?:create|make)\b.*\b(?:stash|cash pool)\b", text):
             return result("tools", _one(tools, "planning_create_cash_pool"))
         if re.search(
-            r"\b(?:balance|how much)\b.*\b(?:stash|cash pool|holiday buffer)\b",
+            r"\b(?:balance|how much)\b.*\b(?:stash|cash pool|holiday buffer|pocket cash)\b"
+            r"|\b(?:stash|cash pool|holiday buffer|pocket cash)\b.*\bbalance\b",
             text,
         ):
             return result("tools", _one(tools, "planning_cash_pool_balance"))

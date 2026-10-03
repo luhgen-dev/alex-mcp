@@ -283,7 +283,7 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
         "list_pending_expenses": (r"pending|clarif|which expense|that expense", 105),
         "find_receipts": (r"\b(?:find|show|receipt|reference|ref)\b", 110),
         "get_receipt": (r"receipt|original|show", 90),
-        "resolve_numbered_choice": (r"^\s*\d+\s*$|\b(?:show|open|send|get|view)\s+(?:number\s+)?\d+\b", 140),
+        "resolve_numbered_choice": (r"^\s*\d+\s*$|\b(?:play|listen(?:\s+to)?|hear|show|open|send|get|view)\s+(?:(?:unresolved|pending)\s+)?(?:(?:voice|audio)\s*note\s*)?(?:number\s+|no\.?\s*|#\s*)?\d+\b", 140),
         "create_reminder": (r"remind|reminder|notify", 110),
         "list_reminders": (r"list|what reminders|reminders", 95),
         "update_reminder": (r"cancel|complete|ack|snooze|defer|reschedule", 115),
@@ -576,6 +576,42 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         low,
     ):
         force |= {"list_pending_items", "get_media_original"}
+
+    # Numbered retrieval is read-only. Retrieval verbs must never expose the
+    # pending-item mutators or drift into a fresh saved-memory search.
+    if re.search(
+        r"\b(?:play|listen(?:\s+to)?|hear|show|open|send|get|view)\s+"
+        r"(?:(?:unresolved|pending)\s+)?"
+        r"(?:(?:voice|audio)\s*note\s*)?(?:number\s+|no\.?\s*|#\s*)?\d+\b",
+        low,
+    ):
+        force.add("resolve_numbered_choice")
+        block |= {
+            "resolve_pending_item", "cancel_pending_item",
+            "search_saved_items", "get_saved_item", "remove_saved_item",
+        }
+
+    # Balance questions are exact scoped reads, not a planning/baseline turn.
+    # Keep the Family-by-default boundary intact and prevent the model from
+    # substituting baseline capacity or advertising write tools after a miss.
+    balance_read = re.search(
+        r"\b(?:stash|pocket\s+cash|cash\s+pool|pool)\b.{0,45}\bbalance\b"
+        r"|\bhow\s+much\b.{0,45}\b(?:stash|pocket\s+cash|cash\s+pool)\b",
+        low,
+    )
+    balance_write = re.search(
+        r"\b(?:set|declare|update|change|make|record)\b.{0,55}\b(?:stash|pocket\s+cash|cash\s+pool|pool|balance)\b"
+        r"|\bbalance\b\s*(?:is|=|to)\s*(?:rm|myr|sgd|\d)",
+        low,
+    )
+    if balance_read and not balance_write:
+        force |= {"planning_cash_pool_balance", "planning_list_cash_pools"}
+        block |= {
+            "planning_baseline", "planning_add_reserve", "planning_update_reserve",
+            "planning_allocate_cash_to_goal", "planning_allocate_cash_to_pool",
+            "planning_create_cash_pool", "planning_declare_cash_pool_balance",
+            "planning_record_cash_pool_spend", "planning_record_cash",
+        }
 
     if re.search(
         r"\b(?:resolve|mark\s+done|done)\s+(?:voice\s*note\s*)?(?:number\s+)?\d+\b",
@@ -1067,7 +1103,12 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
         selected |= {"resolve_latest_diary_conflict","resolve_numbered_choice"}
     elif re.fullmatch(r"\s*\d+\s*", text):
         selected.add("resolve_numbered_choice")
-    if re.search(r"(?i)\b(?:show|open|send|get|view)\s+(?:number\s+)?\d+\b", text):
+    if re.search(
+        r"(?i)\b(?:play|listen(?:\s+to)?|hear|show|open|send|get|view)\s+"
+        r"(?:(?:unresolved|pending)\s+)?"
+        r"(?:(?:voice|audio)\s*note\s*)?(?:number\s+|no\.?\s*|#\s*)?\d+\b",
+        text,
+    ):
         selected.add("resolve_numbered_choice")
 
     try:

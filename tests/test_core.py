@@ -2260,10 +2260,14 @@ class AlexCoreTests(unittest.TestCase):
             ),
             "handoff-create-action",
         )
-        reminder = services.create_reminder(
-            creator, "pick up parcel", "2026-10-01T18:00:00+08:00",
-            destination="group",
-        )
+        with patch.object(
+            runtime_clock, "now_utc",
+            return_value=datetime(2026, 10, 1, 9, 0, tzinfo=timezone.utc),
+        ):
+            reminder = services.create_reminder(
+                creator, "pick up parcel", "2026-10-01T18:00:00+08:00",
+                destination="group",
+            )
 
         reminder_outbound_id = db.queue_outbound(
             group_id, "TEXT", text="Reminder: pick up parcel",
@@ -3510,13 +3514,17 @@ class AlexCoreTests(unittest.TestCase):
             ),
             "v055-assigned-reminder-action",
         )
-        reminder = services.create_reminder(
-            group_actor,
-            "Luhgen to take the parcel",
-            "2026-10-01T15:00:00+08:00",
-            recipient="me",
-            destination="group",
-        )
+        with patch.object(
+            runtime_clock, "now_utc",
+            return_value=datetime(2026, 10, 1, 6, 58, tzinfo=timezone.utc),
+        ):
+            reminder = services.create_reminder(
+                group_actor,
+                "Luhgen to take the parcel",
+                "2026-10-01T15:00:00+08:00",
+                recipient="me",
+                destination="group",
+            )
         self.assertEqual(reminder["recipient_user_id"], "USR_HUSBAND")
         self.assertEqual(reminder["destination"], "dm")
         self.assertEqual(reminder["conversation_id"], "60111111111@s.whatsapp.net")
@@ -3724,10 +3732,14 @@ class AlexCoreTests(unittest.TestCase):
             ),
             "ha-claim-create-action",
         )
-        reminder = services.create_reminder(
-            group_actor, "collect parcel", "2026-10-02T15:00:00+08:00",
-            destination="group",
-        )
+        with patch.object(
+            runtime_clock, "now_utc",
+            return_value=datetime(2026, 10, 1, 6, 0, tzinfo=timezone.utc),
+        ):
+            reminder = services.create_reminder(
+                group_actor, "collect parcel", "2026-10-02T15:00:00+08:00",
+                destination="group",
+            )
         self.claim("ha-claim-h", "+60111111111", "claim")
         self.claim("ha-claim-w", "+60222222222", "claim")
         first = services.claim_reminder(
@@ -3752,9 +3764,13 @@ class AlexCoreTests(unittest.TestCase):
             ),
             "ha-action-create-key",
         )
-        reminder = services.create_reminder(
-            actor, "take parcel", "2026-10-02T15:00:00+08:00"
-        )
+        with patch.object(
+            runtime_clock, "now_utc",
+            return_value=datetime(2026, 10, 1, 6, 0, tzinfo=timezone.utc),
+        ):
+            reminder = services.create_reminder(
+                actor, "take parcel", "2026-10-02T15:00:00+08:00"
+            )
         token = ha_mobile.action_token(
             "ACK", "reminder", reminder["reminder_id"], "USR_HUSBAND"
         )
@@ -3789,9 +3805,13 @@ class AlexCoreTests(unittest.TestCase):
             ),
             "ha-stale-create-key",
         )
-        reminder = services.create_reminder(
-            actor, "closed task", "2026-10-02T16:00:00+08:00"
-        )
+        with patch.object(
+            runtime_clock, "now_utc",
+            return_value=datetime(2026, 10, 1, 6, 0, tzinfo=timezone.utc),
+        ):
+            reminder = services.create_reminder(
+                actor, "closed task", "2026-10-02T16:00:00+08:00"
+            )
         services.update_reminder(actor, reminder["reminder_id"], status="complete")
         token = ha_mobile.action_token(
             "ACK", "reminder", reminder["reminder_id"], "USR_HUSBAND"
@@ -3965,10 +3985,15 @@ class AlexCoreTests(unittest.TestCase):
         bridge_path = os.path.join(
             os.path.dirname(__file__), "..", "alex-mcp", "app", "connect.js"
         )
+        helper_path = os.path.join(
+            os.path.dirname(__file__), "..", "alex-mcp", "app", "control_payload.js"
+        )
         bridge = open(bridge_path, encoding="utf-8").read()
-        self.assertIn("pin: targetKey", bridge)
-        self.assertIn("type: payload.kind === 'pin' ? 1 : 2", bridge)
-        self.assertIn("fromMe: Boolean(payload.target_from_me)", bridge)
+        helper = open(helper_path, encoding="utf-8").read()
+        self.assertIn("buildControlMessage(payload, to)", bridge)
+        self.assertIn("fromMe: Boolean(payload.target_from_me)", helper)
+        self.assertIn("content: { pin: targetKey, type: 1, time: 2592000 }", helper)
+        self.assertIn("content: { pin: targetKey, type: 2 }", helper)
 
         row = {
             "provider_message_id": "wa-own-message",
@@ -4463,10 +4488,14 @@ class AlexCoreTests(unittest.TestCase):
             ),
             "v057-due-create-action",
         )
-        reminder = services.create_reminder(
-            creator, "v057 parcel", "2026-10-03T10:00:00+08:00",
-            destination="group", claimable=True,
-        )
+        with patch.object(
+            runtime_clock, "now_utc",
+            return_value=datetime(2026, 10, 2, 14, 0, tzinfo=timezone.utc),
+        ):
+            reminder = services.create_reminder(
+                creator, "v057 parcel", "2026-10-03T10:00:00+08:00",
+                destination="group", claimable=True,
+            )
         oid = db.queue_outbound(
             group_id, "TEXT", text="Reminder: v057 parcel",
             context_kind="REMINDER_INITIAL", context_id=reminder["reminder_id"],
@@ -4540,10 +4569,14 @@ class AlexCoreTests(unittest.TestCase):
             ),
             "v057-reminder-seed-action",
         )
-        services.create_reminder(
-            creator, "v056 unclaimed test", "2026-10-03T10:00:00+08:00",
-            shared=True,
-        )
+        with patch.object(
+            runtime_clock, "now_utc",
+            return_value=datetime(2026, 10, 2, 14, 0, tzinfo=timezone.utc),
+        ):
+            services.create_reminder(
+                creator, "v056 unclaimed test", "2026-10-03T10:00:00+08:00",
+                shared=True,
+            )
         self.claim("v057-note-collision", "+60111111111", "save v056 note")
         note_actor = with_action_key(
             replace(
@@ -4667,7 +4700,10 @@ class AlexCoreTests(unittest.TestCase):
             )
             return ("OK. I've set the reminder for Saturday at 9:00 AM.", [])
 
-        with patch.object(brain, "respond", new=finish_draft):
+        with patch.object(brain, "respond", new=finish_draft), patch.object(
+            runtime_clock, "now_utc",
+            return_value=datetime(2026, 10, 2, 14, 0, tzinfo=timezone.utc),
+        ):
             result = ingress.process(second)
         self.assertTrue(result["ok"])
         conn = db.connect()
@@ -4978,7 +5014,10 @@ class AlexCoreTests(unittest.TestCase):
             "text": "Saturday at 9 AM",
             "quoted_message_id": "wa-v057-draft-safe",
         }
-        with patch.object(brain, "respond", new=quoted_finish):
+        with patch.object(brain, "respond", new=quoted_finish), patch.object(
+            runtime_clock, "now_utc",
+            return_value=datetime(2026, 10, 2, 14, 0, tzinfo=timezone.utc),
+        ):
             self.assertTrue(ingress.process(final)["ok"])
         conn = db.connect()
         try:
@@ -5195,10 +5234,14 @@ class AlexCoreTests(unittest.TestCase):
             ),
             "v057-nudge-create-action",
         )
-        reminder = services.create_reminder(
-            creator, "collect parcel", "2026-10-03T10:00:00+08:00",
-            destination="group", claimable=True,
-        )
+        with patch.object(
+            runtime_clock, "now_utc",
+            return_value=datetime(2026, 10, 2, 14, 0, tzinfo=timezone.utc),
+        ):
+            reminder = services.create_reminder(
+                creator, "collect parcel", "2026-10-03T10:00:00+08:00",
+                destination="group", claimable=True,
+            )
         conn = db.connect()
         try:
             conn.execute(
@@ -5475,6 +5518,257 @@ class AlexCoreTests(unittest.TestCase):
         self.assertEqual(row["status"], "DUE")
         self.assertEqual(row["seen_at_utc"], row["acknowledged_at_utc"])
         self.assertIsNotNone(guard)
+
+
+    def test_v058_numbered_retrieval_verbs_are_read_only(self):
+        for text in (
+            "Play 1", "Listen 1", "Listen to 1", "Hear 1",
+            "Show 1", "Open 1", "Play unresolved voice note 1",
+        ):
+            selected = brain._select_tool_names(text)
+            forced, blocked = brain._routing_refinements(text)
+            self.assertIn("resolve_numbered_choice", selected, text)
+            self.assertIn("resolve_numbered_choice", forced, text)
+            self.assertIn("resolve_pending_item", blocked, text)
+            self.assertIn("cancel_pending_item", blocked, text)
+            self.assertIn("search_saved_items", blocked, text)
+
+    def test_v058_quote_bound_numbered_selection_beats_newer_list(self):
+        self.claim("v058-voice-src", "+60111111111", "")
+        media_ids, _, _ = media.process_payload_media({
+            "message_id": "v058-voice-src",
+            "audio_data": base64.b64encode(b"voice-v058").decode("ascii"),
+            "audio_mime_type": "audio/ogg",
+        })
+        owner = self.actor("v058-voice-src", "+60111111111", media_ids)
+        pending = db.create_pending_item(
+            owner, "VOICE", media_id=media_ids[0], note="v058 voice"
+        )
+
+        self.claim("v058-list", "+60111111111", "show unresolved voice notes")
+        reader = replace(
+            self.actor("v058-list", "+60111111111"),
+            trusted_text="show unresolved voice notes", read_scope="family",
+        )
+        mcp_server.list_pending_items(reader, "VOICE")
+        pending_set = services.latest_selection_set_context(reader)
+        self.assertEqual(pending_set["kind"], "PENDING_ITEM")
+
+        self.claim("v058-saved-src", "+60111111111", "save this")
+        saver = with_action_key(
+            self.actor("v058-saved-src", "+60111111111"), "v058-save-action"
+        )
+        services.save_item(
+            saver, "v058 newer note", "newer numbered context", shared=True
+        )
+        services.search_saved_items(reader, "v058 newer note")
+        newest = services.latest_selection_set_context(reader)
+        self.assertEqual(newest["kind"], "SAVED_ITEM")
+
+        quoted_pick = services.resolve_numbered_choice(
+            reader, 1,
+            selection_kind=pending_set["kind"],
+            selection_id=pending_set["id"],
+        )
+        self.assertEqual(quoted_pick["media_type"], "AUDIO")
+        self.assertTrue(quoted_pick["_attachments"])
+
+        conn = db.connect()
+        try:
+            state = conn.execute(
+                "SELECT status FROM pending_items WHERE item_id=?",
+                (pending["item_id"],),
+            ).fetchone()["status"]
+        finally:
+            conn.close()
+        self.assertEqual(state, "PENDING")
+
+    def test_v058_private_pool_miss_is_structured_and_offer_is_deterministic(self):
+        self.claim("v058-pool-create", "+60111111111", "create pocket cash privately 😊")
+        creator = replace(
+            self.actor("v058-pool-create", "+60111111111"),
+            trusted_text="create pocket cash privately 😊", read_scope="private",
+        )
+        created = mcp_server.planning_create_cash_pool(
+            "pocket cash", creator, opening_balance=100
+        )
+        self.assertEqual(created["space"], "HUSBAND_PVT")
+
+        self.claim("v058-pool-read", "+60111111111", "What is my pocket cash balance?")
+        family_actor = replace(
+            self.actor("v058-pool-read", "+60111111111"),
+            trusted_text="What is my pocket cash balance?", read_scope="family",
+        )
+        private_actor = replace(
+            family_actor,
+            trusted_text="What is my pocket cash balance? 😊", read_scope="private",
+        )
+        with use_actor(family_actor):
+            miss = mcp_server.planning_cash_pool_balance(
+                family_actor, pool_name="pocket cash"
+            )
+        self.assertEqual(miss["status"], "not_found_in_current_scope")
+        self.assertEqual(miss["scope"], "family")
+        self.assertTrue(miss["private_search_available"])
+        self.assertNotIn("balance", miss)
+
+        with use_actor(private_actor):
+            found = mcp_server.planning_cash_pool_balance(
+                private_actor, pool_name="pocket cash"
+            )
+        self.assertEqual(found["balance"], 100.0)
+
+        forced, blocked = brain._routing_refinements(
+            "What is my pocket cash balance?"
+        )
+        self.assertIn("planning_cash_pool_balance", forced)
+        self.assertIn("planning_baseline", blocked)
+        self.assertIn("planning_allocate_cash_to_pool", blocked)
+
+        declare_forced, declare_blocked = brain._routing_refinements(
+            "Set my stash balance to RM300."
+        )
+        declare_selected = brain._select_tool_names(
+            "Set my stash balance to RM300."
+        )
+        self.assertNotIn("planning_declare_cash_pool_balance", declare_blocked)
+        self.assertIn("planning_declare_cash_pool_balance", declare_selected)
+
+        conn = db.connect()
+        try:
+            conn.execute(
+                """INSERT INTO tool_audit(
+                       audit_id,action_key,source_message_id,user_id,tool_name,
+                       arguments_json,result_json,status
+                   ) VALUES(?,?,?,?,?,?,?,'OK')""",
+                (
+                    "v058-miss-audit", "v058-miss-action",
+                    family_actor.source_message_id, family_actor.user_id,
+                    "planning_cash_pool_balance", "{}",
+                    json.dumps(miss),
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        offer, reply = ingress._maybe_create_private_search_offer(
+            family_actor,
+            "What is my pocket cash balance?",
+            "Currency: MYR\nAvailable baseline monthly: 0.00",
+            [],
+        )
+        self.assertIsNotNone(offer)
+        self.assertIn("shared records", reply)
+        self.assertIn("private records", reply)
+        self.assertNotIn("baseline", reply.casefold())
+
+    def test_v058_relative_weekday_rejects_stale_or_wrong_week(self):
+        frozen = datetime(2026, 10, 2, 14, 8, tzinfo=timezone.utc)  # 22:08 MYT Friday
+        self.claim("v058-reminder-date", "+60111111111", "Saturday 9am")
+        actor = with_action_key(
+            replace(
+                self.actor("v058-reminder-date", "+60111111111"),
+                trusted_text="Saturday 9am",
+            ),
+            "v058-reminder-date-action",
+        )
+        with patch.object(runtime_clock, "now_utc", return_value=frozen):
+            with self.assertRaisesRegex(ValueError, "REMINDER_TIME_PASSED"):
+                services.create_reminder(
+                    actor, "test kettle", "2025-08-09T09:00:00+08:00"
+                )
+            with self.assertRaisesRegex(ValueError, "DATE_MISMATCH"):
+                services.create_reminder(
+                    actor, "test kettle", "2026-10-10T09:00:00+08:00"
+                )
+            created = services.create_reminder(
+                actor, "test kettle", "2026-10-03T09:00:00+08:00"
+            )
+        self.assertEqual(created["status"], "created")
+
+        ambiguous = replace(actor, trusted_text="next Saturday 9am")
+        with patch.object(runtime_clock, "now_utc", return_value=frozen):
+            with self.assertRaisesRegex(ValueError, "REMINDER_AMBIGUOUS_NEXT_WEEKDAY"):
+                services._validate_reminder_time_intent(
+                    ambiguous, "2026-10-03T01:00:00+00:00"
+                )
+
+    def test_v058_reminder_unpin_failure_is_bounded_and_observable(self):
+        self.claim("v058-unpin-reminder", "+60111111111", "fixture")
+        actor = with_action_key(
+            self.actor("v058-unpin-reminder", "+60111111111"),
+            "v058-unpin-reminder-action",
+        )
+        reminder = services.create_reminder(
+            actor, "v058 own-message unpin", "2026-10-03T09:00:00+08:00"
+        )
+        oid = db.queue_outbound(
+            actor.conversation_id, "TEXT", text="Reminder fixture",
+            source_message_id=actor.source_message_id,
+            context_kind="REMINDER_INITIAL",
+            context_id=reminder["reminder_id"],
+        )
+        conn = db.connect()
+        try:
+            conn.execute(
+                "UPDATE reminders SET status='COMP',claimable=1 WHERE reminder_id=?",
+                (reminder["reminder_id"],),
+            )
+            conn.execute(
+                """UPDATE outbound_messages
+                   SET delivery_status='SENT',provider_message_id='wa-v058-own',
+                       job_pinned_at_utc=CURRENT_TIMESTAMP
+                   WHERE outbound_id=?""",
+                (oid,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        sent = []
+        with patch.object(
+            outbox, "_send",
+            side_effect=lambda payload: (sent.append(payload) or False, "bridge unavailable"),
+        ):
+            for attempt in range(outbox.CONTROL_MAX_ATTEMPTS):
+                conn = db.connect()
+                try:
+                    if attempt:
+                        conn.execute(
+                            """UPDATE outbound_messages
+                               SET job_control_next_attempt_at_utc=NULL
+                               WHERE outbound_id=?""",
+                            (oid,),
+                        )
+                        conn.commit()
+                    outbox._reconcile_reminder_pins(conn)
+                finally:
+                    conn.close()
+
+            # Once failed permanently, another sweep must not send again.
+            conn = db.connect()
+            try:
+                outbox._reconcile_reminder_pins(conn)
+                row = conn.execute(
+                    """SELECT job_unpinned_at_utc,job_control_attempts,
+                              job_control_last_kind,job_control_last_error,
+                              job_control_failed_at_utc,job_unpin_failed_at_utc
+                       FROM outbound_messages WHERE outbound_id=?""",
+                    (oid,),
+                ).fetchone()
+            finally:
+                conn.close()
+
+        self.assertEqual(len(sent), outbox.CONTROL_MAX_ATTEMPTS)
+        self.assertTrue(all(p["kind"] == "unpin" for p in sent))
+        self.assertTrue(all(p["target_from_me"] for p in sent))
+        self.assertIsNone(row["job_unpinned_at_utc"])
+        self.assertEqual(row["job_control_attempts"], outbox.CONTROL_MAX_ATTEMPTS)
+        self.assertEqual(row["job_control_last_kind"], "unpin")
+        self.assertIn("bridge unavailable", row["job_control_last_error"])
+        self.assertIsNotNone(row["job_control_failed_at_utc"])
+        self.assertIsNotNone(row["job_unpin_failed_at_utc"])
+
 
 
 if __name__ == "__main__":

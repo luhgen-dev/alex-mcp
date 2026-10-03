@@ -426,6 +426,24 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         forbidden=_fs("log_expense", "create_reminder", "add_shopping_item"),
         seed="core", live=False,
     ),
+    PromptContract(
+        "p1.media.voice.pending.retrieve", "phase1", "media",
+        "Numbered pending-voice retrieval is read-only: play/listen/show/open must select the displayed item without resolving, cancelling, or drifting into saved memory.",
+        (
+            "Play 1",
+            "Listen to 1",
+            "Play unresolved voice note 1",
+        ),
+        _fs("resolve_numbered_choice"),
+        required_all=_fs("resolve_numbered_choice"),
+        # The capability catalog groups list/resolve/cancel pending items
+        # under one media.pending capability, so mutator exclusion is enforced
+        # by the exact router/unit regression instead of capability-level
+        # forbidden mapping here. The certification contract still prevents
+        # the observed saved-memory drift.
+        forbidden=_fs("search_saved_items", "remove_saved_item"),
+        seed="core", live=False,
+    ),
 
     PromptContract(
         "p1.finance.pending", "phase1", "finance",
@@ -1143,6 +1161,7 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         (
             "How much is in my Holiday Buffer stash?",
             "Show the balance of my Holiday Buffer cash pool.",
+            "What is my pocket cash balance?",
         ),
         _fs("planning_cash_pool_balance"), seed="core", live=False,
     ),

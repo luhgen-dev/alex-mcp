@@ -174,23 +174,99 @@ def _stated_weekday(text: str | None) -> int | None:
 
 
 def _validate_reminder_time_intent(actor: ActorContext, due_utc: str) -> None:
+    """Reject model-generated reminder times that contradict trusted user intent."""
     trusted = str(getattr(actor, "trusted_text", "") or "")
     if trusted and not (_user_stated_time(trusted) or _RELATIVE_REMINDER_TIME_RE.search(trusted)):
         raise ValueError(
             "REMINDER_NEEDS_TIME: ask the user for an exact time before creating the reminder"
         )
-    wanted = _stated_weekday(trusted)
-    if wanted is None:
+    # Trusted conversational text is the contract being validated. Internal
+    # migrations/admin fixtures with no user utterance retain their historical
+    # ability to construct deterministic rows for recovery/testing.
+    if not trusted:
         return
+
     due = datetime.fromisoformat(str(due_utc).replace("Z", "+00:00"))
     if due.tzinfo is None:
         due = due.replace(tzinfo=timezone.utc)
-    local = due.astimezone(ZoneInfo(actor.timezone))
+    due = due.astimezone(timezone.utc)
+    now = runtime_clock.now_utc().astimezone(timezone.utc)
+    tz = ZoneInfo(actor.timezone)
+    local = due.astimezone(tz)
+    now_local = now.astimezone(tz)
+
+    # A newly created/rescheduled reminder may never be persisted in the past.
+    # The small grace prevents an exact "now" value from racing the validator.
+    if due <= now + timedelta(seconds=60):
+        raise ValueError(
+            "REMINDER_TIME_PASSED: the requested reminder time is already past; "
+            "ask the user for a future time"
+        )
+
+    # Without an explicit year, a model must not jump to an unrelated distant
+    # year. This is a sanity boundary, not a replacement for user intent.
+    if trusted and not re.search(r"\b(?:19|20)\d{2}\b", trusted):
+        if due > now + timedelta(days=366):
+            raise ValueError(
+                "REMINDER_DATE_TOO_FAR: no year was stated; ask the user to confirm the date"
+            )
+
+    wanted = _stated_weekday(trusted)
+    if wanted is None:
+        return
+
     if local.weekday() != wanted:
-        requested = [name.title() for name, idx in _WEEKDAY_NAMES.items() if idx == wanted and len(name) > 3][0]
+        requested = [
+            name.title() for name, idx in _WEEKDAY_NAMES.items()
+            if idx == wanted and len(name) > 3
+        ][0]
         raise ValueError(
             f"DATE_WEEKDAY_MISMATCH: user requested {requested}, but "
             f"{local.date().isoformat()} is {local.strftime('%A')}; resolve the correct date before saving"
+        )
+
+    # "next Saturday" is genuinely ambiguous in ordinary English: some users
+    # mean the coming Saturday, others the one after. When no calendar date was
+    # supplied, reject rather than silently choosing one interpretation.
+    weekday_token = _WEEKDAY_RE.search(trusted)
+    if weekday_token and re.search(
+        r"(?i)\bnext\s+" + re.escape(weekday_token.group(1)) + r"\b",
+        trusted,
+    ):
+        has_calendar_date = bool(re.search(
+            r"(?i)\b\d{1,2}(?:st|nd|rd|th)?\s+"
+            r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|"
+            r"jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|"
+            r"nov(?:ember)?|dec(?:ember)?)\b",
+            trusted,
+        ))
+        if not has_calendar_date:
+            coming_delta = (wanted - now_local.weekday()) % 7
+            if coming_delta == 0:
+                coming_delta = 7
+            coming = now_local.date() + timedelta(days=coming_delta)
+            following = coming + timedelta(days=7)
+            raise ValueError(
+                "REMINDER_AMBIGUOUS_NEXT_WEEKDAY: ask whether the user means "
+                f"{coming.isoformat()} or {following.isoformat()}"
+            )
+
+    # Bare weekday and "this <weekday>" mean the next occurrence. If today is
+    # that weekday but the stated time has already passed, the next occurrence
+    # is seven days later. A stale-but-matching weekday (the live Aug-2025 bug)
+    # can no longer pass this guard.
+    delta = (wanted - now_local.weekday()) % 7
+    expected = now_local.date() + timedelta(days=delta)
+    if delta == 0:
+        candidate_today = datetime.combine(
+            now_local.date(), local.timetz()
+        ).astimezone(tz)
+        if candidate_today <= now_local + timedelta(seconds=60):
+            expected = now_local.date() + timedelta(days=7)
+    if local.date() != expected:
+        raise ValueError(
+            f"DATE_MISMATCH: user requested the next matching weekday; "
+            f"expected {expected.isoformat()}, got {local.date().isoformat()}"
         )
 
 
@@ -1268,45 +1344,133 @@ def get_selection_target(actor: ActorContext, kind: str, target_id: str) -> dict
     raise ValueError("unsupported selection context")
 
 
-def resolve_numbered_choice(actor: ActorContext, choice: int) -> dict:
-    """Resolve the newest unexpired numbered list across household read domains."""
+def latest_selection_set_context(actor: ActorContext,
+                                 created_after_utc: str | None = None) -> dict | None:
+    """Return the newest persisted numbered-list set for exact reply binding."""
+    now = utc_now()
+    after_sql = " AND datetime(created_at_utc)>=datetime(?)" if created_after_utc else ""
+    args_a = [actor.user_id, actor.conversation_id, now]
+    args_b = [actor.user_id, actor.conversation_id, now]
+    args_c = [actor.user_id, actor.conversation_id, now]
+    if created_after_utc:
+        args_a.append(created_after_utc)
+        args_b.append(created_after_utc)
+        args_c.append(created_after_utc)
+    conn = connect()
+    try:
+        row = conn.execute(
+            f"""SELECT selection_id,selection_kind,items_json,created_at_utc
+                   FROM selection_sets
+                  WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
+                        {after_sql}
+                  UNION ALL
+                 SELECT selection_id,'MEDIA' AS selection_kind,items_json,created_at_utc
+                   FROM media_selection_sets
+                  WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
+                        {after_sql}
+                  UNION ALL
+                 SELECT selection_id,'PENDING_ITEM' AS selection_kind,items_json,created_at_utc
+                   FROM pending_selection_sets
+                  WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
+                        {after_sql}
+                  ORDER BY created_at_utc DESC LIMIT 1""",
+            args_a + args_b + args_c,
+        ).fetchone()
+        if not row:
+            return None
+        ids = json.loads(row["items_json"] or "[]")
+        return {
+            "kind": str(row["selection_kind"]),
+            "id": str(row["selection_id"]),
+            "count": len(ids),
+        }
+    finally:
+        conn.close()
+
+
+def resolve_numbered_choice(actor: ActorContext, choice: int,
+                            selection_kind: str | None = None,
+                            selection_id: str | None = None) -> dict:
+    """Resolve one exact numbered-list item without changing pending lifecycle."""
     index = int(choice)
     if index < 1:
         raise ValueError("choice must be 1 or greater")
     now = utc_now()
     conn = connect()
     try:
-        rows = conn.execute(
-            """SELECT selection_kind AS selection_kind,items_json,created_at_utc
-                 FROM selection_sets
-                WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
-               UNION ALL
-               SELECT 'MEDIA' AS selection_kind,items_json,created_at_utc
-                 FROM media_selection_sets
-                WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
-               UNION ALL
-               SELECT 'PENDING_ITEM' AS selection_kind,items_json,created_at_utc
-                 FROM pending_selection_sets
-                WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
-               ORDER BY created_at_utc DESC LIMIT 1""",
-            (
-                actor.user_id, actor.conversation_id, now,
-                actor.user_id, actor.conversation_id, now,
-                actor.user_id, actor.conversation_id, now,
-            ),
-        ).fetchall()
-        if not rows:
+        if selection_id:
+            kind = str(selection_kind or "").strip().upper()
+            if kind in {"RECEIPT", "SAVED_ITEM"}:
+                latest = conn.execute(
+                    """SELECT selection_kind,items_json FROM selection_sets
+                       WHERE selection_id=? AND user_id=? AND conversation_id=?
+                         AND expires_at_utc>? AND selection_kind=? LIMIT 1""",
+                    (
+                        selection_id, actor.user_id, actor.conversation_id,
+                        now, kind,
+                    ),
+                ).fetchone()
+            elif kind == "MEDIA":
+                latest = conn.execute(
+                    """SELECT 'MEDIA' AS selection_kind,items_json
+                       FROM media_selection_sets
+                       WHERE selection_id=? AND user_id=? AND conversation_id=?
+                         AND expires_at_utc>? LIMIT 1""",
+                    (selection_id, actor.user_id, actor.conversation_id, now),
+                ).fetchone()
+            elif kind == "PENDING_ITEM":
+                latest = conn.execute(
+                    """SELECT 'PENDING_ITEM' AS selection_kind,items_json
+                       FROM pending_selection_sets
+                       WHERE selection_id=? AND user_id=? AND conversation_id=?
+                         AND expires_at_utc>? LIMIT 1""",
+                    (selection_id, actor.user_id, actor.conversation_id, now),
+                ).fetchone()
+            else:
+                raise ValueError("unsupported numbered selection context")
+        else:
+            latest = conn.execute(
+                """SELECT selection_id,selection_kind,items_json,created_at_utc
+                     FROM selection_sets
+                    WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
+                   UNION ALL
+                   SELECT selection_id,'MEDIA' AS selection_kind,items_json,created_at_utc
+                     FROM media_selection_sets
+                    WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
+                   UNION ALL
+                   SELECT selection_id,'PENDING_ITEM' AS selection_kind,items_json,created_at_utc
+                     FROM pending_selection_sets
+                    WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
+                   ORDER BY created_at_utc DESC LIMIT 1""",
+                (
+                    actor.user_id, actor.conversation_id, now,
+                    actor.user_id, actor.conversation_id, now,
+                    actor.user_id, actor.conversation_id, now,
+                ),
+            ).fetchone()
+        if not latest:
             raise ValueError(
                 "no numbered receipt, saved-memory, media, or pending-item list is waiting"
             )
-        latest = rows[0]
-        ids = json.loads(latest["items_json"])
+        ids = json.loads(latest["items_json"] or "[]")
         if index > len(ids):
-            raise ValueError("choice is outside the latest numbered list")
-        target = ids[index - 1]
-        kind = latest["selection_kind"]
+            raise ValueError("choice is outside the selected numbered list")
+        target = str(ids[index - 1])
+        kind = str(latest["selection_kind"]).upper()
+        pending = None
+        if kind == "PENDING_ITEM":
+            pending_row = conn.execute(
+                """SELECT * FROM pending_items
+                   WHERE item_id=? AND owner_id=? AND conversation_id=?
+                     AND status='PENDING' LIMIT 1""",
+                (target, actor.user_id, actor.conversation_id),
+            ).fetchone()
+            if not pending_row:
+                raise ValueError("that pending item is no longer unresolved")
+            pending = dict(pending_row)
     finally:
         conn.close()
+
     if kind == "RECEIPT":
         return get_receipt(actor, target)
     if kind == "SAVED_ITEM":
@@ -1314,14 +1478,13 @@ def resolve_numbered_choice(actor: ActorContext, choice: int) -> dict:
     if kind == "MEDIA":
         return get_media_original(actor, target)
     if kind == "PENDING_ITEM":
-        pending = db.pending_item_by_choice(actor, index)
-        media_id = str(pending.get("media_id") or "")
+        media_id = str((pending or {}).get("media_id") or "")
         if media_id:
             return get_media_original(actor, media_id)
         return {
             "status": "found",
-            "kind": pending.get("kind"),
-            "note": pending.get("note"),
+            "kind": (pending or {}).get("kind"),
+            "note": (pending or {}).get("note"),
         }
     raise ValueError("unsupported numbered choice type")
 
@@ -1663,10 +1826,13 @@ def update_reminder(actor: ActorContext, reminder_id: str, status: str = "open",
             snooze_note = f"snoozed_from_now={minutes}m"
         elif snooze_until_local:
             new_due = _parse_event_time(snooze_until_local, actor.timezone)
+            _validate_reminder_time_intent(actor, new_due)
             resolved = "OPEN"
             snooze_note = "snoozed_until_local"
         else:
             new_due = _parse_event_time(new_due_local, actor.timezone) if new_due_local else previous_due
+            if new_due_local:
+                _validate_reminder_time_intent(actor, new_due)
         acknowledged = utc_now() if resolved == "ACK" else None
         claim_clear_event = None
         if resolved == "COMP" and row["claimed_by_user_id"]:

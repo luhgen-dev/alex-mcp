@@ -203,6 +203,21 @@ def system_health(actor, hours: int = 24) -> dict:
             "SELECT COUNT(*) FROM tool_audit WHERE status='ERROR' AND created_at_utc>=?",
             (cutoff,),
         ).fetchone()[0]
+        control_failures = conn.execute(
+            """SELECT COUNT(*) FROM outbound_messages
+               WHERE job_control_failed_at_utc IS NOT NULL
+                 AND created_at_utc>=?""",
+            (cutoff,),
+        ).fetchone()[0]
+        control_last_error = conn.execute(
+            """SELECT outbound_id,context_kind,job_control_last_kind,
+                      job_control_attempts,job_control_last_error,
+                      job_control_failed_at_utc
+               FROM outbound_messages
+               WHERE job_control_last_error IS NOT NULL
+               ORDER BY COALESCE(job_control_failed_at_utc,created_at_utc) DESC,rowid DESC
+               LIMIT 1"""
+        ).fetchone()
         ha_pending = conn.execute(
             "SELECT COUNT(*) FROM ha_notification_outbox WHERE delivery_status='PENDING'"
         ).fetchone()[0]
@@ -285,6 +300,24 @@ def system_health(actor, hours: int = 24) -> dict:
                 "pending_outbound": int(pending_outbound),
                 "failed_outbound": int(failed_outbound),
                 "tool_errors": int(tool_errors),
+                "whatsapp_controls": {
+                    "failed_rows": int(control_failures),
+                    "latest_error": (
+                        {
+                            "outbound_id": control_last_error["outbound_id"],
+                            "context_kind": control_last_error["context_kind"],
+                            "kind": control_last_error["job_control_last_kind"],
+                            "attempts": int(control_last_error["job_control_attempts"] or 0),
+                            "error": str(control_last_error["job_control_last_error"] or "")[:500],
+                            "failed_at_utc": control_last_error["job_control_failed_at_utc"],
+                        }
+                        if control_last_error else None
+                    ),
+                    "note": (
+                        "WhatsApp pin/unpin/reaction controls use bounded retry; "
+                        "a failed row requires inspection rather than a hot loop."
+                    ),
+                },
                 "ha_companion": {
                     "configured_devices": len(settings.ha_notify_devices or []),
                     "pending_notifications": int(ha_pending),

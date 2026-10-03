@@ -117,6 +117,12 @@ def initialize() -> None:
         _ensure_column(conn, "outbound_messages", "job_reaction_cleared_at_utc", "TEXT")
         _ensure_column(conn, "outbound_messages", "job_unpinned_at_utc", "TEXT")
         _ensure_column(conn, "outbound_messages", "job_failure_notice_at_utc", "TEXT")
+        _ensure_column(conn, "outbound_messages", "job_control_attempts", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(conn, "outbound_messages", "job_control_next_attempt_at_utc", "TEXT")
+        _ensure_column(conn, "outbound_messages", "job_control_last_error", "TEXT")
+        _ensure_column(conn, "outbound_messages", "job_control_last_kind", "TEXT")
+        _ensure_column(conn, "outbound_messages", "job_control_failed_at_utc", "TEXT")
+        _ensure_column(conn, "outbound_messages", "job_unpin_failed_at_utc", "TEXT")
         _ensure_column(conn, "reminders", "presence_aware", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(conn, "reminders", "delivery_class", "TEXT NOT NULL DEFAULT 'routine'")
         _ensure_column(conn, "reminders", "follow_up_after_hours", "INTEGER NOT NULL DEFAULT 24")
@@ -878,11 +884,12 @@ def _store_pending_selection(conn, actor: ActorContext, item_ids: list[str]) -> 
     expires = (runtime_clock.now_utc() + timedelta(minutes=10)).isoformat()
     conn.execute(
         """INSERT INTO pending_selection_sets(
-               selection_id,user_id,conversation_id,items_json,expires_at_utc
-           ) VALUES(?,?,?,?,?)""",
+               selection_id,user_id,conversation_id,items_json,
+               created_at_utc,expires_at_utc
+           ) VALUES(?,?,?,?,?,?)""",
         (
             str(uuid.uuid4()), actor.user_id, actor.conversation_id,
-            json.dumps(item_ids), expires,
+            json.dumps(item_ids), utc_now(), expires,
         ),
     )
 

@@ -6,7 +6,7 @@ import json
 import os
 import time
 import urllib.request
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 import runtime_clock
 
@@ -14,6 +14,8 @@ from db import connect
 
 EGRESS_URL = "http://127.0.0.1:5002/send"
 DOCUMENT_NOTICE_ATTEMPTS = 3
+CONTROL_MAX_ATTEMPTS = 5
+CONTROL_BACKOFF_SECONDS = (5, 15, 60, 300, 900)
 _STARTUP_MANAGED_JOB_RECONCILED = False
 
 
@@ -112,35 +114,127 @@ def _joined_row(conn, outbound_id: str):
     ).fetchone()
 
 
-def _control(row, kind: str, emoji: str | None = None) -> bool:
+def _control_result(row, kind: str,
+                    emoji: str | None = None) -> tuple[bool, str]:
     if not row["source_message_id"]:
-        return False
+        return False, "missing source_message_id"
     payload = {
         "to": row["conversation_id"],
         "kind": kind,
         "target_message_id": row["source_message_id"],
     }
-    if str(row["conversation_id"]).endswith("@g.us") and row["source_sender_provider_jid"]:
+    if (
+        str(row["conversation_id"]).endswith("@g.us")
+        and _row_value(row, "source_sender_provider_jid")
+    ):
         payload["target_participant_jid"] = row["source_sender_provider_jid"]
     if kind == "reaction":
         payload["emoji"] = emoji or ""
-    ok, _detail = _send(payload)
-    return ok
+    return _send(payload)
 
 
-def _control_outbound(row, kind: str) -> bool:
-    """Pin/unpin a message Alex itself sent, using its provider or deterministic ID."""
+def _control(row, kind: str, emoji: str | None = None) -> bool:
+    """Compatibility wrapper for direct tests/callers."""
+    return _control_result(row, kind, emoji)[0]
+
+
+def _control_outbound_result(row, kind: str) -> tuple[bool, str]:
+    """Pin/unpin a message Alex itself sent, preserving transport detail."""
     target = str(row["provider_message_id"] or "") or _whatsapp_message_id(row["outbound_id"])
     if not target:
-        return False
+        return False, "missing outbound target message id"
     payload = {
         "to": row["conversation_id"],
         "kind": kind,
         "target_message_id": target,
         "target_from_me": True,
     }
-    ok, _detail = _send(payload)
-    return ok
+    return _send(payload)
+
+
+def _control_outbound(row, kind: str) -> bool:
+    """Compatibility wrapper for direct tests/callers."""
+    return _control_outbound_result(row, kind)[0]
+
+
+def _control_retry_ready(row) -> bool:
+    """Whether this row may make another WhatsApp marker control attempt now."""
+    if _row_value(row, "job_control_failed_at_utc"):
+        return False
+    next_at = _row_value(row, "job_control_next_attempt_at_utc")
+    if not next_at:
+        return True
+    try:
+        parsed = datetime.fromisoformat(str(next_at).replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc) <= runtime_clock.now_utc().astimezone(timezone.utc)
+    except Exception:
+        return True
+
+
+def _record_control_attempt(conn, row, kind: str,
+                            ok: bool, detail: str) -> bool:
+    """Persist control outcome so a bridge failure can never hot-loop silently."""
+    if ok:
+        conn.execute(
+            """UPDATE outbound_messages
+               SET job_control_attempts=0,
+                   job_control_next_attempt_at_utc=NULL,
+                   job_control_last_error=NULL,
+                   job_control_last_kind=?,
+                   job_control_failed_at_utc=NULL,
+                   job_unpin_failed_at_utc=CASE
+                       WHEN ?='unpin' THEN NULL ELSE job_unpin_failed_at_utc END
+               WHERE outbound_id=?""",
+            (kind, kind, row["outbound_id"]),
+        )
+        conn.commit()
+        return True
+
+    attempts = int(_row_value(row, "job_control_attempts", 0) or 0) + 1
+    error = str(detail or "WhatsApp control failed")[:1000]
+    failed_at = _now() if attempts >= CONTROL_MAX_ATTEMPTS else None
+    if failed_at:
+        next_try = None
+    else:
+        delay = CONTROL_BACKOFF_SECONDS[min(attempts - 1, len(CONTROL_BACKOFF_SECONDS) - 1)]
+        next_try = (runtime_clock.now_utc() + timedelta(seconds=delay)).isoformat()
+    conn.execute(
+        """UPDATE outbound_messages
+           SET job_control_attempts=?,
+               job_control_next_attempt_at_utc=?,
+               job_control_last_error=?,
+               job_control_last_kind=?,
+               job_control_failed_at_utc=?,
+               job_unpin_failed_at_utc=CASE
+                   WHEN ?='unpin' AND ? IS NOT NULL THEN ?
+                   ELSE job_unpin_failed_at_utc END
+           WHERE outbound_id=?""",
+        (
+            attempts, next_try, error, kind, failed_at,
+            kind, failed_at, failed_at, row["outbound_id"],
+        ),
+    )
+    conn.commit()
+    print(
+        f"[Alex MCP] WhatsApp control {kind} failed "
+        f"outbound={row['outbound_id']} attempt={attempts}/{CONTROL_MAX_ATTEMPTS} "
+        f"error={error}",
+        flush=True,
+    )
+    return False
+
+
+def _attempt_control(conn, row, kind: str, emoji: str | None = None,
+                     *, outbound: bool = False) -> bool:
+    if not _control_retry_ready(row):
+        return False
+    ok, detail = (
+        _control_outbound_result(row, kind)
+        if outbound else _control_result(row, kind, emoji)
+    )
+    return _record_control_attempt(conn, row, kind, ok, detail)
 
 
 def _expire_transient_pending_items(conn) -> None:
@@ -220,9 +314,13 @@ def _reconcile_reminder_pins(conn) -> None:
             int(row["claimable"] or 0) == 1
             and row["reminder_status"] == "DUE"
         )
-        if not unresolved and _control_outbound(row, "unpin"):
+        if not unresolved and _attempt_control(
+            conn, row, "unpin", outbound=True
+        ):
             conn.execute(
-                "UPDATE outbound_messages SET job_unpinned_at_utc=? WHERE outbound_id=?",
+                """UPDATE outbound_messages
+                   SET job_unpinned_at_utc=?,job_unpin_failed_at_utc=NULL
+                   WHERE outbound_id=?""",
                 (_now(), row["outbound_id"]),
             )
             conn.commit()
@@ -244,15 +342,17 @@ def _ensure_unresolved_markers(conn, row) -> None:
         return
     now = _now()
     if not row["job_reacted_at_utc"]:
-        if _control(row, "reaction", "⏳"):
+        if _attempt_control(conn, row, "reaction", "⏳"):
             conn.execute(
                 "UPDATE outbound_messages SET job_reacted_at_utc=? WHERE outbound_id=?",
                 (now, row["outbound_id"]),
             )
             conn.commit()
             row = _joined_row(conn, row["outbound_id"])
+        else:
+            return
     if not row["job_pinned_at_utc"]:
-        if _control(row, "pin"):
+        if _attempt_control(conn, row, "pin"):
             conn.execute(
                 "UPDATE outbound_messages SET job_pinned_at_utc=? WHERE outbound_id=?",
                 (now, row["outbound_id"]),
@@ -267,17 +367,21 @@ def _cleanup_resolved_markers(conn, row) -> None:
         return
     now = _now()
     if row["job_reacted_at_utc"] and not row["job_reaction_cleared_at_utc"]:
-        if _control(row, "reaction", ""):
+        if _attempt_control(conn, row, "reaction", ""):
             conn.execute(
                 "UPDATE outbound_messages SET job_reaction_cleared_at_utc=? WHERE outbound_id=?",
                 (now, row["outbound_id"]),
             )
             conn.commit()
             row = _joined_row(conn, row["outbound_id"])
+        else:
+            return
     if row["job_pinned_at_utc"] and not row["job_unpinned_at_utc"]:
-        if _control(row, "unpin"):
+        if _attempt_control(conn, row, "unpin"):
             conn.execute(
-                "UPDATE outbound_messages SET job_unpinned_at_utc=? WHERE outbound_id=?",
+                """UPDATE outbound_messages
+                   SET job_unpinned_at_utc=?,job_unpin_failed_at_utc=NULL
+                   WHERE outbound_id=?""",
                 (now, row["outbound_id"]),
             )
             conn.commit()
@@ -454,7 +558,9 @@ def sweep():
                         and reminder["status"] == "DUE"
                         and int(reminder["claimable"] or 0) == 1
                         and not refreshed["job_pinned_at_utc"]
-                        and _control_outbound(refreshed, "pin")
+                        and _attempt_control(
+                            conn, refreshed, "pin", outbound=True
+                        )
                     ):
                         conn.execute(
                             "UPDATE outbound_messages SET job_pinned_at_utc=? WHERE outbound_id=?",
