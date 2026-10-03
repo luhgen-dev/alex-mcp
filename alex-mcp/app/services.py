@@ -1842,9 +1842,7 @@ def create_reminder(actor: ActorContext, task: str, due_local: str,
                     follow_up_after_hours: int = 24) -> dict:
     if not actor.action_key:
         raise RuntimeError("missing deterministic action key")
-    due_utc = _parse_event_time(due_local, actor.timezone)
-    due_utc = _canonicalize_relative_reminder_due(actor, due_utc)
-    _validate_reminder_time_intent(actor, due_utc)
+    due_utc = _resolve_reminder_due(actor, due_local)
     delivery_class = (delivery_class or "routine").strip().lower()
     if delivery_class not in {"routine", "time_critical"}:
         raise ValueError("delivery_class must be routine or time_critical")
@@ -2056,14 +2054,11 @@ def update_reminder(actor: ActorContext, reminder_id: str, status: str = "open",
             resolved = "OPEN"
             snooze_note = f"snoozed_from_now={minutes}m"
         elif snooze_until_local:
-            new_due = _parse_event_time(snooze_until_local, actor.timezone)
-            _validate_reminder_time_intent(actor, new_due)
+            new_due = _resolve_reminder_due(actor, snooze_until_local)
             resolved = "OPEN"
             snooze_note = "snoozed_until_local"
         else:
-            new_due = _parse_event_time(new_due_local, actor.timezone) if new_due_local else previous_due
-            if new_due_local:
-                _validate_reminder_time_intent(actor, new_due)
+            new_due = _resolve_reminder_due(actor, new_due_local) if new_due_local else previous_due
         acknowledged = utc_now() if resolved == "ACK" else None
         claim_clear_event = None
         if resolved == "COMP" and row["claimed_by_user_id"]:
