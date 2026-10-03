@@ -5921,10 +5921,12 @@ class AlexCoreTests(unittest.TestCase):
             )
 
         due = datetime.fromisoformat(created["due_at_utc"]).astimezone(
-            ZoneInfo("Asia/Kuala_Lumpur")
+            timezone.utc
         )
-        self.assertEqual(due.date().isoformat(), "2026-10-04")
-        self.assertEqual((due.hour, due.minute), (9, 0))
+        self.assertEqual(
+            due,
+            datetime(2026, 10, 4, 1, 0, tzinfo=timezone.utc),
+        )
 
     def test_v0511_quoted_reminder_draft_keeps_create_tool(self):
         quoted = {
