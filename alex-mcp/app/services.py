@@ -7,6 +7,7 @@ import math
 import operator
 import re
 import uuid
+from dataclasses import replace
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
@@ -1782,8 +1783,8 @@ def _reminder_targets(actor: ActorContext, recipient: str) -> list[str]:
 
 
 def _trusted_named_reminder_recipient(actor: ActorContext) -> tuple[str, str] | None:
-    """Resolve an explicit assignee from the current trusted command only."""
-    text = str(getattr(actor, "trusted_text", "") or "").strip()
+    """Resolve an explicit assignee from this reminder's accumulated trusted text."""
+    text = _reminder_intent_text(actor)
     if not text:
         return None
     aliases = _reminder_recipient_aliases(actor)
@@ -1858,7 +1859,7 @@ def create_reminder(actor: ActorContext, task: str, due_local: str,
     if (
         actor.conversation_type == "GROUP"
         and trusted_assignee
-        and not _explicit_group_reminder_destination(getattr(actor, "trusted_text", ""))
+        and not _explicit_group_reminder_destination(_reminder_intent_text(actor))
     ):
         alias, target_user = trusted_assignee
         destination = "dm"
@@ -1906,8 +1907,13 @@ def create_reminder(actor: ActorContext, task: str, due_local: str,
             if destination == "group" or target_user != actor.user_id or len(targets) > 1:
                 space = "FAMILY_SHARED"
             else:
+                scope_actor = (
+                    replace(actor, trusted_text=_reminder_intent_text(actor))
+                    if getattr(actor, "reminder_context_text", "")
+                    else actor
+                )
                 space = scope_policy.resolve_new_write_space(
-                    actor, requested_shared=shared
+                    scope_actor, requested_shared=shared
                 )
             if space not in actor.allowed_spaces:
                 raise PermissionError("requested reminder space is not accessible")
