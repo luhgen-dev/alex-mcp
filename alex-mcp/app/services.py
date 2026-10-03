@@ -255,28 +255,10 @@ def _canonicalize_relative_reminder_due(actor: ActorContext, due_utc: str) -> st
         target_date = now_local.date() + timedelta(days=1)
     elif re.search(r"(?i)\btoday\b", trusted):
         target_date = now_local.date()
-    else:
-        wanted = _stated_weekday(trusted)
-        if wanted is not None:
-            weekday_token = _WEEKDAY_RE.search(trusted)
-            if weekday_token and re.search(
-                r"(?i)\bnext\s+" + re.escape(weekday_token.group(1)) + r"\b",
-                trusted,
-            ):
-                # "next Saturday" remains intentionally ambiguous and is
-                # rejected by _validate_reminder_time_intent.
-                return due_utc
-            delta_days = (wanted - now_local.weekday()) % 7
-            target_date = now_local.date() + timedelta(days=delta_days)
-            candidate = datetime.combine(
-                target_date, time(hour, minute), tzinfo=tz
-            )
-            if (
-                delta_days == 0
-                and candidate <= now_local + timedelta(seconds=60)
-            ):
-                target_date += timedelta(days=7)
-
+    # Weekday phrases intentionally remain validation-only. The v0.5.8
+    # stale-year fix requires a model-supplied Saturday date to be checked and
+    # rejected when wrong rather than silently rewritten. "today" and
+    # "tomorrow" are unambiguous enough to anchor deterministically.
     if target_date is None:
         return due_utc
 
