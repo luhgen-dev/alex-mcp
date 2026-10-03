@@ -275,7 +275,8 @@ def _expire_transient_pending_items(conn) -> None:
 
 def _reconcile_pending_item_markers(conn) -> None:
     rows = conn.execute(
-        """SELECT o.*,p.status AS pending_status,p.kind AS pending_kind
+        """SELECT o.rowid AS outbound_rowid,o.*,
+                  p.status AS pending_status,p.kind AS pending_kind
            FROM outbound_messages o
            JOIN pending_items p ON p.item_id=o.context_id
            WHERE o.context_kind='PENDING_ITEM'
@@ -288,8 +289,26 @@ def _reconcile_pending_item_markers(conn) -> None:
                         OR (o.job_pinned_at_utc IS NOT NULL AND o.job_unpinned_at_utc IS NULL)
                     )
                 )
-             )"""
+             )
+           ORDER BY o.rowid DESC"""
     ).fetchall()
+
+    # A multi-step reminder draft may ask more than one clarification
+    # ("Tomorrow" -> "What time tomorrow?"). Keep exactly the newest delivered
+    # clarification pinned; move the pin forward instead of accumulating old
+    # pinned questions for the same unresolved draft.
+    latest_draft_sent: dict[str, str] = {}
+    for row in rows:
+        if (
+            row["pending_status"] == "PENDING"
+            and row["pending_kind"] == "REMINDER_DRAFT"
+            and row["delivery_status"] == "SENT"
+            and row["provider_message_id"]
+        ):
+            latest_draft_sent.setdefault(
+                str(row["context_id"]), str(row["outbound_id"])
+            )
+
     for row in rows:
         if row["pending_status"] == "PENDING" and row["pending_kind"] == "VOICE":
             _ensure_unresolved_markers(conn, row)
@@ -297,7 +316,14 @@ def _reconcile_pending_item_markers(conn) -> None:
             row["pending_status"] == "PENDING"
             and row["pending_kind"] == "REMINDER_DRAFT"
         ):
-            _ensure_reminder_draft_pin(conn, row)
+            latest_id = latest_draft_sent.get(str(row["context_id"]))
+            if latest_id and str(row["outbound_id"]) == latest_id:
+                _ensure_reminder_draft_pin(conn, row)
+            elif (
+                row["job_pinned_at_utc"] is not None
+                and row["job_unpinned_at_utc"] is None
+            ):
+                _cleanup_resolved_markers(conn, row)
         else:
             # Also cleans stale markers from transient offer/draft prompts.
             _cleanup_resolved_markers(conn, row)

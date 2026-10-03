@@ -1313,17 +1313,46 @@ def process(payload: dict) -> dict:
             else _selection_context_for_offer(actor, reply, attachments)
         )
         reminder_setup_id = _created_claimable_reminder_id(actor)
-        reminder_draft = _maybe_create_reminder_draft(actor, reply)
+        continuing_reminder_draft = (
+            pending_item
+            if pending_item
+            and str(pending_item.get("kind") or "").upper() == "REMINDER_DRAFT"
+            else None
+        )
+        reminder_created = _reminder_created_by_turn(actor)
+        if (
+            continuing_reminder_draft
+            and not reminder_created
+            and _reply_is_reminder_clarification(reply)
+        ):
+            # Keep every follow-up clarification bound to the same durable
+            # reminder draft so a later swipe-reply still resolves the
+            # original unfinished reminder request.
+            reminder_draft = continuing_reminder_draft
+        else:
+            reminder_draft = _maybe_create_reminder_draft(actor, reply)
         report_context = _report_context_for_turn(actor)
 
-        if (
-            pending_item
-            and str(pending_item.get("kind") or "").upper() == "REMINDER_DRAFT"
-            and _reminder_created_by_turn(actor)
-        ):
-            db.resolve_pending_item(
-                pending_item["item_id"], actor.user_id, actor.source_message_id
-            )
+        if reminder_created:
+            draft_to_resolve = continuing_reminder_draft
+            if (
+                not draft_to_resolve
+                and _looks_like_reminder_clarification_reply(
+                    turn["trusted_text"]
+                )
+            ):
+                # A pure date/time answer that successfully creates a reminder
+                # is completion of the newest active reminder draft, even if a
+                # provider quote ID was unavailable on this turn.
+                draft_to_resolve = db.latest_pending_item(
+                    actor, "REMINDER_DRAFT", max_age_seconds=1800
+                )
+            if draft_to_resolve:
+                db.resolve_pending_item(
+                    draft_to_resolve["item_id"],
+                    actor.user_id,
+                    actor.source_message_id,
+                )
         if not attachments:
             context_kind = (
                 "PENDING_ITEM" if private_search_offer

@@ -5954,5 +5954,177 @@ class AlexCoreTests(unittest.TestCase):
 
 
 
+    def test_v0512_multistep_reminder_draft_moves_pin_and_unpins_on_creation(self):
+        first = {
+            "message_id": "v0512-shoes-first",
+            "provider": "WHATSAPP",
+            "conversation_id": "60111111111@s.whatsapp.net",
+            "conversation_type": "DIRECT_DM",
+            "sender_phone": "+60111111111",
+            "text": "Remind me to take the shoes",
+        }
+        with patch.object(
+            brain, "respond",
+            return_value=(
+                "Sure thing. What time would you like to be reminded to take the shoes?",
+                [],
+            ),
+        ):
+            self.assertTrue(ingress.process(first)["ok"])
+
+        conn = db.connect()
+        try:
+            draft = conn.execute(
+                """SELECT * FROM pending_items
+                   WHERE source_message_id='v0512-shoes-first'
+                     AND kind='REMINDER_DRAFT'"""
+            ).fetchone()
+            first_out = conn.execute(
+                """SELECT * FROM outbound_messages
+                   WHERE source_message_id='v0512-shoes-first'
+                   ORDER BY rowid DESC LIMIT 1"""
+            ).fetchone()
+            self.assertIsNotNone(draft)
+            self.assertEqual(first_out["context_kind"], "PENDING_ITEM")
+            self.assertEqual(first_out["context_id"], draft["item_id"])
+            conn.execute(
+                """UPDATE outbound_messages
+                   SET provider_message_id='wa-v0512-question-1',
+                       delivery_status='SENT',delivered_at_utc=CURRENT_TIMESTAMP
+                   WHERE outbound_id=?""",
+                (first_out["outbound_id"],),
+            )
+            conn.commit()
+            controls = []
+            with patch.object(
+                outbox, "_send",
+                side_effect=lambda payload: (controls.append(payload) or True, "{}"),
+            ):
+                outbox._reconcile_pending_item_markers(conn)
+            self.assertEqual([p["kind"] for p in controls], ["pin"])
+        finally:
+            conn.close()
+
+        second = {
+            "message_id": "v0512-shoes-second",
+            "provider": "WHATSAPP",
+            "conversation_id": "60111111111@s.whatsapp.net",
+            "conversation_type": "DIRECT_DM",
+            "sender_phone": "+60111111111",
+            "text": "Tomorrow",
+            "quoted_message_id": "wa-v0512-question-1",
+        }
+        with patch.object(
+            brain, "respond",
+            return_value=(
+                "That sounds good. What time tomorrow would you like me to remind you to take the shoes?",
+                [],
+            ),
+        ):
+            self.assertTrue(ingress.process(second)["ok"])
+
+        conn = db.connect()
+        try:
+            second_out = conn.execute(
+                """SELECT * FROM outbound_messages
+                   WHERE source_message_id='v0512-shoes-second'
+                   ORDER BY rowid DESC LIMIT 1"""
+            ).fetchone()
+            self.assertEqual(second_out["context_kind"], "PENDING_ITEM")
+            self.assertEqual(second_out["context_id"], draft["item_id"])
+            conn.execute(
+                """UPDATE outbound_messages
+                   SET provider_message_id='wa-v0512-question-2',
+                       delivery_status='SENT',delivered_at_utc=CURRENT_TIMESTAMP
+                   WHERE outbound_id=?""",
+                (second_out["outbound_id"],),
+            )
+            conn.commit()
+            controls = []
+            with patch.object(
+                outbox, "_send",
+                side_effect=lambda payload: (controls.append(payload) or True, "{}"),
+            ):
+                outbox._reconcile_pending_item_markers(conn)
+            kinds = [p["kind"] for p in controls]
+            self.assertEqual(kinds, ["pin", "unpin"])
+            first_state = conn.execute(
+                """SELECT job_unpinned_at_utc FROM outbound_messages
+                   WHERE outbound_id=?""",
+                (first_out["outbound_id"],),
+            ).fetchone()
+            second_state = conn.execute(
+                """SELECT job_pinned_at_utc,job_unpinned_at_utc
+                   FROM outbound_messages WHERE outbound_id=?""",
+                (second_out["outbound_id"],),
+            ).fetchone()
+            self.assertIsNotNone(first_state["job_unpinned_at_utc"])
+            self.assertIsNotNone(second_state["job_pinned_at_utc"])
+            self.assertIsNone(second_state["job_unpinned_at_utc"])
+        finally:
+            conn.close()
+
+        third = {
+            "message_id": "v0512-shoes-third",
+            "provider": "WHATSAPP",
+            "conversation_id": "60111111111@s.whatsapp.net",
+            "conversation_type": "DIRECT_DM",
+            "sender_phone": "+60111111111",
+            "text": "8pm",
+            "quoted_message_id": "wa-v0512-question-2",
+        }
+
+        async def finish_shoes(actor, user_text, media_context=None,
+                               vision_parts=None, quoted_context=None):
+            self.assertEqual(
+                quoted_context["pending_item"]["item_id"], draft["item_id"]
+            )
+            services.create_reminder(
+                with_action_key(actor, "v0512-shoes-create"),
+                "take the shoes", "2026-10-04T20:00:00+08:00",
+            )
+            return (
+                "OK, I've set a reminder for you to take the shoes tomorrow at 8:00 PM.",
+                [],
+            )
+
+        with patch.object(brain, "respond", new=finish_shoes), patch.object(
+            runtime_clock, "now_utc",
+            return_value=datetime(2026, 10, 3, 9, 20, tzinfo=timezone.utc),
+        ):
+            self.assertTrue(ingress.process(third)["ok"])
+
+        conn = db.connect()
+        try:
+            draft_state = conn.execute(
+                "SELECT status FROM pending_items WHERE item_id=?",
+                (draft["item_id"],),
+            ).fetchone()["status"]
+            self.assertEqual(draft_state, "RESOLVED")
+            made = conn.execute(
+                """SELECT task_text,due_at_utc FROM reminders
+                   WHERE source_message_id='v0512-shoes-third'"""
+            ).fetchone()
+            self.assertIsNotNone(made)
+            self.assertEqual(made["task_text"], "take the shoes")
+
+            controls = []
+            with patch.object(
+                outbox, "_send",
+                side_effect=lambda payload: (controls.append(payload) or True, "{}"),
+            ):
+                outbox._reconcile_pending_item_markers(conn)
+            self.assertEqual([p["kind"] for p in controls], ["unpin"])
+            final_state = conn.execute(
+                """SELECT job_unpinned_at_utc FROM outbound_messages
+                   WHERE outbound_id=?""",
+                (second_out["outbound_id"],),
+            ).fetchone()
+            self.assertIsNotNone(final_state["job_unpinned_at_utc"])
+        finally:
+            conn.close()
+
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
