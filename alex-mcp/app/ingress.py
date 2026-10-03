@@ -1137,6 +1137,40 @@ def process(payload: dict) -> dict:
                 error_report=True,
             )
 
+        quoted_reminder_draft = (
+            pending_item
+            if pending_item
+            and str(pending_item.get("kind") or "").upper() == "REMINDER_DRAFT"
+            else None
+        )
+        reminder_draft_for_cancel = quoted_reminder_draft or db.latest_pending_item(
+            actor, "REMINDER_DRAFT", max_age_seconds=1800
+        )
+        draft_is_current = bool(
+            reminder_draft_for_cancel
+            and (
+                quoted_reminder_draft
+                or _pending_is_immediate_previous_turn(
+                    actor, reminder_draft_for_cancel
+                )
+            )
+        )
+        if (
+            reminder_draft_for_cancel
+            and draft_is_current
+            and _reminder_draft_cancel_command(turn["trusted_text"])
+        ):
+            db.cancel_pending_item(
+                reminder_draft_for_cancel["item_id"],
+                actor.user_id,
+                actor.source_message_id,
+            )
+            return _finish_simple_turn(
+                actor,
+                "Okay, I cancelled that reminder request.",
+                reminder_draft_cancelled=True,
+            )
+
         quoted_private_offer = (
             pending_item
             if pending_item
