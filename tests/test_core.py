@@ -2252,11 +2252,14 @@ class AlexCoreTests(unittest.TestCase):
         with open(os.path.join(TEST_DIR, "family_group.json"), "w", encoding="utf-8") as handle:
             handle.write('{"group_jid":"%s"}' % group_id)
 
-        self.claim("handoff-create", "+60111111111", "put reminder in group at 6pm")
+        self.claim(
+            "handoff-create", "+60111111111",
+            "put reminder in group on 1 October 2026 at 6pm",
+        )
         creator = with_action_key(
             replace(
                 self.actor("handoff-create", "+60111111111"),
-                trusted_text="put reminder in group at 6pm",
+                trusted_text="put reminder in group on 1 October 2026 at 6pm",
             ),
             "handoff-create-action",
         )
@@ -3885,10 +3888,23 @@ class AlexCoreTests(unittest.TestCase):
             ),
             "reminder-weekday-action",
         )
-        with self.assertRaisesRegex(ValueError, "DATE_WEEKDAY_MISMATCH"):
-            services.create_reminder(
-                weekday_actor, "wash the car", "2026-10-04T10:00:00+08:00"
+        frozen = datetime(2026, 10, 2, 12, 0, tzinfo=timezone.utc)
+        with patch.object(runtime_clock, "now_utc", return_value=frozen):
+            # The resolver no longer trusts a model-computed Sunday when the
+            # user's own words unambiguously say Saturday.
+            resolved = services._resolve_reminder_due(
+                weekday_actor, "2026-10-04T10:00:00+08:00"
             )
+            self.assertEqual(
+                datetime.fromisoformat(resolved.replace("Z", "+00:00")),
+                datetime(2026, 10, 3, 2, 0, tzinfo=timezone.utc),
+            )
+            # The raw validator remains a safety boundary if handed a
+            # contradictory timestamp directly.
+            with self.assertRaisesRegex(ValueError, "DATE_WEEKDAY_MISMATCH"):
+                services._validate_reminder_time_intent(
+                    weekday_actor, "2026-10-04T02:00:00+00:00"
+                )
 
     def test_v056_leave_cancel_readd_portion_does_not_hit_tombstone(self):
         self.claim(
@@ -5673,18 +5689,43 @@ class AlexCoreTests(unittest.TestCase):
             "v058-reminder-date-action",
         )
         with patch.object(runtime_clock, "now_utc", return_value=frozen):
+            # Model date arithmetic is no longer authoritative. Both a stale
+            # historical date and the wrong following Saturday resolve from
+            # the user's trusted "Saturday 9am" to the coming occurrence.
+            stale_corrected = services._resolve_reminder_due(
+                actor, "2025-08-09T09:00:00+08:00"
+            )
+            wrong_week_corrected = services._resolve_reminder_due(
+                actor, "2026-10-10T09:00:00+08:00"
+            )
+            expected = datetime(2026, 10, 3, 1, 0, tzinfo=timezone.utc)
+            self.assertEqual(
+                datetime.fromisoformat(stale_corrected.replace("Z", "+00:00")),
+                expected,
+            )
+            self.assertEqual(
+                datetime.fromisoformat(wrong_week_corrected.replace("Z", "+00:00")),
+                expected,
+            )
+
+            # Direct validation of contradictory timestamps is still strict.
             with self.assertRaisesRegex(ValueError, "REMINDER_TIME_PASSED"):
-                services.create_reminder(
-                    actor, "test kettle", "2025-08-09T09:00:00+08:00"
+                services._validate_reminder_time_intent(
+                    actor, "2025-08-09T01:00:00+00:00"
                 )
             with self.assertRaisesRegex(ValueError, "DATE_MISMATCH"):
-                services.create_reminder(
-                    actor, "test kettle", "2026-10-10T09:00:00+08:00"
+                services._validate_reminder_time_intent(
+                    actor, "2026-10-10T01:00:00+00:00"
                 )
+
             created = services.create_reminder(
-                actor, "test kettle", "2026-10-03T09:00:00+08:00"
+                actor, "test kettle", "2025-08-09T09:00:00+08:00"
             )
         self.assertEqual(created["status"], "created")
+        self.assertEqual(
+            datetime.fromisoformat(created["due_at_utc"].replace("Z", "+00:00")),
+            datetime(2026, 10, 3, 1, 0, tzinfo=timezone.utc),
+        )
 
         ambiguous = replace(actor, trusted_text="next Saturday 9am")
         with patch.object(runtime_clock, "now_utc", return_value=frozen):
@@ -6451,6 +6492,44 @@ class AlexCoreTests(unittest.TestCase):
         self.assertEqual(
             datetime.fromisoformat(chosen.replace("Z", "+00:00")),
             datetime(2026, 10, 16, 11, 0, tzinfo=timezone.utc),
+        )
+
+    def test_v0513_time_only_request_still_requires_a_date(self):
+        fixed = datetime(2026, 10, 3, 10, 13, tzinfo=timezone.utc)
+        self.claim(
+            "v0513-needs-date", "+60111111111",
+            "Remind me to wash my bike at 7pm",
+        )
+        actor = replace(
+            self.actor("v0513-needs-date", "+60111111111"),
+            trusted_text="Remind me to wash my bike at 7pm",
+        )
+        with patch.object(runtime_clock, "now_utc", return_value=fixed):
+            with self.assertRaisesRegex(ValueError, "REMINDER_NEEDS_DATE"):
+                services._resolve_reminder_due(
+                    actor, "2026-10-03T19:00:00+08:00"
+                )
+
+    def test_v0513_latest_time_fragment_corrects_earlier_time(self):
+        fixed = datetime(2026, 10, 3, 10, 13, tzinfo=timezone.utc)
+        self.claim(
+            "v0513-time-correction", "+60111111111",
+            "Remind me on coming Friday at 7pm",
+        )
+        actor = replace(
+            self.actor("v0513-time-correction", "+60111111111"),
+            trusted_text="actually 8pm",
+            reminder_context_text=(
+                "Remind me on coming Friday at 7pm\nactually 8pm"
+            ),
+        )
+        with patch.object(runtime_clock, "now_utc", return_value=fixed):
+            resolved = services._resolve_reminder_due(
+                actor, "2026-10-09T19:00:00+08:00"
+            )
+        self.assertEqual(
+            datetime.fromisoformat(resolved.replace("Z", "+00:00")),
+            datetime(2026, 10, 9, 12, 0, tzinfo=timezone.utc),
         )
 
     def test_v0513_accumulated_month_date_carries_earlier_time(self):
