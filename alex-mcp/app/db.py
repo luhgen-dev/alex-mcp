@@ -114,6 +114,7 @@ def initialize() -> None:
         _ensure_column(conn, "outbound_messages", "next_attempt_at_utc", "TEXT")
         _ensure_column(conn, "outbound_messages", "job_reacted_at_utc", "TEXT")
         _ensure_column(conn, "outbound_messages", "job_pinned_at_utc", "TEXT")
+        _ensure_column(conn, "outbound_messages", "job_pin_target", "TEXT")
         _ensure_column(conn, "outbound_messages", "job_reaction_cleared_at_utc", "TEXT")
         _ensure_column(conn, "outbound_messages", "job_unpinned_at_utc", "TEXT")
         _ensure_column(conn, "outbound_messages", "job_failure_notice_at_utc", "TEXT")

@@ -423,6 +423,14 @@ def _yes_no_answer(text: str) -> str | None:
     return None
 
 
+def _reminder_draft_cancel_command(text: str) -> bool:
+    value = str(text or "").strip().casefold().rstrip(".!")
+    return value in {
+        "cancel", "cancel it", "cancel that", "cancel the reminder",
+        "never mind", "nevermind", "forget it",
+    }
+
+
 def _private_search_offer_candidate(actor, query: str, reply: str,
                                     attachments: list[dict]) -> bool:
     """Offer one private retry after a Family-scope miss without probing private data."""
@@ -1127,6 +1135,40 @@ def process(payload: dict) -> dict:
                 actor,
                 f"Marked as {recorded['error_id']}. I saved the diagnostic evidence only; I did not retry or undo anything.",
                 error_report=True,
+            )
+
+        quoted_reminder_draft = (
+            pending_item
+            if pending_item
+            and str(pending_item.get("kind") or "").upper() == "REMINDER_DRAFT"
+            else None
+        )
+        reminder_draft_for_cancel = quoted_reminder_draft or db.latest_pending_item(
+            actor, "REMINDER_DRAFT", max_age_seconds=1800
+        )
+        draft_is_current = bool(
+            reminder_draft_for_cancel
+            and (
+                quoted_reminder_draft
+                or _pending_is_immediate_previous_turn(
+                    actor, reminder_draft_for_cancel
+                )
+            )
+        )
+        if (
+            reminder_draft_for_cancel
+            and draft_is_current
+            and _reminder_draft_cancel_command(turn["trusted_text"])
+        ):
+            db.cancel_pending_item(
+                reminder_draft_for_cancel["item_id"],
+                actor.user_id,
+                actor.source_message_id,
+            )
+            return _finish_simple_turn(
+                actor,
+                "Okay, I cancelled that reminder request.",
+                reminder_draft_cancelled=True,
             )
 
         quoted_private_offer = (

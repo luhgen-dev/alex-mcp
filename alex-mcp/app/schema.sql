@@ -589,6 +589,7 @@ CREATE TABLE IF NOT EXISTS outbound_messages (
     delivered_at_utc TEXT,
     job_reacted_at_utc TEXT,
     job_pinned_at_utc TEXT,
+    job_pin_target TEXT,
     job_reaction_cleared_at_utc TEXT,
     job_unpinned_at_utc TEXT,
     job_failure_notice_at_utc TEXT,

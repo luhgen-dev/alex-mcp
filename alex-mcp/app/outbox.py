@@ -280,9 +280,9 @@ def _reconcile_pending_item_markers(conn) -> None:
            JOIN pending_items p ON p.item_id=o.context_id
            WHERE o.context_kind='PENDING_ITEM'
              AND (
-                (p.status='PENDING' AND p.kind='VOICE')
+                (p.status='PENDING' AND p.kind IN ('VOICE','REMINDER_DRAFT'))
                 OR (
-                    (p.status IN ('RESOLVED','CANCELLED') OR p.kind<>'VOICE')
+                    (p.status IN ('RESOLVED','CANCELLED') OR p.kind NOT IN ('VOICE','REMINDER_DRAFT'))
                     AND (
                         (o.job_reacted_at_utc IS NOT NULL AND o.job_reaction_cleared_at_utc IS NULL)
                         OR (o.job_pinned_at_utc IS NOT NULL AND o.job_unpinned_at_utc IS NULL)
@@ -293,8 +293,13 @@ def _reconcile_pending_item_markers(conn) -> None:
     for row in rows:
         if row["pending_status"] == "PENDING" and row["pending_kind"] == "VOICE":
             _ensure_unresolved_markers(conn, row)
+        elif (
+            row["pending_status"] == "PENDING"
+            and row["pending_kind"] == "REMINDER_DRAFT"
+        ):
+            _ensure_reminder_draft_pin(conn, row)
         else:
-            # Also cleans stale RC3 markers from transient offer/draft prompts.
+            # Also cleans stale markers from transient offer/draft prompts.
             _cleanup_resolved_markers(conn, row)
 
 
@@ -326,6 +331,24 @@ def _reconcile_reminder_pins(conn) -> None:
             conn.commit()
 
 
+def _ensure_reminder_draft_pin(conn, row) -> None:
+    """Pin Alex's unanswered reminder clarification without adding ⏳."""
+    if (
+        row["delivery_status"] != "SENT"
+        or row["job_pinned_at_utc"]
+        or not row["provider_message_id"]
+    ):
+        return
+    if _attempt_control(conn, row, "pin", outbound=True):
+        conn.execute(
+            """UPDATE outbound_messages
+               SET job_pinned_at_utc=?,job_pin_target='OUTBOUND'
+               WHERE outbound_id=?""",
+            (_now(), row["outbound_id"]),
+        )
+        conn.commit()
+
+
 def _ensure_unresolved_markers(conn, row) -> None:
     """Mark only durable managed work: documents and unresolved VOICE items."""
     managed = row["kind"] == "DOCUMENT"
@@ -354,7 +377,9 @@ def _ensure_unresolved_markers(conn, row) -> None:
     if not row["job_pinned_at_utc"]:
         if _attempt_control(conn, row, "pin"):
             conn.execute(
-                "UPDATE outbound_messages SET job_pinned_at_utc=? WHERE outbound_id=?",
+                """UPDATE outbound_messages
+                   SET job_pinned_at_utc=?,job_pin_target='SOURCE'
+                   WHERE outbound_id=?""",
                 (now, row["outbound_id"]),
             )
             conn.commit()
@@ -377,7 +402,8 @@ def _cleanup_resolved_markers(conn, row) -> None:
         else:
             return
     if row["job_pinned_at_utc"] and not row["job_unpinned_at_utc"]:
-        if _attempt_control(conn, row, "unpin"):
+        outbound_pin = str(_row_value(row, "job_pin_target") or "").upper() == "OUTBOUND"
+        if _attempt_control(conn, row, "unpin", outbound=outbound_pin):
             conn.execute(
                 """UPDATE outbound_messages
                    SET job_unpinned_at_utc=?,job_unpin_failed_at_utc=NULL
@@ -563,7 +589,9 @@ def sweep():
                         )
                     ):
                         conn.execute(
-                            "UPDATE outbound_messages SET job_pinned_at_utc=? WHERE outbound_id=?",
+                            """UPDATE outbound_messages
+                               SET job_pinned_at_utc=?,job_pin_target='OUTBOUND'
+                               WHERE outbound_id=?""",
                             (_now(), refreshed["outbound_id"]),
                         )
                         conn.commit()

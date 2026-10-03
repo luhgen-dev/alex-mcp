@@ -12,6 +12,7 @@ import makeWASocket, {
 import pino from 'pino';
 import QRCode from 'qrcode';
 import { buildControlMessage } from './control_payload.js';
+import { reactionConversationJid, reactionSenderCandidates } from './reaction_payload.js';
 
 const DATA_DIR = process.env.ALEX_DATA_DIR || '/data';
 const AUTH_DIR = path.join(DATA_DIR, 'whatsapp_auth');
@@ -318,11 +319,24 @@ async function forwardReactionEvent(targetKey, reaction) {
 
   const reactionKey = reaction && reaction.key ? reaction.key : {};
   if (reactionKey.fromMe) return;
-  let rawSenderJid = reactionKey.participant || reactionKey.remoteJid || '';
-  if (!rawSenderJid || rawSenderJid.endsWith('@g.us')) return;
-  const senderJid = await resolveSenderJid(null, rawSenderJid);
-  const senderPhone = cleanNumber(senderJid.split('@')[0].split(':')[0]);
-  if (!isWhitelisted(senderPhone)) return;
+  let rawSenderJid = '';
+  let senderJid = '';
+  let senderPhone = '';
+  const candidates = reactionSenderCandidates(reactionKey);
+  for (const candidate of candidates) {
+    const resolved = await resolveSenderJid(null, candidate);
+    const phone = cleanNumber(resolved.split('@')[0].split(':')[0]);
+    if (phone && isWhitelisted(phone)) {
+      rawSenderJid = candidate;
+      senderJid = resolved;
+      senderPhone = phone;
+      break;
+    }
+  }
+  if (!senderPhone) {
+    console.log('[Alex MCP] Reaction sender did not resolve: ' + candidates.map(maskId).join(','));
+    return;
+  }
 
   const targetMessageId = targetKey && targetKey.id ? String(targetKey.id) : '';
   if (!targetMessageId) return;
@@ -337,7 +351,7 @@ async function forwardReactionEvent(targetKey, reaction) {
     event_kind: 'REACTION',
     message_id: eventId,
     provider: 'WHATSAPP',
-    conversation_id: remoteJid,
+    conversation_id: reactionConversationJid(isGroup, remoteJid, senderJid),
     conversation_type: isGroup ? 'GROUP' : 'DIRECT_DM',
     sender_phone: '+' + senderPhone,
     sender_provider_jid: rawSenderJid,

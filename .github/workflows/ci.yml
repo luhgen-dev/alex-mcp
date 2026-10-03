@@ -114,6 +114,9 @@ jobs:
       - name: Verify WhatsApp control payload contract
         run: node alex-mcp/app/control_payload.test.js
 
+      - name: Verify WhatsApp reaction identity contract
+        run: node alex-mcp/app/reaction_payload.test.js
+
   container:
     runs-on: ubuntu-latest
     timeout-minutes: 20
