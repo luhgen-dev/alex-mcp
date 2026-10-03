@@ -4488,10 +4488,14 @@ class AlexCoreTests(unittest.TestCase):
             ),
             "v057-due-create-action",
         )
-        reminder = services.create_reminder(
-            creator, "v057 parcel", "2026-10-03T10:00:00+08:00",
-            destination="group", claimable=True,
-        )
+        with patch.object(
+            runtime_clock, "now_utc",
+            return_value=datetime(2026, 10, 2, 14, 0, tzinfo=timezone.utc),
+        ):
+            reminder = services.create_reminder(
+                creator, "v057 parcel", "2026-10-03T10:00:00+08:00",
+                destination="group", claimable=True,
+            )
         oid = db.queue_outbound(
             group_id, "TEXT", text="Reminder: v057 parcel",
             context_kind="REMINDER_INITIAL", context_id=reminder["reminder_id"],
@@ -4565,10 +4569,14 @@ class AlexCoreTests(unittest.TestCase):
             ),
             "v057-reminder-seed-action",
         )
-        services.create_reminder(
-            creator, "v056 unclaimed test", "2026-10-03T10:00:00+08:00",
-            shared=True,
-        )
+        with patch.object(
+            runtime_clock, "now_utc",
+            return_value=datetime(2026, 10, 2, 14, 0, tzinfo=timezone.utc),
+        ):
+            services.create_reminder(
+                creator, "v056 unclaimed test", "2026-10-03T10:00:00+08:00",
+                shared=True,
+            )
         self.claim("v057-note-collision", "+60111111111", "save v056 note")
         note_actor = with_action_key(
             replace(
@@ -4692,7 +4700,10 @@ class AlexCoreTests(unittest.TestCase):
             )
             return ("OK. I've set the reminder for Saturday at 9:00 AM.", [])
 
-        with patch.object(brain, "respond", new=finish_draft):
+        with patch.object(brain, "respond", new=finish_draft), patch.object(
+            runtime_clock, "now_utc",
+            return_value=datetime(2026, 10, 2, 14, 0, tzinfo=timezone.utc),
+        ):
             result = ingress.process(second)
         self.assertTrue(result["ok"])
         conn = db.connect()
@@ -5003,7 +5014,10 @@ class AlexCoreTests(unittest.TestCase):
             "text": "Saturday at 9 AM",
             "quoted_message_id": "wa-v057-draft-safe",
         }
-        with patch.object(brain, "respond", new=quoted_finish):
+        with patch.object(brain, "respond", new=quoted_finish), patch.object(
+            runtime_clock, "now_utc",
+            return_value=datetime(2026, 10, 2, 14, 0, tzinfo=timezone.utc),
+        ):
             self.assertTrue(ingress.process(final)["ok"])
         conn = db.connect()
         try:
@@ -5220,10 +5234,14 @@ class AlexCoreTests(unittest.TestCase):
             ),
             "v057-nudge-create-action",
         )
-        reminder = services.create_reminder(
-            creator, "collect parcel", "2026-10-03T10:00:00+08:00",
-            destination="group", claimable=True,
-        )
+        with patch.object(
+            runtime_clock, "now_utc",
+            return_value=datetime(2026, 10, 2, 14, 0, tzinfo=timezone.utc),
+        ):
+            reminder = services.create_reminder(
+                creator, "collect parcel", "2026-10-03T10:00:00+08:00",
+                destination="group", claimable=True,
+            )
         conn = db.connect()
         try:
             conn.execute(
