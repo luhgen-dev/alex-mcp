@@ -217,8 +217,9 @@ def _canonicalize_relative_reminder_due(actor: ActorContext, due_utc: str) -> st
     """Anchor unambiguous relative reminder language to the runtime clock.
 
     The model still supplies the task and nominal due value, but clear user
-    phrases such as "tomorrow at 9 AM", "Saturday at 9 AM", or "in 2 minutes"
-    are resolved deterministically here. This prevents model date arithmetic
+    phrases such as "tomorrow at 9 AM" or "in 2 minutes" are resolved
+    deterministically here. Weekday phrases remain strict validation-only.
+    This prevents model date arithmetic
     from turning a valid continuation into a false past-date failure.
     """
     trusted = str(getattr(actor, "trusted_text", "") or "")
