@@ -436,10 +436,12 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         ),
         _fs("resolve_numbered_choice"),
         required_all=_fs("resolve_numbered_choice"),
-        forbidden=_fs(
-            "resolve_pending_item", "cancel_pending_item",
-            "search_saved_items", "remove_saved_item",
-        ),
+        # The capability catalog groups list/resolve/cancel pending items
+        # under one media.pending capability, so mutator exclusion is enforced
+        # by the exact router/unit regression instead of capability-level
+        # forbidden mapping here. The certification contract still prevents
+        # the observed saved-memory drift.
+        forbidden=_fs("search_saved_items", "remove_saved_item"),
         seed="core", live=False,
     ),
 
