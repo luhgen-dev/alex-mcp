@@ -7,6 +7,7 @@ import math
 import operator
 import re
 import uuid
+from dataclasses import replace
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
@@ -164,45 +165,61 @@ _WEEKDAY_RE = re.compile(
 )
 
 
+def _slot_lines(text: str | None) -> list[str]:
+    return [
+        line.strip() for line in str(text or "").splitlines()
+        if line.strip()
+    ]
+
+
 def _stated_weekday(text: str | None) -> int | None:
-    values = {
-        _WEEKDAY_NAMES[m.group(1).casefold()]
-        for m in _WEEKDAY_RE.finditer(str(text or ""))
-        if m.group(1).casefold() in _WEEKDAY_NAMES
-    }
-    return next(iter(values)) if len(values) == 1 else None
+    """Return the newest unambiguous weekday slot across reminder turns."""
+    for line in reversed(_slot_lines(text)):
+        values = {
+            _WEEKDAY_NAMES[m.group(1).casefold()]
+            for m in _WEEKDAY_RE.finditer(line)
+            if m.group(1).casefold() in _WEEKDAY_NAMES
+        }
+        if len(values) == 1:
+            return next(iter(values))
+        if len(values) > 1:
+            return None
+    return None
 
 
-def _stated_clock(text: str | None) -> tuple[int, int] | None:
-    """Extract one exact user-stated local clock value."""
-    value = str(text or "")
+def _clock_in_fragment(value: str) -> tuple[int, int] | None:
     if re.search(r"(?i)\bnoon\b", value):
         return (12, 0)
     if re.search(r"(?i)\bmidnight\b", value):
         return (0, 0)
 
-    m = re.search(
+    matches = list(re.finditer(
         r"(?i)\b(\d{1,2})(?::|\.)(\d{2})\s*(am|pm|a\.m\.|p\.m\.)\b",
         value,
-    )
-    if not m:
-        m = re.search(
+    ))
+    if matches:
+        m = matches[-1]
+        hour = int(m.group(1))
+        minute = int(m.group(2))
+        meridiem = m.group(3).casefold().replace(".", "")
+    else:
+        matches = list(re.finditer(
             r"(?i)\b(\d{1,2})\s*(am|pm|a\.m\.|p\.m\.)\b",
             value,
-        )
-        if m:
+        ))
+        if matches:
+            m = matches[-1]
             hour = int(m.group(1))
             minute = 0
             meridiem = m.group(2).casefold().replace(".", "")
         else:
-            m24 = re.search(r"\b([01]?\d|2[0-3]):([0-5]\d)\b", value)
-            if not m24:
+            matches24 = list(re.finditer(
+                r"\b([01]?\d|2[0-3]):([0-5]\d)\b", value
+            ))
+            if not matches24:
                 return None
+            m24 = matches24[-1]
             return (int(m24.group(1)), int(m24.group(2)))
-    else:
-        hour = int(m.group(1))
-        minute = int(m.group(2))
-        meridiem = m.group(3).casefold().replace(".", "")
 
     if hour < 1 or hour > 12 or minute < 0 or minute > 59:
         return None
@@ -213,18 +230,97 @@ def _stated_clock(text: str | None) -> tuple[int, int] | None:
     return (hour, minute)
 
 
-def _canonicalize_relative_reminder_due(actor: ActorContext, due_utc: str) -> str:
-    """Anchor unambiguous relative reminder language to the runtime clock.
+def _stated_clock(text: str | None) -> tuple[int, int] | None:
+    """Return the newest exact user-stated local clock across reminder turns."""
+    for line in reversed(_slot_lines(text)):
+        clock = _clock_in_fragment(line)
+        if clock is not None:
+            return clock
+    return None
 
-    The model still supplies the task and nominal due value, but clear user
-    phrases such as "tomorrow at 9 AM" or "in 2 minutes" are resolved
-    deterministically here. Weekday phrases remain strict validation-only.
-    This prevents model date arithmetic
-    from turning a valid continuation into a false past-date failure.
-    """
-    trusted = str(getattr(actor, "trusted_text", "") or "")
+
+_MONTH_NAMES = {
+    "jan": 1, "january": 1, "feb": 2, "february": 2,
+    "mar": 3, "march": 3, "apr": 4, "april": 4, "may": 5,
+    "jun": 6, "june": 6, "jul": 7, "july": 7, "aug": 8, "august": 8,
+    "sep": 9, "sept": 9, "september": 9, "oct": 10, "october": 10,
+    "nov": 11, "november": 11, "dec": 12, "december": 12,
+}
+_MONTH_TOKEN = (
+    r"jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|"
+    r"jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|"
+    r"oct(?:ober)?|nov(?:ember)?|dec(?:ember)?"
+)
+_CALENDAR_DATE_RE = re.compile(
+    rf"(?i)\b(\d{{1,2}})(?:st|nd|rd|th)?\s+({_MONTH_TOKEN})"
+    r"(?:\s*,?\s*((?:19|20)\d{2}))?\b"
+)
+_ISO_USER_DATE_RE = re.compile(r"\b((?:19|20)\d{2})-(\d{2})-(\d{2})\b")
+_DAY_ONLY_RE = re.compile(r"(?i)\b(\d{1,2})(?:st|nd|rd|th)\b")
+
+
+def _reminder_intent_text(actor: ActorContext) -> str:
+    """Trusted text used only for reminder date/time interpretation."""
+    return str(
+        getattr(actor, "reminder_context_text", "")
+        or getattr(actor, "trusted_text", "")
+        or ""
+    ).strip()
+
+
+def _explicit_calendar_date(text: str, now_local: datetime,
+                            clock: tuple[int, int]) -> tuple[object | None, bool]:
+    """Resolve an explicit date from user text; no-year dates mean next occurrence."""
+    value = str(text or "")
+    iso = _ISO_USER_DATE_RE.findall(value)
+    named = _CALENDAR_DATE_RE.findall(value)
+    if len(iso) + len(named) > 1:
+        raise ValueError(
+            "REMINDER_AMBIGUOUS_DATE: more than one calendar date was stated; "
+            "ask which date to use"
+        )
+
+    if iso:
+        year, month, day = map(int, iso[0])
+        try:
+            return datetime(year, month, day).date(), True
+        except ValueError as exc:
+            raise ValueError("REMINDER_INVALID_DATE: ask for a valid calendar date") from exc
+
+    if named:
+        day_raw, month_raw, year_raw = named[0]
+        month_key = month_raw.casefold()
+        month = _MONTH_NAMES.get(month_key)
+        if month is None:
+            # "sept" is accepted by the regex and normalized here.
+            month = _MONTH_NAMES.get(month_key[:3])
+        day = int(day_raw)
+        if year_raw:
+            try:
+                return datetime(int(year_raw), month, day).date(), True
+            except ValueError as exc:
+                raise ValueError("REMINDER_INVALID_DATE: ask for a valid calendar date") from exc
+
+        hour, minute = clock
+        for year in range(now_local.year, now_local.year + 5):
+            try:
+                candidate = datetime(
+                    year, month, day, hour, minute, tzinfo=now_local.tzinfo
+                )
+            except ValueError:
+                continue
+            if candidate > now_local + timedelta(seconds=60):
+                return candidate.date(), True
+        raise ValueError("REMINDER_INVALID_DATE: ask for a valid future calendar date")
+
+    return None, False
+
+
+def _deterministic_reminder_due_from_text(actor: ActorContext) -> str | None:
+    """Resolve unambiguous user-authored reminder slots without model date math."""
+    trusted = _reminder_intent_text(actor)
     if not trusted:
-        return due_utc
+        return None
 
     now = runtime_clock.now_utc().astimezone(timezone.utc)
     tz = ZoneInfo(actor.timezone)
@@ -248,37 +344,109 @@ def _canonicalize_relative_reminder_due(actor: ActorContext, due_utc: str) -> st
 
     clock = _stated_clock(trusted)
     if clock is None:
-        return due_utc
+        raise ValueError(
+            "REMINDER_NEEDS_TIME: ask the user for an exact time before creating the reminder"
+        )
     hour, minute = clock
-    target_date = None
 
-    if re.search(r"(?i)\btomorrow\b", trusted):
-        target_date = now_local.date() + timedelta(days=1)
-    elif re.search(r"(?i)\btoday\b", trusted):
-        target_date = now_local.date()
-    # Weekday phrases intentionally remain validation-only. The v0.5.8
-    # stale-year fix requires a model-supplied Saturday date to be checked and
-    # rejected when wrong rather than silently rewritten. "today" and
-    # "tomorrow" are unambiguous enough to anchor deterministically.
+    target_date, explicit_date = _explicit_calendar_date(
+        trusted, now_local, clock
+    )
+
+    wanted = _stated_weekday(trusted)
+    weekday_token = _WEEKDAY_RE.search(trusted)
+    is_next_weekday = bool(
+        wanted is not None
+        and weekday_token
+        and re.search(
+            r"(?i)\bnext\s+" + re.escape(weekday_token.group(1)) + r"\b",
+            trusted,
+        )
+    )
+
+    # A standalone ordinal can disambiguate "next Friday" after Alex offers
+    # two concrete Friday choices, e.g. "16th".
+    if target_date is None and is_next_weekday:
+        day_only = [
+            int(x) for x in _DAY_ONLY_RE.findall(trusted)
+            if 1 <= int(x) <= 31
+        ]
+        if day_only:
+            delta = (wanted - now_local.weekday()) % 7
+            if delta == 0:
+                delta = 7
+            coming = now_local.date() + timedelta(days=delta)
+            following = coming + timedelta(days=7)
+            matching = [
+                d for d in (coming, following) if d.day in set(day_only)
+            ]
+            if len(matching) == 1:
+                target_date = matching[0]
+                explicit_date = True
+
     if target_date is None:
-        return due_utc
+        if re.search(r"(?i)\btomorrow\b", trusted):
+            target_date = now_local.date() + timedelta(days=1)
+        elif re.search(r"(?i)\b(?:today|tonight)\b", trusted):
+            target_date = now_local.date()
+        elif wanted is not None:
+            if is_next_weekday:
+                delta = (wanted - now_local.weekday()) % 7
+                if delta == 0:
+                    delta = 7
+                coming = now_local.date() + timedelta(days=delta)
+                following = coming + timedelta(days=7)
+                raise ValueError(
+                    "REMINDER_AMBIGUOUS_NEXT_WEEKDAY: ask whether the user means "
+                    f"{coming.isoformat()} or {following.isoformat()}"
+                )
+            delta = (wanted - now_local.weekday()) % 7
+            target_date = now_local.date() + timedelta(days=delta)
+            candidate = datetime(
+                target_date.year, target_date.month, target_date.day,
+                hour, minute, tzinfo=tz,
+            )
+            if delta == 0 and candidate <= now_local + timedelta(seconds=60):
+                target_date += timedelta(days=7)
+        else:
+            raise ValueError(
+                "REMINDER_NEEDS_DATE: ask the user which day or date to use"
+            )
 
-    local_due = datetime.combine(
-        target_date, time(hour, minute), tzinfo=tz
+    local_due = datetime(
+        target_date.year, target_date.month, target_date.day,
+        hour, minute, tzinfo=tz,
     )
     return local_due.astimezone(timezone.utc).isoformat()
 
 
+def _canonicalize_relative_reminder_due(actor: ActorContext, due_utc: str) -> str:
+    """Prefer the deterministic due implied by trusted reminder context."""
+    resolved = _deterministic_reminder_due_from_text(actor)
+    return resolved or due_utc
+
+
+def _resolve_reminder_due(actor: ActorContext, due_local: str | None) -> str:
+    """Resolve a creation/reschedule due value without trusting model date math."""
+    deterministic = _deterministic_reminder_due_from_text(actor)
+    if deterministic:
+        due_utc = deterministic
+    else:
+        due_utc = _parse_event_time(due_local, actor.timezone)
+    _validate_reminder_time_intent(actor, due_utc)
+    return due_utc
+
+
 def _validate_reminder_time_intent(actor: ActorContext, due_utc: str) -> None:
-    """Reject model-generated reminder times that contradict trusted user intent."""
-    trusted = str(getattr(actor, "trusted_text", "") or "")
-    if trusted and not (_user_stated_time(trusted) or _RELATIVE_REMINDER_TIME_RE.search(trusted)):
+    """Reject reminder timestamps that contradict accumulated trusted user intent."""
+    trusted = _reminder_intent_text(actor)
+    if trusted and not (
+        _user_stated_time(trusted)
+        or _RELATIVE_REMINDER_TIME_RE.search(trusted)
+    ):
         raise ValueError(
             "REMINDER_NEEDS_TIME: ask the user for an exact time before creating the reminder"
         )
-    # Trusted conversational text is the contract being validated. Internal
-    # migrations/admin fixtures with no user utterance retain their historical
-    # ability to construct deterministic rows for recovery/testing.
     if not trusted:
         return
 
@@ -291,17 +459,13 @@ def _validate_reminder_time_intent(actor: ActorContext, due_utc: str) -> None:
     local = due.astimezone(tz)
     now_local = now.astimezone(tz)
 
-    # A newly created/rescheduled reminder may never be persisted in the past.
-    # The small grace prevents an exact "now" value from racing the validator.
     if due <= now + timedelta(seconds=60):
         raise ValueError(
             "REMINDER_TIME_PASSED: the requested reminder time is already past; "
             "ask the user for a future time"
         )
 
-    # Without an explicit year, a model must not jump to an unrelated distant
-    # year. This is a sanity boundary, not a replacement for user intent.
-    if trusted and not re.search(r"\b(?:19|20)\d{2}\b", trusted):
+    if not re.search(r"\b(?:19|20)\d{2}\b", trusted):
         if due > now + timedelta(days=366):
             raise ValueError(
                 "REMINDER_DATE_TOO_FAR: no year was stated; ask the user to confirm the date"
@@ -318,50 +482,46 @@ def _validate_reminder_time_intent(actor: ActorContext, due_utc: str) -> None:
         ][0]
         raise ValueError(
             f"DATE_WEEKDAY_MISMATCH: user requested {requested}, but "
-            f"{local.date().isoformat()} is {local.strftime('%A')}; resolve the correct date before saving"
+            f"{local.date().isoformat()} is {local.strftime('%A')}; "
+            "resolve the correct date before saving"
         )
 
-    # "next Saturday" is genuinely ambiguous in ordinary English: some users
-    # mean the coming Saturday, others the one after. When no calendar date was
-    # supplied, reject rather than silently choosing one interpretation.
+    has_named_or_iso_date = bool(
+        _CALENDAR_DATE_RE.search(trusted) or _ISO_USER_DATE_RE.search(trusted)
+    )
+    has_day_only = bool(_DAY_ONLY_RE.search(trusted))
+    if has_named_or_iso_date or has_day_only:
+        # The user's explicit date/day disambiguates the weekday after the
+        # weekday-consistency check above.
+        return
+
     weekday_token = _WEEKDAY_RE.search(trusted)
     if weekday_token and re.search(
         r"(?i)\bnext\s+" + re.escape(weekday_token.group(1)) + r"\b",
         trusted,
     ):
-        has_calendar_date = bool(re.search(
-            r"(?i)\b\d{1,2}(?:st|nd|rd|th)?\s+"
-            r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|"
-            r"jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|"
-            r"nov(?:ember)?|dec(?:ember)?)\b",
-            trusted,
-        ))
-        if not has_calendar_date:
-            coming_delta = (wanted - now_local.weekday()) % 7
-            if coming_delta == 0:
-                coming_delta = 7
-            coming = now_local.date() + timedelta(days=coming_delta)
-            following = coming + timedelta(days=7)
-            raise ValueError(
-                "REMINDER_AMBIGUOUS_NEXT_WEEKDAY: ask whether the user means "
-                f"{coming.isoformat()} or {following.isoformat()}"
-            )
+        coming_delta = (wanted - now_local.weekday()) % 7
+        if coming_delta == 0:
+            coming_delta = 7
+        coming = now_local.date() + timedelta(days=coming_delta)
+        following = coming + timedelta(days=7)
+        raise ValueError(
+            "REMINDER_AMBIGUOUS_NEXT_WEEKDAY: ask whether the user means "
+            f"{coming.isoformat()} or {following.isoformat()}"
+        )
 
-    # Bare weekday and "this <weekday>" mean the next occurrence. If today is
-    # that weekday but the stated time has already passed, the next occurrence
-    # is seven days later. A stale-but-matching weekday (the live Aug-2025 bug)
-    # can no longer pass this guard.
     delta = (wanted - now_local.weekday()) % 7
     expected = now_local.date() + timedelta(days=delta)
     if delta == 0:
-        candidate_today = datetime.combine(
-            now_local.date(), local.timetz()
-        ).astimezone(tz)
+        candidate_today = datetime(
+            now_local.year, now_local.month, now_local.day,
+            local.hour, local.minute, tzinfo=tz,
+        )
         if candidate_today <= now_local + timedelta(seconds=60):
             expected = now_local.date() + timedelta(days=7)
     if local.date() != expected:
         raise ValueError(
-            f"DATE_MISMATCH: user requested the next matching weekday; "
+            "DATE_MISMATCH: user requested the next matching weekday; "
             f"expected {expected.isoformat()}, got {local.date().isoformat()}"
         )
 
@@ -1648,8 +1808,8 @@ def _reminder_targets(actor: ActorContext, recipient: str) -> list[str]:
 
 
 def _trusted_named_reminder_recipient(actor: ActorContext) -> tuple[str, str] | None:
-    """Resolve an explicit assignee from the current trusted command only."""
-    text = str(getattr(actor, "trusted_text", "") or "").strip()
+    """Resolve an explicit assignee from this reminder's accumulated trusted text."""
+    text = _reminder_intent_text(actor)
     if not text:
         return None
     aliases = _reminder_recipient_aliases(actor)
@@ -1708,9 +1868,7 @@ def create_reminder(actor: ActorContext, task: str, due_local: str,
                     follow_up_after_hours: int = 24) -> dict:
     if not actor.action_key:
         raise RuntimeError("missing deterministic action key")
-    due_utc = _parse_event_time(due_local, actor.timezone)
-    due_utc = _canonicalize_relative_reminder_due(actor, due_utc)
-    _validate_reminder_time_intent(actor, due_utc)
+    due_utc = _resolve_reminder_due(actor, due_local)
     delivery_class = (delivery_class or "routine").strip().lower()
     if delivery_class not in {"routine", "time_critical"}:
         raise ValueError("delivery_class must be routine or time_critical")
@@ -1726,7 +1884,7 @@ def create_reminder(actor: ActorContext, task: str, due_local: str,
     if (
         actor.conversation_type == "GROUP"
         and trusted_assignee
-        and not _explicit_group_reminder_destination(getattr(actor, "trusted_text", ""))
+        and not _explicit_group_reminder_destination(_reminder_intent_text(actor))
     ):
         alias, target_user = trusted_assignee
         destination = "dm"
@@ -1774,8 +1932,13 @@ def create_reminder(actor: ActorContext, task: str, due_local: str,
             if destination == "group" or target_user != actor.user_id or len(targets) > 1:
                 space = "FAMILY_SHARED"
             else:
+                scope_actor = (
+                    replace(actor, trusted_text=_reminder_intent_text(actor))
+                    if getattr(actor, "reminder_context_text", "")
+                    else actor
+                )
                 space = scope_policy.resolve_new_write_space(
-                    actor, requested_shared=shared
+                    scope_actor, requested_shared=shared
                 )
             if space not in actor.allowed_spaces:
                 raise PermissionError("requested reminder space is not accessible")
@@ -1922,14 +2085,11 @@ def update_reminder(actor: ActorContext, reminder_id: str, status: str = "open",
             resolved = "OPEN"
             snooze_note = f"snoozed_from_now={minutes}m"
         elif snooze_until_local:
-            new_due = _parse_event_time(snooze_until_local, actor.timezone)
-            _validate_reminder_time_intent(actor, new_due)
+            new_due = _resolve_reminder_due(actor, snooze_until_local)
             resolved = "OPEN"
             snooze_note = "snoozed_until_local"
         else:
-            new_due = _parse_event_time(new_due_local, actor.timezone) if new_due_local else previous_due
-            if new_due_local:
-                _validate_reminder_time_intent(actor, new_due)
+            new_due = _resolve_reminder_due(actor, new_due_local) if new_due_local else previous_due
         acknowledged = utc_now() if resolved == "ACK" else None
         claim_clear_event = None
         if resolved == "COMP" and row["claimed_by_user_id"]:

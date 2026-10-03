@@ -2252,11 +2252,14 @@ class AlexCoreTests(unittest.TestCase):
         with open(os.path.join(TEST_DIR, "family_group.json"), "w", encoding="utf-8") as handle:
             handle.write('{"group_jid":"%s"}' % group_id)
 
-        self.claim("handoff-create", "+60111111111", "put reminder in group at 6pm")
+        self.claim(
+            "handoff-create", "+60111111111",
+            "put reminder in group on 1 October 2026 at 6pm",
+        )
         creator = with_action_key(
             replace(
                 self.actor("handoff-create", "+60111111111"),
-                trusted_text="put reminder in group at 6pm",
+                trusted_text="put reminder in group on 1 October 2026 at 6pm",
             ),
             "handoff-create-action",
         )
@@ -3885,10 +3888,23 @@ class AlexCoreTests(unittest.TestCase):
             ),
             "reminder-weekday-action",
         )
-        with self.assertRaisesRegex(ValueError, "DATE_WEEKDAY_MISMATCH"):
-            services.create_reminder(
-                weekday_actor, "wash the car", "2026-10-04T10:00:00+08:00"
+        frozen = datetime(2026, 10, 2, 12, 0, tzinfo=timezone.utc)
+        with patch.object(runtime_clock, "now_utc", return_value=frozen):
+            # The resolver no longer trusts a model-computed Sunday when the
+            # user's own words unambiguously say Saturday.
+            resolved = services._resolve_reminder_due(
+                weekday_actor, "2026-10-04T10:00:00+08:00"
             )
+            self.assertEqual(
+                datetime.fromisoformat(resolved.replace("Z", "+00:00")),
+                datetime(2026, 10, 3, 2, 0, tzinfo=timezone.utc),
+            )
+            # The raw validator remains a safety boundary if handed a
+            # contradictory timestamp directly.
+            with self.assertRaisesRegex(ValueError, "DATE_WEEKDAY_MISMATCH"):
+                services._validate_reminder_time_intent(
+                    weekday_actor, "2026-10-04T02:00:00+00:00"
+                )
 
     def test_v056_leave_cancel_readd_portion_does_not_hit_tombstone(self):
         self.claim(
@@ -5673,18 +5689,43 @@ class AlexCoreTests(unittest.TestCase):
             "v058-reminder-date-action",
         )
         with patch.object(runtime_clock, "now_utc", return_value=frozen):
+            # Model date arithmetic is no longer authoritative. Both a stale
+            # historical date and the wrong following Saturday resolve from
+            # the user's trusted "Saturday 9am" to the coming occurrence.
+            stale_corrected = services._resolve_reminder_due(
+                actor, "2025-08-09T09:00:00+08:00"
+            )
+            wrong_week_corrected = services._resolve_reminder_due(
+                actor, "2026-10-10T09:00:00+08:00"
+            )
+            expected = datetime(2026, 10, 3, 1, 0, tzinfo=timezone.utc)
+            self.assertEqual(
+                datetime.fromisoformat(stale_corrected.replace("Z", "+00:00")),
+                expected,
+            )
+            self.assertEqual(
+                datetime.fromisoformat(wrong_week_corrected.replace("Z", "+00:00")),
+                expected,
+            )
+
+            # Direct validation of contradictory timestamps is still strict.
             with self.assertRaisesRegex(ValueError, "REMINDER_TIME_PASSED"):
-                services.create_reminder(
-                    actor, "test kettle", "2025-08-09T09:00:00+08:00"
+                services._validate_reminder_time_intent(
+                    actor, "2025-08-09T01:00:00+00:00"
                 )
             with self.assertRaisesRegex(ValueError, "DATE_MISMATCH"):
-                services.create_reminder(
-                    actor, "test kettle", "2026-10-10T09:00:00+08:00"
+                services._validate_reminder_time_intent(
+                    actor, "2026-10-10T01:00:00+00:00"
                 )
+
             created = services.create_reminder(
-                actor, "test kettle", "2026-10-03T09:00:00+08:00"
+                actor, "test kettle", "2025-08-09T09:00:00+08:00"
             )
         self.assertEqual(created["status"], "created")
+        self.assertEqual(
+            datetime.fromisoformat(created["due_at_utc"].replace("Z", "+00:00")),
+            datetime(2026, 10, 3, 1, 0, tzinfo=timezone.utc),
+        )
 
         ambiguous = replace(actor, trusted_text="next Saturday 9am")
         with patch.object(runtime_clock, "now_utc", return_value=frozen):
@@ -6124,6 +6165,393 @@ class AlexCoreTests(unittest.TestCase):
         finally:
             conn.close()
 
+
+
+    def _v0513_process_with_scripted_provider(self, payload, steps, exposed=None):
+        """Run ingress + real brain/tool orchestration with only provider replies scripted."""
+        class FakeFunction:
+            def __init__(self, name, arguments):
+                self.name = name
+                self.arguments = json.dumps(arguments)
+
+        class FakeCall:
+            def __init__(self, call_id, name, arguments):
+                self.id = call_id
+                self.function = FakeFunction(name, arguments)
+
+        class FakeMessage:
+            def __init__(self, content="", calls=None):
+                self.content = content
+                self.tool_calls = calls or []
+
+            def model_dump(self, exclude_none=True):
+                out = {"role": "assistant", "content": self.content}
+                if self.tool_calls:
+                    out["tool_calls"] = [{
+                        "id": call.id,
+                        "type": "function",
+                        "function": {
+                            "name": call.function.name,
+                            "arguments": call.function.arguments,
+                        },
+                    } for call in self.tool_calls]
+                return out
+
+        class FakeResponse:
+            def __init__(self, message):
+                self.choices = [type("Choice", (), {"message": message})()]
+                self.usage = None
+
+        scripted = list(steps)
+        exposure = exposed if exposed is not None else []
+
+        class FakeCompletions:
+            def __init__(self):
+                self.n = 0
+
+            def create(self, **kwargs):
+                self.n += 1
+                names = [
+                    spec["function"]["name"]
+                    for spec in (kwargs.get("tools") or [])
+                    if isinstance(spec, dict) and spec.get("function")
+                ]
+                exposure.append(names)
+                if not scripted:
+                    raise AssertionError("scripted provider ran out of replies")
+                step = scripted.pop(0)
+                if "tool" in step:
+                    if step["tool"] not in names:
+                        raise AssertionError(
+                            f"{step['tool']} not exposed; got {names}"
+                        )
+                    return FakeResponse(FakeMessage(calls=[
+                        FakeCall(
+                            f"v0513-call-{self.n}",
+                            step["tool"],
+                            step.get("args") or {},
+                        )
+                    ]))
+                return FakeResponse(FakeMessage(content=step.get("content", "")))
+
+        fake_client = type(
+            "FakeClient", (),
+            {"chat": type("FakeChat", (), {"completions": FakeCompletions()})()},
+        )()
+        route = {
+            "provider": "grok", "model": "stub",
+            "reasoning_effort": "low", "role": "manual",
+        }
+        with patch.object(brain, "_provider_routes", return_value=[route]), \
+             patch.object(brain, "_client_for", return_value=fake_client):
+            result = ingress.process(payload)
+        self.assertFalse(scripted, "not all scripted provider replies were consumed")
+        return result
+
+    def test_v0513_provider_boundary_coming_friday_unquoted_7pm(self):
+        fixed = datetime(2026, 10, 3, 10, 13, tzinfo=timezone.utc)
+        first = {
+            "message_id": "v0513-bike-first",
+            "provider": "WHATSAPP",
+            "conversation_id": "60111111111@s.whatsapp.net",
+            "conversation_type": "DIRECT_DM",
+            "sender_phone": "+60111111111",
+            "text": "Remind me to wash my bike on coming friday",
+        }
+        second = {
+            "message_id": "v0513-bike-second",
+            "provider": "WHATSAPP",
+            "conversation_id": "60111111111@s.whatsapp.net",
+            "conversation_type": "DIRECT_DM",
+            "sender_phone": "+60111111111",
+            "text": "7pm",
+        }
+        exposed = []
+        with patch.object(runtime_clock, "now_utc", return_value=fixed):
+            self.assertTrue(self._v0513_process_with_scripted_provider(
+                first,
+                [{"content": (
+                    "Sure thing. What time on Friday would you like me to "
+                    "remind you to wash your bike?"
+                )}],
+                exposed,
+            )["ok"])
+
+            conn = db.connect()
+            try:
+                draft = conn.execute(
+                    """SELECT * FROM pending_items
+                       WHERE source_message_id='v0513-bike-first'
+                         AND kind='REMINDER_DRAFT'"""
+                ).fetchone()
+                self.assertIsNotNone(draft)
+                self.assertIn(
+                    "coming friday",
+                    str(draft["accumulated_text"]).casefold(),
+                )
+            finally:
+                conn.close()
+
+            self.assertTrue(self._v0513_process_with_scripted_provider(
+                second,
+                [
+                    {
+                        "tool": "create_reminder",
+                        "args": {
+                            "task": "wash my bike",
+                            "due_local": "this coming Friday 19:00",
+                            "recipient": "me",
+                            "destination": "dm",
+                        },
+                    },
+                    {
+                        "content": (
+                            "OK. I've set a reminder to wash your bike for "
+                            "Friday, October 9th, at 7:00 PM."
+                        )
+                    },
+                ],
+                exposed,
+            )["ok"])
+
+        conn = db.connect()
+        try:
+            draft = conn.execute(
+                """SELECT status,accumulated_text FROM pending_items
+                   WHERE source_message_id='v0513-bike-first'
+                     AND kind='REMINDER_DRAFT'"""
+            ).fetchone()
+            made = conn.execute(
+                """SELECT task_text,due_at_utc FROM reminders
+                   WHERE source_message_id='v0513-bike-second'"""
+            ).fetchone()
+            audit = conn.execute(
+                """SELECT arguments_json,status FROM tool_audit
+                   WHERE source_message_id='v0513-bike-second'
+                     AND tool_name='create_reminder'
+                   ORDER BY rowid DESC LIMIT 1"""
+            ).fetchone()
+        finally:
+            conn.close()
+
+        self.assertEqual(draft["status"], "RESOLVED")
+        self.assertIn("7pm", str(draft["accumulated_text"]).casefold())
+        self.assertIsNotNone(made)
+        due = datetime.fromisoformat(made["due_at_utc"].replace("Z", "+00:00"))
+        self.assertEqual(due, datetime(2026, 10, 9, 11, 0, tzinfo=timezone.utc))
+        self.assertEqual(made["task_text"], "wash my bike")
+        self.assertEqual(audit["status"], "OK")
+        self.assertEqual(
+            json.loads(audit["arguments_json"])["due_local"],
+            "this coming Friday 19:00",
+        )
+        self.assertTrue(
+            any("create_reminder" in names for names in exposed),
+            exposed,
+        )
+
+    def test_v0513_provider_boundary_three_turn_unquoted_chain_ignores_reply_wording(self):
+        fixed = datetime(2026, 10, 3, 10, 20, tzinfo=timezone.utc)
+        turns = [
+            {
+                "message_id": "v0513-shoes-first",
+                "provider": "WHATSAPP",
+                "conversation_id": "60111111111@s.whatsapp.net",
+                "conversation_type": "DIRECT_DM",
+                "sender_phone": "+60111111111",
+                "text": "Remind me to take the shoes",
+            },
+            {
+                "message_id": "v0513-shoes-second",
+                "provider": "WHATSAPP",
+                "conversation_id": "60111111111@s.whatsapp.net",
+                "conversation_type": "DIRECT_DM",
+                "sender_phone": "+60111111111",
+                "text": "Tomorrow",
+            },
+            {
+                "message_id": "v0513-shoes-third",
+                "provider": "WHATSAPP",
+                "conversation_id": "60111111111@s.whatsapp.net",
+                "conversation_type": "DIRECT_DM",
+                "sender_phone": "+60111111111",
+                "text": "8pm",
+            },
+        ]
+        exposed = []
+        with patch.object(runtime_clock, "now_utc", return_value=fixed):
+            self._v0513_process_with_scripted_provider(
+                turns[0],
+                [{"content": (
+                    "Sure thing. What time would you like to be reminded "
+                    "to take the shoes?"
+                )}],
+                exposed,
+            )
+            self._v0513_process_with_scripted_provider(
+                turns[1],
+                [{"content": "Could you please provide the time you'd like?"}],
+                exposed,
+            )
+            self._v0513_process_with_scripted_provider(
+                turns[2],
+                [
+                    {
+                        "tool": "create_reminder",
+                        "args": {
+                            "task": "take the shoes",
+                            "due_local": "tomorrow 20:00",
+                            "recipient": "me",
+                            "destination": "dm",
+                        },
+                    },
+                    {
+                        "content": (
+                            "OK. I've set a reminder for you to take the shoes "
+                            "tomorrow at 8:00 PM."
+                        )
+                    },
+                ],
+                exposed,
+            )
+
+        conn = db.connect()
+        try:
+            draft = conn.execute(
+                """SELECT item_id,status,accumulated_text FROM pending_items
+                   WHERE source_message_id='v0513-shoes-first'
+                     AND kind='REMINDER_DRAFT'"""
+            ).fetchone()
+            second_out = conn.execute(
+                """SELECT context_kind,context_id FROM outbound_messages
+                   WHERE source_message_id='v0513-shoes-second'
+                   ORDER BY rowid DESC LIMIT 1"""
+            ).fetchone()
+            made = conn.execute(
+                """SELECT due_at_utc FROM reminders
+                   WHERE source_message_id='v0513-shoes-third'"""
+            ).fetchone()
+        finally:
+            conn.close()
+
+        self.assertEqual(second_out["context_kind"], "PENDING_ITEM")
+        self.assertEqual(second_out["context_id"], draft["item_id"])
+        self.assertEqual(draft["status"], "RESOLVED")
+        accumulated = str(draft["accumulated_text"])
+        self.assertIn("Tomorrow", accumulated)
+        self.assertIn("8pm", accumulated)
+        due = datetime.fromisoformat(made["due_at_utc"].replace("Z", "+00:00"))
+        self.assertEqual(due, datetime(2026, 10, 4, 12, 0, tzinfo=timezone.utc))
+        self.assertTrue(
+            any("create_reminder" in names for names in exposed),
+            exposed,
+        )
+
+    def test_v0513_deterministic_due_overrides_wrong_model_weekday_and_keeps_next_ambiguous(self):
+        fixed = datetime(2026, 10, 3, 10, 13, tzinfo=timezone.utc)
+        self.claim(
+            "v0513-date-guard", "+60111111111",
+            "Remind me to wash my bike on coming Friday"
+        )
+        base = replace(
+            self.actor("v0513-date-guard", "+60111111111"),
+            trusted_text="7pm",
+            reminder_context_text=(
+                "Remind me to wash my bike on coming Friday\n7pm"
+            ),
+        )
+        with patch.object(runtime_clock, "now_utc", return_value=fixed):
+            corrected = services._resolve_reminder_due(
+                base, "2026-10-10T19:00:00+08:00"
+            )
+        self.assertEqual(
+            datetime.fromisoformat(corrected.replace("Z", "+00:00")),
+            datetime(2026, 10, 9, 11, 0, tzinfo=timezone.utc),
+        )
+
+        ambiguous = replace(
+            base,
+            reminder_context_text="Remind me next Friday\n7pm",
+        )
+        with patch.object(runtime_clock, "now_utc", return_value=fixed):
+            with self.assertRaisesRegex(
+                ValueError, "REMINDER_AMBIGUOUS_NEXT_WEEKDAY"
+            ):
+                services._resolve_reminder_due(
+                    ambiguous, "2026-10-09T19:00:00+08:00"
+                )
+
+        disambiguated = replace(
+            base,
+            reminder_context_text="Remind me next Friday\n7pm\n16th",
+        )
+        with patch.object(runtime_clock, "now_utc", return_value=fixed):
+            chosen = services._resolve_reminder_due(
+                disambiguated, "2026-10-16T19:00:00+08:00"
+            )
+        self.assertEqual(
+            datetime.fromisoformat(chosen.replace("Z", "+00:00")),
+            datetime(2026, 10, 16, 11, 0, tzinfo=timezone.utc),
+        )
+
+    def test_v0513_time_only_request_still_requires_a_date(self):
+        fixed = datetime(2026, 10, 3, 10, 13, tzinfo=timezone.utc)
+        self.claim(
+            "v0513-needs-date", "+60111111111",
+            "Remind me to wash my bike at 7pm",
+        )
+        actor = replace(
+            self.actor("v0513-needs-date", "+60111111111"),
+            trusted_text="Remind me to wash my bike at 7pm",
+        )
+        with patch.object(runtime_clock, "now_utc", return_value=fixed):
+            with self.assertRaisesRegex(ValueError, "REMINDER_NEEDS_DATE"):
+                services._resolve_reminder_due(
+                    actor, "2026-10-03T19:00:00+08:00"
+                )
+
+    def test_v0513_latest_time_fragment_corrects_earlier_time(self):
+        fixed = datetime(2026, 10, 3, 10, 13, tzinfo=timezone.utc)
+        self.claim(
+            "v0513-time-correction", "+60111111111",
+            "Remind me on coming Friday at 7pm",
+        )
+        actor = replace(
+            self.actor("v0513-time-correction", "+60111111111"),
+            trusted_text="actually 8pm",
+            reminder_context_text=(
+                "Remind me on coming Friday at 7pm\nactually 8pm"
+            ),
+        )
+        with patch.object(runtime_clock, "now_utc", return_value=fixed):
+            resolved = services._resolve_reminder_due(
+                actor, "2026-10-09T19:00:00+08:00"
+            )
+        self.assertEqual(
+            datetime.fromisoformat(resolved.replace("Z", "+00:00")),
+            datetime(2026, 10, 9, 12, 0, tzinfo=timezone.utc),
+        )
+
+    def test_v0513_accumulated_month_date_carries_earlier_time(self):
+        fixed = datetime(2026, 10, 3, 10, 13, tzinfo=timezone.utc)
+        self.claim(
+            "v0513-month-carry", "+60111111111", "Remind me to call mom"
+        )
+        actor = replace(
+            self.actor("v0513-month-carry", "+60111111111"),
+            trusted_text="9th october",
+            reminder_context_text=(
+                "Remind me to call mom\n7pm\n9th october"
+            ),
+        )
+        with patch.object(runtime_clock, "now_utc", return_value=fixed):
+            resolved = services._resolve_reminder_due(
+                actor, "9th October 19:00"
+            )
+        self.assertEqual(
+            datetime.fromisoformat(resolved.replace("Z", "+00:00")),
+            datetime(2026, 10, 9, 11, 0, tzinfo=timezone.utc),
+        )
 
 
 if __name__ == "__main__":

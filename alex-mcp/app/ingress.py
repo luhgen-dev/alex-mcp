@@ -714,13 +714,14 @@ def _looks_like_reminder_clarification_reply(text: str) -> bool:
         r"|\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|"
         r"apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|"
         r"oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b"
+        r"|\b\d{1,2}(?:st|nd|rd|th)\b"
         r"|\b\d{1,2}(?::\d{2})?\b"
     )
     if not re.search(temporal, value):
         return False
     remainder = re.sub(temporal, " ", value)
     remainder = re.sub(
-        r"(?i)\b(?:at|on|around|about|please|this|next|the|in|by|for)\b",
+        r"(?i)\b(?:at|on|around|about|please|this|next|coming|the|in|by|for)\b",
         " ",
         remainder,
     )
@@ -728,37 +729,32 @@ def _looks_like_reminder_clarification_reply(text: str) -> bool:
     return not remainder
 
 
-def _pending_is_immediate_previous_turn(actor, pending: dict) -> bool:
-    """Only the very next unquoted user turn may inherit a reminder draft."""
-    conn = db.connect()
-    try:
-        row = conn.execute(
-            """SELECT message_id FROM inbound_messages
-               WHERE conversation_id=? AND sender_phone=? AND message_id<>?
-               ORDER BY received_at_utc DESC,rowid DESC LIMIT 1""",
-            (actor.conversation_id, actor.phone, actor.source_message_id),
-        ).fetchone()
-        return bool(
-            row
-            and str(row["message_id"]) == str(pending.get("source_message_id") or "")
-        )
-    finally:
-        conn.close()
+def _reminder_draft_is_current_reference(actor, pending: dict,
+                                         quoted_context: dict | None = None) -> bool:
+    """A draft is current while Alex's newest visible prompt belongs to it."""
+    if not _pending_item_recent(pending, 1800):
+        return False
+    item_id = str(pending.get("item_id") or "")
+    if (
+        quoted_context
+        and quoted_context.get("context_kind") == "PENDING_ITEM"
+        and str(quoted_context.get("context_id") or "") == item_id
+    ):
+        return True
+    latest = db.resolve_recent_outbound_context(
+        actor.conversation_id, "PENDING_ITEM", max_age_seconds=1800
+    )
+    return bool(latest and str(latest.get("context_id") or "") == item_id)
 
 
-def _recover_reminder_draft_context(actor, text: str) -> dict | None:
-    pending = db.latest_pending_item(actor, "REMINDER_DRAFT", max_age_seconds=1800)
-    if not pending:
-        return None
-    if not _pending_is_immediate_previous_turn(actor, pending):
-        return None
-    if not _looks_like_reminder_clarification_reply(text):
-        return None
-    original = str(pending.get("original_text") or "").strip()
-    if not original:
-        return None
+def _reminder_draft_context(pending: dict) -> dict:
+    accumulated = str(
+        pending.get("accumulated_text")
+        or pending.get("original_text")
+        or ""
+    ).strip()
     return {
-        "recent_user_instruction": original[:2000],
+        "recent_user_instruction": accumulated[:4000],
         "source_message_id": pending.get("source_message_id"),
         "context_kind": "PENDING_ITEM",
         "context_id": pending.get("item_id"),
@@ -767,8 +763,20 @@ def _recover_reminder_draft_context(actor, text: str) -> dict | None:
             "kind": pending.get("kind"),
             "media_id": pending.get("media_id"),
             "source_message_id": pending.get("source_message_id"),
+            "accumulated_text": accumulated[:4000],
         },
     }
+
+
+def _recover_reminder_draft_context(actor, text: str) -> dict | None:
+    pending = db.latest_pending_item(actor, "REMINDER_DRAFT", max_age_seconds=1800)
+    if not pending:
+        return None
+    if not _reminder_draft_is_current_reference(actor, pending):
+        return None
+    if not _looks_like_reminder_clarification_reply(text):
+        return None
+    return _reminder_draft_context(pending)
 
 
 def _maybe_create_reminder_draft(actor, reply: str) -> dict | None:
@@ -1082,7 +1090,22 @@ def process(payload: dict) -> dict:
                 actor, turn["trusted_text"]
             )
         pending_item = db.pending_item_for_reference(actor, quoted_context)
-        if pending_item:
+        if (
+            pending_item
+            and str(pending_item.get("kind") or "").upper() == "REMINDER_DRAFT"
+            and _looks_like_reminder_clarification_reply(turn["trusted_text"])
+        ):
+            pending_item = db.append_pending_item_text(
+                pending_item["item_id"], actor.user_id, turn["trusted_text"]
+            )
+            accumulated = str(
+                pending_item.get("accumulated_text")
+                or turn["trusted_text"]
+                or ""
+            ).strip()
+            actor = replace(actor, reminder_context_text=accumulated)
+            quoted_context = _reminder_draft_context(pending_item)
+        elif pending_item:
             quoted_context = dict(quoted_context or {})
             quoted_context["pending_item"] = {
                 "item_id": pending_item["item_id"],
@@ -1152,11 +1175,8 @@ def process(payload: dict) -> dict:
         )
         draft_is_current = bool(
             reminder_draft_for_cancel
-            and (
-                quoted_reminder_draft
-                or _pending_is_immediate_previous_turn(
-                    actor, reminder_draft_for_cancel
-                )
+            and _reminder_draft_is_current_reference(
+                actor, reminder_draft_for_cancel, quoted_context
             )
         )
         if (
@@ -1320,14 +1340,11 @@ def process(payload: dict) -> dict:
             else None
         )
         reminder_created = _reminder_created_by_turn(actor)
-        if (
-            continuing_reminder_draft
-            and not reminder_created
-            and _reply_is_reminder_clarification(reply)
-        ):
-            # Keep every follow-up clarification bound to the same durable
-            # reminder draft so a later swipe-reply still resolves the
-            # original unfinished reminder request.
+        if continuing_reminder_draft and not reminder_created:
+            # Once a reminder draft is active, every Alex reply on a bound
+            # temporal continuation belongs to that same durable request.
+            # Lifecycle no longer depends on the model using a particular
+            # clarification-question wording.
             reminder_draft = continuing_reminder_draft
         else:
             reminder_draft = _maybe_create_reminder_draft(actor, reply)

@@ -1134,9 +1134,12 @@ def _seed_core():
         raise RuntimeError("CERTIFICATION SEED INVALID: dentist fixture unexpectedly conflicts with work")
     CERT_FIXTURES["dentist_diary_id"] = diary.get("diary_id")
     mid = "seed-dentist-rem"
-    _claim(mid, "remind dentist 3pm", conv)
+    _claim(mid, "remind dentist on 1 October 2026 at 3pm", conv)
     reminder = services.create_reminder(
-        with_action_key(_actor(mid, conv, "remind dentist 3pm"), "seed-dentist-rem-action"),
+        with_action_key(
+            _actor(mid, conv, "remind dentist on 1 October 2026 at 3pm"),
+            "seed-dentist-rem-action",
+        ),
         "Dentist Appointment", "2026-10-01T15:00:00+08:00",
     )
     CERT_FIXTURES["dentist_reminder_id"] = reminder.get("reminder_id")

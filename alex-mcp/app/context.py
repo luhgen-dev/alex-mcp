@@ -32,6 +32,11 @@ class ActorContext:
     read_scope: str | None = None
     # True only for a Family Shared turn that must execute in the owner's DM.
     private_handoff: bool = False
+    # Durable reminder clarification context. This is composed only from
+    # user-authored trusted_text fragments that belong to one REMINDER_DRAFT.
+    # Reminder services validate against this accumulated text while all other
+    # domains continue to use the current turn's trusted_text.
+    reminder_context_text: str = ""
 
 
 _current_actor: ContextVar[ActorContext | None] = ContextVar("alex_actor", default=None)

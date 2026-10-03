@@ -150,6 +150,19 @@ def initialize() -> None:
         _ensure_column(conn, "ai_usage", "reasoning_tokens", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(conn, "ai_usage", "model_calls", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(conn, "media_objects", "transcript_meta_json", "TEXT")
+        _ensure_column(conn, "pending_items", "accumulated_text", "TEXT")
+        # v0.5.13 reminder drafts carry the user's trusted clarification
+        # fragments as one durable request. Backfill existing drafts from their
+        # original inbound text without touching other pending-item kinds.
+        conn.execute(
+            """UPDATE pending_items
+               SET accumulated_text=(
+                   SELECT i.raw_text FROM inbound_messages i
+                   WHERE i.message_id=pending_items.source_message_id
+               )
+               WHERE kind='REMINDER_DRAFT'
+                 AND (accumulated_text IS NULL OR TRIM(accumulated_text)='')"""
+        )
 
         # v0.5.6 used a malformed Baileys pin payload but still recorded
         # job_pinned_at_utc after the transport returned success. Reset those
@@ -760,18 +773,56 @@ def create_pending_item(actor: ActorContext, kind: str, media_id: str | None = N
         if existing:
             return dict(existing)
         item_id = str(uuid.uuid4())
+        accumulated_text = (
+            str(getattr(actor, "trusted_text", "") or "").strip()
+            if item_kind == "REMINDER_DRAFT" else None
+        )
         conn.execute(
             """INSERT INTO pending_items(
-                   item_id,kind,owner_id,conversation_id,source_message_id,media_id,note
-               ) VALUES(?,?,?,?,?,?,?)""",
+                   item_id,kind,owner_id,conversation_id,source_message_id,media_id,
+                   note,accumulated_text
+               ) VALUES(?,?,?,?,?,?,?,?)""",
             (
                 item_id, item_kind, actor.user_id, actor.conversation_id,
-                actor.source_message_id, media_id, note,
+                actor.source_message_id, media_id, note, accumulated_text,
             ),
         )
         conn.commit()
         row = conn.execute("SELECT * FROM pending_items WHERE item_id=?", (item_id,)).fetchone()
         return dict(row)
+    finally:
+        conn.close()
+
+
+def append_pending_item_text(item_id: str, owner_id: str, text: str) -> dict:
+    """Append one user-authored clarification fragment to a pending draft."""
+    fragment = str(text or "").strip()
+    conn = connect()
+    try:
+        row = conn.execute(
+            """SELECT * FROM pending_items
+               WHERE item_id=? AND owner_id=? AND status='PENDING' LIMIT 1""",
+            (item_id, owner_id),
+        ).fetchone()
+        if not row:
+            raise ValueError("pending item is no longer unresolved")
+        if str(row["kind"] or "").upper() != "REMINDER_DRAFT":
+            return dict(row)
+        current = str(row["accumulated_text"] or "").strip()
+        if fragment:
+            combined = (current + "\n" + fragment).strip() if current else fragment
+            # Household reminder requests are intentionally compact; cap the
+            # durable context while preserving all normal clarification turns.
+            combined = combined[-4000:]
+            conn.execute(
+                "UPDATE pending_items SET accumulated_text=? WHERE item_id=?",
+                (combined, item_id),
+            )
+            conn.commit()
+        updated = conn.execute(
+            "SELECT * FROM pending_items WHERE item_id=?", (item_id,)
+        ).fetchone()
+        return dict(updated)
     finally:
         conn.close()
 
