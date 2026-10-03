@@ -784,8 +784,16 @@ def _maybe_create_reminder_draft(actor, reply: str) -> dict | None:
         return None
     if _reminder_created_by_turn(actor):
         return None
-    if not _reply_is_reminder_clarification(reply):
+
+    value = str(reply or "").strip()
+    # Once the current user turn is unquestionably a reminder request, any
+    # unanswered Alex question means the reminder is still unresolved. Do not
+    # make durable draft creation depend on a whitelist of assistant wording:
+    # live ambiguity prompts such as "Did you mean this coming Friday ... or
+    # the following Friday?" are just as actionable as "What time?".
+    if "?" not in value:
         return None
+
     return db.create_pending_item(
         actor,
         "REMINDER_DRAFT",
