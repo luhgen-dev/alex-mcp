@@ -6554,5 +6554,77 @@ class AlexCoreTests(unittest.TestCase):
         )
 
 
+    def test_v0514_ambiguous_next_friday_question_creates_and_pins_draft(self):
+        fixed = datetime(2026, 10, 3, 16, 5, tzinfo=timezone.utc)
+        payload = {
+            "message_id": "v0514-next-friday",
+            "provider": "WHATSAPP",
+            "conversation_id": "60111111111@s.whatsapp.net",
+            "conversation_type": "DIRECT_DM",
+            "sender_phone": "+60111111111",
+            "text": "Remind me to check the mailbox next Friday at 7pm",
+        }
+        reply = (
+            "Did you mean this coming Friday, 9 October 2026, "
+            "or the following Friday, 16 October 2026?"
+        )
+        with patch.object(runtime_clock, "now_utc", return_value=fixed):
+            result = self._v0513_process_with_scripted_provider(
+                payload, [{"content": reply}]
+            )
+        self.assertTrue(result["ok"])
+
+        conn = db.connect()
+        try:
+            draft = conn.execute(
+                """SELECT * FROM pending_items
+                   WHERE source_message_id='v0514-next-friday'
+                     AND kind='REMINDER_DRAFT'"""
+            ).fetchone()
+            self.assertIsNotNone(draft)
+            self.assertEqual(draft["status"], "PENDING")
+            outbound = conn.execute(
+                """SELECT * FROM outbound_messages
+                   WHERE source_message_id='v0514-next-friday'
+                   ORDER BY rowid DESC LIMIT 1"""
+            ).fetchone()
+            self.assertEqual(outbound["context_kind"], "PENDING_ITEM")
+            self.assertEqual(outbound["context_id"], draft["item_id"])
+
+            conn.execute(
+                """UPDATE outbound_messages
+                   SET provider_message_id='wa-v0514-next-friday-question',
+                       delivery_status='SENT',delivered_at_utc=CURRENT_TIMESTAMP
+                   WHERE outbound_id=?""",
+                (outbound["outbound_id"],),
+            )
+            conn.commit()
+
+            controls = []
+            with patch.object(
+                outbox, "_send",
+                side_effect=lambda payload: (controls.append(payload) or True, "{}"),
+            ):
+                outbox._reconcile_pending_item_markers(conn)
+
+            marked = conn.execute(
+                """SELECT job_pinned_at_utc,job_pin_target
+                   FROM outbound_messages WHERE outbound_id=?""",
+                (outbound["outbound_id"],),
+            ).fetchone()
+        finally:
+            conn.close()
+
+        self.assertEqual([p["kind"] for p in controls], ["pin"])
+        self.assertTrue(controls[0]["target_from_me"])
+        self.assertEqual(
+            controls[0]["target_message_id"],
+            "wa-v0514-next-friday-question",
+        )
+        self.assertIsNotNone(marked["job_pinned_at_utc"])
+        self.assertEqual(marked["job_pin_target"], "OUTBOUND")
+
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
