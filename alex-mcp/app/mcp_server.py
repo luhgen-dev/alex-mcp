@@ -361,7 +361,7 @@ def create_reminder(task: str, due_local: str, actor: Actor,
                     presence_aware: bool = False,
                     delivery_class: str = "routine",
                     follow_up_after_hours: int = 24) -> dict:
-    """Create a durable reminder. Prefer due_local as an ISO local date-time (YYYY-MM-DDTHH:MM[:SS][offset]); the backend deterministically resolves unambiguous user-authored relative dates from trusted reminder context. recipient accepts me/spouse/husband/wife/both or the configured household names. An explicitly named assignee is a DM reminder regardless of where the command was typed unless the user explicitly asks for the group. destination=group sends one Family Shared claimable group reminder."""
+    """Create a durable reminder. recipient accepts me/spouse/husband/wife/both or the configured household names. An explicitly named assignee is a DM reminder regardless of where the command was typed unless the user explicitly asks for the group. destination=group sends one Family Shared claimable group reminder."""
     return services.create_reminder(
         actor, task, due_local, recurrence_rule, shared, recipient, destination,
         claimable, presence_aware, delivery_class, follow_up_after_hours,
