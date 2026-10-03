@@ -1656,6 +1656,7 @@ async def _tool_specs(user_text: str, media_context: list[str] | None = None,
     )
     wanted |= contextual_add
     wanted -= contextual_block
+    quoted_required: set[str] = set()
     if quoted_context:
         carried_intent = (
             quoted_context.get("quoted_user_text")
@@ -1670,6 +1671,17 @@ async def _tool_specs(user_text: str, media_context: list[str] | None = None,
             wanted |= {"query_finances", "finance_report", "report_export"}
         if str(quoted_context.get("context_kind") or "").startswith("REMINDER"):
             wanted |= REMINDER_TOOLS
+        pending_ref = quoted_context.get("pending_item")
+        if (
+            isinstance(pending_ref, dict)
+            and str(pending_ref.get("kind") or "").upper() == "REMINDER_DRAFT"
+        ):
+            # A swipe-reply to Alex's pinned date/time question is still the
+            # same authorized reminder write even when the current user text
+            # is only "Tomorrow at 9 AM". Keep the create tool through the
+            # exposure cap instead of degrading into a false capability denial.
+            quoted_required |= {"create_reminder", "list_reminders"}
+            wanted |= quoted_required
     if _money_only_reply(user_text):
         # A short amount may answer Alex's "how much?" clarification before a
         # pending ledger row exists, so keep both pending-confirm and fresh-log
@@ -1679,7 +1691,8 @@ async def _tool_specs(user_text: str, media_context: list[str] | None = None,
     if not wanted and not _casual_chat(user_text):
         wanted = set(CORE_READ_FALLBACK)
     wanted = _cap_tool_names(
-        wanted, user_text, media_context, required=contextual_add
+        wanted, user_text, media_context,
+        required=contextual_add | quoted_required,
     )
     specs = await _tool_specs_for_names(wanted)
     # The discovery tool is a tiny safety valve for typo-heavy, incomplete,

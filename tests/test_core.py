@@ -5897,5 +5897,62 @@ class AlexCoreTests(unittest.TestCase):
 
 
 
+    def test_v0511_tomorrow_draft_canonicalizes_wrong_model_date(self):
+        frozen = datetime(2026, 10, 3, 8, 0, tzinfo=timezone.utc)  # 16:00 MYT
+        self.claim(
+            "v0511-tomorrow",
+            "+60111111111",
+            "Tomorrow at 9 AM",
+        )
+        actor = with_action_key(
+            replace(
+                self.actor("v0511-tomorrow", "+60111111111"),
+                trusted_text="Tomorrow at 9 AM",
+            ),
+            "v0511-tomorrow-action",
+        )
+        with patch.object(runtime_clock, "now_utc", return_value=frozen):
+            created = services.create_reminder(
+                actor,
+                "test the lamp",
+                # Reproduce the live model arithmetic failure: same-day 9 AM,
+                # already in the past. Trusted "tomorrow" must anchor it.
+                "2026-10-03T09:00:00+08:00",
+            )
+
+        due = datetime.fromisoformat(created["due_at_utc"]).astimezone(
+            timezone.utc
+        )
+        self.assertEqual(
+            due,
+            datetime(2026, 10, 4, 1, 0, tzinfo=timezone.utc),
+        )
+
+    def test_v0511_quoted_reminder_draft_keeps_create_tool(self):
+        quoted = {
+            "context_kind": "PENDING_ITEM",
+            "context_id": "draft-1",
+            "pending_item": {
+                "item_id": "draft-1",
+                "kind": "REMINDER_DRAFT",
+                "source_message_id": "original-reminder",
+            },
+        }
+        names = {
+            x["function"]["name"]
+            for x in asyncio.run(
+                brain._tool_specs(
+                    "Tomorrow at 9 AM",
+                    quoted_context=quoted,
+                    prior_user_text="Tomorrow at 9 AM",
+                )
+            )
+        }
+        self.assertIn("create_reminder", names)
+        self.assertIn("list_reminders", names)
+        self.assertLessEqual(len(names), brain.TOOL_EXPOSURE_MAX)
+
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
