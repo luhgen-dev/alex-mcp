@@ -423,6 +423,14 @@ def _yes_no_answer(text: str) -> str | None:
     return None
 
 
+def _reminder_draft_cancel_command(text: str) -> bool:
+    value = str(text or "").strip().casefold().rstrip(".!")
+    return value in {
+        "cancel", "cancel it", "cancel that", "cancel the reminder",
+        "never mind", "nevermind", "forget it",
+    }
+
+
 def _private_search_offer_candidate(actor, query: str, reply: str,
                                     attachments: list[dict]) -> bool:
     """Offer one private retry after a Family-scope miss without probing private data."""
