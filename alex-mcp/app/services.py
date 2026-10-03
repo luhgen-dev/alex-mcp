@@ -165,45 +165,61 @@ _WEEKDAY_RE = re.compile(
 )
 
 
+def _slot_lines(text: str | None) -> list[str]:
+    return [
+        line.strip() for line in str(text or "").splitlines()
+        if line.strip()
+    ]
+
+
 def _stated_weekday(text: str | None) -> int | None:
-    values = {
-        _WEEKDAY_NAMES[m.group(1).casefold()]
-        for m in _WEEKDAY_RE.finditer(str(text or ""))
-        if m.group(1).casefold() in _WEEKDAY_NAMES
-    }
-    return next(iter(values)) if len(values) == 1 else None
+    """Return the newest unambiguous weekday slot across reminder turns."""
+    for line in reversed(_slot_lines(text)):
+        values = {
+            _WEEKDAY_NAMES[m.group(1).casefold()]
+            for m in _WEEKDAY_RE.finditer(line)
+            if m.group(1).casefold() in _WEEKDAY_NAMES
+        }
+        if len(values) == 1:
+            return next(iter(values))
+        if len(values) > 1:
+            return None
+    return None
 
 
-def _stated_clock(text: str | None) -> tuple[int, int] | None:
-    """Extract one exact user-stated local clock value."""
-    value = str(text or "")
+def _clock_in_fragment(value: str) -> tuple[int, int] | None:
     if re.search(r"(?i)\bnoon\b", value):
         return (12, 0)
     if re.search(r"(?i)\bmidnight\b", value):
         return (0, 0)
 
-    m = re.search(
+    matches = list(re.finditer(
         r"(?i)\b(\d{1,2})(?::|\.)(\d{2})\s*(am|pm|a\.m\.|p\.m\.)\b",
         value,
-    )
-    if not m:
-        m = re.search(
+    ))
+    if matches:
+        m = matches[-1]
+        hour = int(m.group(1))
+        minute = int(m.group(2))
+        meridiem = m.group(3).casefold().replace(".", "")
+    else:
+        matches = list(re.finditer(
             r"(?i)\b(\d{1,2})\s*(am|pm|a\.m\.|p\.m\.)\b",
             value,
-        )
-        if m:
+        ))
+        if matches:
+            m = matches[-1]
             hour = int(m.group(1))
             minute = 0
             meridiem = m.group(2).casefold().replace(".", "")
         else:
-            m24 = re.search(r"\b([01]?\d|2[0-3]):([0-5]\d)\b", value)
-            if not m24:
+            matches24 = list(re.finditer(
+                r"\b([01]?\d|2[0-3]):([0-5]\d)\b", value
+            ))
+            if not matches24:
                 return None
+            m24 = matches24[-1]
             return (int(m24.group(1)), int(m24.group(2)))
-    else:
-        hour = int(m.group(1))
-        minute = int(m.group(2))
-        meridiem = m.group(3).casefold().replace(".", "")
 
     if hour < 1 or hour > 12 or minute < 0 or minute > 59:
         return None
@@ -212,6 +228,15 @@ def _stated_clock(text: str | None) -> tuple[int, int] | None:
     elif meridiem == "am" and hour == 12:
         hour = 0
     return (hour, minute)
+
+
+def _stated_clock(text: str | None) -> tuple[int, int] | None:
+    """Return the newest exact user-stated local clock across reminder turns."""
+    for line in reversed(_slot_lines(text)):
+        clock = _clock_in_fragment(line)
+        if clock is not None:
+            return clock
+    return None
 
 
 _MONTH_NAMES = {
