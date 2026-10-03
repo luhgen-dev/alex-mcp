@@ -6377,7 +6377,7 @@ class AlexCoreTests(unittest.TestCase):
         conn = db.connect()
         try:
             draft = conn.execute(
-                """SELECT status,accumulated_text FROM pending_items
+                """SELECT item_id,status,accumulated_text FROM pending_items
                    WHERE source_message_id='v0513-shoes-first'
                      AND kind='REMINDER_DRAFT'"""
             ).fetchone()
@@ -6394,7 +6394,7 @@ class AlexCoreTests(unittest.TestCase):
             conn.close()
 
         self.assertEqual(second_out["context_kind"], "PENDING_ITEM")
-        self.assertEqual(second_out["context_id"], draft["item_id"] if "item_id" in draft.keys() else second_out["context_id"])
+        self.assertEqual(second_out["context_id"], draft["item_id"])
         self.assertEqual(draft["status"], "RESOLVED")
         accumulated = str(draft["accumulated_text"])
         self.assertIn("Tomorrow", accumulated)
