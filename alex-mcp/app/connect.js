@@ -12,6 +12,7 @@ import makeWASocket, {
 import pino from 'pino';
 import QRCode from 'qrcode';
 import { buildControlMessage } from './control_payload.js';
+import { reactionConversationJid, reactionSenderCandidates } from './reaction_payload.js';
 
 const DATA_DIR = process.env.ALEX_DATA_DIR || '/data';
 const AUTH_DIR = path.join(DATA_DIR, 'whatsapp_auth');
