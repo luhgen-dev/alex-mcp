@@ -678,12 +678,16 @@ def _is_reminder_request(text: str) -> bool:
 
 
 def _reply_is_reminder_clarification(reply: str) -> bool:
+    """Recognize an unanswered reminder date/time question in natural wording."""
     value = str(reply or "")
     return bool(
         "?" in value
         and re.search(
-            r"(?i)\b(?:what|which|when)\b.{0,80}\b(?:day|date|time|morning|afternoon|evening)\b"
-            r"|\b(?:day|date|time)\b.{0,80}\b(?:would you like|should i|do you want)\b",
+            r"(?i)"
+            r"\b(?:what|which)\b.{0,80}\b(?:day|date|time|morning|afternoon|evening)\b"
+            r"|\b(?:day|date|time)\b.{0,80}\b(?:would you like|should i|do you want)\b"
+            r"|\bwhen\b.{0,100}\b(?:remind|reminded|reminder|set|schedule)\b"
+            r"|\b(?:when should i|when would you like me to)\b.{0,100}\bremind\b",
             value,
         )
     )
