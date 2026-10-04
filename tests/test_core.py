@@ -7485,5 +7485,244 @@ class AlexCoreTests(unittest.TestCase):
         self.assertIn("already no longer active", reply.casefold())
 
 
+    def test_v0517_natural_reminder_language_routes_without_magic_keyword(self):
+        phrases = [
+            "Could you give me a heads-up around 6.45 about the laundry?",
+            "Don't let me forget to take the bins out tomorrow",
+            "Make sure I remember to call Amma tomorrow",
+            "Please ping me at 8pm to grab my pass",
+        ]
+        for phrase in phrases:
+            with self.subTest(phrase=phrase):
+                result = phase2_intent.classify_write_intent(phrase)
+                self.assertEqual(result.get("intent"), "REMINDER")
+                self.assertIn("REMINDER", result.get("intents") or [])
+
+        control = phase2_intent.classify_write_intent(
+            "Do you remember where I kept the spare key?"
+        )
+        self.assertNotEqual(control.get("intent"), "REMINDER")
+
+    def test_v0517_ai_interpreted_heads_up_creates_durable_draft(self):
+        payload = {
+            "message_id": "v0517-headsup-1",
+            "provider": "WHATSAPP",
+            "conversation_id": "60111111111@s.whatsapp.net",
+            "conversation_type": "DIRECT_DM",
+            "sender_phone": "+60111111111",
+            "text": "Could you give me a heads-up around 6.45 about the laundry?",
+        }
+        exposed = []
+        result = self._v0513_process_with_scripted_provider(
+            payload,
+            [{"content": "Do you mean 6:45 AM or 6:45 PM for that heads-up?"}],
+            exposed,
+        )
+        self.assertTrue(result["ok"])
+        self.assertTrue(any("create_reminder" in names for names in exposed), exposed)
+
+        conn = db.connect()
+        try:
+            draft = conn.execute(
+                """SELECT * FROM pending_items
+                   WHERE source_message_id='v0517-headsup-1'
+                     AND kind='REMINDER_DRAFT'"""
+            ).fetchone()
+            outbound = conn.execute(
+                """SELECT context_kind,context_id FROM outbound_messages
+                   WHERE source_message_id='v0517-headsup-1'
+                   ORDER BY rowid DESC LIMIT 1"""
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertIsNotNone(draft)
+        self.assertEqual(draft["status"], "PENDING")
+        self.assertEqual(outbound["context_kind"], "PENDING_ITEM")
+        self.assertEqual(outbound["context_id"], draft["item_id"])
+
+    def test_v0517_natural_daypart_and_acceptance_complete_reminder(self):
+        fixed = datetime(2026, 10, 5, 12, 0, tzinfo=timezone.utc)
+        conversation = "60111111111@s.whatsapp.net"
+        phone = "+60111111111"
+        first = {
+            "message_id": "v0517-natural-1", "provider": "WHATSAPP",
+            "conversation_id": conversation, "conversation_type": "DIRECT_DM",
+            "sender_phone": phone,
+            "text": "Please give me a nudge later about switching the porch light off",
+        }
+        second = {
+            "message_id": "v0517-natural-2", "provider": "WHATSAPP",
+            "conversation_id": conversation, "conversation_type": "DIRECT_DM",
+            "sender_phone": phone,
+            "text": "At night, around 10.45",
+        }
+        third = {
+            "message_id": "v0517-natural-3", "provider": "WHATSAPP",
+            "conversation_id": conversation, "conversation_type": "DIRECT_DM",
+            "sender_phone": phone,
+            "text": "That works for me",
+        }
+        exposed = []
+        with patch.object(runtime_clock, "now_utc", return_value=fixed):
+            self.assertTrue(self._v0513_process_with_scripted_provider(
+                first,
+                [{"content": "What time should I nudge you about the porch light?"}],
+                exposed,
+            )["ok"])
+            self.assertTrue(self._v0513_process_with_scripted_provider(
+                second,
+                [{"content": "Should I set that nudge for exactly 10:45 PM tonight?"}],
+                exposed,
+            )["ok"])
+            self.assertTrue(self._v0513_process_with_scripted_provider(
+                third,
+                [
+                    {
+                        "tool": "create_reminder",
+                        "args": {
+                            "task": "switch the porch light off",
+                            "due_local": "2026-10-05T22:45:00+08:00",
+                            "recipient": "me",
+                            "destination": "dm",
+                        },
+                    },
+                    {"content": "Got it. I'll nudge you at 10:45 PM tonight."},
+                ],
+                exposed,
+            )["ok"])
+
+        conn = db.connect()
+        try:
+            draft = conn.execute(
+                """SELECT status,accumulated_text FROM pending_items
+                   WHERE source_message_id='v0517-natural-1'
+                     AND kind='REMINDER_DRAFT'"""
+            ).fetchone()
+            made = conn.execute(
+                """SELECT task_text,due_at_utc FROM reminders
+                   WHERE source_message_id='v0517-natural-3'"""
+            ).fetchone()
+            second_out = conn.execute(
+                """SELECT context_kind FROM outbound_messages
+                   WHERE source_message_id='v0517-natural-2'
+                   ORDER BY rowid DESC LIMIT 1"""
+            ).fetchone()
+        finally:
+            conn.close()
+
+        self.assertEqual(draft["status"], "RESOLVED")
+        self.assertIn("At night, around 10.45", draft["accumulated_text"])
+        self.assertIn("That works for me", draft["accumulated_text"])
+        self.assertEqual(second_out["context_kind"], "PENDING_ITEM")
+        self.assertIsNotNone(made)
+        self.assertEqual(made["task_text"], "switch the porch light off")
+        due = datetime.fromisoformat(made["due_at_utc"].replace("Z", "+00:00"))
+        self.assertEqual(due, datetime(2026, 10, 5, 14, 45, tzinfo=timezone.utc))
+        self.assertIn("create_reminder", exposed[-1], exposed)
+
+    def test_v0517_natural_abandonment_cancels_unfinished_draft(self):
+        conversation = "60111111111@s.whatsapp.net"
+        first = {
+            "message_id": "v0517-abandon-1", "provider": "WHATSAPP",
+            "conversation_id": conversation, "conversation_type": "DIRECT_DM",
+            "sender_phone": "+60111111111",
+            "text": "Make sure I remember to bring my pass tomorrow",
+        }
+        self._v0513_process_with_scripted_provider(
+            first,
+            [{"content": "What time tomorrow should I remind you about your pass?"}],
+        )
+
+        abandon = {
+            "message_id": "v0517-abandon-2", "provider": "WHATSAPP",
+            "conversation_id": conversation, "conversation_type": "DIRECT_DM",
+            "sender_phone": "+60111111111",
+            "text": "Actually I don't need that anymore",
+        }
+        with patch.object(
+            brain, "respond",
+            side_effect=AssertionError("natural draft abandonment must be deterministic"),
+        ):
+            result = ingress.process(abandon)
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["reminder_draft_cancelled"])
+
+        conn = db.connect()
+        try:
+            draft = conn.execute(
+                """SELECT status FROM pending_items
+                   WHERE source_message_id='v0517-abandon-1'
+                     AND kind='REMINDER_DRAFT'"""
+            ).fetchone()
+            reply = conn.execute(
+                """SELECT text_body,context_kind FROM outbound_messages
+                   WHERE source_message_id='v0517-abandon-2'
+                   ORDER BY rowid DESC LIMIT 1"""
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(draft["status"], "CANCELLED")
+        self.assertIsNone(reply["context_kind"])
+        self.assertIn("cancelled", reply["text_body"].casefold())
+
+    def test_v0517_closed_confirmation_does_not_capture_unrelated_question(self):
+        conversation = "60111111111@s.whatsapp.net"
+        phone = "+60111111111"
+        first = {
+            "message_id": "v0517-switch-1", "provider": "WHATSAPP",
+            "conversation_id": conversation, "conversation_type": "DIRECT_DM",
+            "sender_phone": phone,
+            "text": "Don't let me forget to lock the gate later",
+        }
+        second = {
+            "message_id": "v0517-switch-2", "provider": "WHATSAPP",
+            "conversation_id": conversation, "conversation_type": "DIRECT_DM",
+            "sender_phone": phone,
+            "text": "At night around 9.30",
+        }
+        third = {
+            "message_id": "v0517-switch-3", "provider": "WHATSAPP",
+            "conversation_id": conversation, "conversation_type": "DIRECT_DM",
+            "sender_phone": phone,
+            "text": "How much did I spend on petrol?",
+        }
+        self._v0513_process_with_scripted_provider(
+            first, [{"content": "What time should I remind you about the gate?"}]
+        )
+        self._v0513_process_with_scripted_provider(
+            second, [{"content": "Should I set that reminder for 9:30 PM tonight?"}]
+        )
+        exposed = []
+        self._v0513_process_with_scripted_provider(
+            third, [{"content": "I couldn't find a matching petrol transaction."}], exposed
+        )
+        self.assertTrue(exposed)
+        self.assertNotIn("create_reminder", exposed[-1])
+
+        conn = db.connect()
+        try:
+            draft = conn.execute(
+                """SELECT status,accumulated_text FROM pending_items
+                   WHERE source_message_id='v0517-switch-1'"""
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(draft["status"], "PENDING")
+        self.assertNotIn("How much did I spend on petrol?", draft["accumulated_text"])
+
+    def test_v0517_daypart_disambiguates_dotted_clock_across_turns(self):
+        self.assertEqual(
+            services._clock_in_fragment("At night, around 11.30"),
+            (23, 30),
+        )
+        self.assertEqual(
+            services._stated_clock("around 11.30\nat night"),
+            (23, 30),
+        )
+        self.assertTrue(
+            services._user_stated_time("around 11.30\nat night")
+        )
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
