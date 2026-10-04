@@ -6626,5 +6626,242 @@ class AlexCoreTests(unittest.TestCase):
 
 
 
+    def test_v0515_expired_quoted_private_offer_isolated_from_active_reminder(self):
+        phone = "+60111111111"
+        conversation = "60111111111@s.whatsapp.net"
+
+        self.claim(
+            "v0515-offer-source", phone,
+            "What is my pocket cash balance?"
+        )
+        offer_actor = replace(
+            self.actor("v0515-offer-source", phone),
+            trusted_text="What is my pocket cash balance?",
+            read_scope="family",
+        )
+        offer = db.create_pending_item(
+            offer_actor,
+            "PRIVATE_SEARCH_OFFER",
+            note=json.dumps({"query": "What is my pocket cash balance?"}),
+        )
+        offer_outbound = db.queue_outbound(
+            conversation, "TEXT",
+            text=(
+                "I couldn't find that in your shared records.\n\n"
+                "I can also check your private records if you want."
+            ),
+            source_message_id="v0515-offer-source",
+            context_kind="PENDING_ITEM",
+            context_id=offer["item_id"],
+        )
+
+        self.claim(
+            "v0515-reminder-source", phone,
+            "Remind me to check the mailbox next Friday at 7pm"
+        )
+        reminder_actor = replace(
+            self.actor("v0515-reminder-source", phone),
+            trusted_text="Remind me to check the mailbox next Friday at 7pm",
+        )
+        draft = db.create_pending_item(
+            reminder_actor,
+            "REMINDER_DRAFT",
+            note="Awaiting reminder date clarification.",
+        )
+        db.queue_outbound(
+            conversation, "TEXT",
+            text=(
+                "Could you clarify which Friday you mean? "
+                "October 9 or October 16?"
+            ),
+            source_message_id="v0515-reminder-source",
+            context_kind="PENDING_ITEM",
+            context_id=draft["item_id"],
+        )
+
+        conn = db.connect()
+        try:
+            conn.execute(
+                """UPDATE pending_items
+                   SET status='CANCELLED',
+                       created_at_utc='2026-10-04T00:00:00+00:00',
+                       resolved_at_utc='2026-10-04T00:11:00+00:00',
+                       resolution_message_id='expired'
+                   WHERE item_id=?""",
+                (offer["item_id"],),
+            )
+            conn.execute(
+                """UPDATE outbound_messages
+                   SET delivery_status='SENT',
+                       delivered_at_utc='2026-10-04T00:00:01+00:00',
+                       provider_message_id='wa-v0515-expired-offer'
+                   WHERE outbound_id=?""",
+                (offer_outbound,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        reply = {
+            "message_id": "v0515-expired-offer-yes",
+            "provider": "WHATSAPP",
+            "conversation_id": conversation,
+            "conversation_type": "DIRECT_DM",
+            "sender_phone": phone,
+            "text": "Yes",
+            "quoted_message_id": "wa-v0515-expired-offer",
+        }
+        with patch.object(
+            brain, "respond",
+            side_effect=AssertionError(
+                "expired quoted offer must be consumed before model routing"
+            ),
+        ):
+            result = ingress.process(reply)
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["expired_private_search_offer"])
+
+        conn = db.connect()
+        try:
+            latest = conn.execute(
+                """SELECT text_body FROM outbound_messages
+                   WHERE source_message_id='v0515-expired-offer-yes'
+                   ORDER BY rowid DESC LIMIT 1"""
+            ).fetchone()
+            draft_state = conn.execute(
+                """SELECT status,accumulated_text FROM pending_items
+                   WHERE item_id=?""",
+                (draft["item_id"],),
+            ).fetchone()
+        finally:
+            conn.close()
+
+        self.assertIn("offer has expired", latest["text_body"].casefold())
+        self.assertIn("ask me again", latest["text_body"].casefold())
+        self.assertEqual(draft_state["status"], "PENDING")
+        self.assertIn(
+            "next Friday",
+            str(draft_state["accumulated_text"] or ""),
+        )
+
+    def test_v0515_personal_due_reminder_pins_then_checkmark_unpins(self):
+        phone = "+60111111111"
+        conversation = "60111111111@s.whatsapp.net"
+        self.claim(
+            "v0515-personal-reminder-create", phone,
+            "Remind me to wash the dishes tomorrow at 3pm",
+        )
+        creator = with_action_key(
+            replace(
+                self.actor("v0515-personal-reminder-create", phone),
+                trusted_text="Remind me to wash the dishes tomorrow at 3pm",
+            ),
+            "v0515-personal-reminder-action",
+        )
+        with patch.object(
+            runtime_clock, "now_utc",
+            return_value=datetime(2026, 10, 4, 4, 0, tzinfo=timezone.utc),
+        ):
+            reminder = services.create_reminder(
+                creator,
+                "Wash the dishes",
+                "2026-10-05T15:00:00+08:00",
+                destination="dm",
+            )
+        self.assertFalse(reminder["claimable"])
+
+        oid = db.queue_outbound(
+            conversation, "TEXT",
+            text="⏰ Reminder: Wash the dishes",
+            source_message_id="v0515-personal-reminder-create",
+            context_kind="REMINDER_INITIAL",
+            context_id=reminder["reminder_id"],
+        )
+        conn = db.connect()
+        try:
+            conn.execute(
+                "UPDATE reminders SET status='DUE' WHERE reminder_id=?",
+                (reminder["reminder_id"],),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        sent = []
+        def fake_send(payload):
+            sent.append(dict(payload))
+            if payload.get("kind") == "text":
+                return True, '{"message_id":"wa-v0515-personal-due"}'
+            return True, "{}"
+
+        outbox._STARTUP_MANAGED_JOB_RECONCILED = True
+        with patch.object(outbox, "_send", side_effect=fake_send):
+            outbox.sweep()
+
+        self.assertEqual([p["kind"] for p in sent], ["text", "pin"])
+        self.assertTrue(sent[1]["target_from_me"])
+        self.assertEqual(
+            sent[1]["target_message_id"], "wa-v0515-personal-due"
+        )
+
+        conn = db.connect()
+        try:
+            pinned = conn.execute(
+                """SELECT delivery_status,provider_message_id,
+                          job_pinned_at_utc,job_pin_target,job_unpinned_at_utc
+                   FROM outbound_messages WHERE outbound_id=?""",
+                (oid,),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(pinned["delivery_status"], "SENT")
+        self.assertEqual(
+            pinned["provider_message_id"], "wa-v0515-personal-due"
+        )
+        self.assertIsNotNone(pinned["job_pinned_at_utc"])
+        self.assertEqual(pinned["job_pin_target"], "OUTBOUND")
+        self.assertIsNone(pinned["job_unpinned_at_utc"])
+
+        result = ingress.process({
+            "message_id": "v0515-personal-due-done",
+            "provider": "WHATSAPP",
+            "conversation_id": conversation,
+            "conversation_type": "DIRECT_DM",
+            "sender_phone": phone,
+            "event_kind": "REACTION",
+            "reaction_target_message_id": "wa-v0515-personal-due",
+            "reaction_text": "✅",
+        })
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["reaction"]["status"], "completed")
+
+        controls = []
+        conn = db.connect()
+        try:
+            with patch.object(
+                outbox, "_send",
+                side_effect=lambda payload: (
+                    controls.append(dict(payload)) or True, "{}"
+                ),
+            ):
+                outbox._reconcile_reminder_pins(conn)
+            final = conn.execute(
+                """SELECT r.status,o.job_unpinned_at_utc
+                   FROM reminders r
+                   JOIN outbound_messages o ON o.context_id=r.reminder_id
+                   WHERE r.reminder_id=? AND o.outbound_id=?""",
+                (reminder["reminder_id"], oid),
+            ).fetchone()
+        finally:
+            conn.close()
+
+        self.assertEqual(final["status"], "COMP")
+        self.assertEqual([p["kind"] for p in controls], ["unpin"])
+        self.assertTrue(controls[0]["target_from_me"])
+        self.assertIsNotNone(final["job_unpinned_at_utc"])
+
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
