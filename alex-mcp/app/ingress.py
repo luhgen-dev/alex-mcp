@@ -927,7 +927,10 @@ def _latest_reminder_draft_question(actor, pending: dict) -> str:
         max_age_seconds=1800,
     )
     text = str((row or {}).get("text_body") or "").strip()
-    if text and _reply_is_reminder_clarification(text):
+    if text and (
+        _reply_is_reminder_clarification(text)
+        or _reply_is_reminder_confirmation_question(text)
+    ):
         return text
     return "What day, date, or time should I use for that reminder?"
 
