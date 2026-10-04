@@ -876,6 +876,25 @@ def _reminder_draft_continuation(
     if _reminder_draft_cancel_command(value):
         return True, latest_question
 
+    # The front AI is the language interpreter. When Alex's active prompt is a
+    # reminder slot question, accept ordinary temporal wording as continuation
+    # even when the deterministic parser cannot reduce the whole phrase to a
+    # bare token (for example "at night, around 11.30").
+    natural_temporal = bool(re.search(
+        r"(?i)\b(?:today|tomorrow|tonight|later|night|morning|afternoon|"
+        r"evening|noon|midnight|after\s+(?:work|dinner|lunch)|"
+        r"before\s+(?:work|bed|dinner)|half\s+past|quarter\s+(?:past|to))\b"
+        r"|\b\d{1,2}(?:[:.]\d{2})?\s*(?:am|pm)?\b",
+        value,
+    ))
+    if (
+        natural_temporal
+        and latest_question
+        and _reply_is_reminder_clarification(latest_question)
+        and "?" not in value
+    ):
+        return True, latest_question
+
     answer = _yes_no_answer(value)
     if answer and _reply_is_reminder_confirmation_question(latest_question):
         return True, latest_question
