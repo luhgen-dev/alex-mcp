@@ -765,6 +765,14 @@ def _reply_is_reminder_confirmation_question(reply: str) -> bool:
     value = str(reply or "")
     if "?" not in value:
         return False
+    # "When would you like me to remind you?" is an open slot question, not
+    # something a bare Yes can answer.
+    if re.search(
+        r"(?i)\b(?:when|what(?:\s+time)?|which\s+(?:day|date))\b"
+        r".{0,70}\b(?:would\s+you\s+like|should\s+i|do\s+you\s+want)\b",
+        value,
+    ):
+        return False
     return bool(
         re.search(
             r"(?i)\b(?:should\s+i|shall\s+i|would\s+you\s+like\s+me\s+to|"
@@ -871,9 +879,24 @@ def _reminder_draft_continuation(
     )
     latest_question = str((latest or {}).get("text_body") or "").strip()
 
-    if _looks_like_reminder_clarification_reply(value):
-        return True, latest_question
     if _reminder_draft_cancel_command(value):
+        return True, latest_question
+
+    # A fresh reminder request starts/replaces a reminder conversation; it must
+    # never be swallowed as a date/time answer to an older draft.
+    if _is_reminder_request(value):
+        return False, latest_question
+
+    domain_switch = bool(re.search(
+        r"(?i)\b(?:spent|paid|bought|expense|receipt|shopping|task|diary|"
+        r"calendar|meeting|appointment|show|find|search|list|what|why|how|"
+        r"where|goal|stash|cash|report|roster|shift|turn\s+(?:on|off)|"
+        r"switch\s+(?:on|off))\b"
+        r"|\b(?:rm|myr|sgd)\s*\d",
+        value,
+    ))
+
+    if _looks_like_reminder_clarification_reply(value) and not domain_switch:
         return True, latest_question
 
     # The front AI is the language interpreter. When Alex's active prompt is a
@@ -892,6 +915,7 @@ def _reminder_draft_continuation(
         and latest_question
         and _reply_is_reminder_clarification(latest_question)
         and "?" not in value
+        and not domain_switch
     ):
         return True, latest_question
 
@@ -907,13 +931,7 @@ def _reminder_draft_continuation(
         latest_question
         and _reply_is_reminder_confirmation_question(latest_question)
         and "?" not in value
-        and not re.search(
-            r"(?i)\b(?:spent|paid|bought|expense|receipt|shopping|task|diary|"
-            r"calendar|meeting|appointment|show|find|search|list|what|why|how|"
-            r"where|goal|stash|cash|report|roster|shift|turn\s+(?:on|off)|"
-            r"switch\s+(?:on|off))\b",
-            value,
-        )
+        and not domain_switch
     ):
         return True, latest_question
 
