@@ -387,7 +387,10 @@ def _deterministic_reminder_due_from_text(actor: ActorContext) -> str | None:
     if target_date is None:
         if re.search(r"(?i)\btomorrow\b", trusted):
             target_date = now_local.date() + timedelta(days=1)
-        elif re.search(r"(?i)\b(?:today|tonight)\b", trusted):
+        elif re.search(
+            r"(?i)\b(?:today|tonight|later(?:\s+today)?|this\s+evening)\b",
+            trusted,
+        ):
             target_date = now_local.date()
         elif wanted is not None:
             if is_next_weekday:
