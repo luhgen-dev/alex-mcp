@@ -1680,7 +1680,9 @@ async def _tool_specs(user_text: str, media_context: list[str] | None = None,
             # same authorized reminder write even when the current user text
             # is only "Tomorrow at 9 AM". Keep the create tool through the
             # exposure cap instead of degrading into a false capability denial.
-            quoted_required |= {"create_reminder", "list_reminders"}
+            quoted_required |= {
+                "create_reminder", "list_reminders", "cancel_pending_item"
+            }
             wanted |= quoted_required
     if _money_only_reply(user_text):
         # A short amount may answer Alex's "how much?" clarification before a
@@ -2144,9 +2146,13 @@ def _quoted_context_message(quoted_context: dict | None) -> str | None:
                     "trusted turns: " + accumulated[:2000]
                 )
             parts.append(
-                "This is one unresolved reminder request. Combine the current "
-                "date/time fragment with the accumulated request and use "
-                "create_reminder when the required slots are complete."
+                "This is one unresolved reminder conversation. Interpret the "
+                "current natural reply in the context of Alex's latest question "
+                "and the accumulated trusted request. A date/time answer may fill "
+                "a missing slot; an ordinary acceptance of fully specified details "
+                "should use create_reminder; a clear abandonment should use "
+                "cancel_pending_item with this pending item's item_id. Never invent "
+                "a missing slot or treat unrelated new instructions as continuation."
             )
         else:
             parts.append(
