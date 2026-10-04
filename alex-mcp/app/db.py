@@ -164,6 +164,44 @@ def initialize() -> None:
                  AND (accumulated_text IS NULL OR TRIM(accumulated_text)='')"""
         )
 
+        # v0.5.16 establishes one active reminder draft per owner/chat. Older
+        # draft questions were previously allowed to remain PENDING together,
+        # which made short replies and pins ambiguous. Keep the newest draft
+        # and deterministically supersede the rest once on upgrade.
+        draft_invariant_migration = "v0516_single_active_reminder_draft"
+        draft_invariant_done = conn.execute(
+            "SELECT 1 FROM schema_migrations WHERE migration_key=?",
+            (draft_invariant_migration,),
+        ).fetchone()
+        if not draft_invariant_done:
+            rows = conn.execute(
+                """SELECT rowid,item_id,owner_id,conversation_id
+                   FROM pending_items
+                   WHERE kind='REMINDER_DRAFT' AND status='PENDING'
+                   ORDER BY owner_id,conversation_id,created_at_utc DESC,rowid DESC"""
+            ).fetchall()
+            seen_draft_chats: set[tuple[str, str]] = set()
+            superseded: list[str] = []
+            for row in rows:
+                key = (str(row["owner_id"]), str(row["conversation_id"]))
+                if key in seen_draft_chats:
+                    superseded.append(str(row["item_id"]))
+                else:
+                    seen_draft_chats.add(key)
+            if superseded:
+                marks = ",".join("?" for _ in superseded)
+                conn.execute(
+                    f"""UPDATE pending_items
+                        SET status='CANCELLED',resolved_at_utc=?,
+                            resolution_message_id='superseded_v0516'
+                        WHERE item_id IN ({marks}) AND status='PENDING'""",
+                    [utc_now()] + superseded,
+                )
+            conn.execute(
+                "INSERT INTO schema_migrations(migration_key) VALUES(?)",
+                (draft_invariant_migration,),
+            )
+
         # v0.5.6 used a malformed Baileys pin payload but still recorded
         # job_pinned_at_utc after the transport returned success. Reset those
         # false-positive flags exactly once so v0.5.7 reconciliation can issue
@@ -731,6 +769,31 @@ def resolve_recent_outbound_context(conversation_id: str, context_kind: str,
         conn.close()
 
 
+def latest_outbound_for_context(
+    conversation_id: str, context_kind: str, context_id: str,
+    max_age_seconds: int = 600,
+) -> dict | None:
+    """Return the newest outbound for one exact durable context."""
+    bounded = max(15, min(3600, int(max_age_seconds)))
+    conn = connect()
+    try:
+        row = conn.execute(
+            """SELECT outbound_id,source_message_id,text_body,context_kind,context_id,
+                      provider_message_id,created_at_utc
+               FROM outbound_messages
+               WHERE conversation_id=? AND context_kind=? AND context_id=?
+                 AND datetime(created_at_utc)>=datetime('now', ?)
+               ORDER BY created_at_utc DESC,rowid DESC LIMIT 1""",
+            (
+                conversation_id, str(context_kind or ""), str(context_id or ""),
+                f"-{bounded} seconds",
+            ),
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
 def resolve_recent_instruction_context(conversation_id: str, sender_phone: str,
                                        current_message_id: str,
                                        max_age_seconds: int = 120) -> dict | None:
@@ -772,6 +835,20 @@ def create_pending_item(actor: ActorContext, kind: str, media_id: str | None = N
         ).fetchone()
         if existing:
             return dict(existing)
+        if item_kind == "REMINDER_DRAFT":
+            # One unresolved reminder conversation per owner/chat. Starting a
+            # new reminder request supersedes older unfinished drafts so a short
+            # date/time answer has exactly one safe target.
+            conn.execute(
+                """UPDATE pending_items
+                   SET status='CANCELLED',resolved_at_utc=?,resolution_message_id=?
+                   WHERE owner_id=? AND conversation_id=?
+                     AND kind='REMINDER_DRAFT' AND status='PENDING'""",
+                (
+                    utc_now(), actor.source_message_id,
+                    actor.user_id, actor.conversation_id,
+                ),
+            )
         item_id = str(uuid.uuid4())
         accumulated_text = (
             str(getattr(actor, "trusted_text", "") or "").strip()
@@ -847,6 +924,30 @@ def latest_pending_item(actor: ActorContext, kind: str,
             ),
         ).fetchone()
         return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def single_pending_item(actor: ActorContext, kind: str,
+                        max_age_seconds: int = 600) -> dict | None:
+    """Return one unresolved owner/chat item only when the target is unique."""
+    bounded = max(30, min(3600, int(max_age_seconds)))
+    conn = connect()
+    try:
+        rows = conn.execute(
+            """SELECT p.*,i.raw_text AS original_text
+               FROM pending_items p
+               LEFT JOIN inbound_messages i ON i.message_id=p.source_message_id
+               WHERE p.owner_id=? AND p.conversation_id=? AND p.status='PENDING'
+                 AND p.kind=?
+                 AND datetime(p.created_at_utc)>=datetime('now', ?)
+               ORDER BY p.created_at_utc DESC,p.rowid DESC LIMIT 2""",
+            (
+                actor.user_id, actor.conversation_id, str(kind).strip().upper(),
+                f"-{bounded} seconds",
+            ),
+        ).fetchall()
+        return dict(rows[0]) if len(rows) == 1 else None
     finally:
         conn.close()
 
