@@ -424,11 +424,37 @@ def _yes_no_answer(text: str) -> str | None:
 
 
 def _reminder_draft_cancel_command(text: str) -> bool:
-    value = str(text or "").strip().casefold().rstrip(".!")
-    return value in {
-        "cancel", "cancel it", "cancel that", "cancel the reminder",
-        "never mind", "nevermind", "forget it",
-    }
+    """Recognize a concise request to abandon an unfinished reminder draft."""
+    value = re.sub(
+        r"\s+", " ", str(text or "").strip().casefold().rstrip(".!")
+    )
+    if re.fullmatch(r"(?:never\s*mind|nevermind)", value):
+        return True
+    if re.fullmatch(
+        r"(?:cancel|stop|drop)"
+        r"(?:\s+(?:it|that|this|the))?"
+        r"(?:\s+(?:reminder|request))?",
+        value,
+    ):
+        return True
+    if re.fullmatch(
+        r"forget(?:\s+(?:it|that|this|the(?:\s+(?:reminder|request))?|"
+        r"that\s+(?:reminder|request)|this\s+(?:reminder|request)))?",
+        value,
+    ):
+        return True
+    if re.fullmatch(
+        r"no\s+need(?:\s+(?:for\s+)?(?:it|that|this|"
+        r"the\s+(?:reminder|request)|that\s+(?:reminder|request)|"
+        r"this\s+(?:reminder|request)))?",
+        value,
+    ):
+        return True
+    return bool(re.fullmatch(
+        r"don'?t\s+(?:remind\s+me|set\s+(?:it|that|this)|"
+        r"create\s+(?:it|that|this)|do\s+(?:it|that|this))",
+        value,
+    ))
 
 
 def _private_search_offer_candidate(actor, query: str, reply: str,
@@ -687,7 +713,9 @@ def _reply_is_reminder_clarification(reply: str) -> bool:
             r"\b(?:what|which)\b.{0,80}\b(?:day|date|time|morning|afternoon|evening)\b"
             r"|\b(?:day|date|time)\b.{0,80}\b(?:would you like|should i|do you want)\b"
             r"|\bwhen\b.{0,100}\b(?:remind|reminded|reminder|set|schedule)\b"
-            r"|\b(?:when should i|when would you like me to)\b.{0,100}\bremind\b",
+            r"|\b(?:when should i|when would you like me to)\b.{0,100}\bremind\b"
+            r"|\b(?:did you mean|do you mean|could you clarify|could you confirm)\b"
+            r".{0,120}\b(?:am|pm|day|date|time|today|tomorrow|tonight)\b",
             value,
         )
     )
@@ -709,13 +737,13 @@ def _looks_like_reminder_clarification_reply(text: str) -> bool:
     temporal = (
         r"(?i)\b(?:mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|"
         r"fri(?:day)?|sat(?:urday)?|sun(?:day)?|today|tomorrow|tonight|"
-        r"morning|afternoon|evening|noon|midnight)\b"
-        r"|\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b"
+        r"later(?:\s+today)?|morning|afternoon|evening|noon|midnight)\b"
+        r"|\b\d{1,2}(?:[:.]\d{2})?\s*(?:am|pm)\b"
         r"|\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|"
         r"apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|"
         r"oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b"
         r"|\b\d{1,2}(?:st|nd|rd|th)\b"
-        r"|\b\d{1,2}(?::\d{2})?\b"
+        r"|\b\d{1,2}(?:[:.]\d{2})?\b"
     )
     if not re.search(temporal, value):
         return False
@@ -769,14 +797,32 @@ def _reminder_draft_context(pending: dict) -> dict:
 
 
 def _recover_reminder_draft_context(actor, text: str) -> dict | None:
-    pending = db.latest_pending_item(actor, "REMINDER_DRAFT", max_age_seconds=1800)
-    if not pending:
-        return None
-    if not _reminder_draft_is_current_reference(actor, pending):
-        return None
-    if not _looks_like_reminder_clarification_reply(text):
+    """Bind a concise temporal fragment to the one active draft in this chat.
+
+    v0.5.13 required the newest Alex outbound itself to be the draft prompt.
+    That made one unstamped clarification permanently orphan the chain. With
+    the v0.5.16 single-draft invariant, a unique recent draft is a safe target
+    even when another deterministic Alex message was emitted in between.
+    """
+    pending = db.single_pending_item(
+        actor, "REMINDER_DRAFT", max_age_seconds=1800
+    )
+    if not pending or not _looks_like_reminder_clarification_reply(text):
         return None
     return _reminder_draft_context(pending)
+
+
+def _latest_reminder_draft_question(actor, pending: dict) -> str:
+    row = db.latest_outbound_for_context(
+        actor.conversation_id,
+        "PENDING_ITEM",
+        str(pending.get("item_id") or ""),
+        max_age_seconds=1800,
+    )
+    text = str((row or {}).get("text_body") or "").strip()
+    if text and _reply_is_reminder_clarification(text):
+        return text
+    return "What day, date, or time should I use for that reminder?"
 
 
 def _maybe_create_reminder_draft(actor, reply: str) -> dict | None:
@@ -859,6 +905,15 @@ def _numbered_selection_request(text: str) -> tuple[int, bool] | None:
     return (int(match.group(1)), True) if match else None
 
 
+def _record_deterministic_turn(actor, reply: str) -> None:
+    """Keep the model-visible conversation aligned with deterministic replies."""
+    db.add_turn(
+        actor.user_id, actor.conversation_id, "user",
+        str(getattr(actor, "trusted_text", "") or "").strip(),
+    )
+    db.add_turn(actor.user_id, actor.conversation_id, "assistant", reply)
+
+
 def _deliver_numbered_selection(actor, choice: int,
                                 context: dict | None = None) -> dict:
     parts = _selection_set_context_parts(context)
@@ -902,6 +957,7 @@ def _deliver_numbered_selection(actor, choice: int,
             source_message_id=actor.source_message_id,
             context_kind=context_kind, context_id=context_id,
         )
+    _record_deterministic_turn(actor, reply)
     db.finish_inbound(actor.source_message_id, reply)
     return {"ok": True, "numbered_selection": True}
 
@@ -931,6 +987,7 @@ def _deliver_selection_followup(actor, context: dict) -> dict:
             mime_type=item.get("mime_type"),
             source_message_id=actor.source_message_id,
         )
+    _record_deterministic_turn(actor, reply)
     db.finish_inbound(actor.source_message_id, reply)
     return {"ok": True, "selection_followup": True}
 
@@ -940,6 +997,7 @@ def _finish_simple_turn(actor, reply: str, **extra) -> dict:
         actor.conversation_id, "TEXT", text=reply,
         source_message_id=actor.source_message_id,
     )
+    _record_deterministic_turn(actor, reply)
     db.finish_inbound(actor.source_message_id, reply)
     return {"ok": True, **extra}
 
@@ -1087,6 +1145,7 @@ def process(payload: dict) -> dict:
                 context_kind="PENDING_ITEM",
                 context_id=pending["item_id"],
             )
+            _record_deterministic_turn(actor, reply)
             db.finish_inbound(actor.source_message_id, reply)
             return {"ok": True, "voice_pending": True, "pending_item_id": pending["item_id"]}
 
@@ -1098,6 +1157,7 @@ def process(payload: dict) -> dict:
                 actor, turn["trusted_text"]
             )
         pending_item = db.pending_item_for_reference(actor, quoted_context)
+        reminder_temporal_continuation = False
 
         # An explicit swipe-reply to an old private-search offer is authoritative
         # even after that offer expires. Consume the reply here rather than
@@ -1138,6 +1198,7 @@ def process(payload: dict) -> dict:
             ).strip()
             actor = replace(actor, reminder_context_text=accumulated)
             quoted_context = _reminder_draft_context(pending_item)
+            reminder_temporal_continuation = True
         elif pending_item:
             quoted_context = dict(quoted_context or {})
             quoted_context["pending_item"] = {
@@ -1203,14 +1264,11 @@ def process(payload: dict) -> dict:
             and str(pending_item.get("kind") or "").upper() == "REMINDER_DRAFT"
             else None
         )
-        reminder_draft_for_cancel = quoted_reminder_draft or db.latest_pending_item(
+        reminder_draft_for_cancel = quoted_reminder_draft or db.single_pending_item(
             actor, "REMINDER_DRAFT", max_age_seconds=1800
         )
         draft_is_current = bool(
-            reminder_draft_for_cancel
-            and _reminder_draft_is_current_reference(
-                actor, reminder_draft_for_cancel, quoted_context
-            )
+            quoted_reminder_draft or reminder_draft_for_cancel
         )
         if (
             reminder_draft_for_cancel
@@ -1273,6 +1331,34 @@ def process(payload: dict) -> dict:
                 )
             if _selection_context_parts(selection_context):
                 return _deliver_selection_followup(actor, selection_context)
+
+        # A bare acknowledgement cannot answer a reminder date/time question.
+        # Prefer the one active draft over model guessing from stale history.
+        # If no workflow can safely consume it, ask what the acknowledgement
+        # refers to instead of resurrecting an expired offer.
+        if answer and not (private_offer and offer_is_current):
+            short_answer_draft = (
+                pending_item
+                if pending_item
+                and str(pending_item.get("kind") or "").upper() == "REMINDER_DRAFT"
+                else None
+            )
+            if not short_answer_draft and not payload.get("quoted_message_id"):
+                short_answer_draft = db.single_pending_item(
+                    actor, "REMINDER_DRAFT", max_age_seconds=1800
+                )
+            if short_answer_draft:
+                return _finish_simple_turn(
+                    actor,
+                    _latest_reminder_draft_question(actor, short_answer_draft),
+                    reminder_draft_reprompted=True,
+                )
+            if not payload.get("quoted_message_id"):
+                return _finish_simple_turn(
+                    actor,
+                    "What are you saying yes or no to?",
+                    ambiguous_short_answer=True,
+                )
 
         # Private reads asked from Family Shared are handed to the authenticated
         # owner's DM without ever widening the group actor's ACL. This is one
@@ -1345,6 +1431,7 @@ def process(payload: dict) -> dict:
                 actor.conversation_id, "TEXT", text=group_reply,
                 source_message_id=actor.source_message_id,
             )
+            _record_deterministic_turn(actor, group_reply)
             db.finish_inbound(actor.source_message_id, group_reply)
             return {"ok": True, "private_handoff": True}
 
@@ -1373,11 +1460,15 @@ def process(payload: dict) -> dict:
             else None
         )
         reminder_created = _reminder_created_by_turn(actor)
-        if continuing_reminder_draft and not reminder_created:
-            # Once a reminder draft is active, every Alex reply on a bound
-            # temporal continuation belongs to that same durable request.
-            # Lifecycle no longer depends on the model using a particular
-            # clarification-question wording.
+        if (
+            continuing_reminder_draft
+            and not reminder_created
+            and reminder_temporal_continuation
+            and _reply_is_reminder_clarification(reply)
+        ):
+            # Move the durable draft marker only to a genuine follow-up
+            # date/time question. Errors, guards and unrelated replies must
+            # never become the draft's new pinned prompt.
             reminder_draft = continuing_reminder_draft
         else:
             reminder_draft = _maybe_create_reminder_draft(actor, reply)
