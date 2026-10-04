@@ -6863,5 +6863,627 @@ class AlexCoreTests(unittest.TestCase):
 
 
 
+    def test_v0516_live_tv_multiturn_keeps_draft_bound_and_creates(self):
+        fixed = datetime(2026, 10, 3, 15, 0, tzinfo=timezone.utc)
+        conversation = "60111111111@s.whatsapp.net"
+        phone = "+60111111111"
+        turns = [
+            {
+                "message_id": "v0516-tv-1", "provider": "WHATSAPP",
+                "conversation_id": conversation, "conversation_type": "DIRECT_DM",
+                "sender_phone": phone, "text": "Remind me to turn off the TV",
+            },
+            {
+                "message_id": "v0516-tv-2", "provider": "WHATSAPP",
+                "conversation_id": conversation, "conversation_type": "DIRECT_DM",
+                "sender_phone": phone, "text": "Later at 11.30",
+            },
+            {
+                "message_id": "v0516-tv-3", "provider": "WHATSAPP",
+                "conversation_id": conversation, "conversation_type": "DIRECT_DM",
+                "sender_phone": phone, "text": "11.30pm",
+            },
+            {
+                "message_id": "v0516-tv-4", "provider": "WHATSAPP",
+                "conversation_id": conversation, "conversation_type": "DIRECT_DM",
+                "sender_phone": phone, "text": "Today",
+            },
+        ]
+        exposed = []
+        with patch.object(runtime_clock, "now_utc", return_value=fixed):
+            self.assertTrue(self._v0513_process_with_scripted_provider(
+                turns[0],
+                [{"content": "I can help with that! When would you like to be reminded to turn off the TV?"}],
+                exposed,
+            )["ok"])
+            self.assertTrue(self._v0513_process_with_scripted_provider(
+                turns[1],
+                [{"content": "Just to clarify, did you mean 11:30 AM or 11:30 PM today?"}],
+                exposed,
+            )["ok"])
+            self.assertTrue(self._v0513_process_with_scripted_provider(
+                turns[2],
+                [{"content": (
+                    "Sure, could you confirm which day or date you'd like this "
+                    "reminder set for (e.g., tonight/today, Oct 4)?"
+                )}],
+                exposed,
+            )["ok"])
+            self.assertTrue(self._v0513_process_with_scripted_provider(
+                turns[3],
+                [
+                    {
+                        "tool": "create_reminder",
+                        "args": {
+                            "task": "turn off the TV",
+                            "due_local": "2026-10-03T23:30:00+08:00",
+                            "recipient": "me",
+                            "destination": "dm",
+                        },
+                    },
+                    {"content": "OK. I'll remind you to turn off the TV at 11:30 PM today."},
+                ],
+                exposed,
+            )["ok"])
+
+        conn = db.connect()
+        try:
+            draft = conn.execute(
+                """SELECT status,accumulated_text FROM pending_items
+                   WHERE source_message_id='v0516-tv-1'
+                     AND kind='REMINDER_DRAFT'"""
+            ).fetchone()
+            made = conn.execute(
+                """SELECT task_text,due_at_utc FROM reminders
+                   WHERE source_message_id='v0516-tv-4'"""
+            ).fetchone()
+            second = conn.execute(
+                """SELECT context_kind FROM outbound_messages
+                   WHERE source_message_id='v0516-tv-2'
+                   ORDER BY rowid DESC LIMIT 1"""
+            ).fetchone()
+            third = conn.execute(
+                """SELECT context_kind FROM outbound_messages
+                   WHERE source_message_id='v0516-tv-3'
+                   ORDER BY rowid DESC LIMIT 1"""
+            ).fetchone()
+        finally:
+            conn.close()
+
+        self.assertEqual(draft["status"], "RESOLVED")
+        self.assertIn("Later at 11.30", draft["accumulated_text"])
+        self.assertIn("11.30pm", draft["accumulated_text"])
+        self.assertIn("Today", draft["accumulated_text"])
+        self.assertEqual(second["context_kind"], "PENDING_ITEM")
+        self.assertEqual(third["context_kind"], "PENDING_ITEM")
+        self.assertEqual(made["task_text"], "turn off the TV")
+        due = datetime.fromisoformat(made["due_at_utc"].replace("Z", "+00:00"))
+        self.assertEqual(due, datetime(2026, 10, 3, 15, 30, tzinfo=timezone.utc))
+        self.assertTrue(all("create_reminder" in names for names in exposed), exposed)
+
+    def test_v0516_tonight_finishes_date_clarification(self):
+        fixed = datetime(2026, 10, 3, 15, 0, tzinfo=timezone.utc)
+        conversation = "60111111111@s.whatsapp.net"
+        phone = "+60111111111"
+        first = {
+            "message_id": "v0516-tonight-1", "provider": "WHATSAPP",
+            "conversation_id": conversation, "conversation_type": "DIRECT_DM",
+            "sender_phone": phone, "text": "Remind me to turn off the TV",
+        }
+        second = {
+            "message_id": "v0516-tonight-2", "provider": "WHATSAPP",
+            "conversation_id": conversation, "conversation_type": "DIRECT_DM",
+            "sender_phone": phone, "text": "11.30pm",
+        }
+        third = {
+            "message_id": "v0516-tonight-3", "provider": "WHATSAPP",
+            "conversation_id": conversation, "conversation_type": "DIRECT_DM",
+            "sender_phone": phone, "text": "Tonight",
+        }
+        with patch.object(runtime_clock, "now_utc", return_value=fixed):
+            self._v0513_process_with_scripted_provider(
+                first, [{"content": "When would you like me to remind you to turn off the TV?"}]
+            )
+            self._v0513_process_with_scripted_provider(
+                second, [{"content": "Which day or date should I use for that reminder?"}]
+            )
+            self._v0513_process_with_scripted_provider(
+                third,
+                [
+                    {
+                        "tool": "create_reminder",
+                        "args": {
+                            "task": "turn off the TV",
+                            "due_local": "2026-10-03T23:30:00+08:00",
+                            "recipient": "me",
+                            "destination": "dm",
+                        },
+                    },
+                    {"content": "OK. I'll remind you tonight at 11:30 PM."},
+                ],
+            )
+        conn = db.connect()
+        try:
+            made = conn.execute(
+                "SELECT due_at_utc FROM reminders WHERE source_message_id='v0516-tonight-3'"
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertIsNotNone(made)
+        self.assertEqual(
+            datetime.fromisoformat(made["due_at_utc"].replace("Z", "+00:00")),
+            datetime(2026, 10, 3, 15, 30, tzinfo=timezone.utc),
+        )
+
+    def test_v0516_unrelated_reply_does_not_orphan_single_draft(self):
+        fixed = datetime(2026, 10, 3, 10, 0, tzinfo=timezone.utc)
+        conversation = "60111111111@s.whatsapp.net"
+        phone = "+60111111111"
+        first = {
+            "message_id": "v0516-gap-1", "provider": "WHATSAPP",
+            "conversation_id": conversation, "conversation_type": "DIRECT_DM",
+            "sender_phone": phone, "text": "Remind me tomorrow to check the mailbox",
+        }
+        unrelated = {
+            "message_id": "v0516-gap-2", "provider": "WHATSAPP",
+            "conversation_id": conversation, "conversation_type": "DIRECT_DM",
+            "sender_phone": phone, "text": "What is two plus two?",
+        }
+        final = {
+            "message_id": "v0516-gap-3", "provider": "WHATSAPP",
+            "conversation_id": conversation, "conversation_type": "DIRECT_DM",
+            "sender_phone": phone, "text": "7pm",
+        }
+        exposed = []
+        with patch.object(runtime_clock, "now_utc", return_value=fixed):
+            self._v0513_process_with_scripted_provider(
+                first, [{"content": "What time tomorrow should I remind you to check the mailbox?"}]
+            )
+            self._v0513_process_with_scripted_provider(
+                unrelated, [{"content": "Four."}]
+            )
+            self._v0513_process_with_scripted_provider(
+                final,
+                [
+                    {
+                        "tool": "create_reminder",
+                        "args": {
+                            "task": "check the mailbox",
+                            "due_local": "2026-10-04T19:00:00+08:00",
+                            "recipient": "me",
+                            "destination": "dm",
+                        },
+                    },
+                    {"content": "OK. I'll remind you tomorrow at 7:00 PM."},
+                ],
+                exposed,
+            )
+        conn = db.connect()
+        try:
+            draft = conn.execute(
+                """SELECT status,accumulated_text FROM pending_items
+                   WHERE source_message_id='v0516-gap-1'"""
+            ).fetchone()
+            made = conn.execute(
+                "SELECT reminder_id FROM reminders WHERE source_message_id='v0516-gap-3'"
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(draft["status"], "RESOLVED")
+        self.assertIn("7pm", draft["accumulated_text"])
+        self.assertIsNotNone(made)
+        self.assertTrue(any("create_reminder" in names for names in exposed), exposed)
+
+    def test_v0516_new_draft_supersedes_old_and_reconciles_pin(self):
+        conversation = "60111111111@s.whatsapp.net"
+        phone = "+60111111111"
+        first = {
+            "message_id": "v0516-supersede-1", "provider": "WHATSAPP",
+            "conversation_id": conversation, "conversation_type": "DIRECT_DM",
+            "sender_phone": phone, "text": "Remind me to turn off the TV",
+        }
+        second = {
+            "message_id": "v0516-supersede-2", "provider": "WHATSAPP",
+            "conversation_id": conversation, "conversation_type": "DIRECT_DM",
+            "sender_phone": phone, "text": "Remind me to check the mailbox on Friday",
+        }
+        self._v0513_process_with_scripted_provider(
+            first, [{"content": "When would you like me to be reminded to turn off the TV?"}]
+        )
+        conn = db.connect()
+        try:
+            old = conn.execute(
+                """SELECT p.item_id,o.outbound_id FROM pending_items p
+                   JOIN outbound_messages o ON o.context_id=p.item_id
+                   WHERE p.source_message_id='v0516-supersede-1'
+                   ORDER BY o.rowid DESC LIMIT 1"""
+            ).fetchone()
+            conn.execute(
+                """UPDATE outbound_messages
+                   SET delivery_status='SENT',provider_message_id='wa-v0516-old',
+                       delivered_at_utc=CURRENT_TIMESTAMP
+                   WHERE outbound_id=?""",
+                (old["outbound_id"],),
+            )
+            conn.commit()
+            with patch.object(outbox, "_send", return_value=(True, "{}")):
+                outbox._reconcile_pending_item_markers(conn)
+        finally:
+            conn.close()
+
+        self._v0513_process_with_scripted_provider(
+            second, [{"content": "When would you like me to remind you on Friday?"}]
+        )
+
+        conn = db.connect()
+        try:
+            rows = conn.execute(
+                """SELECT source_message_id,status,item_id FROM pending_items
+                   WHERE kind='REMINDER_DRAFT'
+                   ORDER BY created_at_utc,rowid"""
+            ).fetchall()
+            new = next(row for row in rows if row["source_message_id"] == "v0516-supersede-2")
+            old_state = next(row for row in rows if row["source_message_id"] == "v0516-supersede-1")
+            new_out = conn.execute(
+                """SELECT outbound_id FROM outbound_messages
+                   WHERE context_kind='PENDING_ITEM' AND context_id=?
+                   ORDER BY rowid DESC LIMIT 1""",
+                (new["item_id"],),
+            ).fetchone()
+            conn.execute(
+                """UPDATE outbound_messages
+                   SET delivery_status='SENT',provider_message_id='wa-v0516-new',
+                       delivered_at_utc=CURRENT_TIMESTAMP
+                   WHERE outbound_id=?""",
+                (new_out["outbound_id"],),
+            )
+            conn.commit()
+            controls = []
+            with patch.object(
+                outbox, "_send",
+                side_effect=lambda payload: (controls.append(dict(payload)) or True, "{}"),
+            ):
+                outbox._reconcile_pending_item_markers(conn)
+        finally:
+            conn.close()
+
+        self.assertEqual(old_state["status"], "CANCELLED")
+        self.assertEqual(new["status"], "PENDING")
+        self.assertEqual(sum(1 for row in rows if row["status"] == "PENDING"), 1)
+        self.assertIn("unpin", [x["kind"] for x in controls])
+        self.assertIn("pin", [x["kind"] for x in controls])
+
+    def test_v0516_quoted_cancel_is_deterministic_and_not_pinned(self):
+        conversation = "60111111111@s.whatsapp.net"
+        phone = "+60111111111"
+        first = {
+            "message_id": "v0516-cancel-1", "provider": "WHATSAPP",
+            "conversation_id": conversation, "conversation_type": "DIRECT_DM",
+            "sender_phone": phone, "text": "Remind me to turn off the TV",
+        }
+        self._v0513_process_with_scripted_provider(
+            first, [{"content": "When would you like me to be reminded to turn off the TV?"}]
+        )
+        conn = db.connect()
+        try:
+            draft = conn.execute(
+                """SELECT * FROM pending_items
+                   WHERE source_message_id='v0516-cancel-1'"""
+            ).fetchone()
+            question = conn.execute(
+                """SELECT * FROM outbound_messages
+                   WHERE context_kind='PENDING_ITEM' AND context_id=?
+                   ORDER BY rowid DESC LIMIT 1""",
+                (draft["item_id"],),
+            ).fetchone()
+            conn.execute(
+                """UPDATE outbound_messages
+                   SET delivery_status='SENT',provider_message_id='wa-v0516-cancel-q',
+                       delivered_at_utc=CURRENT_TIMESTAMP
+                   WHERE outbound_id=?""",
+                (question["outbound_id"],),
+            )
+            conn.commit()
+            with patch.object(outbox, "_send", return_value=(True, "{}")):
+                outbox._reconcile_pending_item_markers(conn)
+        finally:
+            conn.close()
+
+        cancel = {
+            "message_id": "v0516-cancel-2", "provider": "WHATSAPP",
+            "conversation_id": conversation, "conversation_type": "DIRECT_DM",
+            "sender_phone": phone, "text": "Cancel that reminder",
+            "quoted_message_id": "wa-v0516-cancel-q",
+        }
+        with patch.object(
+            brain, "respond",
+            side_effect=AssertionError("draft cancellation must not reach the model"),
+        ):
+            result = ingress.process(cancel)
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["reminder_draft_cancelled"])
+
+        conn = db.connect()
+        try:
+            state = conn.execute(
+                "SELECT status FROM pending_items WHERE item_id=?",
+                (draft["item_id"],),
+            ).fetchone()
+            ack = conn.execute(
+                """SELECT text_body,context_kind FROM outbound_messages
+                   WHERE source_message_id='v0516-cancel-2'
+                   ORDER BY rowid DESC LIMIT 1"""
+            ).fetchone()
+            controls = []
+            with patch.object(
+                outbox, "_send",
+                side_effect=lambda payload: (controls.append(dict(payload)) or True, "{}"),
+            ):
+                outbox._reconcile_pending_item_markers(conn)
+            history = conn.execute(
+                """SELECT role,content FROM conversation_turns
+                   WHERE conversation_id=? ORDER BY rowid DESC LIMIT 2""",
+                (conversation,),
+            ).fetchall()
+        finally:
+            conn.close()
+
+        self.assertEqual(state["status"], "CANCELLED")
+        self.assertIsNone(ack["context_kind"])
+        self.assertIn("cancelled that reminder request", ack["text_body"].casefold())
+        self.assertIn("unpin", [x["kind"] for x in controls])
+        self.assertEqual(history[0]["role"], "assistant")
+        self.assertIn("cancelled", history[0]["content"].casefold())
+        self.assertEqual(history[1]["role"], "user")
+        self.assertEqual(history[1]["content"], "Cancel that reminder")
+
+    def test_v0516_nonquestion_failure_reply_never_becomes_draft_marker(self):
+        conversation = "60111111111@s.whatsapp.net"
+        phone = "+60111111111"
+        first = {
+            "message_id": "v0516-errorpin-1", "provider": "WHATSAPP",
+            "conversation_id": conversation, "conversation_type": "DIRECT_DM",
+            "sender_phone": phone, "text": "Remind me tomorrow to check the mailbox",
+        }
+        second = {
+            "message_id": "v0516-errorpin-2", "provider": "WHATSAPP",
+            "conversation_id": conversation, "conversation_type": "DIRECT_DM",
+            "sender_phone": phone, "text": "7pm",
+        }
+        self._v0513_process_with_scripted_provider(
+            first, [{"content": "What time tomorrow should I remind you to check the mailbox?"}]
+        )
+        self._v0513_process_with_scripted_provider(
+            second,
+            [{"content": (
+                "I couldn't verify that change, so I won't claim it was completed. "
+                "Reason: no committed mutation was returned."
+            )}],
+        )
+        conn = db.connect()
+        try:
+            draft = conn.execute(
+                """SELECT * FROM pending_items
+                   WHERE source_message_id='v0516-errorpin-1'"""
+            ).fetchone()
+            failure = conn.execute(
+                """SELECT context_kind,context_id FROM outbound_messages
+                   WHERE source_message_id='v0516-errorpin-2'
+                   ORDER BY rowid DESC LIMIT 1"""
+            ).fetchone()
+            latest_for_draft = db.latest_outbound_for_context(
+                conversation, "PENDING_ITEM", draft["item_id"], 1800
+            )
+        finally:
+            conn.close()
+        self.assertEqual(draft["status"], "PENDING")
+        self.assertIsNone(failure["context_kind"])
+        self.assertNotEqual(latest_for_draft["source_message_id"], "v0516-errorpin-2")
+
+    def test_v0516_expired_offer_history_and_later_yes_reasks_reminder(self):
+        conversation = "60111111111@s.whatsapp.net"
+        phone = "+60111111111"
+        reminder = {
+            "message_id": "v0516-offer-reminder", "provider": "WHATSAPP",
+            "conversation_id": conversation, "conversation_type": "DIRECT_DM",
+            "sender_phone": phone, "text": "Remind me to check the mailbox on Friday",
+        }
+        search = {
+            "message_id": "v0516-offer-search", "provider": "WHATSAPP",
+            "conversation_id": conversation, "conversation_type": "DIRECT_DM",
+            "sender_phone": phone, "text": "Where did I keep the spare key?",
+        }
+        reminder_question = "When would you like me to remind you on Friday?"
+        self._v0513_process_with_scripted_provider(
+            reminder, [{"content": reminder_question}]
+        )
+        self._v0513_process_with_scripted_provider(
+            search,
+            [{"content": (
+                "I don't have any record or note saved about where you kept the spare key."
+            )}],
+        )
+
+        conn = db.connect()
+        try:
+            offer = conn.execute(
+                """SELECT * FROM pending_items
+                   WHERE source_message_id='v0516-offer-search'
+                     AND kind='PRIVATE_SEARCH_OFFER'"""
+            ).fetchone()
+            offer_out = conn.execute(
+                """SELECT * FROM outbound_messages
+                   WHERE context_kind='PENDING_ITEM' AND context_id=?
+                   ORDER BY rowid DESC LIMIT 1""",
+                (offer["item_id"],),
+            ).fetchone()
+            conn.execute(
+                """UPDATE pending_items
+                   SET status='CANCELLED',
+                       created_at_utc='2026-10-03T00:00:00+00:00',
+                       resolved_at_utc='2026-10-03T00:11:00+00:00',
+                       resolution_message_id='expired'
+                   WHERE item_id=?""",
+                (offer["item_id"],),
+            )
+            conn.execute(
+                """UPDATE outbound_messages
+                   SET delivery_status='SENT',
+                       provider_message_id='wa-v0516-expired-offer',
+                       delivered_at_utc=CURRENT_TIMESTAMP
+                   WHERE outbound_id=?""",
+                (offer_out["outbound_id"],),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        quoted_yes = {
+            "message_id": "v0516-offer-yes-quoted", "provider": "WHATSAPP",
+            "conversation_id": conversation, "conversation_type": "DIRECT_DM",
+            "sender_phone": phone, "text": "Yes",
+            "quoted_message_id": "wa-v0516-expired-offer",
+        }
+        with patch.object(
+            brain, "respond",
+            side_effect=AssertionError("expired quoted offer must stay deterministic"),
+        ):
+            result = ingress.process(quoted_yes)
+        self.assertTrue(result["expired_private_search_offer"])
+
+        history = db.recent_turns(conversation, 6)
+        self.assertEqual(history[-2]["role"], "user")
+        self.assertEqual(history[-2]["content"], "Yes")
+        self.assertEqual(history[-1]["role"], "assistant")
+        self.assertIn("offer has expired", history[-1]["content"].casefold())
+
+        bare_yes = {
+            "message_id": "v0516-offer-yes-bare", "provider": "WHATSAPP",
+            "conversation_id": conversation, "conversation_type": "DIRECT_DM",
+            "sender_phone": phone, "text": "Yes",
+        }
+        with patch.object(
+            brain, "respond",
+            side_effect=AssertionError("bare yes with active draft must not reach model"),
+        ):
+            second_result = ingress.process(bare_yes)
+        self.assertTrue(second_result["reminder_draft_reprompted"])
+
+        conn = db.connect()
+        try:
+            reply = conn.execute(
+                """SELECT text_body FROM outbound_messages
+                   WHERE source_message_id='v0516-offer-yes-bare'
+                   ORDER BY rowid DESC LIMIT 1"""
+            ).fetchone()["text_body"]
+            draft = conn.execute(
+                """SELECT status FROM pending_items
+                   WHERE source_message_id='v0516-offer-reminder'
+                     AND kind='REMINDER_DRAFT'"""
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(reply, reminder_question)
+        self.assertNotIn("spare key", reply.casefold())
+        self.assertEqual(draft["status"], "PENDING")
+
+    def test_v0516_bare_yes_without_binding_asks_what_it_refers_to(self):
+        payload = {
+            "message_id": "v0516-bare-yes", "provider": "WHATSAPP",
+            "conversation_id": "60111111111@s.whatsapp.net",
+            "conversation_type": "DIRECT_DM",
+            "sender_phone": "+60111111111", "text": "Yes",
+        }
+        with patch.object(
+            brain, "respond",
+            side_effect=AssertionError("unbound bare yes must be deterministic"),
+        ):
+            result = ingress.process(payload)
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["ambiguous_short_answer"])
+        conn = db.connect()
+        try:
+            reply = conn.execute(
+                """SELECT text_body FROM outbound_messages
+                   WHERE source_message_id='v0516-bare-yes'
+                   ORDER BY rowid DESC LIMIT 1"""
+            ).fetchone()["text_body"]
+        finally:
+            conn.close()
+        self.assertEqual(reply, "What are you saying yes or no to?")
+
+    def test_v0516_quoted_cancel_on_superseded_draft_does_not_touch_new_draft(self):
+        conversation = "60111111111@s.whatsapp.net"
+        phone = "+60111111111"
+        first = {
+            "message_id": "v0516-oldquote-1", "provider": "WHATSAPP",
+            "conversation_id": conversation, "conversation_type": "DIRECT_DM",
+            "sender_phone": phone, "text": "Remind me to turn off the TV",
+        }
+        second = {
+            "message_id": "v0516-oldquote-2", "provider": "WHATSAPP",
+            "conversation_id": conversation, "conversation_type": "DIRECT_DM",
+            "sender_phone": phone, "text": "Remind me to check the mailbox on Friday",
+        }
+        self._v0513_process_with_scripted_provider(
+            first, [{"content": "When should I remind you to turn off the TV?"}]
+        )
+        conn = db.connect()
+        try:
+            first_draft = conn.execute(
+                "SELECT * FROM pending_items WHERE source_message_id='v0516-oldquote-1'"
+            ).fetchone()
+            first_out = conn.execute(
+                """SELECT outbound_id FROM outbound_messages
+                   WHERE context_kind='PENDING_ITEM' AND context_id=?
+                   ORDER BY rowid DESC LIMIT 1""",
+                (first_draft["item_id"],),
+            ).fetchone()
+            conn.execute(
+                """UPDATE outbound_messages
+                   SET delivery_status='SENT',provider_message_id='wa-v0516-oldquote',
+                       delivered_at_utc=CURRENT_TIMESTAMP
+                   WHERE outbound_id=?""",
+                (first_out["outbound_id"],),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        self._v0513_process_with_scripted_provider(
+            second, [{"content": "When would you like me to remind you on Friday?"}]
+        )
+        cancel_old = {
+            "message_id": "v0516-oldquote-3", "provider": "WHATSAPP",
+            "conversation_id": conversation, "conversation_type": "DIRECT_DM",
+            "sender_phone": phone, "text": "Cancel that reminder",
+            "quoted_message_id": "wa-v0516-oldquote",
+        }
+        with patch.object(
+            brain, "respond",
+            side_effect=AssertionError("superseded quoted cancel must be deterministic"),
+        ):
+            result = ingress.process(cancel_old)
+        self.assertTrue(result["reminder_draft_cancelled"])
+        conn = db.connect()
+        try:
+            old_state = conn.execute(
+                "SELECT status FROM pending_items WHERE source_message_id='v0516-oldquote-1'"
+            ).fetchone()["status"]
+            new_state = conn.execute(
+                "SELECT status FROM pending_items WHERE source_message_id='v0516-oldquote-2'"
+            ).fetchone()["status"]
+            reply = conn.execute(
+                """SELECT text_body FROM outbound_messages
+                   WHERE source_message_id='v0516-oldquote-3'
+                   ORDER BY rowid DESC LIMIT 1"""
+            ).fetchone()["text_body"]
+        finally:
+            conn.close()
+        self.assertEqual(old_state, "CANCELLED")
+        self.assertEqual(new_state, "PENDING")
+        self.assertIn("already no longer active", reply.casefold())
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
