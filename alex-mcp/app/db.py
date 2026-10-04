@@ -884,6 +884,32 @@ def pending_item_for_reference(actor: ActorContext, quoted_context: dict | None)
         conn.close()
 
 
+def pending_item_history_for_reference(
+    actor: ActorContext, quoted_context: dict | None
+) -> dict | None:
+    """Resolve the exact owner-bound pending-item reference regardless of state.
+
+    Used only when the user explicitly quotes an old Alex prompt. This lets
+    ingress reject an expired/cancelled offer deterministically instead of
+    allowing an unrelated newer workflow to consume the reply.
+    """
+    if not quoted_context or quoted_context.get("context_kind") != "PENDING_ITEM":
+        return None
+    item_id = str(quoted_context.get("context_id") or "").strip()
+    if not item_id:
+        return None
+    conn = connect()
+    try:
+        row = conn.execute(
+            """SELECT * FROM pending_items
+               WHERE item_id=? AND owner_id=? LIMIT 1""",
+            (item_id, actor.user_id),
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
 def set_pending_item_status(item_id: str, owner_id: str, status: str,
                             resolution_message_id: str) -> bool:
     target = str(status or "").strip().upper()
