@@ -1098,6 +1098,31 @@ def process(payload: dict) -> dict:
                 actor, turn["trusted_text"]
             )
         pending_item = db.pending_item_for_reference(actor, quoted_context)
+
+        # An explicit swipe-reply to an old private-search offer is authoritative
+        # even after that offer expires. Consume the reply here rather than
+        # allowing a newer reminder draft or other workflow to steal a bare
+        # "Yes"/"No".
+        quoted_pending_history = db.pending_item_history_for_reference(
+            actor, quoted_context
+        )
+        quoted_answer = _yes_no_answer(turn["trusted_text"])
+        if (
+            quoted_pending_history
+            and str(quoted_pending_history.get("kind") or "").upper()
+                == "PRIVATE_SEARCH_OFFER"
+            and quoted_answer
+            and (
+                str(quoted_pending_history.get("status") or "").upper() != "PENDING"
+                or not _pending_item_recent(quoted_pending_history, 600)
+            )
+        ):
+            return _finish_simple_turn(
+                actor,
+                "That private-search offer has expired. Ask me again if you want me to check your private records.",
+                expired_private_search_offer=True,
+            )
+
         if (
             pending_item
             and str(pending_item.get("kind") or "").upper() == "REMINDER_DRAFT"
