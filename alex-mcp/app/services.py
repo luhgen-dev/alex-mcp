@@ -144,12 +144,22 @@ _EXACT_TIME_STATED_RE = re.compile(
 
 
 def _user_stated_time(text: str | None) -> bool:
-    """True only when the user supplied an exact clock time.
-
-    Relative/vague phrases such as "just now", "last night" or "afternoon"
-    never authorize a model-invented clock value.
-    """
-    return bool(_EXACT_TIME_STATED_RE.search(text or ""))
+    """True only when the user supplied an exact or safely disambiguated clock."""
+    value = str(text or "")
+    if _EXACT_TIME_STATED_RE.search(value):
+        return True
+    lines = _slot_lines(value)
+    daypart_hint = None
+    for line in reversed(lines):
+        line_daypart = _daypart_in_fragment(line)
+        if line_daypart and daypart_hint is None:
+            daypart_hint = line_daypart
+        dotted = _ambiguous_dot_clock(line)
+        if dotted and _daypart_clock(
+            dotted[0], dotted[1], line_daypart or daypart_hint
+        ) is not None:
+            return True
+    return False
 
 
 _RELATIVE_REMINDER_TIME_RE = re.compile(
@@ -187,6 +197,45 @@ def _stated_weekday(text: str | None) -> int | None:
     return None
 
 
+def _daypart_in_fragment(value: str) -> str | None:
+    matches = list(re.finditer(
+        r"(?i)\b(morning|afternoon|evening|night)\b",
+        str(value or ""),
+    ))
+    return matches[-1].group(1).casefold() if matches else None
+
+
+def _daypart_clock(hour: int, minute: int, daypart: str | None) -> tuple[int, int] | None:
+    if hour < 1 or hour > 12 or minute < 0 or minute > 59 or not daypart:
+        return None
+    if daypart == "morning":
+        return (0 if hour == 12 else hour, minute)
+    if daypart in {"afternoon", "evening"}:
+        return (hour if hour == 12 else hour + 12, minute)
+    if daypart == "night":
+        # "11.30 at night" is safely PM; "12 at night" is midnight-ish.
+        # Early-hour "1 at night" wording is culturally ambiguous, so fail
+        # closed instead of inventing AM/PM.
+        if hour == 12:
+            return (0, minute)
+        if 6 <= hour <= 11:
+            return (hour + 12, minute)
+    return None
+
+
+def _ambiguous_dot_clock(value: str) -> tuple[int, int] | None:
+    matches = list(re.finditer(
+        r"\b(\d{1,2})\.([0-5]\d)\b(?!\s*(?:am|pm|a\.m\.|p\.m\.))",
+        str(value or ""),
+        re.IGNORECASE,
+    ))
+    if not matches:
+        return None
+    m = matches[-1]
+    hour, minute = int(m.group(1)), int(m.group(2))
+    return (hour, minute) if 1 <= hour <= 12 else None
+
+
 def _clock_in_fragment(value: str) -> tuple[int, int] | None:
     if re.search(r"(?i)\bnoon\b", value):
         return (12, 0)
@@ -213,6 +262,12 @@ def _clock_in_fragment(value: str) -> tuple[int, int] | None:
             minute = 0
             meridiem = m.group(2).casefold().replace(".", "")
         else:
+            dotted = _ambiguous_dot_clock(value)
+            daypart = _daypart_in_fragment(value)
+            if dotted and daypart:
+                resolved = _daypart_clock(dotted[0], dotted[1], daypart)
+                if resolved is not None:
+                    return resolved
             matches24 = list(re.finditer(
                 r"\b([01]?\d|2[0-3]):([0-5]\d)\b", value
             ))
@@ -232,10 +287,19 @@ def _clock_in_fragment(value: str) -> tuple[int, int] | None:
 
 def _stated_clock(text: str | None) -> tuple[int, int] | None:
     """Return the newest exact user-stated local clock across reminder turns."""
+    daypart_hint = None
     for line in reversed(_slot_lines(text)):
+        line_daypart = _daypart_in_fragment(line)
+        if line_daypart and daypart_hint is None:
+            daypart_hint = line_daypart
         clock = _clock_in_fragment(line)
         if clock is not None:
             return clock
+        dotted = _ambiguous_dot_clock(line)
+        if dotted and daypart_hint:
+            resolved = _daypart_clock(dotted[0], dotted[1], daypart_hint)
+            if resolved is not None:
+                return resolved
     return None
 
 

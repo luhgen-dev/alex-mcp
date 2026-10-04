@@ -100,6 +100,41 @@ def _money_signal(text):
         text, re.IGNORECASE))
 
 
+def reminder_write_signal(text) -> bool:
+    """Recognize trusted user wording that clearly asks Alex to prompt them later.
+
+    This is intentionally semantic rather than a single magic keyword. It is
+    used only to authorize reminder-domain routing/pending state; the actual
+    reminder write still goes through the normal deterministic tool and time
+    validation path.
+    """
+    low = str(text or "").strip().casefold()
+    if not low:
+        return False
+
+    explicit = bool(re.search(
+        r"\b(?:remind\s+(?:me|us|my\s+wife|my\s+husband|priya)|"
+        r"set\s+(?:a\s+)?reminder|add\s+(?:a\s+)?reminder)\b",
+        low,
+    ))
+    if explicit:
+        return True
+
+    natural_patterns = (
+        r"\b(?:nudge|ping|buzz|alert|notify)\s+(?:me|us)\b",
+        r"\b(?:give|send)\s+(?:me|us)\s+(?:a\s+)?"
+        r"(?:nudge|ping|buzz|alert|heads?[ -]?up|shout)\b",
+        r"\bdon'?t\s+let\s+(?:me|us)\s+forget\b",
+        r"\b(?:make|be)\s+sure\s+(?:i|we)\s+"
+        r"(?:remember|don'?t\s+forget|do\s+not\s+forget)\b",
+        r"\bhelp\s+(?:me|us)\s+remember\b",
+        r"\b(?:wake|message)\s+(?:me|us)\b.{0,40}"
+        r"\b(?:at|around|by|before|after|tomorrow|tonight|today|"
+        r"monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b",
+    )
+    return any(re.search(pattern, low) for pattern in natural_patterns)
+
+
 def classify_read_intent(text):
     """Resolve casual schedule language to Agenda unless work is explicit."""
     raw = str(text or "").strip()
@@ -134,6 +169,7 @@ def classify_write_intent(text, *, has_media=False):
     # new diary/reminder/expense write before the AI sees them. Keep explicit
     # write verbs authoritative so requests such as "Can you remind me..." are
     # still allowed through the mutation classifier.
+    reminder_request = reminder_write_signal(raw)
     interrogative = bool(
         re.match(r"^(?:what|how|which|when|did|do|show|list)\b", low)
         or raw.endswith("?")
@@ -142,7 +178,7 @@ def classify_write_intent(text, *, has_media=False):
         r"\b(?:remind|schedule|set|add|log|record|save|remember|create|"
         r"cancel|delete|remove|update|change|correct|mark)\b",
         low,
-    ))
+    )) or reminder_request
     if interrogative and not explicit_write_verb:
         return {
             "status": "no_write", "intents": [],
@@ -151,8 +187,7 @@ def classify_write_intent(text, *, has_media=False):
         }
 
     explicit = []
-    if re.search(r"\b(?:remind\s+(?:me|us|my\s+wife|my\s+husband|priya)|"
-                 r"set\s+(?:a\s+)?reminder|add\s+(?:a\s+)?reminder)\b", low):
+    if reminder_request:
         explicit.append("REMINDER")
     if re.search(r"\b(?:add|put|save|record)\b.{0,25}\b(?:my|our|the)?\s*diary\b|"
                  r"\b(?:diary|calendar)\s+(?:entry|event)\b", low):
