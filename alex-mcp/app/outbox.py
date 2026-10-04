@@ -330,7 +330,7 @@ def _reconcile_pending_item_markers(conn) -> None:
 
 
 def _reconcile_reminder_pins(conn) -> None:
-    """Keep fired claimable reminders pinned until they leave DUE."""
+    """Keep every fired unresolved reminder pinned until it leaves DUE."""
     rows = conn.execute(
         """SELECT o.*,r.status AS reminder_status,r.claimable,r.claimed_by_user_id
            FROM outbound_messages o
@@ -341,10 +341,7 @@ def _reconcile_reminder_pins(conn) -> None:
              AND o.job_unpinned_at_utc IS NULL"""
     ).fetchall()
     for row in rows:
-        unresolved = (
-            int(row["claimable"] or 0) == 1
-            and row["reminder_status"] == "DUE"
-        )
+        unresolved = row["reminder_status"] == "DUE"
         if not unresolved and _attempt_control(
             conn, row, "unpin", outbound=True
         ):
@@ -608,7 +605,6 @@ def sweep():
                     if (
                         reminder
                         and reminder["status"] == "DUE"
-                        and int(reminder["claimable"] or 0) == 1
                         and not refreshed["job_pinned_at_utc"]
                         and _attempt_control(
                             conn, refreshed, "pin", outbound=True
