@@ -1170,6 +1170,19 @@ def process(payload: dict) -> dict:
         if (
             quoted_pending_history
             and str(quoted_pending_history.get("kind") or "").upper()
+                == "REMINDER_DRAFT"
+            and str(quoted_pending_history.get("status") or "").upper()
+                != "PENDING"
+            and _reminder_draft_cancel_command(turn["trusted_text"])
+        ):
+            return _finish_simple_turn(
+                actor,
+                "That reminder request is already no longer active.",
+                reminder_draft_cancelled=True,
+            )
+        if (
+            quoted_pending_history
+            and str(quoted_pending_history.get("kind") or "").upper()
                 == "PRIVATE_SEARCH_OFFER"
             and quoted_answer
             and (
