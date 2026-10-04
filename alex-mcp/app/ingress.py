@@ -18,6 +18,7 @@ import brain
 import db
 import media
 import services
+import phase2_intent
 import phase2_reports
 import scope_policy
 import diagnostics
@@ -424,10 +425,15 @@ def _yes_no_answer(text: str) -> str | None:
 
 
 def _reminder_draft_cancel_command(text: str) -> bool:
-    """Recognize a concise request to abandon an unfinished reminder draft."""
+    """Recognize ordinary language that abandons an unfinished reminder draft.
+
+    This never deletes a persisted reminder; it only closes the one active
+    reminder conversation, so natural phrasing can safely be handled here.
+    """
     value = re.sub(
         r"\s+", " ", str(text or "").strip().casefold().rstrip(".!")
     )
+    value = value.replace("’", "'")
     if re.fullmatch(r"(?:never\s*mind|nevermind)", value):
         return True
     if re.fullmatch(
@@ -437,9 +443,15 @@ def _reminder_draft_cancel_command(text: str) -> bool:
         value,
     ):
         return True
-    if re.fullmatch(
-        r"forget(?:\s+(?:it|that|this|the(?:\s+(?:reminder|request))?|"
-        r"that\s+(?:reminder|request)|this\s+(?:reminder|request)))?",
+    if re.search(
+        r"\b(?:forget|scrap|skip)\b.{0,70}\b"
+        r"(?:it|that|this|one|reminder|request|thing)\b",
+        value,
+    ):
+        return True
+    if re.search(
+        r"\b(?:i\s+)?(?:don'?t|do\s+not)\s+need\b.{0,70}"
+        r"\b(?:it|that|this|one|reminder|request|anymore|now)\b",
         value,
     ):
         return True
@@ -697,10 +709,13 @@ def _reminder_created_by_turn(actor) -> bool:
 
 
 def _is_reminder_request(text: str) -> bool:
-    return bool(re.search(
+    value = str(text or "")
+    if re.search(
         r"(?i)\b(?:remind|reminder|rember|remnder|remidn|remindn|remidr)\b",
-        str(text or ""),
-    ))
+        value,
+    ):
+        return True
+    return phase2_intent.reminder_write_signal(value)
 
 
 def _reply_is_reminder_clarification(reply: str) -> bool:
@@ -716,6 +731,50 @@ def _reply_is_reminder_clarification(reply: str) -> bool:
             r"|\b(?:when should i|when would you like me to)\b.{0,100}\bremind\b"
             r"|\b(?:did you mean|do you mean|could you clarify|could you confirm)\b"
             r".{0,120}\b(?:am|pm|day|date|time|today|tomorrow|tonight)\b",
+            value,
+        )
+    )
+
+
+def _reply_explicitly_interprets_reminder(reply: str) -> bool:
+    """Whether Alex's own clarification clearly interpreted the turn as a reminder.
+
+    The front AI is allowed to interpret natural wording. Creating a pending
+    draft is non-terminal; the final reminder write still requires the normal
+    trusted tool path and deterministic date/time validation.
+    """
+    value = str(reply or "")
+    if "?" not in value:
+        return False
+    reminder_language = re.search(
+        r"(?i)\b(?:remind|reminder|nudge|notify|notification|alert|ping|"
+        r"heads?[ -]?up|shout|wake)\b",
+        value,
+    )
+    slot_question = re.search(
+        r"(?i)\b(?:when|what\s+time|which\s+(?:day|date)|"
+        r"am\s+or\s+pm|a\.?m\.?|p\.?m\.?|today|tomorrow|tonight|"
+        r"should\s+i\s+(?:set|schedule)|do\s+you\s+mean)\b",
+        value,
+    )
+    return bool(reminder_language and slot_question)
+
+
+def _reply_is_reminder_confirmation_question(reply: str) -> bool:
+    """True for a closed 'shall I use these resolved reminder details?' question."""
+    value = str(reply or "")
+    if "?" not in value:
+        return False
+    return bool(
+        re.search(
+            r"(?i)\b(?:should\s+i|shall\s+i|would\s+you\s+like\s+me\s+to|"
+            r"do\s+you\s+want\s+me\s+to)\b.{0,100}"
+            r"\b(?:set|schedule|remind|nudge|notify)\b",
+            value,
+        )
+        or re.search(
+            r"(?i)\b(?:is\s+that|does\s+that)\b.{0,60}"
+            r"\b(?:right|correct|okay|ok|work)\b",
             value,
         )
     )
@@ -796,20 +855,68 @@ def _reminder_draft_context(pending: dict) -> dict:
     }
 
 
-def _recover_reminder_draft_context(actor, text: str) -> dict | None:
-    """Bind a concise temporal fragment to the one active draft in this chat.
+def _reminder_draft_continuation(
+    actor, pending: dict, text: str
+) -> tuple[bool, str]:
+    """Decide whether a natural reply belongs to the one active reminder draft."""
+    value = str(text or "").strip()
+    if not value or len(value) > 180:
+        return False, ""
 
-    v0.5.13 required the newest Alex outbound itself to be the draft prompt.
-    That made one unstamped clarification permanently orphan the chain. With
-    the v0.5.16 single-draft invariant, a unique recent draft is a safe target
-    even when another deterministic Alex message was emitted in between.
-    """
+    latest = db.latest_outbound_for_context(
+        actor.conversation_id,
+        "PENDING_ITEM",
+        str(pending.get("item_id") or ""),
+        max_age_seconds=1800,
+    )
+    latest_question = str((latest or {}).get("text_body") or "").strip()
+
+    if _looks_like_reminder_clarification_reply(value):
+        return True, latest_question
+    if _reminder_draft_cancel_command(value):
+        return True, latest_question
+
+    answer = _yes_no_answer(value)
+    if answer and _reply_is_reminder_confirmation_question(latest_question):
+        return True, latest_question
+
+    # When Alex has just proposed fully resolved reminder details, ordinary
+    # conversational replies such as "that works for me" or "go ahead" should
+    # stay in that conversation. Reject obvious domain switches/questions and
+    # let the AI interpret the remaining natural reply.
+    if (
+        latest_question
+        and _reply_is_reminder_confirmation_question(latest_question)
+        and "?" not in value
+        and not re.search(
+            r"(?i)\b(?:spent|paid|bought|expense|receipt|shopping|task|diary|"
+            r"calendar|meeting|appointment|show|find|search|list|what|why|how|"
+            r"where|goal|stash|cash|report|roster|shift|turn\s+(?:on|off)|"
+            r"switch\s+(?:on|off))\b",
+            value,
+        )
+    ):
+        return True, latest_question
+
+    return False, latest_question
+
+
+def _recover_reminder_draft_context(actor, text: str) -> dict | None:
+    """Bind natural continuation language to the one active reminder draft."""
     pending = db.single_pending_item(
         actor, "REMINDER_DRAFT", max_age_seconds=1800
     )
-    if not pending or not _looks_like_reminder_clarification_reply(text):
+    if not pending:
         return None
-    return _reminder_draft_context(pending)
+    continues, latest_question = _reminder_draft_continuation(
+        actor, pending, text
+    )
+    if not continues:
+        return None
+    context = _reminder_draft_context(pending)
+    if latest_question:
+        context["quoted_alex_text"] = latest_question[:1000]
+    return context
 
 
 def _latest_reminder_draft_question(actor, pending: dict) -> str:
@@ -826,24 +933,27 @@ def _latest_reminder_draft_question(actor, pending: dict) -> str:
 
 
 def _maybe_create_reminder_draft(actor, reply: str) -> dict | None:
-    if not _is_reminder_request(getattr(actor, "trusted_text", "")):
-        return None
     if _reminder_created_by_turn(actor):
         return None
 
     value = str(reply or "").strip()
-    # Once the current user turn is unquestionably a reminder request, any
-    # unanswered Alex question means the reminder is still unresolved. Do not
-    # make durable draft creation depend on a whitelist of assistant wording:
-    # live ambiguity prompts such as "Did you mean this coming Friday ... or
-    # the following Friday?" are just as actionable as "What time?".
+    user_requested = _is_reminder_request(
+        getattr(actor, "trusted_text", "")
+    )
+    ai_interpreted = _reply_explicitly_interprets_reminder(value)
+    if not (user_requested or ai_interpreted):
+        return None
+
+    # The AI may interpret novel layman wording, but only an unanswered
+    # reminder clarification creates durable pending state. No real reminder is
+    # written here; the final write remains below deterministic tool validation.
     if "?" not in value:
         return None
 
     return db.create_pending_item(
         actor,
         "REMINDER_DRAFT",
-        note="Awaiting typed date/time clarification for this reminder request.",
+        note="Awaiting natural reminder clarification/confirmation.",
     )
 
 
@@ -1157,7 +1267,7 @@ def process(payload: dict) -> dict:
                 actor, turn["trusted_text"]
             )
         pending_item = db.pending_item_for_reference(actor, quoted_context)
-        reminder_temporal_continuation = False
+        reminder_draft_continuation = False
 
         # An explicit swipe-reply to an old private-search offer is authoritative
         # even after that offer expires. Consume the reply here rather than
@@ -1199,20 +1309,25 @@ def process(payload: dict) -> dict:
         if (
             pending_item
             and str(pending_item.get("kind") or "").upper() == "REMINDER_DRAFT"
-            and _looks_like_reminder_clarification_reply(turn["trusted_text"])
         ):
-            pending_item = db.append_pending_item_text(
-                pending_item["item_id"], actor.user_id, turn["trusted_text"]
+            continues, latest_question = _reminder_draft_continuation(
+                actor, pending_item, turn["trusted_text"]
             )
-            accumulated = str(
-                pending_item.get("accumulated_text")
-                or turn["trusted_text"]
-                or ""
-            ).strip()
-            actor = replace(actor, reminder_context_text=accumulated)
-            quoted_context = _reminder_draft_context(pending_item)
-            reminder_temporal_continuation = True
-        elif pending_item:
+            if continues:
+                pending_item = db.append_pending_item_text(
+                    pending_item["item_id"], actor.user_id, turn["trusted_text"]
+                )
+                accumulated = str(
+                    pending_item.get("accumulated_text")
+                    or turn["trusted_text"]
+                    or ""
+                ).strip()
+                actor = replace(actor, reminder_context_text=accumulated)
+                quoted_context = _reminder_draft_context(pending_item)
+                if latest_question:
+                    quoted_context["quoted_alex_text"] = latest_question[:1000]
+                reminder_draft_continuation = True
+        if pending_item and not reminder_draft_continuation:
             quoted_context = dict(quoted_context or {})
             quoted_context["pending_item"] = {
                 "item_id": pending_item["item_id"],
@@ -1345,10 +1460,10 @@ def process(payload: dict) -> dict:
             if _selection_context_parts(selection_context):
                 return _deliver_selection_followup(actor, selection_context)
 
-        # A bare acknowledgement cannot answer a reminder date/time question.
-        # Prefer the one active draft over model guessing from stale history.
-        # If no workflow can safely consume it, ask what the acknowledgement
-        # refers to instead of resurrecting an expired offer.
+        # A yes/no cannot supply a missing time, but it *can* answer a closed
+        # confirmation after Alex has already proposed complete reminder
+        # details. In that case preserve the draft context and let the AI
+        # interpret the natural acknowledgement; otherwise re-ask the slot.
         if answer and not (private_offer and offer_is_current):
             short_answer_draft = (
                 pending_item
@@ -1361,12 +1476,16 @@ def process(payload: dict) -> dict:
                     actor, "REMINDER_DRAFT", max_age_seconds=1800
                 )
             if short_answer_draft:
-                return _finish_simple_turn(
-                    actor,
-                    _latest_reminder_draft_question(actor, short_answer_draft),
-                    reminder_draft_reprompted=True,
+                latest_question = _latest_reminder_draft_question(
+                    actor, short_answer_draft
                 )
-            if not payload.get("quoted_message_id"):
+                if not _reply_is_reminder_confirmation_question(latest_question):
+                    return _finish_simple_turn(
+                        actor,
+                        latest_question,
+                        reminder_draft_reprompted=True,
+                    )
+            elif not payload.get("quoted_message_id"):
                 return _finish_simple_turn(
                     actor,
                     "What are you saying yes or no to?",
@@ -1476,7 +1595,7 @@ def process(payload: dict) -> dict:
         if (
             continuing_reminder_draft
             and not reminder_created
-            and reminder_temporal_continuation
+            and reminder_draft_continuation
             and "?" in str(reply or "")
         ):
             # A temporal continuation stays bound when Alex asks another
