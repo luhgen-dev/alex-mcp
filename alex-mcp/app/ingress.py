@@ -1477,11 +1477,12 @@ def process(payload: dict) -> dict:
             continuing_reminder_draft
             and not reminder_created
             and reminder_temporal_continuation
-            and _reply_is_reminder_clarification(reply)
+            and "?" in str(reply or "")
         ):
-            # Move the durable draft marker only to a genuine follow-up
-            # date/time question. Errors, guards and unrelated replies must
-            # never become the draft's new pinned prompt.
+            # A temporal continuation stays bound when Alex asks another
+            # question, regardless of provider wording. Terminal/guard/error
+            # replies have no question mark and must never become the draft's
+            # new pinned prompt.
             reminder_draft = continuing_reminder_draft
         else:
             reminder_draft = _maybe_create_reminder_draft(actor, reply)
