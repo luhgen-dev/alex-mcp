@@ -1352,8 +1352,8 @@ def process(payload: dict) -> dict:
                 }[quoted_type]
                 return _finish_simple_turn(
                     actor,
-                    f"I can see you replied to an {label if label != 'PDF' else 'PDF'}, "
-                    "but I can’t read the quoted file itself. Please resend it with @Alex.",
+                    f"I can see you replied to a {label}, but I can’t read the "
+                    "quoted file itself. Please resend it with @Alex.",
                     quoted_media_resend=True,
                 )
             if quoted_type == "text" and bridge_quoted_text:
