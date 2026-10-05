@@ -7724,5 +7724,156 @@ class AlexCoreTests(unittest.TestCase):
         )
 
 
+    def test_v0518_dm_created_group_reminder_pushes_claim_card_and_claims(self):
+        group_id = "120363518518@g.us"
+        with open(os.path.join(TEST_DIR, "family_group.json"), "w", encoding="utf-8") as handle:
+            handle.write('{"group_jid":"%s"}' % group_id)
+
+        self.claim(
+            "v0518-dm-group-create",
+            "+60111111111",
+            "Remind us in mcp home group to collect the parcel today at 5pm",
+        )
+        creator = with_action_key(
+            replace(
+                self.actor("v0518-dm-group-create", "+60111111111"),
+                trusted_text=(
+                    "Remind us in mcp home group to collect the parcel "
+                    "today at 5pm"
+                ),
+            ),
+            "v0518-dm-group-action",
+        )
+        with patch.object(
+            runtime_clock, "now_utc",
+            return_value=datetime(2026, 10, 5, 1, 40, tzinfo=timezone.utc),
+        ):
+            reminder = services.create_reminder(
+                creator,
+                "collect the parcel",
+                "2026-10-05T17:00:00+08:00",
+                recipient="both",
+                destination="group",
+            )
+
+        self.assertTrue(reminder["claimable"])
+        self.assertEqual(reminder["conversation_id"], group_id)
+        conn = db.connect()
+        try:
+            setup_rows = conn.execute(
+                """SELECT outbound_id,source_message_id,conversation_id,text_body,
+                          context_kind,context_id
+                   FROM outbound_messages
+                   WHERE context_kind='REMINDER_SETUP' AND context_id=?""",
+                (reminder["reminder_id"],),
+            ).fetchall()
+            self.assertEqual(len(setup_rows), 1)
+            setup = setup_rows[0]
+            self.assertEqual(setup["conversation_id"], group_id)
+            self.assertEqual(setup["source_message_id"], "v0518-dm-group-create")
+            self.assertIn("collect the parcel", setup["text_body"].casefold())
+            self.assertIn("react with any emoji to claim", setup["text_body"].casefold())
+            conn.execute(
+                """UPDATE outbound_messages
+                   SET provider_message_id='wa-v0518-dm-group-setup',
+                       delivery_status='SENT',
+                       delivered_at_utc='2026-10-05T01:41:00+00:00'
+                   WHERE outbound_id=?""",
+                (setup["outbound_id"],),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        with patch.object(
+            runtime_clock, "now_utc",
+            return_value=datetime(2026, 10, 5, 1, 42, tzinfo=timezone.utc),
+        ):
+            result = ingress.process({
+                "message_id": "v0518-dm-group-claim",
+                "provider": "WHATSAPP",
+                "conversation_id": group_id,
+                "conversation_type": "GROUP",
+                "sender_phone": "+60111111111",
+                "event_kind": "REACTION",
+                "reaction_target_message_id": "wa-v0518-dm-group-setup",
+                "reaction_text": "👍",
+            })
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["reaction"]["status"], "claimed")
+        conn = db.connect()
+        try:
+            state = conn.execute(
+                """SELECT status,claimable,claimed_by_user_id
+                   FROM reminders WHERE reminder_id=?""",
+                (reminder["reminder_id"],),
+            ).fetchone()
+            dm = conn.execute(
+                """SELECT conversation_id,text_body,context_kind
+                   FROM outbound_messages
+                   WHERE context_kind='REMINDER_CLAIM_CONFIRMED'
+                     AND context_id=?
+                   ORDER BY rowid DESC LIMIT 1""",
+                (reminder["reminder_id"],),
+            ).fetchone()
+        finally:
+            conn.close()
+
+        self.assertEqual(state["status"], "OPEN")
+        self.assertEqual(state["claimable"], 1)
+        self.assertEqual(state["claimed_by_user_id"], "USR_HUSBAND")
+        self.assertIsNotNone(dm)
+        self.assertEqual(dm["conversation_id"], "60111111111@s.whatsapp.net")
+        self.assertIn("claimed", dm["text_body"].casefold())
+
+    def test_v0518_group_origin_does_not_duplicate_setup_card(self):
+        group_id = "120363528528@g.us"
+        with open(os.path.join(TEST_DIR, "family_group.json"), "w", encoding="utf-8") as handle:
+            handle.write('{"group_jid":"%s"}' % group_id)
+
+        payload = {
+            "message_id": "v0518-group-origin",
+            "provider": "WHATSAPP",
+            "conversation_id": group_id,
+            "conversation_type": "GROUP",
+            "sender_phone": "+60111111111",
+            "text": "@Alex remind us today at 5pm to collect the keys",
+        }
+        fixed = datetime(2026, 10, 5, 1, 40, tzinfo=timezone.utc)
+        with patch.object(runtime_clock, "now_utc", return_value=fixed):
+            result = self._v0513_process_with_scripted_provider(
+                payload,
+                [
+                    {
+                        "tool": "create_reminder",
+                        "args": {
+                            "task": "collect the keys",
+                            "due_local": "2026-10-05T17:00:00+08:00",
+                            "recipient": "both",
+                            "destination": "group",
+                        },
+                    },
+                    {"content": "OK. I’ve set that family reminder for 5:00 PM today."},
+                ],
+            )
+        self.assertTrue(result["ok"])
+
+        conn = db.connect()
+        try:
+            reminder = conn.execute(
+                """SELECT reminder_id FROM reminders
+                   WHERE source_message_id='v0518-group-origin'"""
+            ).fetchone()
+            setup_count = conn.execute(
+                """SELECT COUNT(*) AS n FROM outbound_messages
+                   WHERE context_kind='REMINDER_SETUP' AND context_id=?""",
+                (reminder["reminder_id"],),
+            ).fetchone()["n"]
+        finally:
+            conn.close()
+        self.assertEqual(setup_count, 1)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -2028,6 +2028,32 @@ def create_reminder(actor: ActorContext, task: str, due_local: str,
                 f"recipient={recipient}; destination={destination}; claimable={bool(claimable)}; delivery_class={delivery_class}"
             )
 
+            # A claimable family reminder created from a private DM still needs
+            # an immediate, reaction-bindable card in the configured family
+            # group. Group-origin reminders already get their setup card from
+            # ingress, so only bridge the cross-chat case here.
+            if (
+                destination == "group"
+                and claimable
+                and actor.conversation_type != "GROUP"
+            ):
+                friendly_due = _friendly_reminder_time(due_utc, actor.timezone)
+                group_setup = (
+                    f"Family reminder: {task}\n"
+                    f"Due: {friendly_due}\n"
+                    "React with any emoji to claim it."
+                )
+                conn.execute(
+                    """INSERT INTO outbound_messages(
+                           outbound_id,source_message_id,conversation_id,kind,text_body,
+                           context_kind,context_id
+                       ) VALUES(?,?,?,'TEXT',?,'REMINDER_SETUP',?)""",
+                    (
+                        str(uuid.uuid4()), actor.source_message_id,
+                        conversation_id, group_setup, rid,
+                    ),
+                )
+
             # When an assignment originates outside the assignee's own DM,
             # push an immediate private acknowledgement. The due reminder will
             # later use this same DM conversation.
