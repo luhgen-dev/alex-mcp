@@ -24,6 +24,9 @@ class ActorContext:
     # The user's own words: typed text or the transcript of their voice note.
     # OCR/PDF text is NEVER placed here (it is untrusted document content).
     trusted_text: str = ""
+    # Canonical punctuation/spacing form used only for deterministic intent checks.
+    # Raw trusted_text remains unchanged for storage, model context and provenance.
+    intent_text: str = ""
     # When WhatsApp says the message was sent (UTC ISO). Used by the backend
     # to timestamp records instead of letting the model invent a clock time.
     received_at_utc: str = ""
@@ -37,6 +40,9 @@ class ActorContext:
     # Reminder services validate against this accumulated text while all other
     # domains continue to use the current turn's trusted_text.
     reminder_context_text: str = ""
+    # JSON-encoded deterministic reminder audience/destination carried across
+    # REMINDER_DRAFT clarification turns. Empty outside a routed draft.
+    reminder_routing_json: str = ""
 
 
 _current_actor: ContextVar[ActorContext | None] = ContextVar("alex_actor", default=None)
