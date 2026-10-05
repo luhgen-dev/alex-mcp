@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import re
 
+from text_normalization import normalize_intent_text
+
 
 INTENTS = {
     "REMINDER", "DIARY", "EXPENSE", "OBLIGATION", "SAVED_MEMORY", "PLAN"
@@ -108,7 +110,7 @@ def reminder_write_signal(text) -> bool:
     reminder write still goes through the normal deterministic tool and time
     validation path.
     """
-    low = str(text or "").strip().casefold()
+    low = normalize_intent_text(text).strip().casefold()
     if not low:
         return False
 
@@ -137,7 +139,7 @@ def reminder_write_signal(text) -> bool:
 
 def classify_read_intent(text):
     """Resolve casual schedule language to Agenda unless work is explicit."""
-    raw = str(text or "").strip()
+    raw = normalize_intent_text(text).strip()
     low = raw.casefold()
     if not raw:
         return {"status": "unknown", "intent": None}
@@ -160,7 +162,7 @@ def classify_read_intent(text):
 
 def classify_write_intent(text, *, has_media=False):
     """Return resolved/compound/clarification/no_write without mutating data."""
-    raw = str(text or "").strip()
+    raw = normalize_intent_text(text).strip()
     low = raw.casefold()
     if not raw:
         return {"status": "no_write", "intents": []}
