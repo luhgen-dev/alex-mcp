@@ -379,6 +379,8 @@ async function handleIncoming(message) {
   if (!isWhitelisted(senderPhone)) return;
 
   let rawText = extractText(message).trim();
+  let alexMentioned = false;
+  let replyToAlex = false;
 
   if (isGroup && /^alex\s+set\s+family\s+group$/i.test(rawText)) {
     setFamilyGroupJid(remoteJid);
@@ -395,12 +397,21 @@ async function handleIncoming(message) {
     if (!familyGroup || familyGroup !== remoteJid) return;
     // Family Shared is intentionally opt-in per message: Alex responds only
     // when explicitly @mentioned or when someone swipe-replies to Alex.
-    if (!(await isAlexMentioned(message)) && !(await isReplyToAlex(message))) return;
+    alexMentioned = await isAlexMentioned(message);
+    replyToAlex = await isReplyToAlex(message);
+    if (!alexMentioned && !replyToAlex) return;
     rawText = await stripAlexMentionText(message, rawText);
   }
 
   const media = detectMedia(message);
-  if (!rawText && !media.type) return;
+  const quotedMessageId = extractQuotedId(message);
+  // A mention-only swipe reply is a valid handoff: "@Alex" means "act on the
+  // message I am replying to". Preserve that quoted id even after stripping
+  // the mention leaves no visible command text.
+  const mentionOnlyQuotedContext = Boolean(
+    isGroup && alexMentioned && quotedMessageId
+  );
+  if (!rawText && !media.type && !mentionOnlyQuotedContext) return;
 
   // Keep the exact inbound WAMessage briefly so the durable final response can
   // render as a real WhatsApp reply to the user's original message. If Alex is
@@ -425,7 +436,9 @@ async function handleIncoming(message) {
     // a Python or Node restart. This is transport metadata, never identity/ACL.
     sender_provider_jid: isGroup ? (message.key.participant || rawSenderJid) : remoteJid,
     text: rawText,
-    quoted_message_id: extractQuotedId(message),
+    quoted_message_id: quotedMessageId,
+    alex_mentioned: alexMentioned,
+    reply_to_alex: replyToAlex,
     sent_at_ms: messageTimestampMs(message),
     image_data: media.type === 'image' && mediaData ? mediaData.data : null,
     image_mime_type: media.type === 'image' && mediaData ? mediaData.mimeType : null,

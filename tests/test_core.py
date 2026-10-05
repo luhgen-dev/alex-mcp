@@ -8574,5 +8574,252 @@ class AlexCoreTests(unittest.TestCase):
         self.assertIn("fresh claimable reminder", reply.casefold())
 
 
+    def test_v0522_group_missing_time_becomes_reminder_draft_not_raw_error(self):
+        group_id = "120363522001@g.us"
+        with open(os.path.join(TEST_DIR, "family_group.json"), "w", encoding="utf-8") as handle:
+            handle.write('{"group_jid":"%s"}' % group_id)
+
+        payload = {
+            "message_id": "v0522-vague-group",
+            "provider": "WHATSAPP",
+            "conversation_id": group_id,
+            "conversation_type": "GROUP",
+            "sender_phone": "+60111111111",
+            "text": "remind to throw the trash later",
+            "alex_mentioned": True,
+        }
+        fixed = datetime(2026, 10, 5, 8, 25, tzinfo=timezone.utc)
+        with patch.object(runtime_clock, "now_utc", return_value=fixed):
+            result = self._v0513_process_with_scripted_provider(
+                payload,
+                [
+                    {
+                        "tool": "create_reminder",
+                        "args": {
+                            "task": "throw the trash",
+                            "due_local": "2026-10-05T18:00:00+08:00",
+                            "recipient": "both",
+                            "destination": "group",
+                        },
+                    },
+                    {"content": "OK, I set it for later."},
+                ],
+            )
+
+        self.assertTrue(result["ok"])
+        conn = db.connect()
+        try:
+            made = conn.execute(
+                """SELECT COUNT(*) AS n FROM reminders
+                   WHERE source_message_id='v0522-vague-group'"""
+            ).fetchone()["n"]
+            draft = conn.execute(
+                """SELECT * FROM pending_items
+                   WHERE source_message_id='v0522-vague-group'
+                     AND kind='REMINDER_DRAFT'"""
+            ).fetchone()
+            reply = conn.execute(
+                """SELECT text_body,context_kind,context_id
+                   FROM outbound_messages
+                   WHERE source_message_id='v0522-vague-group'
+                   ORDER BY rowid DESC LIMIT 1"""
+            ).fetchone()
+        finally:
+            conn.close()
+
+        self.assertEqual(made, 0)
+        self.assertIsNotNone(draft)
+        self.assertEqual(draft["status"], "PENDING")
+        self.assertIn("throw the trash later", draft["accumulated_text"].casefold())
+        self.assertEqual(reply["context_kind"], "PENDING_ITEM")
+        self.assertEqual(reply["context_id"], draft["item_id"])
+        self.assertIn("what time", reply["text_body"].casefold())
+        self.assertNotIn("reminder_needs_time", reply["text_body"].casefold())
+        self.assertNotIn("error executing tool", reply["text_body"].casefold())
+
+    def test_v0522_mention_only_quote_from_spouse_becomes_trusted_group_context(self):
+        group_id = "120363522002@g.us"
+        with open(os.path.join(TEST_DIR, "family_group.json"), "w", encoding="utf-8") as handle:
+            handle.write('{"group_jid":"%s"}' % group_id)
+
+        db.claim_inbound({
+            "message_id": "v0522-wife-trash",
+            "provider": "WHATSAPP",
+            "conversation_id": group_id,
+            "conversation_type": "GROUP",
+            "sender_phone": "+60222222222",
+            "text": "Remind to pick up the trash later",
+        })
+        db.finish_inbound("v0522-wife-trash", "ordinary family chat")
+
+        payload = {
+            "message_id": "v0522-husband-mention-only",
+            "provider": "WHATSAPP",
+            "conversation_id": group_id,
+            "conversation_type": "GROUP",
+            "sender_phone": "+60111111111",
+            "text": "",
+            "quoted_message_id": "v0522-wife-trash",
+            "alex_mentioned": True,
+        }
+        fixed = datetime(2026, 10, 5, 8, 25, tzinfo=timezone.utc)
+        exposed = []
+        with patch.object(runtime_clock, "now_utc", return_value=fixed):
+            result = self._v0513_process_with_scripted_provider(
+                payload,
+                [
+                    {
+                        "tool": "create_reminder",
+                        "args": {
+                            "task": "pick up the trash",
+                            "due_local": "2026-10-05T18:00:00+08:00",
+                            "recipient": "both",
+                            "destination": "group",
+                        },
+                    },
+                    {"content": "Done."},
+                ],
+                exposed,
+            )
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(any("create_reminder" in names for names in exposed))
+        conn = db.connect()
+        try:
+            made = conn.execute(
+                """SELECT COUNT(*) AS n FROM reminders
+                   WHERE source_message_id='v0522-husband-mention-only'"""
+            ).fetchone()["n"]
+            draft = conn.execute(
+                """SELECT * FROM pending_items
+                   WHERE source_message_id='v0522-husband-mention-only'
+                     AND kind='REMINDER_DRAFT'"""
+            ).fetchone()
+            reply = conn.execute(
+                """SELECT text_body,context_kind
+                   FROM outbound_messages
+                   WHERE source_message_id='v0522-husband-mention-only'
+                   ORDER BY rowid DESC LIMIT 1"""
+            ).fetchone()
+        finally:
+            conn.close()
+
+        self.assertEqual(made, 0)
+        self.assertIsNotNone(draft)
+        self.assertIn("pick up the trash later", draft["accumulated_text"].casefold())
+        self.assertEqual(reply["context_kind"], "PENDING_ITEM")
+        self.assertIn("what time", reply["text_body"].casefold())
+
+        # The quoted household request must survive into the ordinary
+        # clarification turn; the user should only need to provide the missing
+        # slot, not repeat the task.
+        followup = {
+            "message_id": "v0522-husband-trash-time",
+            "provider": "WHATSAPP",
+            "conversation_id": group_id,
+            "conversation_type": "GROUP",
+            "sender_phone": "+60111111111",
+            "text": "7pm",
+            "alex_mentioned": True,
+        }
+        with patch.object(runtime_clock, "now_utc", return_value=fixed):
+            finished = self._v0513_process_with_scripted_provider(
+                followup,
+                [
+                    {
+                        "tool": "create_reminder",
+                        "args": {
+                            "task": "pick up the trash",
+                            "due_local": "2026-10-05T19:00:00+08:00",
+                            "recipient": "both",
+                            "destination": "group",
+                        },
+                    },
+                    {
+                        "content": (
+                            "OK. I’ll remind the family to pick up the trash "
+                            "at 7:00 PM."
+                        )
+                    },
+                ],
+            )
+        self.assertTrue(finished["ok"])
+
+        conn = db.connect()
+        try:
+            made = conn.execute(
+                """SELECT reminder_id,task_text,status,claimable,conversation_id
+                   FROM reminders
+                   WHERE source_message_id='v0522-husband-trash-time'"""
+            ).fetchone()
+            draft_after = conn.execute(
+                """SELECT status,accumulated_text FROM pending_items
+                   WHERE item_id=?""",
+                (draft["item_id"],),
+            ).fetchone()
+            setup = conn.execute(
+                """SELECT context_kind,context_id,conversation_id,text_body
+                   FROM outbound_messages
+                   WHERE context_kind='REMINDER_SETUP'
+                     AND context_id=?
+                   ORDER BY rowid DESC LIMIT 1""",
+                (made["reminder_id"],),
+            ).fetchone() if made else None
+        finally:
+            conn.close()
+
+        self.assertIsNotNone(made)
+        self.assertEqual(made["task_text"], "pick up the trash")
+        self.assertEqual(made["status"], "OPEN")
+        self.assertEqual(made["claimable"], 1)
+        self.assertEqual(made["conversation_id"], group_id)
+        self.assertEqual(draft_after["status"], "RESOLVED")
+        self.assertIn("pick up the trash later", draft_after["accumulated_text"].casefold())
+        self.assertIn("7pm", draft_after["accumulated_text"].casefold())
+        self.assertIsNotNone(setup)
+        self.assertEqual(setup["conversation_id"], group_id)
+        self.assertIn("pick up the trash", setup["text_body"].casefold())
+
+    def test_v0522_group_peer_quote_requires_explicit_opt_in_and_never_crosses_dm(self):
+        group_id = "120363522003@g.us"
+        db.claim_inbound({
+            "message_id": "v0522-peer-source",
+            "provider": "WHATSAPP",
+            "conversation_id": group_id,
+            "conversation_type": "GROUP",
+            "sender_phone": "+60222222222",
+            "text": "Remind us to check the gate later",
+        })
+        db.finish_inbound("v0522-peer-source", "ordinary chat")
+
+        self.assertIsNone(db.resolve_quoted_context(
+            group_id, "v0522-peer-source", "+60111111111"
+        ))
+        allowed = db.resolve_quoted_context(
+            group_id, "v0522-peer-source", "+60111111111",
+            allow_group_peer_quote=True,
+        )
+        self.assertEqual(
+            allowed["quoted_user_text"],
+            "Remind us to check the gate later",
+        )
+        self.assertTrue(allowed["quoted_group_peer"])
+
+        dm_id = "60111111111@s.whatsapp.net"
+        db.claim_inbound({
+            "message_id": "v0522-wife-dm-source",
+            "provider": "WHATSAPP",
+            "conversation_id": dm_id,
+            "conversation_type": "DIRECT_DM",
+            "sender_phone": "+60222222222",
+            "text": "private-looking test text",
+        })
+        db.finish_inbound("v0522-wife-dm-source", "stored")
+        self.assertIsNone(db.resolve_quoted_context(
+            dm_id, "v0522-wife-dm-source", "+60111111111",
+            allow_group_peer_quote=True,
+        ))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
