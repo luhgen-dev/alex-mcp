@@ -639,9 +639,20 @@ def record_usage(source_message_id: str, provider: str, model: str,
         conn.close()
 
 
-def resolve_quoted_context(conversation_id: str, quoted_message_id: str | None,
-                           sender_phone: str | None = None) -> dict | None:
-    """Resolve a WhatsApp reply inside the same conversation without model guessing."""
+def resolve_quoted_context(
+    conversation_id: str,
+    quoted_message_id: str | None,
+    sender_phone: str | None = None,
+    *,
+    allow_group_peer_quote: bool = False,
+) -> dict | None:
+    """Resolve a WhatsApp reply inside the same conversation without guessing.
+
+    By default a quoted user message must belong to the same authenticated
+    sender.  The one exception is an explicitly @mentioned Family Shared group
+    turn: that user may intentionally hand Alex another household member's
+    already-visible group message as context.  Callers must opt into that case.
+    """
     if not quoted_message_id:
         return None
     conn = connect()
@@ -716,31 +727,55 @@ def resolve_quoted_context(conversation_id: str, quoted_message_id: str | None,
 
         # A user may reply to their own earlier instruction while attaching a
         # file. Bind only the same authenticated sender in the same conversation.
+        user_row = None
+        quoted_group_peer = False
         if sender_phone:
             user_row = conn.execute(
-                """SELECT message_id,raw_text FROM inbound_messages
+                """SELECT message_id,raw_text,sender_phone FROM inbound_messages
                    WHERE message_id=? AND conversation_id=? AND sender_phone=? LIMIT 1""",
                 (quoted_message_id, conversation_id, normalize_phone(sender_phone)),
             ).fetchone()
-            if user_row:
-                raw_text = str(user_row["raw_text"] or "").strip()
-                if raw_text:
-                    return {
-                        "quoted_user_text": raw_text[:2000],
-                        "source_message_id": user_row["message_id"],
-                    }
-                media_row = conn.execute(
-                    """SELECT media_id,media_type FROM media_objects
-                       WHERE source_message_id=? ORDER BY created_at_utc DESC LIMIT 1""",
-                    (user_row["message_id"],),
-                ).fetchone()
-                if media_row:
-                    return {
-                        "quoted_user_text": "",
-                        "source_message_id": user_row["message_id"],
-                        "quoted_media_id": media_row["media_id"],
-                        "quoted_media_type": media_row["media_type"],
-                    }
+
+        # Explicit @mention in the configured Family Shared group may hand Alex
+        # another household member's already-visible message.  Never enable
+        # this for DMs or ordinary reply-to-Alex continuation.
+        if (
+            not user_row
+            and allow_group_peer_quote
+            and str(conversation_id or "").endswith("@g.us")
+        ):
+            user_row = conn.execute(
+                """SELECT message_id,raw_text,sender_phone FROM inbound_messages
+                   WHERE message_id=? AND conversation_id=? LIMIT 1""",
+                (quoted_message_id, conversation_id),
+            ).fetchone()
+            quoted_group_peer = bool(user_row)
+
+        if user_row:
+            raw_text = str(user_row["raw_text"] or "").strip()
+            if raw_text:
+                result = {
+                    "quoted_user_text": raw_text[:2000],
+                    "source_message_id": user_row["message_id"],
+                }
+                if quoted_group_peer:
+                    result["quoted_group_peer"] = True
+                return result
+            media_row = conn.execute(
+                """SELECT media_id,media_type FROM media_objects
+                   WHERE source_message_id=? ORDER BY created_at_utc DESC LIMIT 1""",
+                (user_row["message_id"],),
+            ).fetchone()
+            if media_row:
+                result = {
+                    "quoted_user_text": "",
+                    "source_message_id": user_row["message_id"],
+                    "quoted_media_id": media_row["media_id"],
+                    "quoted_media_type": media_row["media_type"],
+                }
+                if quoted_group_peer:
+                    result["quoted_group_peer"] = True
+                return result
         return None
     finally:
         conn.close()
@@ -851,7 +886,11 @@ def create_pending_item(actor: ActorContext, kind: str, media_id: str | None = N
             )
         item_id = str(uuid.uuid4())
         accumulated_text = (
-            str(getattr(actor, "trusted_text", "") or "").strip()
+            str(
+                getattr(actor, "reminder_context_text", "")
+                or getattr(actor, "trusted_text", "")
+                or ""
+            ).strip()
             if item_kind == "REMINDER_DRAFT" else None
         )
         conn.execute(
