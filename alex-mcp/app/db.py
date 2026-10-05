@@ -662,7 +662,7 @@ def resolve_quoted_context(
         # phone JID. Resolve quotes across only the current actor's own two DM
         # forms; group conversations remain strictly exact-chat scoped.
         conversation_ids = [str(conversation_id or "")]
-        if sender_phone and not str(conversation_id or "").endswith("@g.us"):
+        if sender_phone and str(conversation_id or "").endswith("@lid"):
             phone = normalize_phone(sender_phone).lstrip("+")
             phone_jid = f"{phone}@s.whatsapp.net" if phone else ""
             if phone_jid and phone_jid not in conversation_ids:
