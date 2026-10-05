@@ -23,6 +23,7 @@ import phase2_reports
 import scope_policy
 import diagnostics
 from config import DATA_DIR
+from text_normalization import normalize_intent_text
 
 PORT = 5001
 RUNTIME_STATUS = os.path.join(DATA_DIR, "runtime_status.json")
@@ -295,6 +296,7 @@ def build_turn(payload: dict, media_lines: list[str]) -> dict:
     typed = str(payload.get("text") or "").strip()
     _transcript, document_lines = media.split_voice_transcript(media_lines)
     trusted_text = typed
+    intent_text = normalize_intent_text(trusted_text)
     has_audio = bool(payload.get("audio_data"))
     has_image = bool(payload.get("image_data"))
     has_pdf = bool(payload.get("pdf_data"))
@@ -310,6 +312,7 @@ def build_turn(payload: dict, media_lines: list[str]) -> dict:
         source = "text"
     return {
         "trusted_text": trusted_text,
+        "intent_text": intent_text,
         "read_scope": scope_policy.resolve_read_scope(trusted_text),
         "document_lines": document_lines,
         "source": source,
@@ -416,7 +419,7 @@ def _resolve_voice_pending_after_success(actor, pending: dict | None,
 
 
 def _yes_no_answer(text: str) -> str | None:
-    value = str(text or "").strip().casefold()
+    value = normalize_intent_text(text).strip().casefold()
     if re.fullmatch(r"(?:yes|yep|yeah|sure|ok|okay|please|please do)[.!]?", value):
         return "yes"
     if re.fullmatch(r"(?:no|nope|nah|not now|cancel)[.!]?", value):
@@ -431,9 +434,8 @@ def _reminder_draft_cancel_command(text: str) -> bool:
     reminder conversation, so natural phrasing can safely be handled here.
     """
     value = re.sub(
-        r"\s+", " ", str(text or "").strip().casefold().rstrip(".!")
+        r"\s+", " ", normalize_intent_text(text).strip().casefold().rstrip(".!")
     )
-    value = value.replace("’", "'")
     if re.fullmatch(r"(?:never\s*mind|nevermind)", value):
         return True
     if re.fullmatch(
@@ -859,6 +861,7 @@ def _reminder_draft_context(pending: dict) -> dict:
             "media_id": pending.get("media_id"),
             "source_message_id": pending.get("source_message_id"),
             "accumulated_text": accumulated[:4000],
+            "routing_json": str(pending.get("routing_json") or ""),
         },
     }
 
@@ -978,7 +981,8 @@ def _maybe_create_reminder_draft(actor, reply: str) -> dict | None:
 
     value = str(reply or "").strip()
     user_requested = _is_reminder_request(
-        getattr(actor, "trusted_text", "")
+        getattr(actor, "intent_text", "")
+        or getattr(actor, "trusted_text", "")
     )
     ai_interpreted = _reply_explicitly_interprets_reminder(value)
     if not (user_requested or ai_interpreted):
@@ -1153,7 +1157,7 @@ def _finish_simple_turn(actor, reply: str, **extra) -> dict:
 
 
 def _reopen_existing_reminder_command(text: str) -> bool:
-    low = str(text or "").casefold()
+    low = normalize_intent_text(text).casefold()
     return bool(
         re.search(
             r"\b(?:re[- ]?open|open\s+(?:it|that|this|the\s+reminder)\s+again)\b"
@@ -1164,8 +1168,23 @@ def _reopen_existing_reminder_command(text: str) -> bool:
     )
 
 
-def _return_claimed_reminder_to_family_command(text: str) -> bool:
-    low = str(text or "").casefold()
+def _return_claimed_reminder_to_family_command(
+    text: str, quoted_context: dict | None = None
+) -> bool:
+    low = normalize_intent_text(text).casefold()
+    object_bound = bool(
+        quoted_context
+        and quoted_context.get("context_kind") == "REMINDER_CLAIM_CONFIRMED"
+        and quoted_context.get("context_id")
+    )
+    if object_bound and re.search(
+        r"\b(?:release|unclaim)\b"
+        r"|\b(?:push|send|put|return|give)\b.{0,50}\b(?:back|group|mcp home|family)\b"
+        r"|\b(?:i can'?t|i cannot|i can not)\b.{0,45}\b(?:do|handle|take|claim)\b"
+        r"|\bnot\s+me\b",
+        low,
+    ):
+        return True
     return bool(
         re.search(
             r"\b(?:release|unclaim)\b.*\breminder\b"
@@ -1292,6 +1311,7 @@ def process(payload: dict) -> dict:
             actor,
             source=turn["source"],
             trusted_text=turn["trusted_text"],
+            intent_text=turn["intent_text"],
             received_at_utc=turn["received_at_utc"],
             read_scope=turn["read_scope"],
             private_handoff=(
@@ -1383,19 +1403,31 @@ def process(payload: dict) -> dict:
             quoted_text = str(
                 quoted_context.get("quoted_user_text") or bridge_quoted_text or ""
             ).strip()
-            if quoted_text and _is_reminder_request(quoted_text):
-                # The current @mention authorizes Alex to act on this
-                # already-visible Family Shared quote. Keep current typed text
-                # separate so privacy scope remains current-turn-only.
+            if quoted_text:
+                # The current authenticated @mention deliberately hands this
+                # already-visible Family Shared quote to Alex. If the AI
+                # interprets it as a reminder, preserve both the quoted text and
+                # a small deterministic routing envelope on any draft it opens.
                 reminder_basis = "\n".join(
                     part for part in (
                         quoted_text,
                         str(turn["trusted_text"] or "").strip(),
                     ) if part
                 )
+                routing = services.reminder_draft_routing_envelope(
+                    actor,
+                    reminder_basis,
+                    origin="FAMILY_QUOTE_HANDOFF",
+                )
                 actor = replace(
                     actor,
                     reminder_context_text=reminder_basis,
+                    reminder_routing_json=(
+                        json.dumps(
+                            routing, ensure_ascii=False, separators=(",", ":")
+                        )
+                        if routing else ""
+                    ),
                 )
 
         reminder_continuation_text = str(turn["trusted_text"] or "").strip()
@@ -1447,14 +1479,14 @@ def process(payload: dict) -> dict:
         quoted_pending_history = db.pending_item_history_for_reference(
             actor, quoted_context
         )
-        quoted_answer = _yes_no_answer(turn["trusted_text"])
+        quoted_answer = _yes_no_answer(turn["intent_text"])
         if (
             quoted_pending_history
             and str(quoted_pending_history.get("kind") or "").upper()
                 == "REMINDER_DRAFT"
             and str(quoted_pending_history.get("status") or "").upper()
                 != "PENDING"
-            and _reminder_draft_cancel_command(turn["trusted_text"])
+            and _reminder_draft_cancel_command(turn["intent_text"])
         ):
             return _finish_simple_turn(
                 actor,
@@ -1495,7 +1527,13 @@ def process(payload: dict) -> dict:
                     or reminder_continuation_text
                     or ""
                 ).strip()
-                actor = replace(actor, reminder_context_text=accumulated)
+                actor = replace(
+                    actor,
+                    reminder_context_text=accumulated,
+                    reminder_routing_json=str(
+                        pending_item.get("routing_json") or ""
+                    ),
+                )
                 quoted_context = _reminder_draft_context(pending_item)
                 if latest_question:
                     quoted_context["quoted_alex_text"] = latest_question[:1000]
@@ -1525,7 +1563,7 @@ def process(payload: dict) -> dict:
         # User-reported behavioural errors are captured deterministically from
         # a swipe-reply. This is diagnostics only: no action is retried or undone.
         is_error_command, inline_explanation = _error_report_command(
-            turn["trusted_text"]
+            turn["intent_text"]
         )
         pending_error = diagnostics.pending_user_error_report(actor)
         if is_error_command:
@@ -1574,7 +1612,7 @@ def process(payload: dict) -> dict:
         if (
             reminder_draft_for_cancel
             and draft_is_current
-            and _reminder_draft_cancel_command(turn["trusted_text"])
+            and _reminder_draft_cancel_command(turn["intent_text"])
         ):
             db.cancel_pending_item(
                 reminder_draft_for_cancel["item_id"],
@@ -1591,7 +1629,7 @@ def process(payload: dict) -> dict:
         # they mutate an already-persisted object and must not degrade into a
         # broad reminder list. Natural task words are resolved conservatively
         # inside the authenticated actor's ACL.
-        if _reopen_existing_reminder_command(turn["trusted_text"]):
+        if _reopen_existing_reminder_command(turn["intent_text"]):
             try:
                 reopened = services.update_reminder(
                     actor,
@@ -1626,7 +1664,9 @@ def process(payload: dict) -> dict:
                 actor, reply, reminder_reopened=True,
             )
 
-        if _return_claimed_reminder_to_family_command(turn["trusted_text"]):
+        if _return_claimed_reminder_to_family_command(
+            turn["intent_text"], quoted_context
+        ):
             quoted_claim_reminder_id = (
                 str(quoted_context.get("context_id") or "")
                 if quoted_context

@@ -131,6 +131,7 @@ CREATE TABLE IF NOT EXISTS pending_items (
     status TEXT NOT NULL CHECK(status IN ('PENDING','RESOLVED','CANCELLED')) DEFAULT 'PENDING',
     note TEXT,
     accumulated_text TEXT,
+    routing_json TEXT,
     created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     resolved_at_utc TEXT,
     resolution_message_id TEXT,

@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import re
 
+from text_normalization import normalize_intent_text
+
 
 _PRIVATE_RE = re.compile(
     r"\b(?:private|privately|my\s+private|just\s+for\s+me|only\s+for\s+me)\b",
@@ -54,11 +56,11 @@ def strip_control_emoji(text: str | None) -> str:
 
 
 def explicit_private(text: str | None) -> bool:
-    return bool(_PRIVATE_RE.search(str(text or "")))
+    return bool(_PRIVATE_RE.search(normalize_intent_text(text)))
 
 
 def explicit_family(text: str | None) -> bool:
-    return bool(_FAMILY_RE.search(str(text or "")))
+    return bool(_FAMILY_RE.search(normalize_intent_text(text)))
 
 
 def resolve_read_scope(text: str | None) -> str:
@@ -68,10 +70,11 @@ def resolve_read_scope(text: str | None) -> str:
     or any emoji means owner-private, and all-spaces reads require an explicit
     request for both/shared+private. A bare word like "all" never widens scope.
     """
-    value = str(text or "")
+    raw = str(text or "")
+    value = normalize_intent_text(raw)
     if _ALL_RE.search(value):
         return "all"
-    if explicit_private(value) or contains_emoji(value):
+    if explicit_private(value) or contains_emoji(raw):
         return "private"
     if explicit_family(value):
         return "family"

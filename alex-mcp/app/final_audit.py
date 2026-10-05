@@ -38,7 +38,7 @@ def main() -> dict:
         "phase2_delegation.py", "phase2_monitor.py", "phase2_presence.py",
         "phase2_policy.py", "phase2_reports.py", "phase2_intent.py",
         "profile_config.py", "diagnostics.py", "ha.py", "connect.js",
-        "quoted_payload.js",
+        "quoted_payload.js", "text_normalization.py",
     }
     require(all((APP / name).exists() for name in required_modules),
             "all required deterministic domain modules present")
@@ -354,6 +354,25 @@ def main() -> dict:
         and "@s.whatsapp.net" in db_text
         and "current actor's own two DM" in db_text,
         "DM quote resolution tolerates phone-JID/LID transport identity without cross-user global lookup",
+    )
+    require(
+        '"routing_json"' in db_text
+        and "reminder_routing_json" in (APP / "context.py").read_text(encoding="utf-8")
+        and "reminder_draft_routing_envelope" in (APP / "services.py").read_text(encoding="utf-8"),
+        "reminder drafts durably preserve deterministic audience/destination routing",
+    )
+    normalization = (APP / "text_normalization.py").read_text(encoding="utf-8")
+    require(
+        "normalize_intent_text" in normalization
+        and "unicodedata.normalize" in normalization
+        and "0x2019" in normalization,
+        "mobile smart punctuation has one canonical deterministic intent normalizer",
+    )
+    brain_text = (APP / "brain.py").read_text(encoding="utf-8")
+    require(
+        '"no_change"' in brain_text
+        and "normalize_intent_text" in brain_text,
+        "mutation guard rejects honest no-op writes and uses normalized intent",
     )
 
     # 7. Core trust rules are explicit in the brain and cannot rely on memory.
