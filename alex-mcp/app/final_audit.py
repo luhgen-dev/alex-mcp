@@ -38,6 +38,7 @@ def main() -> dict:
         "phase2_delegation.py", "phase2_monitor.py", "phase2_presence.py",
         "phase2_policy.py", "phase2_reports.py", "phase2_intent.py",
         "profile_config.py", "diagnostics.py", "ha.py", "connect.js",
+        "quoted_payload.js",
     }
     require(all((APP / name).exists() for name in required_modules),
             "all required deterministic domain modules present")
@@ -316,6 +317,20 @@ def main() -> dict:
         ),
         "Family Shared responds only to explicit mention or swipe reply",
     )
+    quoted_payload = (APP / "quoted_payload.js").read_text(encoding="utf-8")
+    require(
+        "quotedHandoffFromContext" in connect
+        and "quoted_text:" in connect
+        and "quoted_type:" in connect
+        and "quoted_participant_phone:" in connect
+        and "quotedHandoffFromContext" in quoted_payload
+        and "quotedMessage" in quoted_payload,
+        "explicit Family quote handoff carries WhatsApp quoted content/type at the bridge boundary",
+    )
+    require(
+        "if (!alexMentioned && !replyToAlex) return;" in connect,
+        "ordinary Family Shared chat still stops before Python unless Alex is explicitly invoked",
+    )
     require(
         "USAGE_URL" in connect and "AI usage — last 24h" in connect,
         "local no-provider-call usage telemetry is visible in Web UI",
@@ -332,7 +347,13 @@ def main() -> dict:
         "resolve_quoted_context" in db_text
         and "provider_message_id" in db_text
         and "quoted_message_id" in db_text,
-        "WhatsApp swipe replies bind to durable same-conversation context",
+        "WhatsApp swipe replies bind to durable conversation context",
+    )
+    require(
+        "conversation_ids" in db_text
+        and "@s.whatsapp.net" in db_text
+        and "current actor's own two DM" in db_text,
+        "DM quote resolution tolerates phone-JID/LID transport identity without cross-user global lookup",
     )
 
     # 7. Core trust rules are explicit in the brain and cannot rely on memory.
