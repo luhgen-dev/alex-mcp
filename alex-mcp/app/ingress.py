@@ -866,13 +866,49 @@ def _reminder_draft_context(pending: dict) -> dict:
     }
 
 
+def _semantic_reminder_continuation(
+    actor, pending: dict, value: str, latest_question: str
+) -> dict | None:
+    """Return one grounded positive semantic frame, or fail closed."""
+    accumulated = str(
+        pending.get("accumulated_text")
+        or pending.get("original_text")
+        or ""
+    ).strip()
+    frame = brain.interpret_control_intent(
+        actor,
+        control_kind="REMINDER_DRAFT",
+        current_text=value,
+        pending_text=accumulated,
+        latest_question=latest_question,
+        allowed_intents={
+            "ANSWER_PENDING", "CONFIRM_PENDING", "DECLINE_PENDING",
+            "CANCEL_PENDING", "NEW_REQUEST", "UNCLEAR",
+        },
+    )
+    intent = str(frame.get("intent") or "")
+    confidence = float(frame.get("confidence") or 0.0)
+    normalized = str(frame.get("normalized_reply") or "").strip()
+    if confidence < brain.SEMANTIC_GATEWAY_MIN_CONFIDENCE:
+        return None
+    if intent == "ANSWER_PENDING" and normalized:
+        return frame
+    if intent == "CONFIRM_PENDING":
+        return frame
+    return None
+
+
 def _reminder_draft_continuation(
     actor, pending: dict, text: str
-) -> tuple[bool, str]:
-    """Decide whether a natural reply belongs to the one active reminder draft."""
+) -> tuple[bool, str, str]:
+    """Decide whether a natural reply belongs to one active reminder draft.
+
+    The third return value is an optional, bounded semantic time hint. It is
+    never an object reference, privacy signal, assignee, or destination.
+    """
     value = str(text or "").strip()
     if not value or len(value) > 180:
-        return False, ""
+        return False, "", ""
 
     latest = db.latest_outbound_for_context(
         actor.conversation_id,
@@ -883,12 +919,12 @@ def _reminder_draft_continuation(
     latest_question = str((latest or {}).get("text_body") or "").strip()
 
     if _reminder_draft_cancel_command(value):
-        return True, latest_question
+        return True, latest_question, ""
 
     # A fresh reminder request starts/replaces a reminder conversation; it must
     # never be swallowed as a date/time answer to an older draft.
     if _is_reminder_request(value):
-        return False, latest_question
+        return False, latest_question, ""
 
     domain_switch = bool(re.search(
         r"(?i)\b(?:spent|paid|bought|expense|receipt|shopping|task|diary|"
@@ -899,13 +935,15 @@ def _reminder_draft_continuation(
         value,
     ))
 
+    # Keep the proven concise date/time fast path at zero tokens.
     if _looks_like_reminder_clarification_reply(value) and not domain_switch:
-        return True, latest_question
+        return True, latest_question, ""
 
-    # The front AI is the language interpreter. When Alex's active prompt is a
-    # reminder slot question, accept ordinary temporal wording as continuation
-    # even when the deterministic parser cannot reduce the whole phrase to a
-    # bare token (for example "at night, around 11.30").
+    # Existing natural-temporal continuation remains a safe fallback, but use
+    # the narrow interpreter first so informal forms can also produce a
+    # normalized time hint for the deterministic reminder validator. If the
+    # interpreter is unavailable or uncertain, preserve the old continuation
+    # behaviour rather than regressing a previously working phrase.
     natural_temporal = bool(re.search(
         r"(?i)\b(?:today|tomorrow|tonight|later|night|morning|afternoon|"
         r"evening|noon|midnight|after\s+(?:work|dinner|lunch)|"
@@ -920,29 +958,30 @@ def _reminder_draft_continuation(
         and "?" not in value
         and not domain_switch
     ):
-        return True, latest_question
+        frame = _semantic_reminder_continuation(
+            actor, pending, value, latest_question
+        )
+        semantic_hint = str(
+            (frame or {}).get("normalized_reply") or ""
+        ).strip()[:240]
+        return True, latest_question, semantic_hint
 
     answer = _yes_no_answer(value)
     if answer and _reply_is_reminder_confirmation_question(latest_question):
-        return True, latest_question
+        return True, latest_question, ""
 
-    # When Alex has just proposed fully resolved reminder details, ordinary
-    # conversational replies such as "that works for me" or "go ahead" should
-    # stay in that conversation. Reject obvious domain switches/questions and
-    # let the AI interpret the remaining natural reply.
+    # Preserve the already-proven closed-confirmation continuation behaviour.
     if (
         latest_question
         and _reply_is_reminder_confirmation_question(latest_question)
         and "?" not in value
         and not domain_switch
     ):
-        return True, latest_question
+        return True, latest_question, ""
 
-    # Phase-1 semantic rescue is deliberately narrow: only one already-grounded
-    # reminder draft, only after every proven deterministic continuation rule
-    # above has failed, and only while the latest Alex message is still a
-    # reminder clarification/confirmation. The interpreter receives no IDs or
-    # tools and cannot execute anything; a positive frame merely binds context.
+    # Phase-1 semantic rescue is narrow: one grounded reminder draft, only
+    # after the deterministic gates above, and only while Alex is visibly
+    # waiting for a reminder answer. The interpreter has no tools or IDs.
     grounded_prompt = bool(
         latest_question
         and (
@@ -951,32 +990,17 @@ def _reminder_draft_continuation(
         )
     )
     if grounded_prompt and not domain_switch:
-        accumulated = str(
-            pending.get("accumulated_text")
-            or pending.get("original_text")
-            or ""
-        ).strip()
-        frame = brain.interpret_control_intent(
-            actor,
-            control_kind="REMINDER_DRAFT",
-            current_text=value,
-            pending_text=accumulated,
-            latest_question=latest_question,
-            allowed_intents={
-                "ANSWER_PENDING", "CONFIRM_PENDING", "DECLINE_PENDING",
-                "CANCEL_PENDING", "NEW_REQUEST", "UNCLEAR",
-            },
+        frame = _semantic_reminder_continuation(
+            actor, pending, value, latest_question
         )
-        if (
-            str(frame.get("intent") or "")
-            in {"ANSWER_PENDING", "CONFIRM_PENDING"}
-            and float(frame.get("confidence") or 0.0)
-            >= brain.SEMANTIC_GATEWAY_MIN_CONFIDENCE
-        ):
-            return True, latest_question
+        if frame:
+            return (
+                True,
+                latest_question,
+                str(frame.get("normalized_reply") or "").strip()[:240],
+            )
 
-    return False, latest_question
-
+    return False, latest_question, ""
 
 def _recover_reminder_draft_context(actor, text: str) -> dict | None:
     """Bind natural continuation language to the one active reminder draft."""
@@ -985,7 +1009,7 @@ def _recover_reminder_draft_context(actor, text: str) -> dict | None:
     )
     if not pending:
         return None
-    continues, latest_question = _reminder_draft_continuation(
+    continues, latest_question, semantic_hint = _reminder_draft_continuation(
         actor, pending, text
     )
     if not continues:
@@ -993,6 +1017,8 @@ def _recover_reminder_draft_context(actor, text: str) -> dict | None:
     context = _reminder_draft_context(pending)
     if latest_question:
         context["quoted_alex_text"] = latest_question[:1000]
+    if semantic_hint:
+        context["semantic_reminder_text"] = semantic_hint[:240]
     return context
 
 
@@ -1575,9 +1601,14 @@ def process(payload: dict) -> dict:
                 latest_question = str(
                     (draft_context or {}).get("quoted_alex_text") or ""
                 ).strip()
+                semantic_hint = str(
+                    (draft_context or {}).get("semantic_reminder_text") or ""
+                ).strip()[:240]
             else:
-                continues, latest_question = _reminder_draft_continuation(
-                    actor, pending_item, reminder_continuation_text
+                continues, latest_question, semantic_hint = (
+                    _reminder_draft_continuation(
+                        actor, pending_item, reminder_continuation_text
+                    )
                 )
             if continues:
                 pending_item = db.append_pending_item_text(
@@ -1596,6 +1627,7 @@ def process(payload: dict) -> dict:
                     reminder_routing_json=str(
                         pending_item.get("routing_json") or ""
                     ),
+                    reminder_semantic_text=semantic_hint,
                 )
                 quoted_context = _reminder_draft_context(pending_item)
                 if latest_question:
