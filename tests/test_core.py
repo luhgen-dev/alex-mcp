@@ -50,6 +50,7 @@ import phase2_home
 import brain
 import mcp_server
 import runtime_clock
+import text_normalization
 import scheduler
 import outbox
 from context import use_actor, with_action_key
@@ -9210,6 +9211,379 @@ class AlexCoreTests(unittest.TestCase):
         self.assertIsNotNone(husband)
         self.assertEqual(husband["context_id"], "rem-husband-only")
         self.assertIsNone(wife)
+
+
+    def test_v0524_mobile_punctuation_normalization_preserves_intent_and_emoji(self):
+        curly = "I can’t do this, put it back in the group"
+        ascii_text = "I can't do this, put it back in the group"
+        self.assertEqual(
+            text_normalization.normalize_intent_text(curly),
+            ascii_text,
+        )
+        self.assertEqual(
+            ingress._return_claimed_reminder_to_family_command(curly),
+            ingress._return_claimed_reminder_to_family_command(ascii_text),
+        )
+        self.assertTrue(
+            ingress._return_claimed_reminder_to_family_command(curly)
+        )
+        self.assertFalse(brain._trusted_mutation_requested("Don’t save this"))
+        self.assertFalse(brain._trusted_mutation_requested("Don't save this"))
+        heart = "show private note ❤️"
+        self.assertIn("❤️", text_normalization.normalize_intent_text(heart))
+        self.assertTrue(scope_policy.contains_emoji(heart))
+
+    def test_v0524_family_quote_draft_keeps_group_route_across_time_and_date(self):
+        group_id = "120363524001@g.us"
+        with open(os.path.join(TEST_DIR, "family_group.json"), "w", encoding="utf-8") as handle:
+            handle.write('{"group_jid":"%s"}' % group_id)
+
+        fixed = datetime(2026, 10, 5, 15, 54, tzinfo=timezone.utc)
+        first = {
+            "message_id": "v0524-laundry-handoff",
+            "provider": "WHATSAPP",
+            "conversation_id": group_id,
+            "conversation_type": "GROUP",
+            "sender_phone": "+60111111111",
+            "text": "",
+            "quoted_message_id": "wa-v0524-laundry-ordinary",
+            "quoted_text": "Need to bring the laundry in later",
+            "quoted_type": "text",
+            "quoted_participant_phone": "60111111111",
+            "alex_mentioned": True,
+            "reply_to_alex": False,
+        }
+        with patch.object(runtime_clock, "now_utc", return_value=fixed):
+            opened = self._v0513_process_with_scripted_provider(
+                first,
+                [{"content": "What time should I remind you?"}],
+            )
+        self.assertTrue(opened["ok"])
+
+        conn = db.connect()
+        try:
+            draft = conn.execute(
+                """SELECT * FROM pending_items
+                   WHERE source_message_id='v0524-laundry-handoff'
+                     AND kind='REMINDER_DRAFT'"""
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertIsNotNone(draft)
+        routing = json.loads(draft["routing_json"])
+        self.assertEqual(routing["origin"], "FAMILY_QUOTE_HANDOFF")
+        self.assertEqual(routing["recipient"], "both")
+        self.assertEqual(routing["destination"], "group")
+        self.assertFalse(routing["explicit"])
+
+        second = {
+            "message_id": "v0524-laundry-time",
+            "provider": "WHATSAPP",
+            "conversation_id": group_id,
+            "conversation_type": "GROUP",
+            "sender_phone": "+60111111111",
+            "text": "7pm",
+            "alex_mentioned": True,
+        }
+        with patch.object(runtime_clock, "now_utc", return_value=fixed):
+            asked_date = self._v0513_process_with_scripted_provider(
+                second,
+                [{"content": "Which day or date should I use for that reminder?"}],
+            )
+        self.assertTrue(asked_date["ok"])
+
+        third = {
+            "message_id": "v0524-laundry-date",
+            "provider": "WHATSAPP",
+            "conversation_id": group_id,
+            "conversation_type": "GROUP",
+            "sender_phone": "+60111111111",
+            "text": "Tomorrow",
+            "alex_mentioned": True,
+        }
+        # Deliberately give the provider the WRONG default route. The durable
+        # draft envelope, not model memory, must enforce the Family route.
+        with patch.object(runtime_clock, "now_utc", return_value=fixed):
+            finished = self._v0513_process_with_scripted_provider(
+                third,
+                [
+                    {
+                        "tool": "create_reminder",
+                        "args": {
+                            "task": "bring in the laundry",
+                            "due_local": "2026-10-06T19:00:00+08:00",
+                            "recipient": "me",
+                            "destination": "dm",
+                            "claimable": False,
+                        },
+                    },
+                    {
+                        "content": (
+                            "I've set a reminder to bring in the laundry "
+                            "tomorrow at 7:00 PM."
+                        )
+                    },
+                ],
+            )
+        self.assertTrue(finished["ok"])
+
+        conn = db.connect()
+        try:
+            made = conn.execute(
+                """SELECT reminder_id,task_text,status,space_id,conversation_id,
+                          claimable,owner_id
+                   FROM reminders
+                   WHERE source_message_id='v0524-laundry-date'"""
+            ).fetchone()
+            resolved = conn.execute(
+                """SELECT status,routing_json,accumulated_text
+                   FROM pending_items WHERE item_id=?""",
+                (draft["item_id"],),
+            ).fetchone()
+            setup = conn.execute(
+                """SELECT conversation_id,text_body,context_kind
+                   FROM outbound_messages
+                   WHERE context_kind='REMINDER_SETUP' AND context_id=?
+                   ORDER BY rowid DESC LIMIT 1""",
+                (made["reminder_id"],),
+            ).fetchone() if made else None
+            assigned_dm = conn.execute(
+                """SELECT 1 FROM outbound_messages
+                   WHERE source_message_id='v0524-laundry-date'
+                     AND context_kind='REMINDER_ASSIGNED'"""
+            ).fetchone()
+        finally:
+            conn.close()
+
+        self.assertIsNotNone(made)
+        self.assertEqual(made["space_id"], "FAMILY_SHARED")
+        self.assertEqual(made["conversation_id"], group_id)
+        self.assertEqual(made["claimable"], 1)
+        self.assertEqual(made["owner_id"], "USR_HUSBAND")
+        self.assertEqual(resolved["status"], "RESOLVED")
+        self.assertIsNotNone(setup)
+        self.assertEqual(setup["conversation_id"], group_id)
+        self.assertIn("react with any emoji to claim", setup["text_body"].casefold())
+        self.assertIsNone(assigned_dm)
+
+    def test_v0524_family_quote_explicit_assignee_overrides_family_default(self):
+        group_id = "120363524002@g.us"
+        actor = self.actor("v0524-route-control", "+60111111111", group_id, "GROUP")
+
+        default_route = services.reminder_draft_routing_envelope(
+            actor,
+            "Need to bring the laundry in later",
+            origin="FAMILY_QUOTE_HANDOFF",
+        )
+        self.assertEqual(
+            (default_route["recipient"], default_route["destination"]),
+            ("both", "group"),
+        )
+
+        self_route = services.reminder_draft_routing_envelope(
+            actor,
+            "Remind me to call Amma later",
+            origin="FAMILY_QUOTE_HANDOFF",
+        )
+        self.assertEqual(
+            (self_route["recipient"], self_route["destination"]),
+            ("me", "dm"),
+        )
+
+        spouse_route = services.reminder_draft_routing_envelope(
+            actor,
+            "Remind wife to collect the parcel later",
+            origin="FAMILY_QUOTE_HANDOFF",
+        )
+        self.assertEqual(spouse_route["destination"], "dm")
+        self.assertTrue(spouse_route["explicit"])
+
+    def test_v0524_curly_lid_claim_reply_releases_exact_quoted_reminder(self):
+        group_id = "120363524003@g.us"
+        with open(os.path.join(TEST_DIR, "family_group.json"), "w", encoding="utf-8") as handle:
+            handle.write('{"group_jid":"%s"}' % group_id)
+
+        self.claim(
+            "v0524-backgate-create", "+60111111111",
+            "Remind us in MCP Home tomorrow at 8.15pm to check the back gate",
+        )
+        creator = with_action_key(
+            replace(
+                self.actor("v0524-backgate-create", "+60111111111"),
+                trusted_text=(
+                    "Remind us in MCP Home tomorrow at 8.15pm "
+                    "to check the back gate"
+                ),
+            ),
+            "v0524-backgate-create-action",
+        )
+        fixed = datetime(2026, 10, 5, 16, 0, tzinfo=timezone.utc)
+        with patch.object(runtime_clock, "now_utc", return_value=fixed):
+            reminder = services.create_reminder(
+                creator,
+                "check the back gate",
+                "2026-10-06T20:15:00+08:00",
+                recipient="both",
+                destination="group",
+            )
+
+        phone_dm = "60111111111@s.whatsapp.net"
+        conn = db.connect()
+        try:
+            conn.execute(
+                """UPDATE reminders
+                   SET claimed_by_user_id='USR_HUSBAND',
+                       claimed_at_utc='2026-10-05T16:01:00+00:00'
+                   WHERE reminder_id=?""",
+                (reminder["reminder_id"],),
+            )
+            conn.execute(
+                """INSERT INTO reminder_claim_events(
+                       claim_event_id,reminder_id,actor_user_id,event_type,note
+                   ) VALUES(?,?,?,?,?)""",
+                (
+                    "v0524-claim-event", reminder["reminder_id"],
+                    "USR_HUSBAND", "CLAIMED", "test claim",
+                ),
+            )
+            conn.execute(
+                """INSERT INTO outbound_messages(
+                       outbound_id,conversation_id,kind,text_body,
+                       delivery_status,delivered_at_utc,provider_message_id,
+                       context_kind,context_id
+                   ) VALUES(?,?,'TEXT',?,'SENT',?,?,?,?)""",
+                (
+                    "v0524-claim-outbound",
+                    phone_dm,
+                    "Got it — you’ve claimed “check the back gate”.",
+                    "2026-10-05T16:01:01+00:00",
+                    "wa-v0524-claim-confirm",
+                    "REMINDER_CLAIM_CONFIRMED",
+                    reminder["reminder_id"],
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        quoted = {
+            "context_kind": "REMINDER_CLAIM_CONFIRMED",
+            "context_id": reminder["reminder_id"],
+        }
+        self.assertTrue(
+            ingress._return_claimed_reminder_to_family_command(
+                "I can’t do this, put it back in the group", quoted
+            )
+        )
+        self.assertTrue(
+            ingress._return_claimed_reminder_to_family_command(
+                "put it back in the group", quoted
+            )
+        )
+
+        payload = {
+            "message_id": "v0524-backgate-release",
+            "provider": "WHATSAPP",
+            "conversation_id": "987654321@lid",
+            "conversation_type": "DIRECT_DM",
+            "sender_phone": "+60111111111",
+            "text": "I can’t do this, put it back in the group",
+            "quoted_message_id": "wa-v0524-claim-confirm",
+        }
+        with patch.object(
+            brain, "respond",
+            side_effect=AssertionError("quoted release must stay deterministic"),
+        ):
+            released = ingress.process(payload)
+
+        self.assertTrue(released["ok"])
+        self.assertTrue(released["reminder_claim_released"])
+
+        conn = db.connect()
+        try:
+            state = conn.execute(
+                """SELECT status,claimed_by_user_id FROM reminders
+                   WHERE reminder_id=?""",
+                (reminder["reminder_id"],),
+            ).fetchone()
+            release_event = conn.execute(
+                """SELECT event_type FROM reminder_claim_events
+                   WHERE reminder_id=? AND event_type='RELEASED'
+                   ORDER BY created_at_utc DESC LIMIT 1""",
+                (reminder["reminder_id"],),
+            ).fetchone()
+            fresh = conn.execute(
+                """SELECT conversation_id,text_body FROM outbound_messages
+                   WHERE context_kind='REMINDER_SETUP' AND context_id=?
+                   ORDER BY rowid DESC LIMIT 1""",
+                (reminder["reminder_id"],),
+            ).fetchone()
+        finally:
+            conn.close()
+
+        self.assertEqual(state["status"], "OPEN")
+        self.assertIsNone(state["claimed_by_user_id"])
+        self.assertIsNotNone(release_event)
+        self.assertIsNotNone(fresh)
+        self.assertEqual(fresh["conversation_id"], group_id)
+        self.assertIn("available again", fresh["text_body"].casefold())
+
+    def test_v0524_open_claimed_reminder_is_honest_no_change(self):
+        group_id = "120363524004@g.us"
+        with open(os.path.join(TEST_DIR, "family_group.json"), "w", encoding="utf-8") as handle:
+            handle.write('{"group_jid":"%s"}' % group_id)
+
+        self.claim(
+            "v0524-noop-create", "+60111111111",
+            "Remind us tomorrow at 9pm to check the garage",
+        )
+        actor = with_action_key(
+            replace(
+                self.actor("v0524-noop-create", "+60111111111"),
+                trusted_text="Remind us tomorrow at 9pm to check the garage",
+            ),
+            "v0524-noop-action",
+        )
+        fixed = datetime(2026, 10, 5, 16, 10, tzinfo=timezone.utc)
+        with patch.object(runtime_clock, "now_utc", return_value=fixed):
+            reminder = services.create_reminder(
+                actor,
+                "check the garage",
+                "2026-10-06T21:00:00+08:00",
+                recipient="both",
+                destination="group",
+            )
+
+        conn = db.connect()
+        try:
+            conn.execute(
+                """UPDATE reminders SET claimed_by_user_id='USR_HUSBAND',
+                   claimed_at_utc='2026-10-05T16:11:00+00:00'
+                   WHERE reminder_id=?""",
+                (reminder["reminder_id"],),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        result = services.update_reminder(
+            actor, reminder["reminder_id"], status="open"
+        )
+        self.assertEqual(result["status"], "no_change")
+        self.assertIn("release_reminder_claim", result["hint"])
+
+        conn = db.connect()
+        try:
+            state = conn.execute(
+                """SELECT status,claimed_by_user_id FROM reminders
+                   WHERE reminder_id=?""",
+                (reminder["reminder_id"],),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(state["status"], "OPEN")
+        self.assertEqual(state["claimed_by_user_id"], "USR_HUSBAND")
+        self.assertIn("no_change", brain._NON_COMMITTED_STATUSES)
 
 
 if __name__ == "__main__":
