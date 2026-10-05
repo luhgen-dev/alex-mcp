@@ -1932,7 +1932,7 @@ _REMINDER_REFERENCE_STOPWORDS = {
     "can","could","would","please","remind","reminder","reminders","this","that",
     "it","one","same","reopen","open","close","closed","cancel","cancelled",
     "release","unclaim","claim","claimed","push","send","put","return","back",
-    "mcp","home","group","family","again","dont","don","think","so",
+    "mcp","home","group","family","again","dont","don","think","so","re",
 }
 
 
