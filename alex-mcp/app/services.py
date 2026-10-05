@@ -16,6 +16,7 @@ from zoneinfo import ZoneInfo
 import runtime_clock
 import scope_policy
 import db
+from text_normalization import normalize_intent_text
 
 from dateutil.rrule import rrulestr
 
@@ -1874,6 +1875,84 @@ def _reminder_targets(actor: ActorContext, recipient: str) -> list[str]:
     raise ValueError("recipient must be me, spouse, a configured household name, husband, wife, or both")
 
 
+def reminder_draft_routing_envelope(
+    actor: ActorContext,
+    text: str,
+    *,
+    origin: str | None = None,
+) -> dict | None:
+    """Derive only deterministic reminder audience/destination facts.
+
+    Explicit user wording wins. A deliberate Family quote handoff defaults to
+    the Family group when the quoted text does not name an assignee. Normal DM
+    and ordinary group reminder behavior is otherwise unchanged.
+    """
+    value = normalize_intent_text(text).strip().casefold()
+    aliases = _reminder_recipient_aliases(actor)
+
+    # Explicit single-person assignee.
+    for alias in sorted(aliases, key=len, reverse=True):
+        if re.search(
+            r"\b(?:remind|for)\s+" + re.escape(alias) + r"\b",
+            value,
+            re.IGNORECASE,
+        ):
+            target = aliases[alias]
+            return {
+                "origin": str(origin or "EXPLICIT").upper(),
+                "recipient": "me" if target == actor.user_id else alias,
+                "destination": "dm",
+                "explicit": True,
+            }
+
+    if re.search(
+        r"\bremind\s+(?:us|both(?:\s+of\s+us)?|everyone)\b"
+        r"|\b(?:mcp\s+home|family\s+group|our\s+group)\b"
+        r"|\b(?:put|post|send|broadcast)\b.{0,35}\b(?:group|mcp\s+home|family)\b",
+        value,
+        re.IGNORECASE,
+    ):
+        return {
+            "origin": str(origin or "EXPLICIT").upper(),
+            "recipient": "both",
+            "destination": "group",
+            "explicit": True,
+        }
+
+    if str(origin or "").upper() == "FAMILY_QUOTE_HANDOFF":
+        return {
+            "origin": "FAMILY_QUOTE_HANDOFF",
+            "recipient": "both",
+            "destination": "group",
+            "explicit": False,
+        }
+    return None
+
+
+def _actor_reminder_routing(actor: ActorContext) -> dict | None:
+    raw = str(getattr(actor, "reminder_routing_json", "") or "").strip()
+    if not raw:
+        return None
+    try:
+        payload = json.loads(raw)
+    except (TypeError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    recipient = str(payload.get("recipient") or "").strip().casefold()
+    destination = str(payload.get("destination") or "").strip().casefold()
+    if destination not in {"dm", "group"}:
+        return None
+    if not recipient:
+        return None
+    return {
+        "origin": str(payload.get("origin") or ""),
+        "recipient": recipient,
+        "destination": destination,
+        "explicit": bool(payload.get("explicit")),
+    }
+
+
 def _trusted_named_reminder_recipient(actor: ActorContext) -> tuple[str, str] | None:
     """Resolve an explicit assignee from this reminder's accumulated trusted text."""
     text = _reminder_intent_text(actor)
@@ -2091,6 +2170,21 @@ def create_reminder(actor: ActorContext, task: str, due_local: str,
     destination = (destination or "dm").strip().lower()
     if destination not in {"dm", "group"}:
         raise ValueError("destination must be dm or group")
+
+    # A durable reminder draft may carry audience/destination facts that were
+    # established on an earlier Family quote-handoff turn. The current typed
+    # turn can explicitly change that route; otherwise the stored deterministic
+    # route overrides model defaults such as me/dm.
+    current_route = reminder_draft_routing_envelope(
+        actor,
+        str(getattr(actor, "trusted_text", "") or ""),
+    )
+    stored_route = _actor_reminder_routing(actor)
+    enforced_route = current_route or stored_route
+    if enforced_route:
+        recipient = enforced_route["recipient"]
+        destination = enforced_route["destination"]
+        claimable = bool(destination == "group" and not recurrence_rule)
 
     # A named household assignee overrides the chat where the instruction was
     # written. This prevents "remind Luhgen ..." in Family Shared from becoming
@@ -2320,6 +2414,26 @@ def update_reminder(actor: ActorContext, reminder_id: str | None, status: str = 
             raise PermissionError("reminder not found in your accessible spaces")
         previous_state = row["status"]
         previous_due = row["due_at_utc"]
+
+        # "Open" is not a release operation. On an already-open claimed
+        # reminder it changes no ownership, so report an honest no-op instead
+        # of committing a write that can be narrated as a successful release.
+        if (
+            resolved == "OPEN"
+            and previous_state == "OPEN"
+            and row["claimed_by_user_id"]
+            and new_due_local is None
+            and snooze_minutes is None
+            and snooze_until_local is None
+        ):
+            conn.rollback()
+            return {
+                "status": "no_change",
+                "reminder_id": reminder_id,
+                "task": row["task_text"],
+                "hint": "use release_reminder_claim to return a claimed reminder to the family",
+            }
+
         snooze_note = None
         if snooze_minutes is not None:
             minutes = max(1, min(60 * 24 * 30, int(snooze_minutes)))
