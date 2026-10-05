@@ -9368,7 +9368,10 @@ class AlexCoreTests(unittest.TestCase):
 
     def test_v0524_family_quote_explicit_assignee_overrides_family_default(self):
         group_id = "120363524002@g.us"
-        actor = self.actor("v0524-route-control", "+60111111111", group_id, "GROUP")
+        actor = db.resolve_actor(
+            "+60111111111", group_id, "GROUP",
+            "v0524-route-control", [],
+        )
 
         default_route = services.reminder_draft_routing_envelope(
             actor,
