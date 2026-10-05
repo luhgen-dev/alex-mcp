@@ -2423,6 +2423,29 @@ async def _call_mcp(actor: ActorContext, tool_name: str, args: dict, action_key:
         elapsed = int((time.monotonic() - started) * 1000)
         data = _unwrap_tool_result(result)
         clean, attachments = _strip_internal(data)
+
+        # Missing/ambiguous reminder slots are a normal conversational
+        # clarification, not an uncertain mutation. FastMCP reports validator
+        # ValueErrors as is_error results rather than raising them, so normalize
+        # them here before the idempotency ledger is marked uncertain.
+        reminder_question = None
+        if result.is_error and tool_name == "create_reminder":
+            reminder_question = _reminder_clarification_from_error(
+                clean.get("error") if isinstance(clean, dict) else None
+            )
+        if reminder_question:
+            clean = {
+                "status": "needs_clarification",
+                "clarification_question": reminder_question,
+            }
+            attachments = []
+            if mutating:
+                _complete_mutating_action(action_key, clean, attachments)
+            _audit(
+                actor, tool_name, args, clean, True, elapsed, action_key
+            )
+            return clean, attachments
+
         if result.is_error and mutating:
             _mark_mutating_uncertain(action_key)
         elif mutating:
@@ -2611,7 +2634,7 @@ _SUCCESS_NEGATION_RE = re.compile(
 _NON_COMMITTED_STATUSES = {
     "clarification_required", "still_needs_information", "not_pending",
     "not_found", "no_match", "refused", "failed", "error",
-    "requested_unconfirmed", "unsupported",
+    "requested_unconfirmed", "unsupported", "needs_clarification",
 }
 
 
