@@ -657,35 +657,56 @@ def resolve_quoted_context(
         return None
     conn = connect()
     try:
-        row = conn.execute(
-            """SELECT outbound_id,source_message_id,text_body,context_kind,context_id,
-                      provider_message_id
-               FROM outbound_messages
-               WHERE conversation_id=? AND provider_message_id=?
-               ORDER BY delivered_at_utc DESC,created_at_utc DESC LIMIT 1""",
-            (conversation_id, quoted_message_id),
-        ).fetchone()
-        if not row:
-            # WhatsApp/Baileys can quote Alex's deterministic bridge ID rather
-            # than the provider_message_id stored after delivery. Use the same
-            # deterministic fallback as reaction binding.
-            candidates = conn.execute(
+        # Baileys 7 may deliver the same authenticated DM as either a phone JID
+        # or a LID JID. Alex historically stores its own DM outbounds on the
+        # phone JID. Resolve quotes across only the current actor's own two DM
+        # forms; group conversations remain strictly exact-chat scoped.
+        conversation_ids = [str(conversation_id or "")]
+        if sender_phone and str(conversation_id or "").endswith("@lid"):
+            phone = normalize_phone(sender_phone).lstrip("+")
+            phone_jid = f"{phone}@s.whatsapp.net" if phone else ""
+            if phone_jid and phone_jid not in conversation_ids:
+                conversation_ids.append(phone_jid)
+
+        row = None
+        for candidate_conversation in conversation_ids:
+            row = conn.execute(
                 """SELECT outbound_id,source_message_id,text_body,context_kind,context_id,
                           provider_message_id
                    FROM outbound_messages
-                   WHERE conversation_id=? AND delivery_status='SENT'
-                   ORDER BY delivered_at_utc DESC,created_at_utc DESC LIMIT 100""",
-                (conversation_id,),
-            ).fetchall()
+                   WHERE conversation_id=? AND provider_message_id=?
+                   ORDER BY delivered_at_utc DESC,created_at_utc DESC LIMIT 1""",
+                (candidate_conversation, quoted_message_id),
+            ).fetchone()
+            if row:
+                break
+        if not row:
+            # WhatsApp/Baileys can quote Alex's deterministic bridge ID rather
+            # than the provider_message_id stored after delivery. Use the same
+            # deterministic fallback as reaction binding, still confined to the
+            # current actor's own eligible conversation identities.
             wanted = str(quoted_message_id or "")
-            for candidate in candidates:
-                expected = (
-                    "ALEX"
-                    + hashlib.sha256(str(candidate["outbound_id"]).encode("utf-8"))
-                    .hexdigest().upper()[:28]
-                )
-                if wanted and wanted in {str(candidate["provider_message_id"] or ""), expected}:
-                    row = candidate
+            for candidate_conversation in conversation_ids:
+                candidates = conn.execute(
+                    """SELECT outbound_id,source_message_id,text_body,context_kind,context_id,
+                              provider_message_id
+                       FROM outbound_messages
+                       WHERE conversation_id=? AND delivery_status='SENT'
+                       ORDER BY delivered_at_utc DESC,created_at_utc DESC LIMIT 100""",
+                    (candidate_conversation,),
+                ).fetchall()
+                for candidate in candidates:
+                    expected = (
+                        "ALEX"
+                        + hashlib.sha256(str(candidate["outbound_id"]).encode("utf-8"))
+                        .hexdigest().upper()[:28]
+                    )
+                    if wanted and wanted in {
+                        str(candidate["provider_message_id"] or ""), expected
+                    }:
+                        row = candidate
+                        break
+                if row:
                     break
         if row:
             result = {
@@ -730,11 +751,18 @@ def resolve_quoted_context(
         user_row = None
         quoted_group_peer = False
         if sender_phone:
-            user_row = conn.execute(
-                """SELECT message_id,raw_text,sender_phone FROM inbound_messages
-                   WHERE message_id=? AND conversation_id=? AND sender_phone=? LIMIT 1""",
-                (quoted_message_id, conversation_id, normalize_phone(sender_phone)),
-            ).fetchone()
+            for candidate_conversation in conversation_ids:
+                user_row = conn.execute(
+                    """SELECT message_id,raw_text,sender_phone FROM inbound_messages
+                       WHERE message_id=? AND conversation_id=? AND sender_phone=? LIMIT 1""",
+                    (
+                        quoted_message_id,
+                        candidate_conversation,
+                        normalize_phone(sender_phone),
+                    ),
+                ).fetchone()
+                if user_row:
+                    break
 
         # Explicit @mention in the configured Family Shared group may hand Alex
         # another household member's already-visible message.  Never enable

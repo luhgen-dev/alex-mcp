@@ -1330,6 +1330,7 @@ def process(payload: dict) -> dict:
             actor.conversation_type == "GROUP"
             and payload.get("alex_mentioned")
             and payload.get("quoted_message_id")
+            and not payload.get("reply_to_alex")
         )
         quoted_context = db.resolve_quoted_context(
             actor.conversation_id,
@@ -1337,17 +1338,55 @@ def process(payload: dict) -> dict:
             actor.phone,
             allow_group_peer_quote=explicit_group_quote_handoff,
         )
+
+        bridge_quoted_text = ""
+        if not quoted_context and explicit_group_quote_handoff:
+            quoted_type = str(payload.get("quoted_type") or "").strip().lower()
+            bridge_quoted_text = str(payload.get("quoted_text") or "").strip()
+            if quoted_type in {"image", "pdf", "audio", "other"}:
+                label = {
+                    "image": "image",
+                    "pdf": "PDF",
+                    "audio": "audio message",
+                    "other": "file",
+                }[quoted_type]
+                return _finish_simple_turn(
+                    actor,
+                    f"I can see you replied to a {label}, but I can’t read the "
+                    "quoted file itself. Please resend it with @Alex.",
+                    quoted_media_resend=True,
+                )
+            if quoted_type == "text" and bridge_quoted_text:
+                # Ordinary Family Shared chat is intentionally never persisted.
+                # The authenticated mentioner is handing this client-supplied
+                # quote to Alex now; it is context, not verified authorship.
+                quoted_context = {
+                    "quoted_user_text": bridge_quoted_text[:2000],
+                    "quoted_group_peer": True,
+                    "quoted_provenance": "bridge",
+                    "quoted_message_id": payload.get("quoted_message_id"),
+                    "quoted_participant_phone": payload.get(
+                        "quoted_participant_phone"
+                    ),
+                    "group_mention_authorized": True,
+                }
+            else:
+                return _finish_simple_turn(
+                    actor,
+                    "I couldn’t read the message you replied to. Please type it, or resend it with @Alex.",
+                    quoted_context_unreadable=True,
+                )
+
         if quoted_context and explicit_group_quote_handoff:
             quoted_context = dict(quoted_context)
             quoted_context["group_mention_authorized"] = True
             quoted_text = str(
-                quoted_context.get("quoted_user_text") or ""
+                quoted_context.get("quoted_user_text") or bridge_quoted_text or ""
             ).strip()
             if quoted_text and _is_reminder_request(quoted_text):
                 # The current @mention authorizes Alex to act on this
-                # already-visible Family Shared quote.  Keep the current typed
-                # text separate, but give reminder validation the exact trusted
-                # quoted request plus any additional slot words in this turn.
+                # already-visible Family Shared quote. Keep current typed text
+                # separate so privacy scope remains current-turn-only.
                 reminder_basis = "\n".join(
                     part for part in (
                         quoted_text,
@@ -1358,10 +1397,46 @@ def process(payload: dict) -> dict:
                     actor,
                     reminder_context_text=reminder_basis,
                 )
-        if not quoted_context:
-            quoted_context = _recover_reminder_draft_context(
-                actor, turn["trusted_text"]
-            )
+
+        reminder_continuation_text = str(turn["trusted_text"] or "").strip()
+        if (
+            not reminder_continuation_text
+            and quoted_context
+            and quoted_context.get("group_mention_authorized")
+        ):
+            reminder_continuation_text = str(
+                quoted_context.get("quoted_user_text") or ""
+            ).strip()
+
+        # A handed-off quoted time/date may itself be the missing answer to the
+        # one active reminder draft. Resolve that before generic AI routing.
+        draft_context = _recover_reminder_draft_context(
+            actor, reminder_continuation_text
+        ) if reminder_continuation_text else None
+        if draft_context and (
+            not quoted_context
+            or quoted_context.get("quoted_provenance") == "bridge"
+        ):
+            handoff_metadata = {}
+            if quoted_context and quoted_context.get("quoted_provenance") == "bridge":
+                handoff_metadata = {
+                    "quoted_user_text": quoted_context.get("quoted_user_text"),
+                    "quoted_group_peer": quoted_context.get("quoted_group_peer"),
+                    "quoted_provenance": "bridge",
+                    "quoted_message_id": quoted_context.get("quoted_message_id"),
+                    "quoted_participant_phone": quoted_context.get(
+                        "quoted_participant_phone"
+                    ),
+                    "group_mention_authorized": True,
+                }
+            quoted_context = dict(draft_context)
+            quoted_context.update({
+                key: value for key, value in handoff_metadata.items()
+                if value not in (None, "")
+            })
+        elif not quoted_context:
+            quoted_context = draft_context
+
         pending_item = db.pending_item_for_reference(actor, quoted_context)
         reminder_draft_continuation = False
 
@@ -1407,15 +1482,17 @@ def process(payload: dict) -> dict:
             and str(pending_item.get("kind") or "").upper() == "REMINDER_DRAFT"
         ):
             continues, latest_question = _reminder_draft_continuation(
-                actor, pending_item, turn["trusted_text"]
+                actor, pending_item, reminder_continuation_text
             )
             if continues:
                 pending_item = db.append_pending_item_text(
-                    pending_item["item_id"], actor.user_id, turn["trusted_text"]
+                    pending_item["item_id"],
+                    actor.user_id,
+                    reminder_continuation_text,
                 )
                 accumulated = str(
                     pending_item.get("accumulated_text")
-                    or turn["trusted_text"]
+                    or reminder_continuation_text
                     or ""
                 ).strip()
                 actor = replace(actor, reminder_context_text=accumulated)

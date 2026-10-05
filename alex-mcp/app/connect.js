@@ -13,6 +13,7 @@ import pino from 'pino';
 import QRCode from 'qrcode';
 import { buildControlMessage } from './control_payload.js';
 import { reactionConversationJid, reactionSenderCandidates } from './reaction_payload.js';
+import { quotedHandoffFromContext } from './quoted_payload.js';
 
 const DATA_DIR = process.env.ALEX_DATA_DIR || '/data';
 const AUTH_DIR = path.join(DATA_DIR, 'whatsapp_auth');
@@ -405,6 +406,27 @@ async function handleIncoming(message) {
 
   const media = detectMedia(message);
   const quotedMessageId = extractQuotedId(message);
+  const quoteContext = extractContextInfo(message);
+  let quotedHandoff = null;
+  // Only an explicit @Alex mention may hand an ordinary Family Shared message
+  // to Alex. Replying to Alex itself continues to use durable object binding
+  // from outbound_messages; do not replace that exact context with client text.
+  if (
+    isGroup && alexMentioned && quotedMessageId && !replyToAlex
+    && quoteContext && quoteContext.quotedMessage
+  ) {
+    quotedHandoff = quotedHandoffFromContext(quoteContext);
+    if (quotedHandoff.quoted_participant_jid) {
+      const resolvedQuotedJid = await resolveSenderJid(
+        null, quotedHandoff.quoted_participant_jid
+      );
+      quotedHandoff.quoted_participant_phone = cleanNumber(
+        String(resolvedQuotedJid || '').split('@')[0].split(':')[0]
+      );
+    } else {
+      quotedHandoff.quoted_participant_phone = '';
+    }
+  }
   // A mention-only swipe reply is a valid handoff: "@Alex" means "act on the
   // message I am replying to". Preserve that quoted id even after stripping
   // the mention leaves no visible command text.
@@ -437,6 +459,16 @@ async function handleIncoming(message) {
     sender_provider_jid: isGroup ? (message.key.participant || rawSenderJid) : remoteJid,
     text: rawText,
     quoted_message_id: quotedMessageId,
+    quoted_text: quotedHandoff ? quotedHandoff.quoted_text : '',
+    quoted_type: quotedHandoff ? quotedHandoff.quoted_type : null,
+    quoted_participant_jid: quotedHandoff
+      ? quotedHandoff.quoted_participant_jid : null,
+    quoted_participant_alt_jid: quotedHandoff
+      ? quotedHandoff.quoted_participant_alt_jid : null,
+    quoted_participant_phone: quotedHandoff
+      ? quotedHandoff.quoted_participant_phone : null,
+    remote_jid_alt: message.key.remoteJidAlt || null,
+    participant_alt: message.key.participantAlt || null,
     alex_mentioned: alexMentioned,
     reply_to_alex: replyToAlex,
     sent_at_ms: messageTimestampMs(message),
