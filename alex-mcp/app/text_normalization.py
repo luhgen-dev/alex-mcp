@@ -10,5 +10,5 @@ def normalize_intent_text(text: str | None) -> str:
     value = value.replace(chr(0x02BC), "'").replace(chr(0x2032), "'")
     value = value.replace(chr(0x201C), '"').replace(chr(0x201D), '"')
     value = value.replace(chr(0x2033), '"').replace(chr(0x2026), "...")
-    value = re.sub(r"[\\u00a0\\u1680\\u2000-\\u200a\\u202f\\u205f\\u3000]+", " ", value)
+    value = re.sub(r"[\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]+", " ", value)
     return value
