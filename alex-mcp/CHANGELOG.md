@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.26
+Live semantic-gateway correction after the first v0.5.25 WhatsApp verification.
+- Fixed the exact live failure where a reminder clarification reply such as “in abt 40 mins” could be correctly classified by the semantic gateway yet still be ignored by the normal Alex brain, causing Alex to ask “What time should I remind you?” again.
+- The semantic gateway is now a real translator for the current reminder slot: when it returns a grounded high-confidence date/time normalization, that normalized answer is what the model sees for the current turn.
+- The raw user-authored WhatsApp text remains the durable history/provenance and remains authoritative for privacy, scope, recipient, destination, object identity, and deterministic tool authorization.
+- If the cheapest semantic route returns UNCLEAR/low confidence or malformed output, Alex may try the already-configured stronger semantic route once; no tools or database access are exposed and the call remains tightly bounded.
+- Deterministic reminder validation is still the final authority before any reminder is written, so semantic normalization cannot invent or bypass missing AM/PM, dates, assignees, destinations, or ACL rules.
+- Added a regression that reproduces the live swipe-reply path: pinned “What time should I remind you?” → quoted “in abt 40 mins” → normalized “in 40 minutes” → reminder creation, with the raw typo preserved in history and pending provenance.
+- Release gate before publishing: core tests, structural self-test, Phase-3 stress, offline behaviour certification, reasoning corpus/snapshot/oracle, final parity audit, WhatsApp bridge contracts, Home Assistant container verification, and External Alex Lab all pass.
+
 ## 0.5.25
 Semantic-gateway release for natural reminder clarification continuations.
 - Added a bounded, tool-less semantic control interpreter for one already-grounded REMINDER_DRAFT when deterministic continuation parsing cannot confidently understand the user's wording.

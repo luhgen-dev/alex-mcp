@@ -1960,10 +1960,20 @@ def process(payload: dict) -> dict:
             db.finish_inbound(actor.source_message_id, group_reply)
             return {"ok": True, "private_handoff": True}
 
+        brain_kwargs = {"quoted_context": quoted_context}
+        semantic_current = str(
+            getattr(actor, "reminder_semantic_text", "") or ""
+        ).strip()[:240]
+        if reminder_draft_continuation and semantic_current:
+            # The semantic gateway is a translator, not just advisory metadata.
+            # Give the normal Alex brain the normalized CURRENT time/date answer
+            # while keeping actor.trusted_text and durable pending text raw.
+            brain_kwargs["semantic_user_text"] = semantic_current
+
         reply, attachments = asyncio.run(
             brain.respond(
                 actor, turn["trusted_text"], turn["document_lines"], vision_parts,
-                quoted_context=quoted_context,
+                **brain_kwargs,
             )
         )
         db.touch_inbound_processing(payload["message_id"])
