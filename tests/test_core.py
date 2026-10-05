@@ -9074,13 +9074,13 @@ class AlexCoreTests(unittest.TestCase):
 
         self.claim(
             "v0523-lid-create", "+60111111111",
-            "Remind us in MCP Home at 8pm to check the back gate",
+            "Remind us in MCP Home today at 8pm to check the back gate",
         )
         creator = with_action_key(
             replace(
                 self.actor("v0523-lid-create", "+60111111111"),
                 trusted_text=(
-                    "Remind us in MCP Home at 8pm to check the back gate"
+                    "Remind us in MCP Home today at 8pm to check the back gate"
                 ),
             ),
             "v0523-lid-create-action",
