@@ -3027,6 +3027,12 @@ def claim_reminder_from_reaction(
             if not reminder:
                 conn.rollback()
                 return {"status": "not_a_reminder_message"}
+            due = datetime.fromisoformat(str(reminder["due_at_utc"]).replace("Z", "+00:00"))
+            if due.tzinfo is None:
+                due = due.replace(tzinfo=timezone.utc)
+            if runtime_clock.now_utc() >= due:
+                conn.rollback()
+                return {"status": "too_late_to_claim", "reminder_id": reminder_id}
             result = _claim_reminder_tx(
                 conn, actor, reminder_id,
                 source="WHATSAPP_REACTION",
@@ -3034,18 +3040,15 @@ def claim_reminder_from_reaction(
                 reaction_text=reaction,
             )
             if result.get("status") == "claimed":
-                if reminder["status"] == "OPEN":
-                    # A claim before scheduler firing changes ownership/routing,
-                    # not the due time.  Ensure the original due alert still
-                    # fires on time to the claimant's DM.
-                    conn.execute(
-                        """UPDATE reminders SET next_delivery_at_utc=NULL
-                           WHERE reminder_id=?""",
-                        (reminder_id,),
-                    )
-                    result["next_claimant_follow_up_at_utc"] = None
-                else:
-                    result["claimed_after_due"] = True
+                # A pre-due claim changes ownership/routing, not the due time.
+                # Clear the old post-due follow-up timestamp so the original
+                # due alert still fires on time to the claimant's DM.
+                conn.execute(
+                    """UPDATE reminders SET next_delivery_at_utc=NULL
+                       WHERE reminder_id=?""",
+                    (reminder_id,),
+                )
+                result["next_claimant_follow_up_at_utc"] = None
             conn.commit()
             return result
 
@@ -3081,8 +3084,7 @@ def claim_reminder_from_reaction(
         # The reminder has already fired. Reactions after due are completion
         # or seen signals; they are never late claims.
         reminder = conn.execute(
-            """SELECT reminder_id,status,task_text,owner_id,claimed_by_user_id,
-                      claimable
+            """SELECT reminder_id,status,task_text,owner_id,claimed_by_user_id
                FROM reminders WHERE reminder_id=?""",
             (reminder_id,),
         ).fetchone()
@@ -3109,28 +3111,6 @@ def claim_reminder_from_reaction(
 
         normalized_reaction = reaction.replace("\ufe0f", "")
         completion = normalized_reaction in {"✅", "✔", "☑"}
-
-        # An unclaimed Family reminder stays claimable even after it fires.
-        # The due message may be the first thing a household member notices.
-        # Keep ✅ as explicit completion; any other group reaction can claim.
-        if (
-            actor.conversation_type == "GROUP"
-            and reminder["status"] == "DUE"
-            and int(reminder["claimable"] or 0) == 1
-            and not reminder["claimed_by_user_id"]
-            and not completion
-        ):
-            result = _claim_reminder_tx(
-                conn, actor, reminder_id,
-                source="WHATSAPP_REACTION_LATE",
-                provider_message_id=provider_message_id,
-                reaction_text=reaction,
-            )
-            if result.get("status") == "claimed":
-                result["claimed_after_due"] = True
-            conn.commit()
-            return result
-
         now = utc_now()
 
         if completion:
