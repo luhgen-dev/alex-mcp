@@ -8434,5 +8434,145 @@ class AlexCoreTests(unittest.TestCase):
         self.assertNotIn("T18:", fallback)
 
 
+    def test_v0521_swipe_reply_claim_confirmation_resolves_this_reminder(self):
+        group_id = "120363521001@g.us"
+        with open(os.path.join(TEST_DIR, "family_group.json"), "w", encoding="utf-8") as handle:
+            handle.write('{"group_jid":"%s"}' % group_id)
+
+        self.claim(
+            "v0521-freezer-create", "+60111111111",
+            "Could you remind both of us in MCP Home in 20 minutes to check the freezer door?",
+        )
+        creator = with_action_key(
+            replace(
+                self.actor("v0521-freezer-create", "+60111111111"),
+                trusted_text=(
+                    "Could you remind both of us in MCP Home in 20 minutes "
+                    "to check the freezer door?"
+                ),
+            ),
+            "v0521-freezer-create-action",
+        )
+        with patch.object(
+            runtime_clock, "now_utc",
+            return_value=datetime(2026, 10, 5, 5, 59, tzinfo=timezone.utc),
+        ):
+            reminder = services.create_reminder(
+                creator,
+                "check the freezer door",
+                "2026-10-05T14:19:00+08:00",
+                recipient="both",
+                destination="group",
+            )
+
+        conn = db.connect()
+        try:
+            setup = conn.execute(
+                """SELECT * FROM outbound_messages
+                   WHERE context_kind='REMINDER_SETUP' AND context_id=?
+                   ORDER BY rowid DESC LIMIT 1""",
+                (reminder["reminder_id"],),
+            ).fetchone()
+            conn.execute(
+                """UPDATE outbound_messages
+                   SET provider_message_id='wa-v0521-freezer-setup',
+                       delivery_status='SENT',
+                       delivered_at_utc='2026-10-05T05:59:10+00:00'
+                   WHERE outbound_id=?""",
+                (setup["outbound_id"],),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        with patch.object(
+            runtime_clock, "now_utc",
+            return_value=datetime(2026, 10, 5, 6, 0, tzinfo=timezone.utc),
+        ):
+            claimed = ingress.process({
+                "message_id": "v0521-freezer-claim",
+                "provider": "WHATSAPP",
+                "conversation_id": group_id,
+                "conversation_type": "GROUP",
+                "sender_phone": "+60111111111",
+                "event_kind": "REACTION",
+                "reaction_target_message_id": "wa-v0521-freezer-setup",
+                "reaction_text": "👍",
+            })
+        self.assertEqual(claimed["reaction"]["status"], "claimed")
+
+        dm_id = "60111111111@s.whatsapp.net"
+        conn = db.connect()
+        try:
+            claim_dm = conn.execute(
+                """SELECT * FROM outbound_messages
+                   WHERE context_kind='REMINDER_CLAIM_CONFIRMED'
+                     AND context_id=?
+                   ORDER BY rowid DESC LIMIT 1""",
+                (reminder["reminder_id"],),
+            ).fetchone()
+            self.assertIsNotNone(claim_dm)
+            conn.execute(
+                """UPDATE outbound_messages
+                   SET provider_message_id='wa-v0521-claim-confirm',
+                       delivery_status='SENT',
+                       delivered_at_utc='2026-10-05T06:00:05+00:00'
+                   WHERE outbound_id=?""",
+                (claim_dm["outbound_id"],),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        payload = {
+            "message_id": "v0521-freezer-release",
+            "provider": "WHATSAPP",
+            "conversation_id": dm_id,
+            "conversation_type": "DIRECT_DM",
+            "sender_phone": "+60111111111",
+            "text": "I think i cant claim this. Push back to group",
+            "quoted_message_id": "wa-v0521-claim-confirm",
+        }
+        with patch.object(
+            brain, "respond",
+            side_effect=AssertionError("quoted release should not fall into AI/list routing"),
+        ):
+            released = ingress.process(payload)
+
+        self.assertTrue(released["ok"])
+        self.assertTrue(released["reminder_claim_released"])
+
+        conn = db.connect()
+        try:
+            state = conn.execute(
+                """SELECT status,claimed_by_user_id FROM reminders
+                   WHERE reminder_id=?""",
+                (reminder["reminder_id"],),
+            ).fetchone()
+            cards = conn.execute(
+                """SELECT text_body,conversation_id
+                   FROM outbound_messages
+                   WHERE context_kind='REMINDER_SETUP' AND context_id=?
+                   ORDER BY rowid""",
+                (reminder["reminder_id"],),
+            ).fetchall()
+            reply = conn.execute(
+                """SELECT text_body FROM outbound_messages
+                   WHERE source_message_id='v0521-freezer-release'
+                     AND conversation_id=?
+                   ORDER BY rowid DESC LIMIT 1""",
+                (dm_id,),
+            ).fetchone()["text_body"]
+        finally:
+            conn.close()
+
+        self.assertEqual(state["status"], "OPEN")
+        self.assertIsNone(state["claimed_by_user_id"])
+        self.assertEqual(len(cards), 2)
+        self.assertEqual(cards[-1]["conversation_id"], group_id)
+        self.assertIn("available again", cards[-1]["text_body"].casefold())
+        self.assertIn("fresh claimable reminder", reply.casefold())
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
