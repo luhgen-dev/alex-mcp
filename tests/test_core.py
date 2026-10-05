@@ -9341,7 +9341,7 @@ class AlexCoreTests(unittest.TestCase):
                 (draft["item_id"],),
             ).fetchone()
             setup = conn.execute(
-                """SELECT conversation_id,text_body,context_kind
+                """SELECT outbound_id,conversation_id,text_body,context_kind
                    FROM outbound_messages
                    WHERE context_kind='REMINDER_SETUP' AND context_id=?
                    ORDER BY rowid DESC LIMIT 1""",
@@ -9352,6 +9352,26 @@ class AlexCoreTests(unittest.TestCase):
                    WHERE source_message_id='v0524-laundry-date'
                      AND context_kind='REMINDER_ASSIGNED'"""
             ).fetchone()
+
+            controls = []
+            if setup:
+                conn.execute(
+                    """UPDATE outbound_messages
+                       SET provider_message_id='wa-v0524-laundry-setup',
+                           delivery_status='SENT',
+                           delivered_at_utc='2026-10-05T15:55:10+00:00'
+                       WHERE outbound_id=?""",
+                    (setup["outbound_id"],),
+                )
+                conn.commit()
+                with patch.object(
+                    outbox, "_send",
+                    side_effect=lambda payload: (
+                        controls.append(dict(payload)) or True,
+                        "{}",
+                    ),
+                ):
+                    outbox._reconcile_claim_setup_markers(conn)
         finally:
             conn.close()
 
@@ -9363,7 +9383,8 @@ class AlexCoreTests(unittest.TestCase):
         self.assertEqual(resolved["status"], "RESOLVED")
         self.assertIsNotNone(setup)
         self.assertEqual(setup["conversation_id"], group_id)
-        self.assertIn("react with any emoji to claim", setup["text_body"].casefold())
+        self.assertEqual([x["kind"] for x in controls], ["reaction", "pin"])
+        self.assertEqual(controls[0]["emoji"], "⏳")
         self.assertIsNone(assigned_dm)
 
     def test_v0524_family_quote_explicit_assignee_overrides_family_default(self):
