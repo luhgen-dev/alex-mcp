@@ -392,9 +392,10 @@ def _cleanup_claim_setup_markers(conn, row) -> None:
 
 
 def _reconcile_claim_setup_markers(conn) -> None:
-    """Keep only OPEN, unclaimed family setup cards marked ⏳ + pinned."""
+    """Keep only the newest OPEN, unclaimed family setup card active."""
     rows = conn.execute(
-        """SELECT o.*,r.status AS reminder_status,r.claimable,
+        """SELECT o.rowid AS outbound_rowid,o.*,
+                  r.status AS reminder_status,r.claimable,
                   r.claimed_by_user_id
            FROM outbound_messages o
            JOIN reminders r ON r.reminder_id=o.context_id
@@ -410,12 +411,23 @@ def _reconcile_claim_setup_markers(conn) -> None:
                         AND o.job_unpinned_at_utc IS NULL)
                 )
              )
-           ORDER BY o.created_at_utc"""
+           ORDER BY o.rowid DESC"""
     ).fetchall()
 
+    # Releasing/reopening a family reminder deliberately creates a fresh card.
+    # Only that newest card may become the active ⏳+pin claim surface; older
+    # cards stay as history and are cleaned if they still carry markers.
+    latest_sent: dict[str, str] = {}
     for row in rows:
+        latest_sent.setdefault(str(row["context_id"]), str(row["outbound_id"]))
+
+    for row in rows:
+        is_latest = (
+            latest_sent.get(str(row["context_id"])) == str(row["outbound_id"])
+        )
         unresolved_claim = (
-            row["reminder_status"] == "OPEN"
+            is_latest
+            and row["reminder_status"] == "OPEN"
             and int(row["claimable"] or 0) == 1
             and not row["claimed_by_user_id"]
         )

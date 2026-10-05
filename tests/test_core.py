@@ -8061,5 +8061,378 @@ class AlexCoreTests(unittest.TestCase):
         self.assertIsNotNone(final["job_unpinned_at_utc"])
 
 
+    def test_v0520_reopen_closed_family_reminder_by_natural_reference_posts_fresh_card(self):
+        group_id = "120363520001@g.us"
+        with open(os.path.join(TEST_DIR, "family_group.json"), "w", encoding="utf-8") as handle:
+            handle.write('{"group_jid":"%s"}' % group_id)
+
+        self.claim(
+            "v0520-balcony-create", "+60111111111",
+            "Remind us in MCP Home in 30 minutes to check the balcony door.",
+        )
+        creator = with_action_key(
+            replace(
+                self.actor("v0520-balcony-create", "+60111111111"),
+                trusted_text=(
+                    "Remind us in MCP Home in 30 minutes to check the balcony door."
+                ),
+            ),
+            "v0520-balcony-create-action",
+        )
+        fixed = datetime(2026, 10, 5, 4, 57, tzinfo=timezone.utc)
+        with patch.object(runtime_clock, "now_utc", return_value=fixed):
+            reminder = services.create_reminder(
+                creator,
+                "Check the balcony door",
+                "2026-10-05T13:27:00+08:00",
+                recipient="both",
+                destination="group",
+            )
+        self.assertTrue(reminder["claimable"])
+
+        self.claim(
+            "v0520-balcony-close", "+60111111111",
+            "I think we can close the balcony reminder",
+        )
+        closed_actor = replace(
+            self.actor("v0520-balcony-close", "+60111111111"),
+            trusted_text="I think we can close the balcony reminder",
+        )
+        services.update_reminder(
+            closed_actor, reminder["reminder_id"], status="cancel"
+        )
+
+        conn = db.connect()
+        try:
+            before = conn.execute(
+                """SELECT COUNT(*) AS n FROM outbound_messages
+                   WHERE context_kind='REMINDER_SETUP' AND context_id=?""",
+                (reminder["reminder_id"],),
+            ).fetchone()["n"]
+        finally:
+            conn.close()
+        self.assertEqual(before, 1)
+
+        payload = {
+            "message_id": "v0520-balcony-reopen",
+            "provider": "WHATSAPP",
+            "conversation_id": "60111111111@s.whatsapp.net",
+            "conversation_type": "DIRECT_DM",
+            "sender_phone": "+60111111111",
+            "text": "Can we re open the balcony reminder?",
+        }
+        with patch.object(
+            brain, "respond",
+            side_effect=AssertionError("explicit reopen should not fall into AI/list routing"),
+        ):
+            result = ingress.process(payload)
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["reminder_reopened"])
+        conn = db.connect()
+        try:
+            state = conn.execute(
+                """SELECT status,claimed_by_user_id FROM reminders
+                   WHERE reminder_id=?""",
+                (reminder["reminder_id"],),
+            ).fetchone()
+            cards = conn.execute(
+                """SELECT text_body,conversation_id,context_kind
+                   FROM outbound_messages
+                   WHERE context_kind='REMINDER_SETUP' AND context_id=?
+                   ORDER BY rowid""",
+                (reminder["reminder_id"],),
+            ).fetchall()
+            reply = conn.execute(
+                """SELECT text_body FROM outbound_messages
+                   WHERE source_message_id='v0520-balcony-reopen'
+                     AND conversation_id='60111111111@s.whatsapp.net'
+                   ORDER BY rowid DESC LIMIT 1"""
+            ).fetchone()["text_body"]
+            history = conn.execute(
+                """SELECT event_type FROM reminder_events
+                   WHERE reminder_id=? ORDER BY rowid DESC LIMIT 1""",
+                (reminder["reminder_id"],),
+            ).fetchone()["event_type"]
+        finally:
+            conn.close()
+
+        self.assertEqual(state["status"], "OPEN")
+        self.assertIsNone(state["claimed_by_user_id"])
+        self.assertEqual(len(cards), 2)
+        self.assertEqual(cards[-1]["conversation_id"], group_id)
+        self.assertIn("available again", cards[-1]["text_body"].casefold())
+        self.assertIn("fresh claimable", reply.casefold())
+        self.assertEqual(history, "RESCHEDULED")
+
+    def test_v0520_push_back_claimed_reminder_posts_new_claim_surface(self):
+        group_id = "120363520002@g.us"
+        with open(os.path.join(TEST_DIR, "family_group.json"), "w", encoding="utf-8") as handle:
+            handle.write('{"group_jid":"%s"}' % group_id)
+
+        self.claim(
+            "v0520-dinner-create", "+60111111111",
+            "Can remind in mcp home, to check the dinner reservation in 20minutes",
+        )
+        creator = with_action_key(
+            replace(
+                self.actor("v0520-dinner-create", "+60111111111"),
+                trusted_text=(
+                    "Can remind in mcp home, to check the dinner reservation in 20minutes"
+                ),
+            ),
+            "v0520-dinner-create-action",
+        )
+        with patch.object(
+            runtime_clock, "now_utc",
+            return_value=datetime(2026, 10, 5, 5, 1, tzinfo=timezone.utc),
+        ):
+            reminder = services.create_reminder(
+                creator,
+                "Check the dinner reservation",
+                "2026-10-05T13:21:00+08:00",
+                recipient="both",
+                destination="group",
+            )
+
+        conn = db.connect()
+        try:
+            setup = conn.execute(
+                """SELECT * FROM outbound_messages
+                   WHERE context_kind='REMINDER_SETUP' AND context_id=?
+                   ORDER BY rowid DESC LIMIT 1""",
+                (reminder["reminder_id"],),
+            ).fetchone()
+            conn.execute(
+                """UPDATE outbound_messages
+                   SET provider_message_id='wa-v0520-dinner-setup',
+                       delivery_status='SENT',
+                       delivered_at_utc='2026-10-05T05:01:10+00:00'
+                   WHERE outbound_id=?""",
+                (setup["outbound_id"],),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        with patch.object(
+            runtime_clock, "now_utc",
+            return_value=datetime(2026, 10, 5, 5, 2, tzinfo=timezone.utc),
+        ):
+            claimed = ingress.process({
+                "message_id": "v0520-dinner-claim",
+                "provider": "WHATSAPP",
+                "conversation_id": group_id,
+                "conversation_type": "GROUP",
+                "sender_phone": "+60111111111",
+                "event_kind": "REACTION",
+                "reaction_target_message_id": "wa-v0520-dinner-setup",
+                "reaction_text": "👍",
+            })
+        self.assertEqual(claimed["reaction"]["status"], "claimed")
+
+        release_payload = {
+            "message_id": "v0520-dinner-release",
+            "provider": "WHATSAPP",
+            "conversation_id": "60111111111@s.whatsapp.net",
+            "conversation_type": "DIRECT_DM",
+            "sender_phone": "+60111111111",
+            "text": "Can push the reminder back to mcp home, i dont think so i can claim it",
+        }
+        with patch.object(
+            brain, "respond",
+            side_effect=AssertionError("explicit push-back should be deterministic"),
+        ):
+            released = ingress.process(release_payload)
+
+        self.assertTrue(released["ok"])
+        self.assertTrue(released["reminder_claim_released"])
+        conn = db.connect()
+        try:
+            state = conn.execute(
+                """SELECT status,claimed_by_user_id FROM reminders
+                   WHERE reminder_id=?""",
+                (reminder["reminder_id"],),
+            ).fetchone()
+            cards = conn.execute(
+                """SELECT outbound_id,text_body,conversation_id,delivery_status
+                   FROM outbound_messages
+                   WHERE context_kind='REMINDER_SETUP' AND context_id=?
+                   ORDER BY rowid""",
+                (reminder["reminder_id"],),
+            ).fetchall()
+            reply = conn.execute(
+                """SELECT text_body FROM outbound_messages
+                   WHERE source_message_id='v0520-dinner-release'
+                     AND conversation_id='60111111111@s.whatsapp.net'
+                   ORDER BY rowid DESC LIMIT 1"""
+            ).fetchone()["text_body"]
+        finally:
+            conn.close()
+
+        self.assertEqual(state["status"], "OPEN")
+        self.assertIsNone(state["claimed_by_user_id"])
+        self.assertEqual(len(cards), 2)
+        self.assertEqual(cards[-1]["conversation_id"], group_id)
+        self.assertEqual(cards[-1]["delivery_status"], "PENDING")
+        self.assertIn("available again", cards[-1]["text_body"].casefold())
+        self.assertIn("fresh claimable reminder", reply.casefold())
+
+    def test_v0520_only_newest_resurfaced_claim_card_gets_hourglass_and_pin(self):
+        group_id = "120363520003@g.us"
+        with open(os.path.join(TEST_DIR, "family_group.json"), "w", encoding="utf-8") as handle:
+            handle.write('{"group_jid":"%s"}' % group_id)
+
+        self.claim("v0520-marker-create", "+60111111111", "family reminder")
+        creator = with_action_key(
+            self.actor("v0520-marker-create", "+60111111111"),
+            "v0520-marker-create-action",
+        )
+        with patch.object(
+            runtime_clock, "now_utc",
+            return_value=datetime(2026, 10, 5, 4, 0, tzinfo=timezone.utc),
+        ):
+            reminder = services.create_reminder(
+                creator, "Check the side gate",
+                "2026-10-05T18:00:00+08:00",
+                destination="group",
+            )
+
+        conn = db.connect()
+        try:
+            first = conn.execute(
+                """SELECT * FROM outbound_messages
+                   WHERE context_kind='REMINDER_SETUP' AND context_id=?""",
+                (reminder["reminder_id"],),
+            ).fetchone()
+            conn.execute(
+                """UPDATE outbound_messages
+                   SET provider_message_id='wa-v0520-old-card',
+                       delivery_status='SENT',
+                       delivered_at_utc='2026-10-05T04:00:10+00:00',
+                       job_reacted_at_utc='2026-10-05T04:00:11+00:00',
+                       job_pinned_at_utc='2026-10-05T04:00:12+00:00',
+                       job_pin_target='OUTBOUND'
+                   WHERE outbound_id=?""",
+                (first["outbound_id"],),
+            )
+            services._queue_family_claim_card(
+                conn,
+                reminder_id=reminder["reminder_id"],
+                task="Check the side gate",
+                due_at_utc=reminder["due_at_utc"],
+                timezone_name="Asia/Kuala_Lumpur",
+                conversation_id=group_id,
+                source_message_id=None,
+                resurfaced=True,
+            )
+            second = conn.execute(
+                """SELECT * FROM outbound_messages
+                   WHERE context_kind='REMINDER_SETUP' AND context_id=?
+                   ORDER BY rowid DESC LIMIT 1""",
+                (reminder["reminder_id"],),
+            ).fetchone()
+            conn.execute(
+                """UPDATE outbound_messages
+                   SET provider_message_id='wa-v0520-new-card',
+                       delivery_status='SENT',
+                       delivered_at_utc='2026-10-05T04:01:00+00:00'
+                   WHERE outbound_id=?""",
+                (second["outbound_id"],),
+            )
+            conn.commit()
+
+            controls = []
+            with patch.object(
+                outbox, "_send",
+                side_effect=lambda payload: (
+                    controls.append(dict(payload)) or True,
+                    "{}",
+                ),
+            ):
+                outbox._reconcile_claim_setup_markers(conn)
+
+            old_state = conn.execute(
+                """SELECT job_reaction_cleared_at_utc,job_unpinned_at_utc
+                   FROM outbound_messages WHERE outbound_id=?""",
+                (first["outbound_id"],),
+            ).fetchone()
+            new_state = conn.execute(
+                """SELECT job_reacted_at_utc,job_pinned_at_utc
+                   FROM outbound_messages WHERE outbound_id=?""",
+                (second["outbound_id"],),
+            ).fetchone()
+        finally:
+            conn.close()
+
+        self.assertEqual(
+            [x["kind"] for x in controls],
+            ["reaction", "pin", "reaction", "unpin"],
+        )
+        self.assertEqual(controls[0]["target_message_id"], "wa-v0520-new-card")
+        self.assertEqual(controls[0]["emoji"], "⏳")
+        self.assertEqual(controls[1]["target_message_id"], "wa-v0520-new-card")
+        self.assertEqual(controls[2]["target_message_id"], "wa-v0520-old-card")
+        self.assertEqual(controls[2]["emoji"], "")
+        self.assertEqual(controls[3]["target_message_id"], "wa-v0520-old-card")
+        self.assertIsNotNone(old_state["job_reaction_cleared_at_utc"])
+        self.assertIsNotNone(old_state["job_unpinned_at_utc"])
+        self.assertIsNotNone(new_state["job_reacted_at_utc"])
+        self.assertIsNotNone(new_state["job_pinned_at_utc"])
+
+    def test_v0520_lifecycle_language_exposes_correct_tools(self):
+        reopen = {
+            x["function"]["name"]
+            for x in asyncio.run(
+                brain._tool_specs("Could you open the balcony reminder again?")
+            )
+        }
+        self.assertIn("update_reminder", reopen)
+
+        release = {
+            x["function"]["name"]
+            for x in asyncio.run(
+                brain._tool_specs(
+                    "Put that reminder back in MCP Home, I can’t take it."
+                )
+            )
+        }
+        self.assertIn("release_reminder_claim", release)
+
+    def test_v0520_reminder_list_tool_and_fallback_never_expose_raw_state_or_iso(self):
+        self.claim(
+            "v0520-readable-create", "+60111111111",
+            "Remind me to call Amma today at 6pm",
+        )
+        creator = with_action_key(
+            replace(
+                self.actor("v0520-readable-create", "+60111111111"),
+                trusted_text="Remind me to call Amma today at 6pm",
+            ),
+            "v0520-readable-action",
+        )
+        with patch.object(
+            runtime_clock, "now_utc",
+            return_value=datetime(2026, 10, 5, 4, 0, tzinfo=timezone.utc),
+        ):
+            services.create_reminder(
+                creator, "Call Amma", "2026-10-05T18:00:00+08:00"
+            )
+
+        actor = self.actor("v0520-readable-create", "+60111111111")
+        result = mcp_server.list_reminders(actor)
+        row = next(x for x in result["reminders"] if x["task"] == "Call Amma")
+        self.assertEqual(row["status"], "Upcoming")
+        self.assertIn("5th October 2026", row["due"])
+        self.assertNotIn("T", row["due"])
+        fallback = brain._tool_evidence_fallback([
+            {"_tool_name": "list_reminders", **result}
+        ])
+        self.assertIn("Call Amma", fallback)
+        self.assertIn("Upcoming", fallback)
+        self.assertNotIn("OPEN", fallback)
+        self.assertNotIn("T18:", fallback)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

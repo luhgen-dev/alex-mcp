@@ -26,7 +26,7 @@ import scope_policy
 
 mcp = MCPServer(
     "Alex Household Tools",
-    version="0.5.19",
+    version="0.5.20",
     instructions="Deterministic household tools. Identity and permissions are injected by Alex and are never model-controlled.",
 )
 
@@ -370,18 +370,59 @@ def create_reminder(task: str, due_local: str, actor: Actor,
 
 @alex_tool()
 def list_reminders(actor: Actor, include_completed: bool = False, limit: int = 20) -> dict:
-    """List upcoming/open reminders from spaces this user is allowed to see."""
-    return services.list_reminders(actor, include_completed, limit)
+    """List reminders with human-readable local times/states. Internal IDs are supplied only so a subsequent reminder action can target the exact record; never show them to the user."""
+    raw = services.list_reminders(actor, include_completed, limit)
+    state_labels = {
+        "OPEN": "Upcoming",
+        "DUE": "Due",
+        "DEFERRED": "Deferred",
+        "COMP": "Completed",
+        "CANC": "Cancelled",
+    }
+    reminders = []
+    for row in raw.get("reminders", []):
+        claimed_id = str(row.get("claimed_by_user_id") or "")
+        claimed_by = None
+        if claimed_id:
+            claimed_by = (
+                "You"
+                if claimed_id == actor.user_id
+                else services._household_display_name(claimed_id)
+            )
+        reminders.append({
+            "reminder_id": row.get("reminder_id"),
+            "task": row.get("task_text"),
+            "due": services._friendly_reminder_time(
+                row.get("due_at_utc"), row.get("timezone_name") or actor.timezone
+            ),
+            "status": state_labels.get(
+                str(row.get("status") or "").upper(), "Active"
+            ),
+            "claimable": bool(row.get("claimable")),
+            "claimed_by": claimed_by,
+            "handoff_pending_to": row.get("handoff_pending_to"),
+        })
+    return {
+        "reminders": reminders,
+        "presentation_rule": (
+            "Present reminder names, human status labels and the provided local "
+            "due text. Never expose reminder IDs, raw state codes, ISO timestamps "
+            "or UTC."
+        ),
+    }
 
 
 @alex_tool()
-def update_reminder(reminder_id: str, actor: Actor, status: str = "open",
+def update_reminder(actor: Actor, reminder_id: str | None = None,
+                    reminder_reference: str | None = None,
+                    status: str = "open",
                     new_due_local: str | None = None,
                     snooze_minutes: int | None = None,
                     snooze_until_local: str | None = None) -> dict:
-    """Complete/cancel/acknowledge/defer/reschedule a reminder. For relative snooze pass snooze_minutes; the backend computes now+N and reopens it."""
+    """Complete/cancel/acknowledge/defer/reschedule/reopen a reminder. Use reminder_reference with the user's natural task words (for example 'balcony reminder') when no opaque reminder_id is already known. For 'reopen' use status='open'. For relative snooze pass snooze_minutes."""
     return services.update_reminder(
-        actor, reminder_id, status, new_due_local, snooze_minutes, snooze_until_local
+        actor, reminder_id, status, new_due_local, snooze_minutes,
+        snooze_until_local, reminder_reference
     )
 
 
@@ -415,9 +456,12 @@ def handoff_reminder_claim(reminder_id: str, recipient: str, actor: Actor) -> di
 
 
 @alex_tool()
-def release_reminder_claim(reminder_id: str, actor: Actor) -> dict:
-    """Explicitly release a claimable family reminder after the claimant says they cannot do it / release it. Removing a WhatsApp reaction never releases ownership."""
-    return services.release_reminder_claim(actor, reminder_id)
+def release_reminder_claim(actor: Actor, reminder_id: str | None = None,
+                           reminder_reference: str | None = None) -> dict:
+    """Release/return a claimed Family reminder to the family group when the claimant says they cannot do it, wants to unclaim it, or wants to push/send/put it back to MCP Home/the group. Use reminder_reference when the task is named; if omitted, the backend acts only when this user has one unambiguous current claim. A fresh claimable group card is posted."""
+    return services.release_reminder_claim(
+        actor, reminder_id, reminder_reference
+    )
 
 
 @alex_tool()

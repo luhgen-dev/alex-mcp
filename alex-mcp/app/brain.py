@@ -65,7 +65,7 @@ If a receipt/image extraction is not clear enough to establish a financial amoun
 Shopping-list items are household-shared by default unless the user clearly says an item is private. For an explicit private shopping add use shared=false; for a family/shared add use shared=true. When the user explicitly asks for the family/shared or private shopping list, use the matching list scope. If the same named item exists in both family and private lists and the user did not specify which one to update/remove, show the ambiguity and ask which list; never choose one silently. Do not mark an item purchased merely because it was mentioned.
 
 For reminders, recipient="me" is the default. Use spouse/husband/wife/both only when the user clearly asks Alex to remind that person or both people. If "remind me" is clear but the time is missing, do not ask who the reminder is for; ask only for the missing date/time needed to schedule it.
-For a claimed Family reminder that is still due: "remind the claimant again" uses nudge_reminder_claimant; "reopen/release it to the family" uses release_reminder_claim; explicit done/completed uses update_reminder(status="complete"); cancel uses update_reminder(status="cancel"). Seen/acknowledged is not completion.
+For reminder lifecycle changes, use the reminder tools directly rather than listing all reminders first when the user has named the reminder or clearly refers to the one just discussed. "Reopen/open again" uses update_reminder(status="open") and may pass reminder_reference with the user's natural task words. For a claimed Family reminder: "release/unclaim", "push/send/put it back to MCP Home/the family group", or saying they cannot take/claim it uses release_reminder_claim; this creates a fresh group claim card. "Remind the claimant again" uses nudge_reminder_claimant. Explicit done/completed uses update_reminder(status="complete"); cancel uses update_reminder(status="cancel"). Seen/acknowledged is not completion.
 
 Keep Roster, Diary, Plans, Reminders and Agenda distinct:
 - Roster is work schedule.
@@ -286,9 +286,15 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
         "resolve_numbered_choice": (r"^\s*\d+\s*$|\b(?:play|listen(?:\s+to)?|hear|show|open|send|get|view)\s+(?:(?:unresolved|pending)\s+)?(?:(?:voice|audio)\s*note\s*)?(?:number\s+|no\.?\s*|#\s*)?\d+\b", 140),
         "create_reminder": (r"remind|reminder|notify", 110),
         "list_reminders": (r"list|what reminders|reminders", 95),
-        "update_reminder": (r"cancel|complete|ack|snooze|defer|reschedule", 115),
+        "update_reminder": (r"cancel|complete|ack|snooze|defer|reschedule|re[- ]?open|open again|bring .*reminder back", 145),
         "reminder_history": (r"history|what happened|reminder history", 105),
-        "release_reminder_claim": (r"(?:release|unclaim).*reminder|(?:i can'?t|cannot|can not).*do it|release this", 145),
+        "release_reminder_claim": (
+            r"(?:release|unclaim).*reminder|(?:i can'?t|cannot|can not|don'?t think .*can).*"
+            r"(?:do|handle|claim|take).*\b(?:it|this|reminder)?\b|release this|"
+            r"(?:push|send|put|return).*reminder.*(?:back|group|mcp home|family)|"
+            r"reminder.*(?:back to|into).*(?:group|mcp home|family)",
+            155,
+        ),
         "add_shopping_item": (r"add|buy|need|shopping", 105),
         "list_shopping_items": (r"list|shopping|grocery", 95),
         "update_shopping_item": (r"bought|purchased|remove|delete|rename|correct|not .* but|change .* shopping", 126),
@@ -1058,9 +1064,21 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         force |= {"nudge_reminder_claimant", "list_reminders"}
 
     if re.search(
+        r"\b(?:re[- ]?open|open\s+(?:it|that|this|the\s+reminder)\s+again)\b"
+        r".*\b(?:reminder|remind)\b"
+        r"|\b(?:reminder|remind)\b.*\b(?:re[- ]?open|open\s+again)\b",
+        low,
+    ):
+        force |= {"update_reminder", "list_reminders"}
+
+    if re.search(
         r"\b(?:release|unclaim)\b.*\breminder\b"
-        r"|\b(?:i can'?t|i cannot|i can not)\b.*\b(?:do|handle)\b.*\b(?:it|this)\b"
-        r"|\brelease this\b",
+        r"|\b(?:i can'?t|i cannot|i can not|i don'?t think(?: so)? i can)\b"
+        r".*\b(?:do|handle|claim|take)\b.*\b(?:it|this|reminder)?\b"
+        r"|\brelease this\b"
+        r"|\b(?:push|send|put|return)\b.*\breminder\b.*"
+        r"\b(?:back|group|mcp home|family)\b"
+        r"|\breminder\b.*\b(?:back to|into)\b.*\b(?:group|mcp home|family)\b",
         low,
     ):
         force |= {"release_reminder_claim", "list_reminders"}
@@ -2881,6 +2899,28 @@ def _tool_evidence_fallback(tool_evidence: list[dict]) -> str:
                     detail += f" — {when}"
                 parts.append(detail + ".")
             return " ".join(parts)
+
+        if tool_name == "list_reminders":
+            rows = evidence.get("reminders")
+            if isinstance(rows, list):
+                if not rows:
+                    return "You don’t have any matching active reminders."
+                lines = []
+                for index, row in enumerate(rows[:10], 1):
+                    if not isinstance(row, dict):
+                        continue
+                    task = row.get("task") or row.get("task_text") or "Reminder"
+                    due = row.get("due") or row.get("due_display")
+                    status = row.get("status")
+                    detail = " — ".join(
+                        str(value) for value in (due, status)
+                        if value not in (None, "")
+                    )
+                    lines.append(
+                        f"{index}. {task}" + (f" — {detail}" if detail else "")
+                    )
+                if lines:
+                    return "\n".join(lines)
 
         # Human-readable list payloads.
         for key in ("reminders", "assets", "goals", "items", "matches", "records", "warranties"):

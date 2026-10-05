@@ -1926,6 +1926,154 @@ def _friendly_reminder_time(due_utc: str, tz_name: str) -> str:
         return str(due_utc)
 
 
+
+_REMINDER_REFERENCE_STOPWORDS = {
+    "a","an","and","the","to","for","of","my","our","me","us","we","i",
+    "can","could","would","please","remind","reminder","reminders","this","that",
+    "it","one","same","reopen","open","close","closed","cancel","cancelled",
+    "release","unclaim","claim","claimed","push","send","put","return","back",
+    "mcp","home","group","family","again","dont","don","think","so","re",
+}
+
+
+def _reminder_reference_words(value: str | None) -> set[str]:
+    words = re.findall(r"[a-z0-9]+", str(value or "").casefold())
+    return {
+        word for word in words
+        if len(word) > 1 and word not in _REMINDER_REFERENCE_STOPWORDS
+    }
+
+
+def _resolve_reminder_reference_id(
+    actor: ActorContext,
+    reminder_id: str | None = None,
+    reminder_reference: str | None = None,
+    *,
+    include_closed: bool = True,
+    require_claimed_by_actor: bool = False,
+) -> str:
+    """Resolve a natural reminder reference conservatively inside actor ACL."""
+    marks, spaces = _spaces_sql(actor)
+    conn = connect()
+    try:
+        if reminder_id:
+            row = conn.execute(
+                f"""SELECT reminder_id FROM reminders
+                    WHERE reminder_id=? AND space_id IN ({marks})""",
+                [reminder_id] + spaces,
+            ).fetchone()
+            if not row:
+                raise PermissionError("reminder not found in your accessible spaces")
+            return str(row["reminder_id"])
+
+        where = [f"space_id IN ({marks})"]
+        params = list(spaces)
+        if not include_closed:
+            where.append("status IN ('OPEN','DUE','DEFERRED')")
+        if require_claimed_by_actor:
+            where.append("claimed_by_user_id=?")
+            params.append(actor.user_id)
+
+        rows = conn.execute(
+            f"""SELECT reminder_id,task_text,status,due_at_utc,claimed_by_user_id,
+                       created_at_utc
+                FROM reminders
+                WHERE {' AND '.join(where)}
+                ORDER BY created_at_utc DESC, due_at_utc DESC
+                LIMIT 100""",
+            params,
+        ).fetchall()
+        if not rows:
+            raise ValueError("REMINDER_REFERENCE_NOT_FOUND")
+
+        ref_words = _reminder_reference_words(reminder_reference)
+        if ref_words:
+            scored = []
+            for row in rows:
+                task_words = _reminder_reference_words(row["task_text"])
+                overlap = ref_words & task_words
+                if not overlap:
+                    continue
+                # Prefer covering all of the user's meaningful reference words,
+                # then greater absolute overlap, then the newest matching row.
+                coverage = len(overlap) / max(1, len(ref_words))
+                scored.append((coverage, len(overlap), row))
+            if not scored:
+                raise ValueError("REMINDER_REFERENCE_NOT_FOUND")
+            scored.sort(
+                key=lambda item: (
+                    item[0], item[1],
+                    str(item[2]["created_at_utc"] or ""),
+                    str(item[2]["due_at_utc"] or ""),
+                ),
+                reverse=True,
+            )
+            best = scored[0]
+            tied = [
+                item for item in scored
+                if item[0] == best[0] and item[1] == best[1]
+            ]
+            if len(tied) > 1:
+                top_task = str(best[2]["task_text"] or "").casefold()
+                materially_same = all(
+                    str(item[2]["task_text"] or "").casefold() == top_task
+                    for item in tied
+                )
+                if not materially_same:
+                    raise ValueError("REMINDER_REFERENCE_AMBIGUOUS")
+            return str(best[2]["reminder_id"])
+
+        # Pronoun-only lifecycle commands are safe only when there is exactly
+        # one obvious candidate. For release, that means the actor's current
+        # claim. For reopen, prefer the newest closed reminder.
+        if require_claimed_by_actor:
+            if len(rows) == 1:
+                return str(rows[0]["reminder_id"])
+            raise ValueError("REMINDER_REFERENCE_AMBIGUOUS")
+
+        closed = [row for row in rows if row["status"] in {"COMP", "CANC"}]
+        if closed:
+            newest = closed[0]
+            return str(newest["reminder_id"])
+        if len(rows) == 1:
+            return str(rows[0]["reminder_id"])
+        raise ValueError("REMINDER_REFERENCE_AMBIGUOUS")
+    finally:
+        conn.close()
+
+
+def _queue_family_claim_card(
+    conn,
+    *,
+    reminder_id: str,
+    task: str,
+    due_at_utc: str,
+    timezone_name: str,
+    conversation_id: str,
+    source_message_id: str | None,
+    resurfaced: bool = False,
+) -> str:
+    """Queue one fresh reaction-bindable family claim card."""
+    friendly_due = _friendly_reminder_time(due_at_utc, timezone_name)
+    lead = "Family reminder available again" if resurfaced else "Family reminder"
+    text = (
+        f"{lead}: {task}\n"
+        f"Due: {friendly_due}\n"
+        "React with any emoji to claim it."
+    )
+    outbound_id = str(uuid.uuid4())
+    conn.execute(
+        """INSERT INTO outbound_messages(
+               outbound_id,source_message_id,conversation_id,kind,text_body,
+               context_kind,context_id
+           ) VALUES(?,?,?,'TEXT',?,'REMINDER_SETUP',?)""",
+        (
+            outbound_id, source_message_id, conversation_id, text, reminder_id,
+        ),
+    )
+    return outbound_id
+
+
 def create_reminder(actor: ActorContext, task: str, due_local: str,
                     recurrence_rule: str | None = None, shared: bool = False,
                     recipient: str = "me", destination: str = "dm",
@@ -2037,21 +2185,14 @@ def create_reminder(actor: ActorContext, task: str, due_local: str,
                 and claimable
                 and actor.conversation_type != "GROUP"
             ):
-                friendly_due = _friendly_reminder_time(due_utc, actor.timezone)
-                group_setup = (
-                    f"Family reminder: {task}\n"
-                    f"Due: {friendly_due}\n"
-                    "React with any emoji to claim it."
-                )
-                conn.execute(
-                    """INSERT INTO outbound_messages(
-                           outbound_id,source_message_id,conversation_id,kind,text_body,
-                           context_kind,context_id
-                       ) VALUES(?,?,?,'TEXT',?,'REMINDER_SETUP',?)""",
-                    (
-                        str(uuid.uuid4()), actor.source_message_id,
-                        conversation_id, group_setup, rid,
-                    ),
+                _queue_family_claim_card(
+                    conn,
+                    reminder_id=rid,
+                    task=task,
+                    due_at_utc=due_utc,
+                    timezone_name=actor.timezone,
+                    conversation_id=conversation_id,
+                    source_message_id=actor.source_message_id,
                 )
 
             # When an assignment originates outside the assignee's own DM,
@@ -2137,10 +2278,11 @@ def list_reminders(actor: ActorContext, include_completed: bool = False, limit: 
         conn.close()
 
 
-def update_reminder(actor: ActorContext, reminder_id: str, status: str = "open",
+def update_reminder(actor: ActorContext, reminder_id: str | None, status: str = "open",
                     new_due_local: str | None = None,
                     snooze_minutes: int | None = None,
-                    snooze_until_local: str | None = None) -> dict:
+                    snooze_until_local: str | None = None,
+                    reminder_reference: str | None = None) -> dict:
     status_map = {
         "ack": "ACK", "acknowledged": "ACK", "complete": "COMP", "completed": "COMP",
         "cancel": "CANC", "cancelled": "CANC", "defer": "DEFERRED", "deferred": "DEFERRED",
@@ -2157,12 +2299,19 @@ def update_reminder(actor: ActorContext, reminder_id: str, status: str = "open",
         raise ValueError("DUE is scheduler-owned; use snooze/reschedule/open instead")
     if resolved not in {"OPEN","ACK","DEFERRED","COMP","CANC"}:
         raise ValueError("unsupported reminder status")
+    reminder_id = _resolve_reminder_reference_id(
+        actor,
+        reminder_id,
+        reminder_reference,
+        include_closed=True,
+    )
     marks, spaces = _spaces_sql(actor)
     conn = connect()
     try:
         row = conn.execute(
             f"""SELECT reminder_id,status,due_at_utc,owner_id,task_text,claimable,
-                       claimed_by_user_id,claimed_at_utc
+                       claimed_by_user_id,claimed_at_utc,space_id,conversation_id,
+                       timezone_name
                 FROM reminders
                 WHERE reminder_id=? AND space_id IN ({marks})""",
             [reminder_id] + spaces,
@@ -2230,13 +2379,39 @@ def update_reminder(actor: ActorContext, reminder_id: str, status: str = "open",
                     claim_clear_event, "claim cleared by reminder lifecycle",
                 ),
             )
+        event_type = event_map[resolved]
+        reopened_from_closed = bool(
+            resolved == "OPEN" and previous_state in {"COMP", "CANC"}
+        )
+        reopened_family = bool(
+            reopened_from_closed
+            and int(row["claimable"] or 0) == 1
+            and row["space_id"] == "FAMILY_SHARED"
+            and str(row["conversation_id"] or "").endswith("@g.us")
+        )
+        event_note = (
+            "reopened_from_closed"
+            if reopened_from_closed and not snooze_note
+            else snooze_note
+        )
         _record_reminder_event(
             conn, reminder_id,
-            event_map[resolved],
+            event_type,
             previous_state,
             previous_state if resolved == "ACK" else resolved,
-            previous_due, new_due, snooze_note,
+            previous_due, new_due, event_note,
         )
+        if reopened_family:
+            _queue_family_claim_card(
+                conn,
+                reminder_id=reminder_id,
+                task=row["task_text"],
+                due_at_utc=new_due,
+                timezone_name=row["timezone_name"] or actor.timezone,
+                conversation_id=row["conversation_id"],
+                source_message_id=actor.source_message_id,
+                resurfaced=True,
+            )
         if resolved in {"ACK", "COMP", "CANC"} or snooze_note:
             try:
                 import ha_mobile
@@ -2258,6 +2433,8 @@ def update_reminder(actor: ActorContext, reminder_id: str, status: str = "open",
             "state": previous_state if resolved == "ACK" else resolved,
             "seen": resolved == "ACK",
             "due_at_utc": new_due,
+            "task": row["task_text"],
+            "fresh_family_card": reopened_family,
         }
     finally:
         conn.close()
@@ -3019,15 +3196,27 @@ def claim_reminder_from_reaction(
         conn.close()
 
 
-def release_reminder_claim(actor: ActorContext, reminder_id: str) -> dict:
+def release_reminder_claim(
+    actor: ActorContext,
+    reminder_id: str | None,
+    reminder_reference: str | None = None,
+) -> dict:
     """Release a claim explicitly; deleting the reaction never releases it."""
+    reminder_id = _resolve_reminder_reference_id(
+        actor,
+        reminder_id,
+        reminder_reference,
+        include_closed=False,
+        require_claimed_by_actor=True,
+    )
     marks, spaces = _spaces_sql(actor)
     conn = connect()
     try:
         conn.execute("BEGIN IMMEDIATE")
         row = conn.execute(
             f"""SELECT reminder_id,owner_id,status,claimable,claimed_by_user_id,
-                       follow_up_after_hours
+                       follow_up_after_hours,task_text,due_at_utc,timezone_name,
+                       conversation_id,space_id
                 FROM reminders
                 WHERE reminder_id=? AND space_id IN ({marks})""",
             [reminder_id] + spaces,
@@ -3071,8 +3260,29 @@ def release_reminder_claim(actor: ActorContext, reminder_id: str) -> dict:
                 "explicit release; reaction removal alone never releases",
             ),
         )
+        fresh_family_card = bool(
+            int(row["claimable"] or 0) == 1
+            and row["space_id"] == "FAMILY_SHARED"
+            and str(row["conversation_id"] or "").endswith("@g.us")
+        )
+        if fresh_family_card:
+            _queue_family_claim_card(
+                conn,
+                reminder_id=reminder_id,
+                task=row["task_text"],
+                due_at_utc=row["due_at_utc"],
+                timezone_name=row["timezone_name"] or actor.timezone,
+                conversation_id=row["conversation_id"],
+                source_message_id=actor.source_message_id,
+                resurfaced=True,
+            )
         conn.commit()
-        return {"status": "released", "reminder_id": reminder_id}
+        return {
+            "status": "released",
+            "reminder_id": reminder_id,
+            "task": row["task_text"],
+            "fresh_family_card": fresh_family_card,
+        }
     except Exception:
         conn.rollback()
         raise

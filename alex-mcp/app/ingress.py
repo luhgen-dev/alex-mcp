@@ -1152,6 +1152,33 @@ def _finish_simple_turn(actor, reply: str, **extra) -> dict:
     return {"ok": True, **extra}
 
 
+def _reopen_existing_reminder_command(text: str) -> bool:
+    low = str(text or "").casefold()
+    return bool(
+        re.search(
+            r"\b(?:re[- ]?open|open\s+(?:it|that|this|the\s+reminder)\s+again)\b"
+            r".*\b(?:reminder|remind)\b"
+            r"|\b(?:reminder|remind)\b.*\b(?:re[- ]?open|open\s+again)\b",
+            low,
+        )
+    )
+
+
+def _return_claimed_reminder_to_family_command(text: str) -> bool:
+    low = str(text or "").casefold()
+    return bool(
+        re.search(
+            r"\b(?:release|unclaim)\b.*\breminder\b"
+            r"|\b(?:push|send|put|return)\b.*\breminder\b.*"
+            r"\b(?:back|group|mcp home|family)\b"
+            r"|\breminder\b.*\b(?:back to|into)\b.*\b(?:group|mcp home|family)\b"
+            r"|\b(?:i can'?t|i cannot|i can not|i don'?t think(?: so)? i can)\b"
+            r".*\b(?:claim|handle|take|do)\b.*\b(?:it|this|reminder)?\b",
+            low,
+        )
+    )
+
+
 def process(payload: dict) -> dict:
     required = ("message_id", "conversation_id", "sender_phone")
     if any(not payload.get(k) for k in required):
@@ -1452,6 +1479,78 @@ def process(payload: dict) -> dict:
                 actor,
                 "Okay, I cancelled that reminder request.",
                 reminder_draft_cancelled=True,
+            )
+
+        # Explicit reminder lifecycle controls are deterministic because
+        # they mutate an already-persisted object and must not degrade into a
+        # broad reminder list. Natural task words are resolved conservatively
+        # inside the authenticated actor's ACL.
+        if _reopen_existing_reminder_command(turn["trusted_text"]):
+            try:
+                reopened = services.update_reminder(
+                    actor,
+                    None,
+                    status="open",
+                    reminder_reference=turn["trusted_text"],
+                )
+            except ValueError as exc:
+                code = str(exc)
+                if "AMBIGUOUS" in code:
+                    return _finish_simple_turn(
+                        actor,
+                        "Which reminder do you want me to reopen?",
+                        reminder_lifecycle_clarification=True,
+                    )
+                if "NOT_FOUND" in code:
+                    return _finish_simple_turn(
+                        actor,
+                        "I couldn’t find that reminder to reopen.",
+                        reminder_lifecycle_not_found=True,
+                    )
+                raise
+            task = str(reopened.get("task") or "that reminder")
+            if reopened.get("fresh_family_card"):
+                reply = (
+                    f"I’ve reopened “{task}” and posted a fresh claimable "
+                    "message in MCP Home."
+                )
+            else:
+                reply = f"I’ve reopened “{task}”."
+            return _finish_simple_turn(
+                actor, reply, reminder_reopened=True,
+            )
+
+        if _return_claimed_reminder_to_family_command(turn["trusted_text"]):
+            try:
+                released = services.release_reminder_claim(
+                    actor,
+                    None,
+                    reminder_reference=turn["trusted_text"],
+                )
+            except ValueError as exc:
+                code = str(exc)
+                if "AMBIGUOUS" in code:
+                    return _finish_simple_turn(
+                        actor,
+                        "Which claimed reminder do you want me to put back in MCP Home?",
+                        reminder_lifecycle_clarification=True,
+                    )
+                if "NOT_FOUND" in code:
+                    return _finish_simple_turn(
+                        actor,
+                        "I couldn’t find a claimed reminder of yours to put back in MCP Home.",
+                        reminder_lifecycle_not_found=True,
+                    )
+                raise
+            task = str(released.get("task") or "that reminder")
+            if released.get("status") == "already_unclaimed":
+                reply = f"“{task}” is already available to the family."
+            else:
+                reply = (
+                    f"I’ve put “{task}” back in MCP Home as a fresh claimable reminder."
+                )
+            return _finish_simple_turn(
+                actor, reply, reminder_claim_released=True,
             )
 
         quoted_private_offer = (

@@ -30,7 +30,10 @@ import human_ai_lab
 # one pocket-cash balance prompt); twelve existing packets differ only in the
 # public descriptions of the scoped goal/cash-pool read tools. The deterministic
 # oracle remains a regression check, not an independent model test.
-REVIEWED_CORPUS_FINGERPRINT = "5be066338f5bfe91484cdcf000af5b6cb635818015440e1a474d602669dda87d"
+# 2026-10-05 v0.5.20 reminder-lifecycle recertification: 61 existing public
+# packets changed only through the reviewed reminder tool surface; the
+# deterministic oracle still scores all 388 decisions correctly.
+REVIEWED_CORPUS_FINGERPRINT = "f58aed2b9cec3a9789c76bfe4bbc1c778b17200c451bcc58499e31d39003ac1b"
 
 
 def _low(value: str) -> str:
