@@ -496,7 +496,7 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
     primary capability from the exposure cap.  Block removes a mutation only
     when the wording itself is clearly a read/recall request.
     """
-    low = (text or "").casefold()
+    low = normalize_intent_text(text).casefold()
     force: set[str] = set()
     block: set[str] = set()
 
