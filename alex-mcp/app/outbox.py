@@ -138,8 +138,10 @@ def _control(row, kind: str, emoji: str | None = None) -> bool:
     return _control_result(row, kind, emoji)[0]
 
 
-def _control_outbound_result(row, kind: str) -> tuple[bool, str]:
-    """Pin/unpin a message Alex itself sent, preserving transport detail."""
+def _control_outbound_result(
+    row, kind: str, emoji: str | None = None
+) -> tuple[bool, str]:
+    """Control a message Alex itself sent, preserving transport detail."""
     target = str(row["provider_message_id"] or "") or _whatsapp_message_id(row["outbound_id"])
     if not target:
         return False, "missing outbound target message id"
@@ -149,12 +151,14 @@ def _control_outbound_result(row, kind: str) -> tuple[bool, str]:
         "target_message_id": target,
         "target_from_me": True,
     }
+    if kind == "reaction":
+        payload["emoji"] = emoji or ""
     return _send(payload)
 
 
-def _control_outbound(row, kind: str) -> bool:
+def _control_outbound(row, kind: str, emoji: str | None = None) -> bool:
     """Compatibility wrapper for direct tests/callers."""
-    return _control_outbound_result(row, kind)[0]
+    return _control_outbound_result(row, kind, emoji)[0]
 
 
 def _control_retry_ready(row) -> bool:
@@ -231,7 +235,7 @@ def _attempt_control(conn, row, kind: str, emoji: str | None = None,
     if not _control_retry_ready(row):
         return False
     ok, detail = (
-        _control_outbound_result(row, kind)
+        _control_outbound_result(row, kind, emoji)
         if outbound else _control_result(row, kind, emoji)
     )
     return _record_control_attempt(conn, row, kind, ok, detail)
@@ -327,6 +331,98 @@ def _reconcile_pending_item_markers(conn) -> None:
         else:
             # Also cleans stale markers from transient offer/draft prompts.
             _cleanup_resolved_markers(conn, row)
+
+
+def _ensure_claim_setup_markers(conn, row) -> None:
+    """Mark an unclaimed pre-due family reminder as unresolved in the group."""
+    if (
+        row["delivery_status"] != "SENT"
+        or not row["provider_message_id"]
+    ):
+        return
+
+    now = _now()
+    if not row["job_reacted_at_utc"]:
+        if _attempt_control(conn, row, "reaction", "⏳", outbound=True):
+            conn.execute(
+                """UPDATE outbound_messages
+                   SET job_reacted_at_utc=? WHERE outbound_id=?""",
+                (now, row["outbound_id"]),
+            )
+            conn.commit()
+            row = _joined_row(conn, row["outbound_id"])
+        else:
+            return
+
+    if not row["job_pinned_at_utc"]:
+        if _attempt_control(conn, row, "pin", outbound=True):
+            conn.execute(
+                """UPDATE outbound_messages
+                   SET job_pinned_at_utc=?,job_pin_target='OUTBOUND'
+                   WHERE outbound_id=?""",
+                (now, row["outbound_id"]),
+            )
+            conn.commit()
+
+
+def _cleanup_claim_setup_markers(conn, row) -> None:
+    """Clear the pre-due claim marker once claimed, due, cancelled, or complete."""
+    now = _now()
+    if row["job_reacted_at_utc"] and not row["job_reaction_cleared_at_utc"]:
+        if _attempt_control(conn, row, "reaction", "", outbound=True):
+            conn.execute(
+                """UPDATE outbound_messages
+                   SET job_reaction_cleared_at_utc=? WHERE outbound_id=?""",
+                (now, row["outbound_id"]),
+            )
+            conn.commit()
+            row = _joined_row(conn, row["outbound_id"])
+        else:
+            return
+
+    if row["job_pinned_at_utc"] and not row["job_unpinned_at_utc"]:
+        if _attempt_control(conn, row, "unpin", outbound=True):
+            conn.execute(
+                """UPDATE outbound_messages
+                   SET job_unpinned_at_utc=?,job_unpin_failed_at_utc=NULL
+                   WHERE outbound_id=?""",
+                (now, row["outbound_id"]),
+            )
+            conn.commit()
+
+
+def _reconcile_claim_setup_markers(conn) -> None:
+    """Keep only OPEN, unclaimed family setup cards marked ⏳ + pinned."""
+    rows = conn.execute(
+        """SELECT o.*,r.status AS reminder_status,r.claimable,
+                  r.claimed_by_user_id
+           FROM outbound_messages o
+           JOIN reminders r ON r.reminder_id=o.context_id
+           WHERE o.context_kind='REMINDER_SETUP'
+             AND o.delivery_status='SENT'
+             AND (
+                (r.status='OPEN' AND r.claimable=1
+                 AND r.claimed_by_user_id IS NULL)
+                OR (
+                    (o.job_reacted_at_utc IS NOT NULL
+                     AND o.job_reaction_cleared_at_utc IS NULL)
+                    OR (o.job_pinned_at_utc IS NOT NULL
+                        AND o.job_unpinned_at_utc IS NULL)
+                )
+             )
+           ORDER BY o.created_at_utc"""
+    ).fetchall()
+
+    for row in rows:
+        unresolved_claim = (
+            row["reminder_status"] == "OPEN"
+            and int(row["claimable"] or 0) == 1
+            and not row["claimed_by_user_id"]
+        )
+        if unresolved_claim:
+            _ensure_claim_setup_markers(conn, row)
+        else:
+            _cleanup_claim_setup_markers(conn, row)
 
 
 def _reconcile_reminder_pins(conn) -> None:
@@ -650,6 +746,7 @@ def sweep():
                     )
 
         _reconcile_pending_item_markers(conn)
+        _reconcile_claim_setup_markers(conn)
         _reconcile_reminder_pins(conn)
 
         # Restart reconciliation is exactly that: restart recovery. Normal
