@@ -938,6 +938,43 @@ def _reminder_draft_continuation(
     ):
         return True, latest_question
 
+    # Phase-1 semantic rescue is deliberately narrow: only one already-grounded
+    # reminder draft, only after every proven deterministic continuation rule
+    # above has failed, and only while the latest Alex message is still a
+    # reminder clarification/confirmation. The interpreter receives no IDs or
+    # tools and cannot execute anything; a positive frame merely binds context.
+    grounded_prompt = bool(
+        latest_question
+        and (
+            _reply_is_reminder_clarification(latest_question)
+            or _reply_is_reminder_confirmation_question(latest_question)
+        )
+    )
+    if grounded_prompt and not domain_switch:
+        accumulated = str(
+            pending.get("accumulated_text")
+            or pending.get("original_text")
+            or ""
+        ).strip()
+        frame = brain.interpret_control_intent(
+            actor,
+            control_kind="REMINDER_DRAFT",
+            current_text=value,
+            pending_text=accumulated,
+            latest_question=latest_question,
+            allowed_intents={
+                "ANSWER_PENDING", "CONFIRM_PENDING", "DECLINE_PENDING",
+                "CANCEL_PENDING", "NEW_REQUEST", "UNCLEAR",
+            },
+        )
+        if (
+            str(frame.get("intent") or "")
+            in {"ANSWER_PENDING", "CONFIRM_PENDING"}
+            and float(frame.get("confidence") or 0.0)
+            >= brain.SEMANTIC_GATEWAY_MIN_CONFIDENCE
+        ):
+            return True, latest_question
+
     return False, latest_question
 
 
@@ -1442,9 +1479,22 @@ def process(payload: dict) -> dict:
 
         # A handed-off quoted time/date may itself be the missing answer to the
         # one active reminder draft. Resolve that before generic AI routing.
-        draft_context = _recover_reminder_draft_context(
-            actor, reminder_continuation_text
-        ) if reminder_continuation_text else None
+        # A direct WhatsApp quote is already authoritative context, so do not
+        # spend a semantic call trying to recover some other active draft.
+        may_recover_draft = bool(
+            reminder_continuation_text
+            and (
+                not quoted_context
+                or quoted_context.get("quoted_provenance") == "bridge"
+            )
+        )
+        draft_context = (
+            _recover_reminder_draft_context(actor, reminder_continuation_text)
+            if may_recover_draft else None
+        )
+        recovered_reminder_draft_id = str(
+            (draft_context or {}).get("context_id") or ""
+        )
         if draft_context and (
             not quoted_context
             or quoted_context.get("quoted_provenance") == "bridge"
@@ -1513,9 +1563,22 @@ def process(payload: dict) -> dict:
             pending_item
             and str(pending_item.get("kind") or "").upper() == "REMINDER_DRAFT"
         ):
-            continues, latest_question = _reminder_draft_continuation(
-                actor, pending_item, reminder_continuation_text
-            )
+            if (
+                recovered_reminder_draft_id
+                and str(pending_item.get("item_id") or "")
+                == recovered_reminder_draft_id
+            ):
+                # Recovery above already made the one continuation decision for
+                # this turn. Reuse it so a semantic rescue can never cost two
+                # model calls for the same inbound message.
+                continues = True
+                latest_question = str(
+                    (draft_context or {}).get("quoted_alex_text") or ""
+                ).strip()
+            else:
+                continues, latest_question = _reminder_draft_continuation(
+                    actor, pending_item, reminder_continuation_text
+                )
             if continues:
                 pending_item = db.append_pending_item_text(
                     pending_item["item_id"],
