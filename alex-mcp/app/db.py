@@ -151,6 +151,7 @@ def initialize() -> None:
         _ensure_column(conn, "ai_usage", "model_calls", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(conn, "media_objects", "transcript_meta_json", "TEXT")
         _ensure_column(conn, "pending_items", "accumulated_text", "TEXT")
+        _ensure_column(conn, "pending_items", "routing_json", "TEXT")
         # v0.5.13 reminder drafts carry the user's trusted clarification
         # fragments as one durable request. Backfill existing drafts from their
         # original inbound text without touching other pending-item kinds.
@@ -921,14 +922,19 @@ def create_pending_item(actor: ActorContext, kind: str, media_id: str | None = N
             ).strip()
             if item_kind == "REMINDER_DRAFT" else None
         )
+        routing_json = (
+            str(getattr(actor, "reminder_routing_json", "") or "").strip() or None
+            if item_kind == "REMINDER_DRAFT" else None
+        )
         conn.execute(
             """INSERT INTO pending_items(
                    item_id,kind,owner_id,conversation_id,source_message_id,media_id,
-                   note,accumulated_text
-               ) VALUES(?,?,?,?,?,?,?,?)""",
+                   note,accumulated_text,routing_json
+               ) VALUES(?,?,?,?,?,?,?,?,?)""",
             (
                 item_id, item_kind, actor.user_id, actor.conversation_id,
                 actor.source_message_id, media_id, note, accumulated_text,
+                routing_json,
             ),
         )
         conn.commit()
