@@ -7875,5 +7875,191 @@ class AlexCoreTests(unittest.TestCase):
         self.assertEqual(setup_count, 1)
 
 
+    def test_v0519_unclaimed_family_setup_gets_hourglass_and_pin(self):
+        group_id = "120363519519@g.us"
+        with open(os.path.join(TEST_DIR, "family_group.json"), "w", encoding="utf-8") as handle:
+            handle.write('{"group_jid":"%s"}' % group_id)
+
+        self.claim(
+            "v0519-create", "+60111111111",
+            "Put a reminder in MCP Home for us to bring in the laundry today at 6pm",
+        )
+        creator = with_action_key(
+            replace(
+                self.actor("v0519-create", "+60111111111"),
+                trusted_text=(
+                    "Put a reminder in MCP Home for us to bring in the laundry "
+                    "today at 6pm"
+                ),
+            ),
+            "v0519-create-action",
+        )
+        with patch.object(
+            runtime_clock, "now_utc",
+            return_value=datetime(2026, 10, 5, 4, 20, tzinfo=timezone.utc),
+        ):
+            reminder = services.create_reminder(
+                creator,
+                "bring in the laundry",
+                "2026-10-05T18:00:00+08:00",
+                recipient="both",
+                destination="group",
+            )
+
+        conn = db.connect()
+        try:
+            setup = conn.execute(
+                """SELECT * FROM outbound_messages
+                   WHERE context_kind='REMINDER_SETUP' AND context_id=?""",
+                (reminder["reminder_id"],),
+            ).fetchone()
+            self.assertIsNotNone(setup)
+            conn.execute(
+                """UPDATE outbound_messages
+                   SET provider_message_id='wa-v0519-setup',
+                       delivery_status='SENT',
+                       delivered_at_utc='2026-10-05T04:21:00+00:00'
+                   WHERE outbound_id=?""",
+                (setup["outbound_id"],),
+            )
+            conn.commit()
+
+            controls = []
+            with patch.object(
+                outbox, "_send",
+                side_effect=lambda payload: (
+                    controls.append(dict(payload)) or True,
+                    "{}",
+                ),
+            ):
+                outbox._reconcile_claim_setup_markers(conn)
+
+            marked = conn.execute(
+                """SELECT job_reacted_at_utc,job_reaction_cleared_at_utc,
+                          job_pinned_at_utc,job_unpinned_at_utc,job_pin_target
+                   FROM outbound_messages WHERE outbound_id=?""",
+                (setup["outbound_id"],),
+            ).fetchone()
+        finally:
+            conn.close()
+
+        self.assertEqual([x["kind"] for x in controls], ["reaction", "pin"])
+        self.assertEqual(controls[0]["emoji"], "⏳")
+        self.assertTrue(controls[0]["target_from_me"])
+        self.assertTrue(controls[1]["target_from_me"])
+        self.assertEqual(controls[0]["target_message_id"], "wa-v0519-setup")
+        self.assertEqual(controls[1]["target_message_id"], "wa-v0519-setup")
+        self.assertIsNotNone(marked["job_reacted_at_utc"])
+        self.assertIsNone(marked["job_reaction_cleared_at_utc"])
+        self.assertIsNotNone(marked["job_pinned_at_utc"])
+        self.assertIsNone(marked["job_unpinned_at_utc"])
+        self.assertEqual(marked["job_pin_target"], "OUTBOUND")
+
+    def test_v0519_claim_clears_setup_hourglass_and_unpins(self):
+        group_id = "120363529529@g.us"
+        with open(os.path.join(TEST_DIR, "family_group.json"), "w", encoding="utf-8") as handle:
+            handle.write('{"group_jid":"%s"}' % group_id)
+
+        self.claim(
+            "v0519-claim-create", "+60111111111",
+            "Put a reminder in MCP Home for us to shut the gate today at 6pm",
+        )
+        creator = with_action_key(
+            replace(
+                self.actor("v0519-claim-create", "+60111111111"),
+                trusted_text=(
+                    "Put a reminder in MCP Home for us to shut the gate "
+                    "today at 6pm"
+                ),
+            ),
+            "v0519-claim-action",
+        )
+        with patch.object(
+            runtime_clock, "now_utc",
+            return_value=datetime(2026, 10, 5, 4, 20, tzinfo=timezone.utc),
+        ):
+            reminder = services.create_reminder(
+                creator,
+                "shut the gate",
+                "2026-10-05T18:00:00+08:00",
+                recipient="both",
+                destination="group",
+            )
+
+        conn = db.connect()
+        try:
+            setup = conn.execute(
+                """SELECT * FROM outbound_messages
+                   WHERE context_kind='REMINDER_SETUP' AND context_id=?""",
+                (reminder["reminder_id"],),
+            ).fetchone()
+            conn.execute(
+                """UPDATE outbound_messages
+                   SET provider_message_id='wa-v0519-claim-setup',
+                       delivery_status='SENT',
+                       delivered_at_utc='2026-10-05T04:21:00+00:00'
+                   WHERE outbound_id=?""",
+                (setup["outbound_id"],),
+            )
+            conn.commit()
+            with patch.object(outbox, "_send", return_value=(True, "{}")):
+                outbox._reconcile_claim_setup_markers(conn)
+        finally:
+            conn.close()
+
+        with patch.object(
+            runtime_clock, "now_utc",
+            return_value=datetime(2026, 10, 5, 4, 22, tzinfo=timezone.utc),
+        ):
+            claimed = ingress.process({
+                "message_id": "v0519-claim-reaction",
+                "provider": "WHATSAPP",
+                "conversation_id": group_id,
+                "conversation_type": "GROUP",
+                "sender_phone": "+60111111111",
+                "event_kind": "REACTION",
+                "reaction_target_message_id": "wa-v0519-claim-setup",
+                "reaction_text": "👍",
+            })
+        self.assertTrue(claimed["ok"])
+        self.assertEqual(claimed["reaction"]["status"], "claimed")
+
+        controls = []
+        conn = db.connect()
+        try:
+            with patch.object(
+                outbox, "_send",
+                side_effect=lambda payload: (
+                    controls.append(dict(payload)) or True,
+                    "{}",
+                ),
+            ):
+                outbox._reconcile_claim_setup_markers(conn)
+            final = conn.execute(
+                """SELECT job_reacted_at_utc,job_reaction_cleared_at_utc,
+                          job_pinned_at_utc,job_unpinned_at_utc
+                   FROM outbound_messages WHERE outbound_id=?""",
+                (setup["outbound_id"],),
+            ).fetchone()
+            state = conn.execute(
+                """SELECT claimed_by_user_id,status FROM reminders
+                   WHERE reminder_id=?""",
+                (reminder["reminder_id"],),
+            ).fetchone()
+        finally:
+            conn.close()
+
+        self.assertEqual([x["kind"] for x in controls], ["reaction", "unpin"])
+        self.assertEqual(controls[0]["emoji"], "")
+        self.assertTrue(controls[0]["target_from_me"])
+        self.assertTrue(controls[1]["target_from_me"])
+        self.assertEqual(state["claimed_by_user_id"], "USR_HUSBAND")
+        self.assertEqual(state["status"], "OPEN")
+        self.assertIsNotNone(final["job_reacted_at_utc"])
+        self.assertIsNotNone(final["job_reaction_cleared_at_utc"])
+        self.assertIsNotNone(final["job_pinned_at_utc"])
+        self.assertIsNotNone(final["job_unpinned_at_utc"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
