@@ -2606,29 +2606,51 @@ def interpret_control_intent(
             )
             frame["provider"] = route["provider"]
             frame["model"] = route["model"]
-            _record_usage_buckets(actor.source_message_id, usage_by_route)
-            try:
-                _audit(
-                    actor,
-                    "_semantic_gateway",
-                    {
-                        "control_kind": str(control_kind)[:64],
-                        "allowed_intents": sorted(allowed),
-                    },
-                    {
-                        "intent": frame["intent"],
-                        "confidence": frame["confidence"],
-                        "status": frame["status"],
-                        "provider": route["provider"],
-                        "model": route["model"],
-                    },
-                    True,
-                    latency_ms,
-                    "semantic:" + str(actor.source_message_id),
-                )
-            except Exception:
-                pass
-            return frame
+
+            # A cheap semantic route is allowed to say "unclear", but that must
+            # not become the terminal answer while a stronger already-configured
+            # route is available. This is still bounded: each configured route is
+            # tried at most once, only for this tiny no-tools classification call.
+            frame_usable = (
+                frame.get("status") == "ok"
+                and frame.get("intent") != "UNCLEAR"
+                and float(frame.get("confidence") or 0.0)
+                    >= SEMANTIC_GATEWAY_MIN_CONFIDENCE
+            )
+            if frame_usable:
+                _record_usage_buckets(actor.source_message_id, usage_by_route)
+                try:
+                    _audit(
+                        actor,
+                        "_semantic_gateway",
+                        {
+                            "control_kind": str(control_kind)[:64],
+                            "allowed_intents": sorted(allowed),
+                        },
+                        {
+                            "intent": frame["intent"],
+                            "confidence": frame["confidence"],
+                            "status": frame["status"],
+                            "provider": route["provider"],
+                            "model": route["model"],
+                        },
+                        True,
+                        latency_ms,
+                        "semantic:" + str(actor.source_message_id),
+                    )
+                except Exception:
+                    pass
+                return frame
+
+            failures.append({
+                "provider": route["provider"],
+                "model": route["model"],
+                "category": "semantic_unresolved",
+                "status": frame.get("status"),
+                "intent": frame.get("intent"),
+                "confidence": frame.get("confidence"),
+            })
+            route_index += 1
         except Exception as exc:
             info = classify_runtime_error(exc)
             failures.append({
@@ -3290,8 +3312,24 @@ def _tool_evidence_fallback(tool_evidence: list[dict]) -> str:
 
 async def respond(actor: ActorContext, user_text: str, media_context: list[str] | None = None,
                   vision_parts: list[dict] | None = None,
-                  quoted_context: dict | None = None) -> tuple[str, list[dict]]:
+                  quoted_context: dict | None = None,
+                  semantic_user_text: str | None = None) -> tuple[str, list[dict]]:
     history_user = _history_user_text(actor, user_text, media_context, vision_parts)
+
+    # A semantic reminder interpretation may change only what the model sees as
+    # the CURRENT date/time answer. The raw user-authored text remains the
+    # history/provenance and still drives all deterministic authorization,
+    # routing, privacy and tool-selection gates.
+    semantic_current = str(semantic_user_text or "").strip()[:240]
+    pending_ref = (quoted_context or {}).get("pending_item")
+    semantic_matches_actor = (
+        semantic_current
+        and semantic_current
+            == str(getattr(actor, "reminder_semantic_text", "") or "").strip()[:240]
+        and isinstance(pending_ref, dict)
+        and str(pending_ref.get("kind") or "").upper() == "REMINDER_DRAFT"
+    )
+    model_user_text = semantic_current if semantic_matches_actor else user_text
     quoted_authorized = ""
     if quoted_context and quoted_context.get("group_mention_authorized"):
         quoted_authorized = str(
@@ -3427,7 +3465,7 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
 
     messages: list[dict] = [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "system", "content": _runtime_context(actor, user_text)},
+        {"role": "system", "content": _runtime_context(actor, model_user_text)},
     ]
     history_limit = _history_turn_limit(user_text, settings.context_turns, quoted_context)
     trace["history_turns"] = history_limit
@@ -3454,7 +3492,7 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
     if trusted_quote:
         messages.append({"role": "system", "content": trusted_quote})
 
-    current = (user_text or "").strip()
+    current = (model_user_text or "").strip()
     if media_context:
         suffix = "\n\n".join(x for x in media_context if x)
         current = (current + "\n\n" + suffix).strip()
