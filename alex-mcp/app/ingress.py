@@ -1521,11 +1521,20 @@ def process(payload: dict) -> dict:
             )
 
         if _return_claimed_reminder_to_family_command(turn["trusted_text"]):
+            quoted_claim_reminder_id = (
+                str(quoted_context.get("context_id") or "")
+                if quoted_context
+                and quoted_context.get("context_kind") == "REMINDER_CLAIM_CONFIRMED"
+                else ""
+            )
             try:
                 released = services.release_reminder_claim(
                     actor,
-                    None,
-                    reminder_reference=turn["trusted_text"],
+                    quoted_claim_reminder_id or None,
+                    reminder_reference=(
+                        None if quoted_claim_reminder_id
+                        else turn["trusted_text"]
+                    ),
                 )
             except ValueError as exc:
                 code = str(exc)
