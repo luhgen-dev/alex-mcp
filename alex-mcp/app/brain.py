@@ -20,6 +20,7 @@ from db import add_turn, connect, recent_turns, record_usage, current_month_ai_c
 from mcp_server import mcp
 import phase2_intent
 import scope_policy
+from text_normalization import normalize_intent_text
 
 SYSTEM_PROMPT = """You are Alex, one household assistant.
 
@@ -272,7 +273,7 @@ CORE_READ_FALLBACK = (
 
 
 def _tool_priority(name: str, text: str, has_media: bool) -> int:
-    low = (text or "").casefold()
+    low = normalize_intent_text(text).casefold()
     score = 10
 
     # Strong direct-action/read signals.
@@ -1108,7 +1109,7 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
 
 
 def _select_tool_names(user_text: str, media_context: list[str] | None = None) -> set[str]:
-    text = (user_text or "").strip()
+    text = normalize_intent_text(user_text).strip()
     low = text.casefold()
     selected: set[str] = set()
     has_media = bool(media_context)
@@ -1393,7 +1394,7 @@ def _trusted_mutation_requested(text: str) -> bool:
       not reminder deletion, while "don't worry, add milk" still works.
     Hypothetical/explanatory requests never grant discovery write permission.
     """
-    value = (text or "").strip()
+    value = normalize_intent_text(text).strip()
     if not value:
         return False
     if _implicit_emoji_memory_save(value):
@@ -1433,11 +1434,11 @@ async def _discover_tool_specs(
     when trusted user-authored context still contains a positive action after
     scoped negations/hypotheticals are removed.
     """
-    trusted_basis = " ".join(
+    trusted_basis = normalize_intent_text(" ".join(
         part.strip()
         for part in (original_user_text or "", trusted_context_text or "")
         if str(part or "").strip()
-    ).strip() or (original_user_text or "")
+    ).strip() or (original_user_text or ""))
     allow_mutation = _trusted_mutation_requested(trusted_basis)
 
     # Re-apply the owner-authored block rules from the ORIGINAL trusted text.
@@ -1592,8 +1593,8 @@ def _contextual_tool_hints(user_text: str, prior_user_text: str | None) -> tuple
     if not prior_user_text:
         return set(), set()
 
-    current = (user_text or "").casefold()
-    previous = (prior_user_text or "").casefold()
+    current = normalize_intent_text(user_text).casefold()
+    previous = normalize_intent_text(prior_user_text).casefold()
     prior_tools = _select_tool_names(prior_user_text)
     reminder_time_completion = bool(
         "create_reminder" in prior_tools
@@ -2188,6 +2189,21 @@ def _quoted_context_message(quoted_context: dict | None) -> str | None:
                     "Durable reminder request accumulated only from the user's "
                     "trusted turns: " + accumulated[:2000]
                 )
+            routing_raw = str(pending_item.get("routing_json") or "").strip()
+            if routing_raw:
+                try:
+                    routing = json.loads(routing_raw)
+                except (TypeError, json.JSONDecodeError):
+                    routing = None
+                if isinstance(routing, dict):
+                    parts.append(
+                        "Deterministic reminder routing carried by this draft: "
+                        + json.dumps(
+                            routing, ensure_ascii=False, separators=(",", ":")
+                        )
+                        + ". Preserve it unless the CURRENT typed turn explicitly "
+                        "changes the assignee or destination."
+                    )
             parts.append(
                 "This is one unresolved reminder conversation. Interpret the "
                 "current natural reply in the context of Alex's latest question "
@@ -2640,7 +2656,7 @@ _SUCCESS_NEGATION_RE = re.compile(
 _NON_COMMITTED_STATUSES = {
     "clarification_required", "still_needs_information", "not_pending",
     "not_found", "no_match", "refused", "failed", "error",
-    "requested_unconfirmed", "unsupported", "needs_clarification",
+    "requested_unconfirmed", "unsupported", "needs_clarification", "no_change",
 }
 
 
