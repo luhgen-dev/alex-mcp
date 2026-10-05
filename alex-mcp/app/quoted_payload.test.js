@@ -62,4 +62,18 @@ const ephemeral = quotedHandoffFromContext({
 assert.equal(ephemeral.quoted_type, 'text');
 assert.equal(ephemeral.quoted_text, 'Check the parcel later');
 
+
+// Realistic claimant-DM swipe reply. The enclosing WAMessage may arrive on an
+// @lid chat; contextInfo still carries Alex's stanza id and quoted text.
+const claimDm = quotedHandoffFromContext({
+  stanzaId: 'ALEXCLAIMCONFIRM',
+  quotedMessage: {
+    extendedTextMessage: {
+      text: 'Got it — you’ve claimed “check the back gate”. I’ll follow up with you privately from here.',
+    },
+  },
+});
+assert.equal(claimDm.quoted_type, 'text');
+assert.match(claimDm.quoted_text, /check the back gate/);
+
 console.log('WhatsApp quoted-context payload contract OK');
