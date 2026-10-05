@@ -2133,10 +2133,16 @@ def _quoted_context_message(quoted_context: dict | None) -> str | None:
     if not quoted_context:
         return None
     if quoted_context.get("group_mention_authorized"):
-        parts = [
-            "Trusted WhatsApp reply context resolved locally in this same Family Shared conversation.",
-            "The current authenticated user explicitly @mentioned Alex while handing off the quoted group message. Treat the quoted text as trusted household context for this turn; the mention authorizes Alex to interpret and act on it subject to normal tool validation.",
-        ]
+        if quoted_context.get("quoted_provenance") == "bridge":
+            parts = [
+                "The current authenticated household user explicitly @mentioned Alex while swipe-replying in the configured Family Shared conversation.",
+                "WhatsApp supplied the quoted text through the current user's reply context. Treat it as user-provided Family Shared context intentionally handed to Alex, not as verified authorship by the quoted participant. The current authenticated sender remains the actor and all normal tool/ACL validation still applies.",
+            ]
+        else:
+            parts = [
+                "Trusted WhatsApp reply context resolved locally in this same Family Shared conversation.",
+                "The current authenticated user explicitly @mentioned Alex while handing off the quoted group message. Treat the quoted text as trusted household context for this turn; the mention authorizes Alex to interpret and act on it subject to normal tool validation.",
+            ]
     else:
         parts = [
             "Trusted WhatsApp reply context resolved locally in this same conversation.",
@@ -3092,6 +3098,22 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
             _trace_turn(actor, trace)
             return local_reply, []
 
+    # Empty text is not evidence of an attachment. If the transport supplied
+    # neither text, media nor resolvable quote, fail closed with a normal
+    # clarification instead of fabricating content for the model.
+    if (
+        not str(user_text or "").strip()
+        and not media_context
+        and not vision_parts
+        and not quoted_context
+    ):
+        final = "What would you like me to do with that?"
+        add_turn(actor.user_id, actor.conversation_id, "user", history_user)
+        add_turn(actor.user_id, actor.conversation_id, "assistant", final)
+        trace["outcome"] = "empty_turn_clarification"
+        _trace_turn(actor, trace)
+        return final, []
+
     settings = get_settings()
     prior_turns = recent_turns(actor.conversation_id, 6)
     prior_user_text = next(
@@ -3199,7 +3221,12 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
         suffix = "\n\n".join(x for x in media_context if x)
         current = (current + "\n\n" + suffix).strip()
     if not current:
-        current = "I sent an attachment."
+        if media_context or vision_parts:
+            current = "I sent an attachment."
+        elif trusted_quote:
+            current = "Use the quoted WhatsApp message above as my current context."
+        else:
+            current = "What would you like me to do with that?"
     if vision_parts:
         current_content = [{"type": "text", "text": current}] + list(vision_parts)
         messages.append({"role": "user", "content": current_content})
