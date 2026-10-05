@@ -43,6 +43,11 @@ class ActorContext:
     # JSON-encoded deterministic reminder audience/destination carried across
     # REMINDER_DRAFT clarification turns. Empty outside a routed draft.
     reminder_routing_json: str = ""
+    # Bounded semantic interpretation of the current reminder clarification.
+    # This is model-derived and must never be used for ACL, privacy, recipient,
+    # destination or object identity. Reminder services may use it only as a
+    # date/time parsing hint after ingress has grounded the pending object.
+    reminder_semantic_text: str = ""
 
 
 _current_actor: ContextVar[ActorContext | None] = ContextVar("alex_actor", default=None)
