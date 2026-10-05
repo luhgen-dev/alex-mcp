@@ -958,12 +958,14 @@ def _reminder_draft_continuation(
         and "?" not in value
         and not domain_switch
     ):
-        frame = _semantic_reminder_continuation(
-            actor, pending, value, latest_question
-        )
-        semantic_hint = str(
-            (frame or {}).get("normalized_reply") or ""
-        ).strip()[:240]
+        semantic_hint = ""
+        if not services.reminder_time_text_is_deterministic(value):
+            frame = _semantic_reminder_continuation(
+                actor, pending, value, latest_question
+            )
+            semantic_hint = str(
+                (frame or {}).get("normalized_reply") or ""
+            ).strip()[:240]
         return True, latest_question, semantic_hint
 
     answer = _yes_no_answer(value)
