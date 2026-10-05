@@ -325,12 +325,29 @@ _DAY_ONLY_RE = re.compile(r"(?i)\b(\d{1,2})(?:st|nd|rd|th)\b")
 
 
 def _reminder_intent_text(actor: ActorContext) -> str:
-    """Trusted text used only for reminder date/time interpretation."""
+    """User-authored reminder text used for scope, routing and identity checks."""
     return str(
         getattr(actor, "reminder_context_text", "")
         or getattr(actor, "trusted_text", "")
         or ""
     ).strip()
+
+
+def _reminder_time_intent_text(actor: ActorContext) -> str:
+    """Time-only interpretation surface for one grounded reminder draft.
+
+    The semantic hint is model-derived, so it is deliberately isolated from
+    privacy, scope, recipient, destination and object resolution. It can only
+    help the existing deterministic date/time parser understand the current
+    clarification; all normal due-time validation still runs afterward.
+    """
+    trusted = _reminder_intent_text(actor)
+    semantic = str(
+        getattr(actor, "reminder_semantic_text", "") or ""
+    ).strip()[:240]
+    if not semantic:
+        return trusted
+    return "\n".join(part for part in (trusted, semantic) if part)
 
 
 def _explicit_calendar_date(text: str, now_local: datetime,
@@ -383,7 +400,7 @@ def _explicit_calendar_date(text: str, now_local: datetime,
 
 def _deterministic_reminder_due_from_text(actor: ActorContext) -> str | None:
     """Resolve unambiguous user-authored reminder slots without model date math."""
-    trusted = _reminder_intent_text(actor)
+    trusted = _reminder_time_intent_text(actor)
     if not trusted:
         return None
 
@@ -507,7 +524,7 @@ def _resolve_reminder_due(actor: ActorContext, due_local: str | None) -> str:
 
 def _validate_reminder_time_intent(actor: ActorContext, due_utc: str) -> None:
     """Reject reminder timestamps that contradict accumulated trusted user intent."""
-    trusted = _reminder_intent_text(actor)
+    trusted = _reminder_time_intent_text(actor)
     if trusted and not (
         _user_stated_time(trusted)
         or _RELATIVE_REMINDER_TIME_RE.search(trusted)
