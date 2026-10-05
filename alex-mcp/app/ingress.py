@@ -1326,9 +1326,38 @@ def process(payload: dict) -> dict:
             db.finish_inbound(actor.source_message_id, reply)
             return {"ok": True, "voice_pending": True, "pending_item_id": pending["item_id"]}
 
-        quoted_context = db.resolve_quoted_context(
-            actor.conversation_id, payload.get("quoted_message_id"), actor.phone
+        explicit_group_quote_handoff = bool(
+            actor.conversation_type == "GROUP"
+            and payload.get("alex_mentioned")
+            and payload.get("quoted_message_id")
         )
+        quoted_context = db.resolve_quoted_context(
+            actor.conversation_id,
+            payload.get("quoted_message_id"),
+            actor.phone,
+            allow_group_peer_quote=explicit_group_quote_handoff,
+        )
+        if quoted_context and explicit_group_quote_handoff:
+            quoted_context = dict(quoted_context)
+            quoted_context["group_mention_authorized"] = True
+            quoted_text = str(
+                quoted_context.get("quoted_user_text") or ""
+            ).strip()
+            if quoted_text and _is_reminder_request(quoted_text):
+                # The current @mention authorizes Alex to act on this
+                # already-visible Family Shared quote.  Keep the current typed
+                # text separate, but give reminder validation the exact trusted
+                # quoted request plus any additional slot words in this turn.
+                reminder_basis = "\n".join(
+                    part for part in (
+                        quoted_text,
+                        str(turn["trusted_text"] or "").strip(),
+                    ) if part
+                )
+                actor = replace(
+                    actor,
+                    reminder_context_text=reminder_basis,
+                )
         if not quoted_context:
             quoted_context = _recover_reminder_draft_context(
                 actor, turn["trusted_text"]
