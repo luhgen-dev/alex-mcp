@@ -1,3 +1,4 @@
+import asyncio
 import json
 import unittest
 from dataclasses import replace
@@ -168,6 +169,126 @@ class SemanticGatewayTests(unittest.TestCase):
             brain.SEMANTIC_GATEWAY_QUESTION_MAX_CHARS,
         )
         self.assertNotIn("item_id", captured["messages"][1]["content"])
+
+    def test_semantic_interpreter_escalates_once_after_unresolved_saver_frame(self):
+        actor = self._claim_actor("sg-provider-fallback", "in abt 40 mins")
+        seen_models = []
+
+        class FakeCompletions:
+            def create(self, **kwargs):
+                seen_models.append(kwargs["model"])
+                if kwargs["model"] == "gemini-3.1-flash-lite":
+                    content = json.dumps({
+                        "intent": "UNCLEAR",
+                        "confidence": 0.41,
+                        "normalized_reply": "",
+                    })
+                else:
+                    content = json.dumps({
+                        "intent": "ANSWER_PENDING",
+                        "confidence": 0.98,
+                        "normalized_reply": "in 40 minutes",
+                    })
+                return SimpleNamespace(
+                    choices=[SimpleNamespace(
+                        message=SimpleNamespace(content=content)
+                    )],
+                    usage=None,
+                )
+
+        fake_client = SimpleNamespace(
+            chat=SimpleNamespace(completions=FakeCompletions())
+        )
+        routes = [
+            {
+                "provider": "gemini",
+                "model": "gemini-3.1-flash-lite",
+                "reasoning_effort": "low",
+                "role": "primary_saver",
+            },
+            {
+                "provider": "gemini",
+                "model": "gemini-3.8-flash",
+                "reasoning_effort": "low",
+                "role": "quality_fallback",
+            },
+        ]
+        with patch.object(brain, "_provider_routes", return_value=routes), \
+             patch.object(brain, "_client_for", return_value=fake_client), \
+             patch.object(brain, "_record_usage_buckets"), \
+             patch.object(brain, "_audit"):
+            frame = brain.interpret_control_intent(
+                actor,
+                control_kind="REMINDER_DRAFT",
+                current_text="in abt 40 mins",
+                pending_text="Remind me to check the mailbox",
+                latest_question="What time should I remind you?",
+                allowed_intents={"ANSWER_PENDING", "UNCLEAR"},
+            )
+
+        self.assertEqual(
+            seen_models,
+            ["gemini-3.1-flash-lite", "gemini-3.8-flash"],
+        )
+        self.assertEqual(frame["intent"], "ANSWER_PENDING")
+        self.assertEqual(frame["normalized_reply"], "in 40 minutes")
+
+    def test_brain_models_normalized_time_but_history_keeps_raw_user_words(self):
+        _, draft = self._make_draft(
+            source_id="sg-model-source",
+            original="Remind me to check the mailbox",
+            question="What time should I remind you?",
+        )
+        current = self._claim_actor("sg-model-current", "in abt 40 mins")
+        current = replace(
+            current,
+            reminder_context_text=(
+                "Remind me to check the mailbox\nin abt 40 mins"
+            ),
+            reminder_semantic_text="in 40 minutes",
+        )
+        quoted = ingress._reminder_draft_context(draft)
+        quoted["semantic_reminder_text"] = "in 40 minutes"
+        captured = {}
+
+        class FakeCompletions:
+            def create(self, **kwargs):
+                captured.update(kwargs)
+                return SimpleNamespace(
+                    choices=[SimpleNamespace(
+                        message=SimpleNamespace(
+                            content="I understood the reminder time.",
+                            tool_calls=None,
+                        )
+                    )],
+                    usage=None,
+                )
+
+        fake_client = SimpleNamespace(
+            chat=SimpleNamespace(completions=FakeCompletions())
+        )
+        routes = [{
+            "provider": "gemini",
+            "model": "gemini-3.1-flash-lite",
+            "reasoning_effort": "low",
+            "role": "primary_saver",
+        }]
+        with patch.object(brain, "_provider_routes", return_value=routes), \
+             patch.object(brain, "_client_for", return_value=fake_client), \
+             patch.object(brain, "_tool_specs", return_value=[]), \
+             patch.object(brain, "_record_usage_buckets"), \
+             patch.object(brain, "_trace_turn"):
+            asyncio.run(brain.respond(
+                current,
+                "in abt 40 mins",
+                quoted_context=quoted,
+                semantic_user_text="in 40 minutes",
+            ))
+
+        self.assertEqual(captured["messages"][-1]["content"], "in 40 minutes")
+        history = db.recent_turns(current.conversation_id, 2)
+        self.assertEqual(history[-2]["role"], "user")
+        self.assertEqual(history[-2]["content"], "in abt 40 mins")
 
     def test_proven_clean_continuation_stays_zero_token(self):
         _, draft = self._make_draft()
@@ -370,8 +491,11 @@ class SemanticGatewayTests(unittest.TestCase):
             media_context=None,
             vision_parts=None,
             quoted_context=None,
+            semantic_user_text=None,
         ):
             seen["semantic"] = actor.reminder_semantic_text
+            seen["semantic_user_text"] = semantic_user_text
+            seen["raw_user_text"] = user_text
             seen["context"] = quoted_context
             return (
                 "Should I set that reminder for about 40 minutes from now?",
@@ -401,6 +525,8 @@ class SemanticGatewayTests(unittest.TestCase):
 
         self.assertEqual(semantic_mock.call_count, 1)
         self.assertEqual(seen["semantic"], "in 40 minutes")
+        self.assertEqual(seen["semantic_user_text"], "in 40 minutes")
+        self.assertEqual(seen["raw_user_text"], "roughly forty minits from now")
         self.assertEqual(
             seen["context"]["pending_item"]["item_id"],
             draft["item_id"],
@@ -459,11 +585,14 @@ class SemanticGatewayTests(unittest.TestCase):
             media_context=None,
             vision_parts=None,
             quoted_context=None,
+            semantic_user_text=None,
         ):
             self.assertEqual(
                 actor.reminder_semantic_text,
                 "in 40 minutes",
             )
+            self.assertEqual(semantic_user_text, "in 40 minutes")
+            self.assertEqual(user_text, "in abt 40 mins")
             services.create_reminder(
                 with_action_key(actor, "sg-create-action"),
                 "check the mailbox",
@@ -515,6 +644,121 @@ class SemanticGatewayTests(unittest.TestCase):
         self.assertEqual(
             datetime.fromisoformat(reminder["due_at_utc"]),
             datetime(2026, 10, 6, 0, 40, tzinfo=timezone.utc),
+        )
+
+
+    def test_live_regression_swipe_reply_typo_is_translated_before_main_brain(self):
+        first = self._payload(
+            "sg-live-quote-first",
+            "Remind me to check the mailbox",
+        )
+        with patch.object(
+            brain,
+            "respond",
+            return_value=("What time should I remind you?", []),
+        ):
+            self.assertTrue(ingress.process(first)["ok"])
+
+        conn = db.connect()
+        try:
+            draft = conn.execute(
+                """SELECT * FROM pending_items
+                   WHERE source_message_id='sg-live-quote-first'
+                     AND kind='REMINDER_DRAFT'"""
+            ).fetchone()
+            outbound = conn.execute(
+                """SELECT * FROM outbound_messages
+                   WHERE context_kind='PENDING_ITEM' AND context_id=?
+                   ORDER BY rowid DESC LIMIT 1""",
+                (draft["item_id"],),
+            ).fetchone()
+            conn.execute(
+                """UPDATE outbound_messages
+                   SET provider_message_id='wa-sg-live-time-question',
+                       delivery_status='SENT',delivered_at_utc=CURRENT_TIMESTAMP
+                   WHERE outbound_id=?""",
+                (outbound["outbound_id"],),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        seen = {}
+
+        async def create_from_translated_quote(
+            actor,
+            user_text,
+            media_context=None,
+            vision_parts=None,
+            quoted_context=None,
+            semantic_user_text=None,
+        ):
+            seen["raw"] = user_text
+            seen["semantic"] = semantic_user_text
+            seen["trusted"] = actor.trusted_text
+            seen["context"] = quoted_context
+            services.create_reminder(
+                with_action_key(actor, "sg-live-quote-action"),
+                "check the mailbox",
+                "2026-10-06T03:19:00+08:00",
+            )
+            return ("I've set a reminder to check the mailbox in 40 minutes.", [])
+
+        second = self._payload(
+            "sg-live-quote-second",
+            "in abt 40 mins",
+        )
+        second["quoted_message_id"] = "wa-sg-live-time-question"
+        frozen = datetime(2026, 10, 5, 18, 39, tzinfo=timezone.utc)
+        with patch.object(
+            brain,
+            "interpret_control_intent",
+            return_value={
+                "intent": "ANSWER_PENDING",
+                "confidence": 0.99,
+                "normalized_reply": "in 40 minutes",
+                "status": "ok",
+            },
+        ) as semantic_mock, patch.object(
+            brain,
+            "respond",
+            new=create_from_translated_quote,
+        ), patch.object(
+            runtime_clock,
+            "now_utc",
+            return_value=frozen,
+        ):
+            result = ingress.process(second)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(semantic_mock.call_count, 1)
+        self.assertEqual(seen["raw"], "in abt 40 mins")
+        self.assertEqual(seen["trusted"], "in abt 40 mins")
+        self.assertEqual(seen["semantic"], "in 40 minutes")
+        self.assertEqual(
+            seen["context"]["pending_item"]["item_id"],
+            draft["item_id"],
+        )
+
+        conn = db.connect()
+        try:
+            state = conn.execute(
+                "SELECT status,accumulated_text FROM pending_items WHERE item_id=?",
+                (draft["item_id"],),
+            ).fetchone()
+            reminder = conn.execute(
+                """SELECT due_at_utc FROM reminders
+                   WHERE source_message_id='sg-live-quote-second'"""
+            ).fetchone()
+        finally:
+            conn.close()
+
+        self.assertEqual(state["status"], "RESOLVED")
+        self.assertIn("in abt 40 mins", state["accumulated_text"])
+        self.assertIsNotNone(reminder)
+        self.assertEqual(
+            datetime.fromisoformat(reminder["due_at_utc"]),
+            datetime(2026, 10, 5, 19, 19, tzinfo=timezone.utc),
         )
 
 
