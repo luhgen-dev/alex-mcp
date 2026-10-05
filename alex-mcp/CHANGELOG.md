@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.25
+Semantic-gateway release for natural reminder clarification continuations.
+- Added a bounded, tool-less semantic control interpreter for one already-grounded REMINDER_DRAFT when deterministic continuation parsing cannot confidently understand the user's wording.
+- Preserved all proven deterministic reminder continuations as the first path, so understood phrases remain zero-token and unchanged.
+- Covered the live failure family including “In 40 minutes”, typo/abbreviation variants such as “in 40 minits” and “in abt 40 mins”, and vague shorthand such as “tmr ard 7ish” without adding phrase-by-phrase execution logic.
+- The semantic interpreter receives no tools, database/object IDs, conversation history, privacy authority, recipient/destination authority, or write capability; malformed, disallowed, unavailable, or low-confidence results fail closed.
+- Semantic normalization is isolated to reminder date/time understanding only. User-authored trusted text remains authoritative for privacy, scope, assignee, destination, and object identity.
+- Existing deterministic reminder validation still decides whether a due time is safe to persist, and pending reminder state is resolved only after the real reminder mutation succeeds.
+- Added focused regression coverage for semantic-frame validation, bounded/tool-less payloads, zero-token fast paths, domain-switch anti-hijack, one-call continuation binding, routing/scope isolation, live shorthand failures, and create→resolve lifecycle.
+- Release gate on the implementation PR passed core tests, structural self-test, Phase-3 stress, offline behaviour certification, human-AI corpus, frozen reasoning snapshot, deterministic reasoning oracle, final parity audit, WhatsApp bridge contracts, Home Assistant container/media verification, and External Alex Lab.
+
 ## 0.5.6
 Live-regression repair release after the full 1 October v0.5.5 WhatsApp regression and complete independent source audit.
 - Surfaced actionable MCP domain errors to the reasoning model instead of collapsing hundreds of normal validation/ambiguity failures into the same opaque tool error, eliminating blind retry loops.
