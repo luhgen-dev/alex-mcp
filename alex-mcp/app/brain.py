@@ -2141,9 +2141,22 @@ def _quoted_context_message(quoted_context: dict | None) -> str | None:
         parts.append(f"Quoted Alex message: {quoted[:500]}")
     quoted_user = str(quoted_context.get("quoted_user_text") or "").strip()
     if quoted_user:
-        parts.append(
-            f"The user explicitly replied to their own earlier instruction: {quoted_user[:1000]}"
-        )
+        if quoted_context.get("group_mention_authorized"):
+            parts.append(
+                "The current authenticated household user explicitly @mentioned "
+                "Alex while replying to this already-visible Family Shared message: "
+                + quoted_user[:1000]
+            )
+            parts.append(
+                "Treat that quoted household message as the context the current "
+                "user intentionally handed to Alex. Interpret what action it calls "
+                "for, but never invent missing details; ask a focused clarification "
+                "when a required slot such as reminder time is absent."
+            )
+        else:
+            parts.append(
+                f"The user explicitly replied to their own earlier instruction: {quoted_user[:1000]}"
+            )
     recent_instruction = str(quoted_context.get("recent_user_instruction") or "").strip()
     if recent_instruction:
         parts.append(
@@ -2722,6 +2735,38 @@ def _guard_warranty_grounding(candidate: str, tool_evidence: list[dict]) -> str:
     return (clean + "\n" + suffix).strip() if clean else suffix
 
 
+def _reminder_clarification_from_error(error: str | None) -> str | None:
+    """Turn deterministic reminder validation failures into user questions.
+
+    These are missing/ambiguous input states, not system failures.  Never expose
+    internal validator codes or let a model convert them into a false success.
+    """
+    value = str(error or "")
+    if "REMINDER_NEEDS_TIME" in value:
+        return "What time should I remind you?"
+    if "REMINDER_NEEDS_DATE" in value:
+        return "Which day or date should I use for that reminder?"
+    if "REMINDER_TIME_PASSED" in value:
+        return "That time has already passed. What future time should I use?"
+    if "REMINDER_AMBIGUOUS_NEXT_WEEKDAY" in value:
+        return "Which date do you mean for that reminder?"
+    if "DATE_WEEKDAY_MISMATCH" in value or "DATE_MISMATCH" in value:
+        return "Which exact date should I use for that reminder?"
+    return None
+
+
+def _reminder_clarification_from_evidence(
+    tool_evidence: list[dict],
+) -> str | None:
+    for evidence in reversed(tool_evidence):
+        if evidence.get("_tool_name") != "create_reminder":
+            continue
+        question = str(evidence.get("clarification_question") or "").strip()
+        if question:
+            return question
+    return None
+
+
 def _guard_mutation_success(
     candidate: str, user_text: str, mutation_ledger: list[dict]
 ) -> str:
@@ -2974,6 +3019,15 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                   vision_parts: list[dict] | None = None,
                   quoted_context: dict | None = None) -> tuple[str, list[dict]]:
     history_user = _history_user_text(actor, user_text, media_context, vision_parts)
+    quoted_authorized = ""
+    if quoted_context and quoted_context.get("group_mention_authorized"):
+        quoted_authorized = str(
+            quoted_context.get("quoted_user_text") or ""
+        ).strip()
+    action_basis = "\n".join(
+        part for part in (str(user_text or "").strip(), quoted_authorized)
+        if part
+    )
     trace = {
         "exposed_tools": [],
         "history_turns": 0,
@@ -2984,10 +3038,12 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
     # A deterministic no-write gate handles the small class of phrases that
     # are genuinely ambiguous across household domains.
     preflight = phase2_intent.classify_write_intent(
-        user_text or "", has_media=bool(media_context or vision_parts)
+        action_basis or user_text or "",
+        has_media=bool(media_context or vision_parts),
     )
     trace["compound"] = (
-        preflight.get("status") == "compound" or _looks_compound_request(user_text)
+        preflight.get("status") == "compound"
+        or _looks_compound_request(action_basis or user_text)
     )
     if preflight.get("requires_clarification"):
         question = str(preflight.get("question") or "What would you like me to do with that?")
@@ -3317,7 +3373,14 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                 candidate = rewritten or candidate
 
             candidate = _goal_progress_fallback(candidate, tool_evidence)
-            final = _guard_mutation_success(candidate, user_text, mutation_ledger)
+            reminder_question = _reminder_clarification_from_evidence(
+                tool_evidence
+            )
+            if reminder_question:
+                candidate = reminder_question
+            final = _guard_mutation_success(
+                candidate, action_basis or user_text, mutation_ledger
+            )
             final = _guard_warranty_grounding(final, tool_evidence)
             final = _guard_delivery_claim(final, attachments)
             _record_usage_buckets(actor.source_message_id, usage_by_route)
@@ -3443,13 +3506,32 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                         "tool": name, "committed": committed, "reason": reason,
                     })
             except Exception as exc:
-                payload = {"error": str(exc)[:1000]}
-                trace["tools_called"].append(name + ":error")
-                if _is_mutating_tool(name):
-                    mutation_ledger.append({
-                        "tool": name, "committed": False,
-                        "reason": str(exc)[:240],
+                error_text = str(exc)[:1000]
+                reminder_question = (
+                    _reminder_clarification_from_error(error_text)
+                    if name == "create_reminder" else None
+                )
+                if reminder_question:
+                    payload = {
+                        "status": "needs_clarification",
+                        "clarification_question": reminder_question,
+                    }
+                    tool_evidence.append({
+                        **payload,
+                        "_tool_name": name,
                     })
+                    trace["tools_called"].append(name + ":clarification")
+                    # Missing reminder slots are expected conversational state,
+                    # not a failed mutation.  The durable REMINDER_DRAFT is
+                    # created by ingress after this question is returned.
+                else:
+                    payload = {"error": error_text}
+                    trace["tools_called"].append(name + ":error")
+                    if _is_mutating_tool(name):
+                        mutation_ledger.append({
+                            "tool": name, "committed": False,
+                            "reason": error_text[:240],
+                        })
                 _audit(actor, name, args, payload, False, 0, action_key)
 
             messages.append({
