@@ -224,6 +224,74 @@ class SemanticGatewayTests(unittest.TestCase):
             datetime(2026, 10, 6, 0, 40, tzinfo=timezone.utc),
         )
 
+    def test_last_live_failure_wording_is_covered_without_phrase_patches(self):
+        _, draft = self._make_draft(
+            source_id="sg-live-forms-draft",
+            original="Remind me to check the mailbox",
+            question="When should I remind you to check the mailbox?",
+        )
+
+        clean = self._claim_actor("sg-live-clean", "In 40 minutes")
+        with patch.object(
+            brain,
+            "interpret_control_intent",
+            side_effect=AssertionError("standard relative form is deterministic"),
+        ):
+            continues, _, hint = ingress._reminder_draft_continuation(
+                clean, draft, "In 40 minutes"
+            )
+        self.assertTrue(continues)
+        self.assertEqual(hint, "")
+
+        frozen = datetime(2026, 10, 6, 0, 0, tzinfo=timezone.utc)
+        clean_context = replace(
+            clean,
+            reminder_context_text=(
+                "Remind me to check the mailbox\nIn 40 minutes"
+            ),
+        )
+        with patch.object(runtime_clock, "now_utc", return_value=frozen):
+            due = services._deterministic_reminder_due_from_text(clean_context)
+        self.assertEqual(
+            datetime.fromisoformat(due),
+            datetime(2026, 10, 6, 0, 40, tzinfo=timezone.utc),
+        )
+
+        interpreted_cases = (
+            ("in 40 minits", "in 40 minutes"),
+            ("in abt 40 mins", "in 40 minutes"),
+            ("tmr ard 7ish", "tomorrow around 7"),
+        )
+        for index, (raw, normalized) in enumerate(interpreted_cases):
+            current = self._claim_actor(f"sg-live-odd-{index}", raw)
+            with self.subTest(raw=raw), patch.object(
+                brain,
+                "interpret_control_intent",
+                return_value={
+                    "intent": "ANSWER_PENDING",
+                    "confidence": 0.98,
+                    "normalized_reply": normalized,
+                    "status": "ok",
+                },
+            ) as semantic_mock:
+                continues, _, hint = ingress._reminder_draft_continuation(
+                    current, draft, raw
+                )
+                self.assertTrue(continues)
+                self.assertEqual(hint, normalized)
+                self.assertEqual(semantic_mock.call_count, 1)
+
+        ambiguous = replace(
+            self._claim_actor("sg-live-ambiguous", "tmr ard 7ish"),
+            reminder_context_text=(
+                "Remind me to check the mailbox\ntmr ard 7ish"
+            ),
+            reminder_semantic_text="tomorrow around 7",
+        )
+        with patch.object(runtime_clock, "now_utc", return_value=frozen):
+            with self.assertRaisesRegex(ValueError, "REMINDER_NEEDS_TIME"):
+                services._deterministic_reminder_due_from_text(ambiguous)
+
     def test_semantic_hint_cannot_change_recipient_scope_or_destination(self):
         current = self._claim_actor(
             "sg-scope",
