@@ -8163,7 +8163,7 @@ class AlexCoreTests(unittest.TestCase):
         self.assertEqual(cards[-1]["conversation_id"], group_id)
         self.assertIn("available again", cards[-1]["text_body"].casefold())
         self.assertIn("fresh claimable", reply.casefold())
-        self.assertEqual(history, "REOPENED")
+        self.assertEqual(history, "RESCHEDULED")
 
     def test_v0520_push_back_claimed_reminder_posts_new_claim_surface(self):
         group_id = "120363520002@g.us"
@@ -8323,7 +8323,7 @@ class AlexCoreTests(unittest.TestCase):
                 due_at_utc=reminder["due_at_utc"],
                 timezone_name="Asia/Kuala_Lumpur",
                 conversation_id=group_id,
-                source_message_id="v0520-resurface",
+                source_message_id=None,
                 resurfaced=True,
             )
             second = conn.execute(
