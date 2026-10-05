@@ -2380,21 +2380,26 @@ def update_reminder(actor: ActorContext, reminder_id: str | None, status: str = 
                 ),
             )
         event_type = event_map[resolved]
+        reopened_from_closed = bool(
+            resolved == "OPEN" and previous_state in {"COMP", "CANC"}
+        )
         reopened_family = bool(
-            resolved == "OPEN"
-            and previous_state in {"COMP", "CANC"}
+            reopened_from_closed
             and int(row["claimable"] or 0) == 1
             and row["space_id"] == "FAMILY_SHARED"
             and str(row["conversation_id"] or "").endswith("@g.us")
         )
-        if resolved == "OPEN" and previous_state in {"COMP", "CANC"}:
-            event_type = "REOPENED"
+        event_note = (
+            "reopened_from_closed"
+            if reopened_from_closed and not snooze_note
+            else snooze_note
+        )
         _record_reminder_event(
             conn, reminder_id,
             event_type,
             previous_state,
             previous_state if resolved == "ACK" else resolved,
-            previous_due, new_due, snooze_note,
+            previous_due, new_due, event_note,
         )
         if reopened_family:
             _queue_family_claim_card(
