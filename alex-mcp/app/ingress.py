@@ -1632,6 +1632,8 @@ def process(payload: dict) -> dict:
                 quoted_context = _reminder_draft_context(pending_item)
                 if latest_question:
                     quoted_context["quoted_alex_text"] = latest_question[:1000]
+                if semantic_hint:
+                    quoted_context["semantic_reminder_text"] = semantic_hint[:240]
                 reminder_draft_continuation = True
         if pending_item and not reminder_draft_continuation:
             quoted_context = dict(quoted_context or {})
