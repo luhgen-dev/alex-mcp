@@ -305,8 +305,15 @@ def main() -> dict:
     require(
         "isAlexMentioned(message)" in connect
         and "isReplyToAlex(message)" in connect
-        and "if (!(await isAlexMentioned(message)) && !(await isReplyToAlex(message))) return;" in connect
-        and "async function jidMatchesSelf" in connect,
+        and "async function jidMatchesSelf" in connect
+        and (
+            "if (!(await isAlexMentioned(message)) && !(await isReplyToAlex(message))) return;" in connect
+            or (
+                "alexMentioned = await isAlexMentioned(message);" in connect
+                and "replyToAlex = await isReplyToAlex(message);" in connect
+                and "if (!alexMentioned && !replyToAlex) return;" in connect
+            )
+        ),
         "Family Shared responds only to explicit mention or swipe reply",
     )
     require(
