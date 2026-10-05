@@ -350,6 +350,31 @@ def _reminder_time_intent_text(actor: ActorContext) -> str:
     return "\n".join(part for part in (trusted, semantic) if part)
 
 
+def reminder_time_text_is_deterministic(text: str | None) -> bool:
+    """True when existing reminder parsing already understands the wording.
+
+    This gate keeps proven reminder continuations zero-token. It intentionally
+    recognizes established exact/relative forms and established qualitative
+    temporal words, but not misspelled/abbreviated near-misses such as tmr,
+    minits, abt, or 7ish; those are candidates for the semantic interpreter.
+    """
+    value = str(text or "").strip()
+    if not value:
+        return False
+    if _user_stated_time(value) or _RELATIVE_REMINDER_TIME_RE.search(value):
+        return True
+    if _WEEKDAY_RE.search(value) or _CALENDAR_DATE_RE.search(value):
+        return True
+    if _ISO_USER_DATE_RE.search(value) or _DAY_ONLY_RE.search(value):
+        return True
+    return bool(re.search(
+        r"(?i)\b(?:today|tomorrow|tonight|later|night|morning|afternoon|"
+        r"evening|noon|midnight|after\s+(?:work|dinner|lunch)|"
+        r"before\s+(?:work|bed|dinner)|half\s+past|quarter\s+(?:past|to))\b",
+        value,
+    ))
+
+
 def _explicit_calendar_date(text: str, now_local: datetime,
                             clock: tuple[int, int]) -> tuple[object | None, bool]:
     """Resolve an explicit date from user text; no-year dates mean next occurrence."""
