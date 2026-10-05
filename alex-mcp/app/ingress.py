@@ -803,6 +803,11 @@ def _looks_like_reminder_clarification_reply(text: str) -> bool:
     ):
         return False
 
+    # A pure relative duration ("in about 10 mins", "abt 40 minits",
+    # "in half an hour") is a complete time answer and stays zero-token.
+    if services._BARE_RELATIVE_LINE_RE.match(value):
+        return True
+
     temporal = (
         r"(?i)\b(?:mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|"
         r"fri(?:day)?|sat(?:urday)?|sun(?:day)?|today|tomorrow|tonight|"
@@ -1076,6 +1081,24 @@ def _created_claimable_reminder_id(actor) -> str | None:
             """SELECT reminder_id FROM reminders
                WHERE source_message_id=? AND conversation_id=?
                  AND claimable=1 AND status='OPEN'
+               ORDER BY created_at_utc DESC LIMIT 2""",
+            (actor.source_message_id, actor.conversation_id),
+        ).fetchall()
+        return str(rows[0]["reminder_id"]) if len(rows) == 1 else None
+    finally:
+        conn.close()
+
+
+def _created_personal_reminder_id(actor) -> str | None:
+    """Bind a creation confirmation to the one non-claimable reminder that
+    lives in this same chat, so its unresolved ⏳ + pin start immediately."""
+    conn = db.connect()
+    try:
+        rows = conn.execute(
+            """SELECT reminder_id FROM reminders
+               WHERE source_message_id=? AND conversation_id=?
+                 AND claimable=0 AND status IN ('OPEN','DUE','DEFERRED')
+                 AND (recurrence_rule IS NULL OR recurrence_rule='')
                ORDER BY created_at_utc DESC LIMIT 2""",
             (actor.source_message_id, actor.conversation_id),
         ).fetchall()
@@ -1988,6 +2011,9 @@ def process(payload: dict) -> dict:
             else _selection_context_for_offer(actor, reply, attachments)
         )
         reminder_setup_id = _created_claimable_reminder_id(actor)
+        personal_reminder_id = (
+            None if reminder_setup_id else _created_personal_reminder_id(actor)
+        )
         continuing_reminder_draft = (
             pending_item
             if pending_item
@@ -2037,6 +2063,7 @@ def process(payload: dict) -> dict:
                 else "SELECTION_SET" if selection_set_context
                 else "SELECTION" if selection_context
                 else "REMINDER_SETUP" if reminder_setup_id
+                else "REMINDER_CREATED" if personal_reminder_id
                 else "REPORT" if report_context
                 else None
             )
@@ -2048,6 +2075,7 @@ def process(payload: dict) -> dict:
                 else f"{selection_context['kind']}:{selection_context['id']}"
                 if selection_context
                 else reminder_setup_id if reminder_setup_id
+                else personal_reminder_id if personal_reminder_id
                 else report_context
             )
             db.queue_outbound(
