@@ -449,16 +449,7 @@ def _reconcile_reminder_pins(conn) -> None:
              AND o.job_unpinned_at_utc IS NULL"""
     ).fetchall()
     for row in rows:
-        claimed_group_due = bool(
-            row["reminder_status"] == "DUE"
-            and int(row["claimable"] or 0) == 1
-            and row["claimed_by_user_id"]
-            and str(row["conversation_id"] or "").endswith("@g.us")
-        )
-        unresolved = (
-            row["reminder_status"] == "DUE"
-            and not claimed_group_due
-        )
+        unresolved = row["reminder_status"] == "DUE"
         if not unresolved and _attempt_control(
             conn, row, "unpin", outbound=True
         ):
