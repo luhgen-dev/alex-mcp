@@ -26,6 +26,11 @@ class SemanticGatewayTests(unittest.TestCase):
         # second database-cleanup list that could drift from the real schema.
         core.AlexCoreTests.setUp(self)
 
+    def tearDown(self):
+        # Leave no reminder/event rows behind for older test modules that have
+        # narrower historical cleanup lists.
+        core.AlexCoreTests.setUp(self)
+
     @staticmethod
     def _payload(message_id: str, text: str) -> dict:
         return {
@@ -175,9 +180,14 @@ class SemanticGatewayTests(unittest.TestCase):
             continues, question, hint = ingress._reminder_draft_continuation(
                 current, draft, "Tomorrow"
             )
+            natural, _, natural_hint = ingress._reminder_draft_continuation(
+                current, draft, "At night, around 10.45"
+            )
         self.assertTrue(continues)
+        self.assertTrue(natural)
         self.assertIn("time", question.casefold())
         self.assertEqual(hint, "")
+        self.assertEqual(natural_hint, "")
 
     def test_semantic_hint_normalizes_relative_time_for_deterministic_validator(self):
         _, draft = self._make_draft()
@@ -230,8 +240,9 @@ class SemanticGatewayTests(unittest.TestCase):
             services._reminder_intent_text(interpreted),
             "Remind me to test the lamp",
         )
-        self.assertIsNone(
-            services._trusted_named_reminder_recipient(interpreted)
+        self.assertEqual(
+            services._trusted_named_reminder_recipient(interpreted),
+            ("me", "USR_HUSBAND"),
         )
         self.assertIn(
             "tomorrow at 7 PM",
