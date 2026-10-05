@@ -8821,5 +8821,396 @@ class AlexCoreTests(unittest.TestCase):
         ))
 
 
+    def test_v0523_bridge_quote_slot_answer_needs_no_persisted_source_message(self):
+        group_id = "120363523001@g.us"
+        with open(os.path.join(TEST_DIR, "family_group.json"), "w", encoding="utf-8") as handle:
+            handle.write('{"group_jid":"%s"}' % group_id)
+
+        fixed = datetime(2026, 10, 5, 10, 30, tzinfo=timezone.utc)
+        first = {
+            "message_id": "v0523-plants-first",
+            "provider": "WHATSAPP",
+            "conversation_id": group_id,
+            "conversation_type": "GROUP",
+            "sender_phone": "+60111111111",
+            "text": "remind us to water the plants later",
+            "alex_mentioned": True,
+        }
+        with patch.object(runtime_clock, "now_utc", return_value=fixed):
+            opened = self._v0513_process_with_scripted_provider(
+                first,
+                [{"content": "What time should I remind you?"}],
+            )
+        self.assertTrue(opened["ok"])
+
+        conn = db.connect()
+        try:
+            draft = conn.execute(
+                """SELECT * FROM pending_items
+                   WHERE source_message_id='v0523-plants-first'
+                     AND kind='REMINDER_DRAFT'"""
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertIsNotNone(draft)
+
+        # This is the shape Python receives after the real bridge extracts
+        # contextInfo.quotedMessage. The quoted ordinary group message itself
+        # was intentionally never persisted in inbound_messages.
+        followup = {
+            "message_id": "v0523-plants-time-handoff",
+            "provider": "WHATSAPP",
+            "conversation_id": group_id,
+            "conversation_type": "GROUP",
+            "sender_phone": "+60111111111",
+            "text": "",
+            "quoted_message_id": "wa-ordinary-645pm",
+            "quoted_text": "6.45pm",
+            "quoted_type": "text",
+            "quoted_participant_phone": "60111111111",
+            "alex_mentioned": True,
+            "reply_to_alex": False,
+        }
+        with patch.object(runtime_clock, "now_utc", return_value=fixed):
+            finished = self._v0513_process_with_scripted_provider(
+                followup,
+                [
+                    {
+                        "tool": "create_reminder",
+                        "args": {
+                            "task": "water the plants",
+                            "due_local": "2026-10-05T18:45:00+08:00",
+                            "recipient": "both",
+                            "destination": "group",
+                        },
+                    },
+                    {
+                        "content": (
+                            "OK. I've set a shared reminder to water the plants "
+                            "at 6:45 PM."
+                        )
+                    },
+                ],
+            )
+        self.assertTrue(finished["ok"])
+
+        conn = db.connect()
+        try:
+            impossible_source = conn.execute(
+                """SELECT 1 FROM inbound_messages
+                   WHERE message_id='wa-ordinary-645pm'"""
+            ).fetchone()
+            made = conn.execute(
+                """SELECT reminder_id,task_text,status,space_id,conversation_id
+                   FROM reminders
+                   WHERE source_message_id='v0523-plants-time-handoff'"""
+            ).fetchone()
+            draft_after = conn.execute(
+                """SELECT status,accumulated_text FROM pending_items
+                   WHERE item_id=?""",
+                (draft["item_id"],),
+            ).fetchone()
+        finally:
+            conn.close()
+
+        self.assertIsNone(impossible_source)
+        self.assertIsNotNone(made)
+        self.assertEqual(made["task_text"], "water the plants")
+        self.assertEqual(made["status"], "OPEN")
+        self.assertEqual(made["space_id"], "FAMILY_SHARED")
+        self.assertEqual(made["conversation_id"], group_id)
+        self.assertEqual(draft_after["status"], "RESOLVED")
+        self.assertIn("water the plants later", draft_after["accumulated_text"].casefold())
+        self.assertIn("6.45pm", draft_after["accumulated_text"].casefold())
+
+    def test_v0523_bridge_spouse_quote_starts_draft_without_recording_ordinary_chat(self):
+        group_id = "120363523002@g.us"
+        with open(os.path.join(TEST_DIR, "family_group.json"), "w", encoding="utf-8") as handle:
+            handle.write('{"group_jid":"%s"}' % group_id)
+
+        fixed = datetime(2026, 10, 5, 10, 35, tzinfo=timezone.utc)
+        payload = {
+            "message_id": "v0523-spouse-handoff",
+            "provider": "WHATSAPP",
+            "conversation_id": group_id,
+            "conversation_type": "GROUP",
+            "sender_phone": "+60111111111",
+            "text": "",
+            "quoted_message_id": "wa-spouse-ordinary-rubbish",
+            "quoted_text": "Remind us to pick up the rubbish later",
+            "quoted_type": "text",
+            "quoted_participant_phone": "60222222222",
+            "alex_mentioned": True,
+            "reply_to_alex": False,
+        }
+        with patch.object(runtime_clock, "now_utc", return_value=fixed):
+            first = self._v0513_process_with_scripted_provider(
+                payload,
+                [{"content": "Sure — what time should I remind you?"}],
+            )
+        self.assertTrue(first["ok"])
+
+        conn = db.connect()
+        try:
+            ordinary = conn.execute(
+                """SELECT 1 FROM inbound_messages
+                   WHERE message_id='wa-spouse-ordinary-rubbish'"""
+            ).fetchone()
+            draft = conn.execute(
+                """SELECT * FROM pending_items
+                   WHERE source_message_id='v0523-spouse-handoff'
+                     AND kind='REMINDER_DRAFT'"""
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertIsNone(ordinary)
+        self.assertIsNotNone(draft)
+        self.assertIn(
+            "pick up the rubbish later",
+            str(draft["accumulated_text"]).casefold(),
+        )
+
+        followup = {
+            "message_id": "v0523-spouse-time",
+            "provider": "WHATSAPP",
+            "conversation_id": group_id,
+            "conversation_type": "GROUP",
+            "sender_phone": "+60111111111",
+            "text": "7pm",
+            "alex_mentioned": True,
+        }
+        with patch.object(runtime_clock, "now_utc", return_value=fixed):
+            second = self._v0513_process_with_scripted_provider(
+                followup,
+                [
+                    {
+                        "tool": "create_reminder",
+                        "args": {
+                            "task": "pick up the rubbish",
+                            "due_local": "2026-10-05T19:00:00+08:00",
+                            "recipient": "both",
+                            "destination": "group",
+                        },
+                    },
+                    {
+                        "content": (
+                            "OK. I'll remind the family to pick up the rubbish "
+                            "at 7:00 PM."
+                        )
+                    },
+                ],
+            )
+        self.assertTrue(second["ok"])
+
+        conn = db.connect()
+        try:
+            made = conn.execute(
+                """SELECT task_text,space_id,claimable,conversation_id
+                   FROM reminders
+                   WHERE source_message_id='v0523-spouse-time'"""
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertIsNotNone(made)
+        self.assertEqual(made["task_text"], "pick up the rubbish")
+        self.assertEqual(made["space_id"], "FAMILY_SHARED")
+        self.assertEqual(made["claimable"], 1)
+        self.assertEqual(made["conversation_id"], group_id)
+
+    def test_v0523_quoted_media_handoff_is_deterministic_and_never_fake_file_ai(self):
+        group_id = "120363523003@g.us"
+        payload = {
+            "message_id": "v0523-quoted-image",
+            "provider": "WHATSAPP",
+            "conversation_id": group_id,
+            "conversation_type": "GROUP",
+            "sender_phone": "+60111111111",
+            "text": "",
+            "quoted_message_id": "wa-ordinary-image",
+            "quoted_text": "",
+            "quoted_type": "image",
+            "alex_mentioned": True,
+            "reply_to_alex": False,
+        }
+        with patch.object(
+            brain, "respond",
+            side_effect=AssertionError("quoted media fallback must not call the model"),
+        ):
+            result = ingress.process(payload)
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["quoted_media_resend"])
+
+        conn = db.connect()
+        try:
+            reply = conn.execute(
+                """SELECT text_body FROM outbound_messages
+                   WHERE source_message_id='v0523-quoted-image'
+                   ORDER BY rowid DESC LIMIT 1"""
+            ).fetchone()["text_body"]
+        finally:
+            conn.close()
+        self.assertIn("resend", reply.casefold())
+        self.assertIn("@alex", reply.casefold())
+        self.assertNotIn("i see the file", reply.casefold())
+
+    def test_v0523_empty_brain_turn_never_invents_attachment(self):
+        self.claim("v0523-empty-brain", "+60111111111", "")
+        actor = self.actor("v0523-empty-brain", "+60111111111")
+        with patch.object(
+            brain, "_provider_routes",
+            side_effect=AssertionError("empty turn must not call a model"),
+        ):
+            reply, attachments = asyncio.run(
+                brain.respond(actor, "", None, None, None)
+            )
+        self.assertEqual(reply, "What would you like me to do with that?")
+        self.assertEqual(attachments, [])
+        self.assertNotIn("attachment", reply.casefold())
+
+    def test_v0523_lid_dm_quote_resolves_phone_jid_claim_confirmation_and_releases(self):
+        group_id = "120363523004@g.us"
+        with open(os.path.join(TEST_DIR, "family_group.json"), "w", encoding="utf-8") as handle:
+            handle.write('{"group_jid":"%s"}' % group_id)
+
+        self.claim(
+            "v0523-lid-create", "+60111111111",
+            "Remind us in MCP Home at 8pm to check the back gate",
+        )
+        creator = with_action_key(
+            replace(
+                self.actor("v0523-lid-create", "+60111111111"),
+                trusted_text=(
+                    "Remind us in MCP Home at 8pm to check the back gate"
+                ),
+            ),
+            "v0523-lid-create-action",
+        )
+        with patch.object(
+            runtime_clock, "now_utc",
+            return_value=datetime(2026, 10, 5, 10, 40, tzinfo=timezone.utc),
+        ):
+            reminder = services.create_reminder(
+                creator,
+                "check the back gate",
+                "2026-10-05T20:00:00+08:00",
+                recipient="both",
+                destination="group",
+            )
+
+        phone_dm = "60111111111@s.whatsapp.net"
+        conn = db.connect()
+        try:
+            conn.execute(
+                """UPDATE reminders
+                   SET claimed_by_user_id='USR_HUSBAND',
+                       claimed_at_utc='2026-10-05T10:41:00+00:00'
+                   WHERE reminder_id=?""",
+                (reminder["reminder_id"],),
+            )
+            claim_outbound_id = "v0523-lid-claim-outbound"
+            conn.execute(
+                """INSERT INTO outbound_messages(
+                       outbound_id,conversation_id,kind,text_body,
+                       delivery_status,delivered_at_utc,provider_message_id,
+                       context_kind,context_id
+                   ) VALUES(?,?,'TEXT',?,'SENT',?,?,?,?)""",
+                (
+                    claim_outbound_id,
+                    phone_dm,
+                    "Got it — you’ve claimed “check the back gate”.",
+                    "2026-10-05T10:41:01+00:00",
+                    "wa-v0523-lid-claim",
+                    "REMINDER_CLAIM_CONFIRMED",
+                    reminder["reminder_id"],
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        # Same authenticated husband DM, but Baileys supplied a LID chat
+        # address on the incoming swipe reply.
+        lid_dm = "987654321@lid"
+        payload = {
+            "message_id": "v0523-lid-release",
+            "provider": "WHATSAPP",
+            "conversation_id": lid_dm,
+            "conversation_type": "DIRECT_DM",
+            "sender_phone": "+60111111111",
+            "text": "Actually I can't claim this, push this back to group",
+            "quoted_message_id": "wa-v0523-lid-claim",
+        }
+        with patch.object(
+            brain, "respond",
+            side_effect=AssertionError("exact quoted claim must be deterministic"),
+        ):
+            released = ingress.process(payload)
+        self.assertTrue(released["ok"])
+        self.assertTrue(released["reminder_claim_released"])
+
+        conn = db.connect()
+        try:
+            state = conn.execute(
+                """SELECT status,claimed_by_user_id FROM reminders
+                   WHERE reminder_id=?""",
+                (reminder["reminder_id"],),
+            ).fetchone()
+            fresh = conn.execute(
+                """SELECT text_body,conversation_id
+                   FROM outbound_messages
+                   WHERE context_kind='REMINDER_SETUP' AND context_id=?
+                   ORDER BY rowid DESC LIMIT 1""",
+                (reminder["reminder_id"],),
+            ).fetchone()
+            lid_reply = conn.execute(
+                """SELECT text_body FROM outbound_messages
+                   WHERE source_message_id='v0523-lid-release'
+                     AND conversation_id=?""",
+                (lid_dm,),
+            ).fetchone()
+        finally:
+            conn.close()
+
+        self.assertEqual(state["status"], "OPEN")
+        self.assertIsNone(state["claimed_by_user_id"])
+        self.assertIsNotNone(fresh)
+        self.assertEqual(fresh["conversation_id"], group_id)
+        self.assertIn("available again", fresh["text_body"].casefold())
+        self.assertIn("fresh claimable", lid_reply["text_body"].casefold())
+
+    def test_v0523_dm_identity_fallback_never_crosses_household_users(self):
+        conn = db.connect()
+        try:
+            conn.execute(
+                """INSERT INTO outbound_messages(
+                       outbound_id,conversation_id,kind,text_body,
+                       delivery_status,delivered_at_utc,provider_message_id,
+                       context_kind,context_id
+                   ) VALUES(
+                       'v0523-husband-only','60111111111@s.whatsapp.net',
+                       'TEXT','husband context','SENT',
+                       '2026-10-05T10:45:00+00:00','wa-v0523-private-id',
+                       'REMINDER_CLAIM_CONFIRMED','rem-husband-only'
+                   )"""
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        husband = db.resolve_quoted_context(
+            "111111111@lid",
+            "wa-v0523-private-id",
+            "+60111111111",
+        )
+        wife = db.resolve_quoted_context(
+            "222222222@lid",
+            "wa-v0523-private-id",
+            "+60222222222",
+        )
+        self.assertIsNotNone(husband)
+        self.assertEqual(husband["context_id"], "rem-husband-only")
+        self.assertIsNone(wife)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
