@@ -471,6 +471,103 @@ class V0527ReminderLifecycleTests(unittest.TestCase):
             [r["reminder_id"] for r in closed], ["first-done", "second-done"]
         )
 
+    # -- live v0.5.27 smoke findings --------------------------------------
+    LID_DM = "987654321098765@lid"
+
+    def test_lid_addressed_dm_confirmation_gets_unresolved_markers(self):
+        """T1-T3 live failure: the DM arrives as <lid>@lid while reminders store
+        the owner's phone JID, so chat-id string matching found nothing."""
+        first = self.dm("v527-lid-1", "Remind me to test v0527 alpha")
+        first["conversation_id"] = self.LID_DM
+        with patch.object(runtime_clock, "now_utc", return_value=FIXED):
+            self.assertTrue(self.run_turn(
+                first, [{"content": "When would you like to be reminded?"}]
+            )["ok"])
+        self.mark_sent("v527-lid-1", "wa-lid-q1")
+        answer = self.dm("v527-lid-2", "In about 10min", quoted="wa-lid-q1")
+        answer["conversation_id"] = self.LID_DM
+        with patch.object(runtime_clock, "now_utc", return_value=FIXED):
+            self.assertTrue(self.run_turn(answer, [
+                {"tool": "create_reminder", "args": {
+                    "task": "test v0527 alpha", "due_local": "in about 10 minutes",
+                }},
+                {"content": "OK. I've set a reminder to test v0527 alpha."},
+            ])["ok"])
+        reminder = self.rows("SELECT reminder_id,conversation_id FROM reminders")
+        self.assertEqual(len(reminder), 1)
+        self.assertEqual(reminder[0]["conversation_id"], DM)  # phone JID
+        confirmation = self.rows(
+            """SELECT context_kind,context_id,conversation_id FROM outbound_messages
+               WHERE source_message_id='v527-lid-2'"""
+        )
+        self.assertEqual(confirmation[0]["context_kind"], "REMINDER_CREATED")
+        self.assertEqual(confirmation[0]["context_id"], reminder[0]["reminder_id"])
+        self.assertEqual(confirmation[0]["conversation_id"], self.LID_DM)
+        self.mark_sent("v527-lid-2", "wa-lid-c1")
+        markers = [(p["kind"], p.get("emoji")) for p in self.sweep_controls()]
+        self.assertIn(("reaction", "⏳"), markers)
+        self.assertIn(("pin", None), markers)
+
+    def test_one_message_reminder_in_lid_dm_marks_confirmation(self):
+        payload = self.dm("v527-lid-3", "Remind me to test v0527 gamma in 5 minutes")
+        payload["conversation_id"] = self.LID_DM
+        with patch.object(runtime_clock, "now_utc", return_value=FIXED):
+            self.assertTrue(self.run_turn(payload, [
+                {"tool": "create_reminder", "args": {
+                    "task": "test v0527 gamma", "due_local": "in 5 minutes",
+                }},
+                {"content": "OK. Set."},
+            ])["ok"])
+        kind = self.rows(
+            "SELECT context_kind FROM outbound_messages WHERE source_message_id='v527-lid-3'"
+        )[0]["context_kind"]
+        self.assertEqual(kind, "REMINDER_CREATED")
+
+    def test_partial_reference_mark_done_exposes_reminders_never_shopping(self):
+        """T7 live failure: 'Mark v0527 as done' leaked shopping output."""
+        self._seed("alpha", "test v0527 alpha", 10)
+        self._seed("gamma", "test v0527 gamma", 5)
+        exposed = []
+        with patch.object(runtime_clock, "now_utc", return_value=FIXED):
+            self.assertTrue(self.run_turn(
+                self.dm("v527-t7", "Mark v0527 as done"),
+                [
+                    {"tool": "update_reminder", "args": {
+                        "reminder_reference": "v0527", "status": "complete",
+                    }},
+                    {"content": "Which one: alpha or gamma?"},
+                ],
+                exposed,
+            )["ok"])
+        self.assertIn("update_reminder", exposed[0])
+        self.assertNotIn("update_shopping_item", exposed[0])
+        self.assertNotIn("list_shopping_items", exposed[0])
+        statuses = {
+            r["reminder_id"]: r["status"]
+            for r in self.rows("SELECT reminder_id,status FROM reminders")
+        }
+        self.assertEqual(statuses, {"alpha": "OPEN", "gamma": "OPEN"})
+
+    def test_mark_done_for_a_real_shopping_item_still_reaches_shopping(self):
+        conn = db.connect()
+        try:
+            conn.execute(
+                """INSERT INTO shopping_items(item_id,action_key,owner_id,space_id,item_name)
+                   VALUES('s1','ak-s1','USR_HUSBAND','FAMILY_SHARED','milk')"""
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        self._seed("buy-milk", "buy milk for cereal", 30)
+        exposed = []
+        with patch.object(runtime_clock, "now_utc", return_value=FIXED):
+            self.assertTrue(self.run_turn(
+                self.dm("v527-shop", "Mark milk as done"),
+                [{"content": "Do you mean the shopping item or the reminder?"}],
+                exposed,
+            )["ok"])
+        self.assertIn("update_shopping_item", exposed[0])
+
 
 if __name__ == "__main__":
     unittest.main()
