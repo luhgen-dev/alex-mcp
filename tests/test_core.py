@@ -2062,7 +2062,37 @@ class AlexCoreTests(unittest.TestCase):
             group_actor, "personal thing", "2026-10-01T09:00:00+08:00",
             recipient="me", destination="dm",
         )
-        self.assertEqual(mine["conversation_id"], "60111111111@s.whatsapp.net")
+        # v0.5.27 locked channel contract: "remind me" typed in MCP Home stays
+        # a claimable family reminder; it is not a request to move to a DM.
+        self.assertEqual(mine["conversation_id"], group_id)
+        self.assertTrue(mine["claimable"])
+
+        db.claim_inbound({
+            "message_id": "group-remind-me-private",
+            "provider": "WHATSAPP",
+            "conversation_id": group_id,
+            "conversation_type": "GROUP",
+            "sender_phone": "+60111111111",
+            "text": "@Alex remind me privately tomorrow",
+        })
+        private_actor = with_action_key(
+            replace(
+                db.resolve_actor(
+                    "+60111111111", group_id, "GROUP",
+                    "group-remind-me-private", [],
+                ),
+                trusted_text="@Alex remind me privately tomorrow at 9am",
+            ),
+            "group-remind-me-private-action",
+        )
+        # A private reminder can never be written by the group actor itself;
+        # ingress hands such turns to the owner's DM first (covered end-to-end
+        # in test_v0527_reminder_lifecycle).
+        with self.assertRaises(PermissionError):
+            services.create_reminder(
+                private_actor, "private thing", "2026-10-01T09:00:00+08:00",
+                recipient="me", destination="dm",
+            )
 
         self.claim("group-dest", "+60111111111", "put reminder in group at 6pm")
         dm_actor = with_action_key(
@@ -6800,11 +6830,14 @@ class AlexCoreTests(unittest.TestCase):
         with patch.object(outbox, "_send", side_effect=fake_send):
             outbox.sweep()
 
-        self.assertEqual([p["kind"] for p in sent], ["text", "pin"])
+        # The fired, unresolved reminder is pinned on delivery and also gets
+        # the unresolved ⏳ marker (v0.5.27 live finding K).
+        self.assertEqual([p["kind"] for p in sent], ["text", "pin", "reaction"])
         self.assertTrue(sent[1]["target_from_me"])
         self.assertEqual(
             sent[1]["target_message_id"], "wa-v0515-personal-due"
         )
+        self.assertEqual(sent[2].get("emoji"), "⏳")
 
         conn = db.connect()
         try:
@@ -6858,8 +6891,10 @@ class AlexCoreTests(unittest.TestCase):
             conn.close()
 
         self.assertEqual(final["status"], "COMP")
-        self.assertEqual([p["kind"] for p in controls], ["unpin"])
-        self.assertTrue(controls[0]["target_from_me"])
+        # ✅ clears both unresolved markers: the ⏳ reaction and the pin.
+        self.assertEqual([p["kind"] for p in controls], ["reaction", "unpin"])
+        self.assertEqual(controls[0].get("emoji"), "")
+        self.assertTrue(controls[1]["target_from_me"])
         self.assertIsNotNone(final["job_unpinned_at_utc"])
 
 
@@ -9404,6 +9439,8 @@ class AlexCoreTests(unittest.TestCase):
             ("both", "group"),
         )
 
+        # v0.5.27 channel contract: "remind me" inside MCP Home keeps the
+        # family channel; only explicit DM/private wording moves it.
         self_route = services.reminder_draft_routing_envelope(
             actor,
             "Remind me to call Amma later",
@@ -9411,6 +9448,15 @@ class AlexCoreTests(unittest.TestCase):
         )
         self.assertEqual(
             (self_route["recipient"], self_route["destination"]),
+            ("both", "group"),
+        )
+        private_route = services.reminder_draft_routing_envelope(
+            actor,
+            "Remind me privately to call Amma later",
+            origin="FAMILY_QUOTE_HANDOFF",
+        )
+        self.assertEqual(
+            (private_route["recipient"], private_route["destination"]),
             ("me", "dm"),
         )
 

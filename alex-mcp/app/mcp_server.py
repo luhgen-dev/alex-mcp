@@ -26,7 +26,7 @@ import scope_policy
 
 mcp = MCPServer(
     "Alex Household Tools",
-    version="0.5.26",
+    version="0.5.27",
     instructions="Deterministic household tools. Identity and permissions are injected by Alex and are never model-controlled.",
 )
 
@@ -401,13 +401,30 @@ def list_reminders(actor: Actor, include_completed: bool = False, limit: int = 2
             "claimable": bool(row.get("claimable")),
             "claimed_by": claimed_by,
             "handoff_pending_to": row.get("handoff_pending_to"),
+            "named_in_request": bool(row.get("named_in_request")),
+            "closed": (
+                services._friendly_reminder_time(
+                    row.get("closed_at_utc"),
+                    row.get("timezone_name") or actor.timezone,
+                )
+                if row.get("closed_at_utc") else None
+            ),
         })
+    total = int(raw.get("total") or len(reminders))
     return {
         "reminders": reminders,
+        "total": total,
+        "shown": len(reminders),
+        "truncated": bool(raw.get("truncated")),
         "presentation_rule": (
             "Present reminder names, human status labels and the provided local "
             "due text. Never expose reminder IDs, raw state codes, ISO timestamps "
-            "or UTC."
+            "or UTC. Reminders with named_in_request=true are the ones the user "
+            "named; prefer them and never substitute a different reminder that "
+            "merely shares one word. If truncated is true, say how many are "
+            "shown out of total; a reminder missing from a truncated list is not "
+            "'not found'. For 'last completed', use the first Completed item "
+            "(list is ordered by most recent completion)."
         ),
     }
 

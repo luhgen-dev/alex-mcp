@@ -33,7 +33,9 @@ const UI_PORT = 8099;
 // recovery, etc.), acknowledge it without interrupting the durable final reply.
 // Group messages are excluded because an untracked interim reply would weaken
 // quoted-message context binding there.
-const SLOW_ACK_MS = 6000;
+// 12s: ordinary turns (including one bounded semantic-gateway call plus the
+// main model call) finish well inside this; only genuinely slow work acks.
+const SLOW_ACK_MS = 12000;
 const SLOW_ACK_TEXT = 'Sure, I’m working on that and will get it to you shortly…';
 const logger = pino({ level: process.env.ALEX_LOG_LEVEL || 'silent' });
 

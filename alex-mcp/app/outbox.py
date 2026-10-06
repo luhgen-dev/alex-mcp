@@ -437,29 +437,77 @@ def _reconcile_claim_setup_markers(conn) -> None:
             _cleanup_claim_setup_markers(conn, row)
 
 
+# Every Alex message that represents responsibility for one unresolved
+# reminder. Exactly one of them (the newest sent one, in the chat where the
+# responsibility currently lives) carries the unresolved ⏳ + pin.
+_REMINDER_MARKER_KINDS = (
+    "REMINDER_CREATED", "REMINDER_ASSIGNED", "REMINDER_CLAIM_CONFIRMED",
+    "REMINDER_INITIAL", "REMINDER_FOLLOWUP", "REMINDER_CLAIMANT_FOLLOWUP",
+)
+_UNRESOLVED_REMINDER_STATES = ("OPEN", "DUE", "DEFERRED")
+
+
+def _reminder_marker_should_be_active(row, is_latest: bool) -> bool:
+    if not is_latest:
+        return False
+    if row["reminder_status"] not in _UNRESOLVED_REMINDER_STATES:
+        return False
+    if row["recurrence_rule"]:
+        # A recurring reminder never finishes; pinning it forever would only
+        # crowd out real unresolved items.
+        return False
+    if int(row["claimable"] or 0) == 1:
+        home = str(row["reminder_conversation_id"] or "")
+        here = str(row["conversation_id"] or "")
+        if not row["claimed_by_user_id"]:
+            # Unclaimed pre-due family work is marked on the group claim card
+            # (REMINDER_SETUP). Once due, the fired group message carries it.
+            return row["reminder_status"] != "OPEN" and here == home
+        # Claimed: responsibility lives in the claimant's DM, never the group.
+        return here != home
+    return True
+
+
 def _reconcile_reminder_pins(conn) -> None:
-    """Keep every fired unresolved reminder pinned until it leaves DUE."""
+    """Keep ⏳ + pin on the one current message of every unresolved reminder.
+
+    Covers personal reminders from creation (REMINDER_CREATED), assigned and
+    claimed reminders (REMINDER_ASSIGNED / REMINDER_CLAIM_CONFIRMED) and fired
+    reminders/follow-ups. 👍/seen keeps the reminder DUE, so markers stay;
+    completion or cancellation clears them. Older carriers of the same
+    reminder are cleaned when a newer one (e.g. the fired reminder) is sent.
+    """
+    marks = ",".join("?" for _ in _REMINDER_MARKER_KINDS)
     rows = conn.execute(
-        """SELECT o.*,r.status AS reminder_status,r.claimable,r.claimed_by_user_id
+        f"""SELECT o.rowid AS outbound_rowid,o.*,
+                  r.status AS reminder_status,r.claimable,r.claimed_by_user_id,
+                  r.recurrence_rule,r.conversation_id AS reminder_conversation_id
            FROM outbound_messages o
            JOIN reminders r ON r.reminder_id=o.context_id
-           WHERE o.context_kind='REMINDER_INITIAL'
+           WHERE o.context_kind IN ({marks})
              AND o.delivery_status='SENT'
-             AND o.job_pinned_at_utc IS NOT NULL
-             AND o.job_unpinned_at_utc IS NULL"""
+             AND (
+                r.status IN ('OPEN','DUE','DEFERRED')
+                OR (o.job_reacted_at_utc IS NOT NULL
+                    AND o.job_reaction_cleared_at_utc IS NULL)
+                OR (o.job_pinned_at_utc IS NOT NULL
+                    AND o.job_unpinned_at_utc IS NULL)
+             )
+           ORDER BY o.rowid DESC""",
+        _REMINDER_MARKER_KINDS,
     ).fetchall()
+    latest: dict[str, str] = {}
     for row in rows:
-        unresolved = row["reminder_status"] == "DUE"
-        if not unresolved and _attempt_control(
-            conn, row, "unpin", outbound=True
+        latest.setdefault(str(row["context_id"]), str(row["outbound_id"]))
+    for row in rows:
+        is_latest = latest.get(str(row["context_id"])) == str(row["outbound_id"])
+        if _reminder_marker_should_be_active(row, is_latest):
+            _ensure_claim_setup_markers(conn, row)
+        elif (
+            (row["job_reacted_at_utc"] and not row["job_reaction_cleared_at_utc"])
+            or (row["job_pinned_at_utc"] and not row["job_unpinned_at_utc"])
         ):
-            conn.execute(
-                """UPDATE outbound_messages
-                   SET job_unpinned_at_utc=?,job_unpin_failed_at_utc=NULL
-                   WHERE outbound_id=?""",
-                (_now(), row["outbound_id"]),
-            )
-            conn.commit()
+            _cleanup_claim_setup_markers(conn, row)
 
 
 def _ensure_reminder_draft_pin(conn, row) -> None:

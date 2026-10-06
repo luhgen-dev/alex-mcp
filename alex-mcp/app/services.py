@@ -163,9 +163,93 @@ def _user_stated_time(text: str | None) -> bool:
     return False
 
 
-_RELATIVE_REMINDER_TIME_RE = re.compile(
-    r"(?i)\b(?:in|after)\s+\d+\s*(?:minutes?|mins?|hours?|hrs?)\b"
+_RELATIVE_QUALIFIER = (
+    r"(?:(?:about|abt|around|ard|approx(?:imately)?|roughly|like|maybe|~)\s*)?"
 )
+_RELATIVE_UNIT = (
+    r"(?:minutes?|mins?|minits?|minit|mints?|mnts?|mns|m"
+    r"|hours?|hrs?|hr|h)"
+)
+_RELATIVE_AMOUNT = r"(\d{1,3}(?:\.5)?|an?|one|two|three|four|five|ten|fifteen|twenty|thirty|forty|fifty|half\s+an?)"
+# A relative duration needs an explicit lead ("in", "after", "within") or an
+# explicit trailing anchor ("from now", "later"); a bare "40 mins" inside a
+# longer sentence ("bake for 40 mins at 7pm") must never override a clock.
+_RELATIVE_REMINDER_TIME_RE = re.compile(
+    r"(?i)(?:\b(?:in|after|within)\s+" + _RELATIVE_QUALIFIER
+    + _RELATIVE_AMOUNT + r"\s*(?:" + _RELATIVE_UNIT + r")\b"
+    + r"|\b" + _RELATIVE_QUALIFIER + _RELATIVE_AMOUNT + r"\s*(?:"
+    + _RELATIVE_UNIT + r")\s+(?:from\s+now|later)\b)"
+)
+# A whole line that is only a duration is an answer to "what time?" in a
+# clarification chain (e.g. "abt 40 mins", "10 min").
+_BARE_RELATIVE_LINE_RE = re.compile(
+    r"(?i)^\s*(?:in\s+|after\s+|within\s+)?" + _RELATIVE_QUALIFIER
+    + _RELATIVE_AMOUNT + r"\s*(?:" + _RELATIVE_UNIT
+    + r")(?:\s+(?:from\s+now|later|pls|please))?\s*[.!]*\s*$"
+)
+_WORD_AMOUNTS = {
+    "a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+    "ten": 10, "fifteen": 15, "twenty": 20, "thirty": 30, "forty": 40,
+    "fifty": 50,
+}
+
+
+def _relative_delta_from_match(amount_text: str, unit_text: str) -> timedelta | None:
+    amount_value = str(amount_text or "").strip().casefold()
+    unit = str(unit_text or "").strip().casefold()
+    is_hour = unit.startswith(("h",))
+    if re.match(r"half\s+an?$", amount_value):
+        return timedelta(minutes=30) if is_hour else None
+    if amount_value in _WORD_AMOUNTS:
+        amount = float(_WORD_AMOUNTS[amount_value])
+    else:
+        try:
+            amount = float(amount_value)
+        except ValueError:
+            return None
+    if amount <= 0:
+        return None
+    if is_hour:
+        if amount > 72:
+            return None
+        return timedelta(minutes=int(round(amount * 60)))
+    if amount > 24 * 60 or amount != int(amount):
+        return None
+    return timedelta(minutes=int(amount))
+
+
+def relative_reminder_delta(text: str | None) -> timedelta | None:
+    """Deterministic relative-duration reading shared by every reminder gate.
+
+    Accepts natural shorthand such as "in about 10 mins", "in abt 40 minits",
+    "in half an hour", "2 hours from now", and a bare duration line ("10 min")
+    as a clarification answer. It never invents a clock time.
+    """
+    value = normalize_intent_text(str(text or ""))
+    if not value.strip():
+        return None
+    unit_capture = r"(" + _RELATIVE_UNIT + r")"
+    lead = re.search(
+        r"(?i)\b(?:in|after|within)\s+" + _RELATIVE_QUALIFIER
+        + _RELATIVE_AMOUNT + r"\s*" + unit_capture + r"\b",
+        value,
+    ) or re.search(
+        r"(?i)\b" + _RELATIVE_QUALIFIER + _RELATIVE_AMOUNT + r"\s*"
+        + unit_capture + r"\s+(?:from\s+now|later)\b",
+        value,
+    )
+    if lead:
+        return _relative_delta_from_match(lead.group(1), lead.group(2))
+    for line in reversed(value.splitlines()):
+        bare = re.match(
+            r"(?i)^\s*(?:in\s+|after\s+|within\s+)?" + _RELATIVE_QUALIFIER
+            + _RELATIVE_AMOUNT + r"\s*" + unit_capture
+            + r"(?:\s+(?:from\s+now|later|pls|please))?\s*[.!]*\s*$",
+            line,
+        )
+        if bare:
+            return _relative_delta_from_match(bare.group(1), bare.group(2))
+    return None
 _WEEKDAY_NAMES = {
     "mon": 0, "monday": 0, "tue": 1, "tues": 1, "tuesday": 1,
     "wed": 2, "wednesday": 2, "thu": 3, "thur": 3, "thurs": 3, "thursday": 3,
@@ -361,7 +445,7 @@ def reminder_time_text_is_deterministic(text: str | None) -> bool:
     value = str(text or "").strip()
     if not value:
         return False
-    if _user_stated_time(value) or _RELATIVE_REMINDER_TIME_RE.search(value):
+    if _user_stated_time(value) or relative_reminder_delta(value) is not None:
         return True
     if _WEEKDAY_RE.search(value) or _CALENDAR_DATE_RE.search(value):
         return True
@@ -433,21 +517,9 @@ def _deterministic_reminder_due_from_text(actor: ActorContext) -> str | None:
     tz = ZoneInfo(actor.timezone)
     now_local = now.astimezone(tz)
 
-    relative = _RELATIVE_REMINDER_TIME_RE.search(trusted)
-    if relative:
-        amount_match = re.search(
-            r"(?i)\b(?:in|after)\s+(\d+)\s*(minutes?|mins?|hours?|hrs?)\b",
-            relative.group(0),
-        )
-        if amount_match:
-            amount = int(amount_match.group(1))
-            unit = amount_match.group(2).casefold()
-            delta = (
-                timedelta(hours=amount)
-                if unit.startswith(("hour", "hr"))
-                else timedelta(minutes=amount)
-            )
-            return (now + delta).isoformat()
+    relative_delta = relative_reminder_delta(trusted)
+    if relative_delta is not None:
+        return (now + relative_delta).isoformat()
 
     clock = _stated_clock(trusted)
     if clock is None:
@@ -552,7 +624,7 @@ def _validate_reminder_time_intent(actor: ActorContext, due_utc: str) -> None:
     trusted = _reminder_time_intent_text(actor)
     if trusted and not (
         _user_stated_time(trusted)
-        or _RELATIVE_REMINDER_TIME_RE.search(trusted)
+        or relative_reminder_delta(trusted) is not None
     ):
         raise ValueError(
             "REMINDER_NEEDS_TIME: ask the user for an exact time before creating the reminder"
@@ -1940,6 +2012,16 @@ def reminder_draft_routing_envelope(
             re.IGNORECASE,
         ):
             target = aliases[alias]
+            if _self_reminder_words_keep_group_channel(actor, alias, value):
+                # Locked channel contract: in MCP Home, "remind me" is ordinary
+                # wording, not a request to move the reminder into a private
+                # DM. Only explicit DM/private wording changes the channel.
+                return {
+                    "origin": "GROUP_CHANNEL_DEFAULT",
+                    "recipient": "both",
+                    "destination": "group",
+                    "explicit": False,
+                }
             return {
                 "origin": str(origin or "EXPLICIT").upper(),
                 "recipient": "me" if target == actor.user_id else alias,
@@ -1995,6 +2077,30 @@ def _actor_reminder_routing(actor: ActorContext) -> dict | None:
     }
 
 
+_SELF_REMINDER_ALIASES = {"me", "myself", "self"}
+_EXPLICIT_DM_REMINDER_RE = re.compile(
+    r"(?i)\b(?:privately|private|personally|"
+    r"in\s+(?:my\s+)?(?:dm|dms|direct\s+messages?|private\s+chat|inbox)|"
+    r"(?:by|via|through)\s+(?:dm|direct\s+message)|dm\s+me|"
+    r"message\s+me|text\s+me|only\s+me|just\s+me)\b"
+)
+
+
+def _explicit_dm_reminder_request(text: str | None) -> bool:
+    return bool(_EXPLICIT_DM_REMINDER_RE.search(str(text or "")))
+
+
+def _self_reminder_words_keep_group_channel(
+    actor: ActorContext, alias: str, text: str
+) -> bool:
+    """True when "remind me" was typed in the family group without DM wording."""
+    return bool(
+        getattr(actor, "conversation_type", "") == "GROUP"
+        and str(alias or "").casefold() in _SELF_REMINDER_ALIASES
+        and not _explicit_dm_reminder_request(text)
+    )
+
+
 def _trusted_named_reminder_recipient(actor: ActorContext) -> tuple[str, str] | None:
     """Resolve an explicit assignee from this reminder's accumulated trusted text."""
     text = _reminder_intent_text(actor)
@@ -2003,6 +2109,8 @@ def _trusted_named_reminder_recipient(actor: ActorContext) -> tuple[str, str] | 
     aliases = _reminder_recipient_aliases(actor)
     for alias in sorted(aliases, key=len, reverse=True):
         if re.search(r"\bremind\s+" + re.escape(alias) + r"\b", text, re.IGNORECASE):
+            if _self_reminder_words_keep_group_channel(actor, alias, text):
+                return None
             return alias, aliases[alias]
     return None
 
@@ -2054,6 +2162,8 @@ _REMINDER_REFERENCE_STOPWORDS = {
     "it","one","same","reopen","open","close","closed","cancel","cancelled",
     "release","unclaim","claim","claimed","push","send","put","return","back",
     "mcp","home","group","family","again","dont","don","think","so","re",
+    "as","done","mark","complete","completed","finish","finished","snooze",
+    "show","active","please","pls","is","on","at","in",
 }
 
 
@@ -2072,8 +2182,14 @@ def _resolve_reminder_reference_id(
     *,
     include_closed: bool = True,
     require_claimed_by_actor: bool = False,
+    pronoun_prefers_closed: bool = True,
 ) -> str:
-    """Resolve a natural reminder reference conservatively inside actor ACL."""
+    """Resolve a natural reminder reference conservatively inside actor ACL.
+
+    A named reference must cover most of the user's meaningful words; one
+    shared token (e.g. "v0526") is never enough to pick a reminder, because
+    the same resolver feeds complete/cancel/snooze/reopen mutations.
+    """
     marks, spaces = _spaces_sql(actor)
     conn = connect()
     try:
@@ -2118,7 +2234,16 @@ def _resolve_reminder_reference_id(
                 # Prefer covering all of the user's meaningful reference words,
                 # then greater absolute overlap, then the newest matching row.
                 coverage = len(overlap) / max(1, len(ref_words))
-                scored.append((coverage, len(overlap), row))
+                task_coverage = len(overlap) / max(1, len(task_words))
+                # Mutation safety: accept a row only when the user's words
+                # cover most of that task, or the task covers most of the
+                # user's words. A lone shared token never selects a reminder.
+                if not (
+                    task_coverage >= 0.75
+                    or (coverage >= 0.6 and len(overlap) >= min(2, len(ref_words)))
+                ):
+                    continue
+                scored.append((max(coverage, task_coverage), len(overlap), row))
             if not scored:
                 raise ValueError("REMINDER_REFERENCE_NOT_FOUND")
             scored.sort(
@@ -2153,9 +2278,14 @@ def _resolve_reminder_reference_id(
             raise ValueError("REMINDER_REFERENCE_AMBIGUOUS")
 
         closed = [row for row in rows if row["status"] in {"COMP", "CANC"}]
-        if closed:
+        active = [
+            row for row in rows if row["status"] in {"OPEN", "DUE", "DEFERRED"}
+        ]
+        if pronoun_prefers_closed and closed:
             newest = closed[0]
             return str(newest["reminder_id"])
+        if len(active) == 1:
+            return str(active[0]["reminder_id"])
         if len(rows) == 1:
             return str(rows[0]["reminder_id"])
         raise ValueError("REMINDER_REFERENCE_AMBIGUOUS")
@@ -2223,6 +2353,23 @@ def create_reminder(actor: ActorContext, task: str, due_local: str,
     )
     stored_route = _actor_reminder_routing(actor)
     enforced_route = current_route or stored_route
+    if (
+        not enforced_route
+        and actor.conversation_type == "GROUP"
+        and not _trusted_named_reminder_recipient(actor)
+        and not _explicit_dm_reminder_request(_reminder_intent_text(actor))
+        and str(recipient or "me").strip().casefold()
+        in {"me", "self", "myself", "both", "everyone", "both of us", ""}
+    ):
+        # Locked channel contract: a reminder created in MCP Home stays a
+        # family reminder unless the user explicitly names someone else or
+        # explicitly asks for a private/DM reminder.
+        enforced_route = {
+            "origin": "GROUP_CHANNEL_DEFAULT",
+            "recipient": "both",
+            "destination": "group",
+            "explicit": False,
+        }
     if enforced_route:
         recipient = enforced_route["recipient"]
         destination = enforced_route["destination"]
@@ -2374,23 +2521,69 @@ def create_reminder(actor: ActorContext, task: str, due_local: str,
     finally:
         conn.close()
 
+def _reminder_reference_match(ref_words: set[str], task_text: str) -> bool:
+    task_words = _reminder_reference_words(task_text)
+    overlap = ref_words & task_words
+    if not overlap:
+        return False
+    coverage = len(overlap) / max(1, len(ref_words))
+    task_coverage = len(overlap) / max(1, len(task_words))
+    return bool(
+        task_coverage >= 0.75
+        or (coverage >= 0.6 and len(overlap) >= min(2, len(ref_words)))
+    )
+
+
 def list_reminders(actor: ActorContext, include_completed: bool = False, limit: int = 20) -> dict:
+    """List reminders visible to the actor.
+
+    Ordering is deterministic and user-meaningful: reminders the user named in
+    this turn first, then due/overdue, then upcoming by due time, then (when
+    requested) completed/cancelled by most recent completion. The response
+    states how many exist so a capped list is never read as "not found".
+    """
     marks, spaces = _spaces_sql(actor)
     states = "" if include_completed else " AND status IN ('OPEN','DUE','DEFERRED')"
+    cap = max(1, min(50, int(limit)))
     conn = connect()
     try:
         rows = conn.execute(
-            f"""SELECT reminder_id,owner_id,task_text,due_at_utc,timezone_name,
-                       recurrence_rule,status,space_id,conversation_id,claimable,
-                       claimed_by_user_id,claimed_at_utc
-                FROM reminders WHERE space_id IN ({marks}) {states}
-                ORDER BY due_at_utc ASC LIMIT ?""",
-            spaces + [max(1, min(50, int(limit)))],
+            f"""SELECT r.reminder_id,r.owner_id,r.task_text,r.due_at_utc,r.timezone_name,
+                       r.recurrence_rule,r.status,r.space_id,r.conversation_id,r.claimable,
+                       r.claimed_by_user_id,r.claimed_at_utc,r.created_at_utc,
+                       (SELECT MAX(e.created_at_utc) FROM reminder_events e
+                         WHERE e.reminder_id=r.reminder_id
+                           AND e.event_type IN ('COMPLETED','CANCELLED')) AS closed_at_utc
+                FROM reminders r WHERE r.space_id IN ({marks}) {states}""",
+            spaces,
         ).fetchall()
+        ref_words = _reminder_reference_words(
+            normalize_intent_text(str(getattr(actor, "trusted_text", "") or ""))
+        )
+
+        def sort_key(row):
+            status = str(row["status"] or "")
+            named = bool(ref_words) and _reminder_reference_match(
+                ref_words, row["task_text"]
+            )
+            if status in {"COMP", "CANC"}:
+                # Most recently closed first.
+                closed = str(row["closed_at_utc"] or row["created_at_utc"] or "")
+                return (0 if named else 1, 2, "~" + "".join(
+                    chr(0x10FFFF - ord(ch)) for ch in closed
+                ))
+            group = 0 if status == "DUE" else 1
+            return (0 if named else 1, group, str(row["due_at_utc"] or ""))
+
+        ordered = sorted(rows, key=sort_key)
+        total = len(ordered)
         reminders = []
         tz = ZoneInfo(actor.timezone)
-        for row in rows:
+        for row in ordered[:cap]:
             item = dict(row)
+            item["named_in_request"] = bool(ref_words) and _reminder_reference_match(
+                ref_words, row["task_text"]
+            )
             try:
                 due = datetime.fromisoformat(str(item["due_at_utc"]).replace("Z", "+00:00"))
                 if due.tzinfo is None:
@@ -2409,7 +2602,12 @@ def list_reminders(actor: ActorContext, include_completed: bool = False, limit: 
             item["handoff_pending_to_user_id"] = pending["to_user_id"] if pending else None
             item["handoff_pending_to"] = pending["display_name"] if pending else None
             reminders.append(item)
-        return {"reminders": reminders}
+        return {
+            "reminders": reminders,
+            "total": total,
+            "shown": len(reminders),
+            "truncated": total > len(reminders),
+        }
     finally:
         conn.close()
 
@@ -2440,6 +2638,15 @@ def update_reminder(actor: ActorContext, reminder_id: str | None, status: str = 
         reminder_id,
         reminder_reference,
         include_closed=True,
+        # Only a plain reopen ("reopen it") may mean the newest closed
+        # reminder. "Mark it done" / "cancel it" / "snooze it" must never be
+        # redirected to an already-closed reminder.
+        pronoun_prefers_closed=bool(
+            resolved == "OPEN"
+            and snooze_minutes is None
+            and not snooze_until_local
+            and not new_due_local
+        ),
     )
     marks, spaces = _spaces_sql(actor)
     conn = connect()
