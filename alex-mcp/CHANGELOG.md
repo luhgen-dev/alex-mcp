@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.28
+Fixes from the first live v0.5.27 smoke test.
+- Personal reminder confirmations now get their unresolved ⏳ + pin at creation. Root cause: a DM can arrive addressed as `<lid>@lid` while reminders store the owner's phone JID, so the confirmation was matched to its reminder by comparing chat-id strings and silently found nothing; markers only appeared later, when the reminder fired. The confirmation is now bound by the authenticated owner, never by chat-id spelling.
+- "Mark <partial name> as done" (for example "Mark v0527 as done") now goes to the reminder tools, where the mutation-safe resolver asks which reminder you mean, instead of being swallowed by the shopping rule that also matches "mark ... done" (which leaked shopping-list output such as "Status filter: OPEN"). A word that belongs to a real shopping item still reaches shopping.
+- Added regressions that reproduce both with a LID-addressed DM and the exact live phrase; both fail on v0.5.27 and pass here.
+
 ## 0.5.27
 Reminder lifecycle repair after the v0.5.26 live WhatsApp smoke (independent Claude audit + fix).
 - Natural relative answers such as "In about 10 mins", "in abt 40 mins", "in 40 minits", "in half an hour" and "2 hours from now" are now understood deterministically, with no AI call. Root cause of the repeated "What time should I remind you?": the date validator only accepted the exact form "in 10 minutes", so even a correct semantic-gateway paraphrase ("in about 10 minutes") was rejected. A relative duration inside a longer sentence ("bake for 40 mins at 7pm") still never overrides a stated clock time.

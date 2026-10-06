@@ -1090,17 +1090,26 @@ def _created_claimable_reminder_id(actor) -> str | None:
 
 
 def _created_personal_reminder_id(actor) -> str | None:
-    """Bind a creation confirmation to the one non-claimable reminder that
-    lives in this same chat, so its unresolved ⏳ + pin start immediately."""
+    """Bind a creation confirmation to the one personal reminder this turn made.
+
+    Live finding: a DM can arrive addressed as ``<lid>@lid`` while reminders
+    store the owner's phone JID (``<phone>@s.whatsapp.net``), so comparing
+    chat-id strings silently found nothing and the confirmation never got its
+    unresolved ⏳ + pin. Identity is the authenticated owner, never the chat-id
+    spelling.
+    """
+    if actor.conversation_type == "GROUP":
+        return None
     conn = db.connect()
     try:
         rows = conn.execute(
             """SELECT reminder_id FROM reminders
-               WHERE source_message_id=? AND conversation_id=?
+               WHERE source_message_id=? AND owner_id=?
                  AND claimable=0 AND status IN ('OPEN','DUE','DEFERRED')
+                 AND conversation_id LIKE '%@s.whatsapp.net'
                  AND (recurrence_rule IS NULL OR recurrence_rule='')
                ORDER BY created_at_utc DESC LIMIT 2""",
-            (actor.source_message_id, actor.conversation_id),
+            (actor.source_message_id, actor.user_id),
         ).fetchall()
         return str(rows[0]["reminder_id"]) if len(rows) == 1 else None
     finally:

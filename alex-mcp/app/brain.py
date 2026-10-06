@@ -3196,6 +3196,58 @@ def _accessible_reminder_name_mentioned(actor: ActorContext, user_text: str) -> 
     return False
 
 
+_REMINDER_LIFECYCLE_WORDS_RE = re.compile(
+    r"(?i)\b(?:mark(?:ed)?|set)\b.*\b(?:done|complete|completed|finished)\b"
+    r"|\b(?:complete|finish|cancel|snooze|postpone|reopen)\b"
+)
+_SHOPPING_WORDS_RE = re.compile(
+    r"(?i)\b(?:shopping|grocery|groceries|bought|buy|purchased|list)\b"
+)
+
+
+def _reminder_lifecycle_reference_mentioned(actor: ActorContext, user_text: str) -> bool:
+    """True for "mark <word> as done" when <word> belongs to an active reminder
+    and not to the shopping list.
+
+    A partial reference ("v0527") must reach the reminder tools, whose
+    mutation-safe resolver then asks which one, instead of being swallowed by
+    the shopping rule that also matches "mark ... done".
+    """
+    text = str(user_text or "")
+    if not _REMINDER_LIFECYCLE_WORDS_RE.search(text) or _SHOPPING_WORDS_RE.search(text):
+        return False
+    user_tokens = _reminder_name_tokens(text)
+    if not user_tokens:
+        return False
+    try:
+        spaces = scope_policy.read_spaces(actor)
+    except Exception:
+        return False
+    if not spaces:
+        return False
+    marks = ",".join("?" for _ in spaces)
+    conn = connect()
+    try:
+        reminders = conn.execute(
+            f"""SELECT task_text FROM reminders
+                WHERE space_id IN ({marks}) AND status IN ('OPEN','DUE','DEFERRED')
+                ORDER BY due_at_utc DESC LIMIT 200""",
+            spaces,
+        ).fetchall()
+        shopping = conn.execute(
+            f"""SELECT item_name FROM shopping_items
+                WHERE space_id IN ({marks}) AND status='OPEN' LIMIT 200""",
+            spaces,
+        ).fetchall()
+    except Exception:
+        return False
+    finally:
+        conn.close()
+    if any(user_tokens & _reminder_name_tokens(r["item_name"]) for r in shopping):
+        return False
+    return any(user_tokens & _reminder_name_tokens(r["task_text"]) for r in reminders)
+
+
 def _goal_progress_fallback(candidate: str, tool_evidence: list[dict]) -> str:
     """Replace a meaningless generic read answer with deterministic goal evidence."""
     if str(candidate or "").strip().casefold().rstrip(".!") not in {"done", "ok", "okay"}:
@@ -3484,9 +3536,10 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
             else:
                 merged[idx] = spec
         tools = merged
-    if _accessible_reminder_name_mentioned(actor, user_text):
+    lifecycle_reference = _reminder_lifecycle_reference_mentioned(actor, user_text)
+    if lifecycle_reference or _accessible_reminder_name_mentioned(actor, user_text):
         reminder_tool_names = {"list_reminders", "reminder_history"}
-        if _trusted_mutation_requested(user_text):
+        if lifecycle_reference or _trusted_mutation_requested(user_text):
             # "Mark <reminder> as done" is a reminder lifecycle change; give
             # the model the reminder mutator and never a shopping mutator.
             reminder_tool_names.add("update_reminder")
