@@ -648,6 +648,155 @@ class V0527ReminderLifecycleTests(unittest.TestCase):
         }
         self.assertEqual(statuses, {"alpha": "OPEN", "gamma": "COMP"})
 
+    # -- live v0.5.29 smoke findings (✅ on confirmation, private reminder) --
+    def _create_personal_reminder(self, mid, task, minutes, *, lid=False):
+        payload = self.dm(mid, f"Remind me to {task} in {minutes} minutes")
+        if lid:
+            payload["conversation_id"] = self.LID_DM
+        with patch.object(runtime_clock, "now_utc", return_value=FIXED):
+            self.assertTrue(self.run_turn(payload, [
+                {"tool": "create_reminder", "args": {
+                    "task": task, "due_local": f"in {minutes} minutes",
+                }},
+                {"content": "OK. Set."},
+            ])["ok"])
+        self.mark_sent(mid, "wa-" + mid)
+        return self.rows(
+            "SELECT reminder_id,status FROM reminders ORDER BY created_at_utc DESC LIMIT 1"
+        )[0]["reminder_id"]
+
+    def _react(self, provider_id, emoji, conversation=DM):
+        actor = core.AlexCoreTests.actor(self, "v527-react", "+60111111111")
+        from dataclasses import replace
+        actor = replace(actor, conversation_id=conversation)
+        return services.claim_reminder_from_reaction(actor, provider_id, emoji)
+
+    def test_checkmark_on_creation_confirmation_completes_and_clears_markers(self):
+        core.AlexCoreTests.claim(self, "v527-react", "+60111111111", "")
+        rid = self._create_personal_reminder("v527-r1", "test v0528 alpha", 10)
+        self.sweep_controls()  # ⏳ + pin applied to the confirmation
+        result = self._react("wa-v527-r1", "✅")
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(
+            self.rows("SELECT status FROM reminders WHERE reminder_id=?", (rid,)),
+            [{"status": "COMP"}],
+        )
+        cleared = [(p["kind"], p.get("emoji")) for p in self.sweep_controls()]
+        self.assertEqual(sorted(cleared), [("reaction", ""), ("unpin", None)])
+
+    def test_checkmark_reaction_arriving_on_phone_jid_for_lid_confirmation(self):
+        core.AlexCoreTests.claim(self, "v527-react", "+60111111111", "")
+        rid = self._create_personal_reminder("v527-r2", "test v0528 gamma", 5, lid=True)
+        self.assertEqual(
+            self.rows("SELECT conversation_id FROM outbound_messages "
+                      "WHERE source_message_id='v527-r2'")[0]["conversation_id"],
+            self.LID_DM,
+        )
+        for conversation in (DM, self.LID_DM):
+            result = self._react("wa-v527-r2", "✅", conversation)
+            self.assertIn(result["status"], {"completed", "closed"})
+        self.assertEqual(
+            self.rows("SELECT status FROM reminders WHERE reminder_id=?", (rid,)),
+            [{"status": "COMP"}],
+        )
+
+    def test_thumbs_up_on_confirmation_before_due_keeps_it_unresolved(self):
+        core.AlexCoreTests.claim(self, "v527-react", "+60111111111", "")
+        rid = self._create_personal_reminder("v527-r3", "test v0528 beta", 10)
+        self.sweep_controls()
+        self.assertEqual(self._react("wa-v527-r3", "👍")["status"], "seen_before_due")
+        self.assertEqual(
+            self.rows("SELECT status FROM reminders WHERE reminder_id=?", (rid,)),
+            [{"status": "OPEN"}],
+        )
+        self.assertEqual(self.sweep_controls(), [])  # markers untouched
+
+    def test_other_household_member_cannot_complete_via_my_confirmation(self):
+        core.AlexCoreTests.claim(self, "v527-react", "+60111111111", "")
+        self._create_personal_reminder("v527-r4", "private thing", 10)
+        wife_actor = core.AlexCoreTests.actor(self, "v527-react", "+60111111111")
+        from dataclasses import replace
+        wife_actor = replace(wife_actor, user_id="USR_WIFE")
+        result = services.claim_reminder_from_reaction(wife_actor, "wa-v527-r4", "✅")
+        self.assertIn(result["status"], {"not_assigned_to_you", "not_a_reminder_message"})
+
+    def test_private_reminder_can_be_completed_without_restating_privacy(self):
+        # Created with an emoji => HUSBAND_PVT. The later plain "mark ... done"
+        # must still reach the user's own reminder, in the DM only.
+        payload = self.dm("v527-p1", "Remind me about my shoe in 3 minutes 😂")
+        with patch.object(runtime_clock, "now_utc", return_value=FIXED):
+            self.assertTrue(self.run_turn(payload, [
+                {"tool": "create_reminder", "args": {
+                    "task": "shoe", "due_local": "in 3 minutes",
+                }},
+                {"content": "OK. Set."},
+            ])["ok"])
+        self.assertEqual(
+            self.rows("SELECT space_id FROM reminders")[0]["space_id"], "HUSBAND_PVT"
+        )
+        with patch.object(runtime_clock, "now_utc", return_value=FIXED):
+            self.assertTrue(self.run_turn(
+                self.dm("v527-p2", "Mark shoe as done"),
+                [
+                    {"tool": "update_reminder", "args": {
+                        "reminder_reference": "shoe", "status": "complete",
+                    }},
+                    {"content": "Marked it done."},
+                ],
+            )["ok"])
+        self.assertEqual(
+            self.rows("SELECT status FROM reminders"), [{"status": "COMP"}]
+        )
+
+    def test_group_actor_is_never_widened_to_a_private_reminder(self):
+        payload = self.dm("v527-p3", "Remind me about my shoe in 3 minutes 😂")
+        with patch.object(runtime_clock, "now_utc", return_value=FIXED):
+            self.assertTrue(self.run_turn(payload, [
+                {"tool": "create_reminder", "args": {
+                    "task": "shoe", "due_local": "in 3 minutes",
+                }},
+                {"content": "OK."},
+            ])["ok"])
+        from dataclasses import replace
+        group_actor = db.resolve_actor(
+            "+60111111111", GROUP, "GROUP", "v527-p4", []
+        )
+        db.claim_inbound({
+            "message_id": "v527-p4", "provider": "WHATSAPP", "conversation_id": GROUP,
+            "conversation_type": "GROUP", "sender_phone": "+60111111111", "text": "x",
+        })
+        group_actor = with_action_key(
+            db.resolve_actor("+60111111111", GROUP, "GROUP", "v527-p4", []), "p4"
+        )
+        with self.assertRaises(ValueError):
+            services.update_reminder(group_actor, None, "complete",
+                                     reminder_reference="shoe")
+        self.assertEqual(
+            self.rows("SELECT status FROM reminders"), [{"status": "OPEN"}]
+        )
+
+    def test_tool_instructions_never_reach_the_user_when_the_model_is_silent(self):
+        evidence = [{
+            "_tool_name": "reminder_history",
+            "display": {"title": "Reminder History", "items": [
+                {"title": "shoe", "status": "Delivered", "due": "12:22 PM"},
+            ]},
+            "claims": [],
+            "presentation_rule": (
+                "Present this naturally using local times. Never expose UUIDs."
+            ),
+        }]
+        rendered = brain._tool_evidence_fallback(evidence)
+        self.assertNotIn("Presentation rule", rendered)
+        self.assertNotIn("UUID", rendered)
+        self.assertIn("shoe", rendered)
+        # And with nothing renderable, still no instruction text.
+        only_rule = brain._tool_evidence_fallback([{
+            "_tool_name": "x", "presentation_rule": "Never expose UUIDs.",
+        }])
+        self.assertNotIn("UUID", only_rule)
+        self.assertNotIn("Presentation rule", only_rule)
+
 
 if __name__ == "__main__":
     unittest.main()

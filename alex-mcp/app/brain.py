@@ -5,6 +5,7 @@ import json
 import re
 import time
 import uuid
+from dataclasses import replace
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -3262,7 +3263,13 @@ def _reminder_lifecycle_reference_mentioned(actor: ActorContext, user_text: str)
     if not user_tokens:
         return False
     try:
-        spaces = scope_policy.read_spaces(actor)
+        # Lifecycle changes act on the owner's own reminders (shared or
+        # private) from their own DM; never widened for a group actor.
+        scope_actor = (
+            replace(actor, read_scope="all")
+            if actor.conversation_type != "GROUP" else actor
+        )
+        spaces = scope_policy.read_spaces(scope_actor)
     except Exception:
         return False
     if not spaces:
@@ -3321,6 +3328,46 @@ def _format_scalar(value) -> str:
     return str(value)
 
 
+# Tool-to-model instructions are never user-facing text.
+_INSTRUCTION_KEYS = {
+    "presentation_rule", "note", "hint", "hints", "instructions", "instruction",
+    "empty_means", "guidance", "rule", "rules", "status_filter",
+}
+
+
+def _render_display_block(display: dict) -> str:
+    """Render a tool-provided display block as numbered, ID-free lines."""
+    skip = {
+        "id", "reminder_id", "event_id", "item_id", "media_id", "outbound_id",
+        "provider_message_id", "source_message_id", "conversation_id",
+    }
+    lines: list[str] = []
+    title = str(display.get("title") or "").strip()
+    if title:
+        lines.append(title)
+    items = display.get("items")
+    if isinstance(items, list):
+        for index, row in enumerate(items[:12], 1):
+            if isinstance(row, dict):
+                label = next(
+                    (str(row[k]).strip() for k in ("title", "task", "task_text", "name", "label")
+                     if row.get(k)), "",
+                )
+                details = [
+                    f"{str(k).replace('_', ' ').capitalize()}: {_format_scalar(v)}"
+                    for k, v in row.items()
+                    if k not in skip and k not in {"title", "task", "task_text", "name", "label"}
+                    and isinstance(v, (str, int, float)) and v not in ("", None)
+                    and k not in _INSTRUCTION_KEYS and not str(k).endswith("_rule")
+                ]
+                text = label + (("\n   " + "\n   ".join(details)) if details else "")
+                if text.strip():
+                    lines.append(f"{index}. {text}")
+            elif str(row).strip():
+                lines.append(f"{index}. {str(row).strip()}")
+    return "\n".join(lines).strip() if len(lines) > (1 if title else 0) else ""
+
+
 def _tool_evidence_fallback(tool_evidence: list[dict]) -> str:
     """Render deterministic read evidence when the final model answer is empty.
 
@@ -3343,6 +3390,10 @@ def _tool_evidence_fallback(tool_evidence: list[dict]) -> str:
             return f"I couldn't complete that lookup: {str(error)[:240]}"
 
         display = evidence.get("display")
+        if isinstance(display, dict):
+            rendered = _render_display_block(display)
+            if rendered:
+                return rendered
         if isinstance(display, str) and display.strip():
             return display.strip()
         if isinstance(display, list):
@@ -3443,7 +3494,11 @@ def _tool_evidence_fallback(tool_evidence: list[dict]) -> str:
         # state. This is preferable to the misleading generic word "Done."
         scalars = []
         for key, value in evidence.items():
-            if key in hidden_keys or key.startswith("_"):
+            if (
+                key in hidden_keys or key.startswith("_")
+                or key in _INSTRUCTION_KEYS or key.endswith("_rule")
+                or key.endswith("_hint") or key.endswith("_note")
+            ):
                 continue
             if isinstance(value, (str, int, float, bool)) and value not in ("", None):
                 label = key.replace("_", " ").strip().capitalize()
