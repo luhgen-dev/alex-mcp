@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.30
+Fixes from the v0.5.29 live smoke.
+- A ✅ on a reminder's creation confirmation, an assignment message or a claim confirmation now completes the reminder and clears its ⏳ + pin. Those messages carry the unresolved markers from creation, but the reaction handler only recognised fired-reminder messages, so the ✅ was silently ignored. A "seen" reaction (👍) before the due time leaves the reminder unresolved and keeps the markers. Only the person responsible can act on these messages, and the message is matched by its unique provider id, so a DM addressed as `<lid>@lid` on one event and as the phone JID on another still resolves.
+- The owner can complete or cancel their own private reminder by name from their DM without re-stating privacy ("Mark shoe as done" for a reminder created with an emoji). The record keeps its stored scope; group chats are never widened and cannot touch private reminders.
+- Internal tool instructions ("Presentation rule: Present this naturally using local times...") can no longer appear in a reply. The evidence fallback now ignores instruction/hint keys and renders tool display blocks (such as reminder history) as plain numbered lines.
+- Regressions added for each case (including LID-addressed DMs, a spouse trying to use my confirmation, and a group actor trying to reach a private reminder); the first three fail on v0.5.29 and pass here.
+
 ## 0.5.29
 Fix from the v0.5.28 live smoke (T3).
 - "Mark v0528 as done" with two matching reminders used to show "I couldn't verify that change ... Error executing tool update_reminder: REMINDER_REFERENCE_AMBIGUOUS". Alex now asks "Which reminder do you mean?" and lists the matching active reminders with their local due times; nothing is changed until you name one. An unknown name gets the same treatment (it lists your active reminders instead of an error).
