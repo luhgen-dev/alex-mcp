@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.27
+Reminder lifecycle repair after the v0.5.26 live WhatsApp smoke (independent Claude audit + fix).
+- Natural relative answers such as "In about 10 mins", "in abt 40 mins", "in 40 minits", "in half an hour" and "2 hours from now" are now understood deterministically, with no AI call. Root cause of the repeated "What time should I remind you?": the date validator only accepted the exact form "in 10 minutes", so even a correct semantic-gateway paraphrase ("in about 10 minutes") was rejected. A relative duration inside a longer sentence ("bake for 40 mins at 7pm") still never overrides a stated clock time.
+- The semantic gateway now asks the model for canonical date/time phrasing, and unusable gateway outcomes are audited so live failures can be diagnosed.
+- Locked channel contract: a reminder created in MCP Home stays a claimable family reminder, including "remind me ...". Only an explicitly named other person, or explicit private/DM wording, moves it out of the group (private wording is handed to the owner's DM as before).
+- One unresolved-marker rule for every reminder message: personal reminder confirmations, assigned and claimed reminder DMs, fired reminders and follow-ups. The current message of each unresolved reminder carries ⏳ + pin from creation/claim onward and hands them on when the reminder fires; 👍 (seen) keeps them; ✅/cancel clears both. Unclaimed family claim cards keep their existing ⏳ + pin.
+- "Mark <reminder> as done" now reaches the reminder tools instead of shopping; reminder names are recognised from most of their words, never from one shared token.
+- Reminder mutations are reference-safe: a single shared word (e.g. "v0526") can no longer select a different reminder, and "mark it done" / "cancel it" / "snooze it" can never be redirected to an already-closed reminder.
+- Reminder listings put the reminder the user named first, then due, then upcoming; completed reminders are ordered by most recent completion with their completion time; the response reports total/shown/truncated so a capped list is never read as "not found".
+- The private-DM slow acknowledgement now waits 12 seconds, so ordinary reminder turns no longer show "Sure, I'm working on that...".
+- Added end-to-end regressions (real ingress/router/brain/MCP/outbox, only provider replies scripted with realistic imperfect arguments) for every v0.5.26 live failure; all of them fail on v0.5.26 and pass on v0.5.27.
+
 ## 0.5.26
 Live semantic-gateway correction after the first v0.5.25 WhatsApp verification.
 - Fixed the exact live failure where a reminder clarification reply such as “in abt 40 mins” could be correctly classified by the semantic gateway yet still be ignored by the normal Alex brain, causing Alex to ask “What time should I remind you?” again.

@@ -171,7 +171,7 @@ class SemanticGatewayTests(unittest.TestCase):
         self.assertNotIn("item_id", captured["messages"][1]["content"])
 
     def test_semantic_interpreter_escalates_once_after_unresolved_saver_frame(self):
-        actor = self._claim_actor("sg-provider-fallback", "in abt 40 mins")
+        actor = self._claim_actor("sg-provider-fallback", "in abt fourty mins")
         seen_models = []
 
         class FakeCompletions:
@@ -220,7 +220,7 @@ class SemanticGatewayTests(unittest.TestCase):
             frame = brain.interpret_control_intent(
                 actor,
                 control_kind="REMINDER_DRAFT",
-                current_text="in abt 40 mins",
+                current_text="in abt fourty mins",
                 pending_text="Remind me to check the mailbox",
                 latest_question="What time should I remind you?",
                 allowed_intents={"ANSWER_PENDING", "UNCLEAR"},
@@ -239,11 +239,11 @@ class SemanticGatewayTests(unittest.TestCase):
             original="Remind me to check the mailbox",
             question="What time should I remind you?",
         )
-        current = self._claim_actor("sg-model-current", "in abt 40 mins")
+        current = self._claim_actor("sg-model-current", "in abt fourty mins")
         current = replace(
             current,
             reminder_context_text=(
-                "Remind me to check the mailbox\nin abt 40 mins"
+                "Remind me to check the mailbox\nin abt fourty mins"
             ),
             reminder_semantic_text="in 40 minutes",
         )
@@ -280,7 +280,7 @@ class SemanticGatewayTests(unittest.TestCase):
              patch.object(brain, "_trace_turn"):
             asyncio.run(brain.respond(
                 current,
-                "in abt 40 mins",
+                "in abt fourty mins",
                 quoted_context=quoted,
                 semantic_user_text="in 40 minutes",
             ))
@@ -288,7 +288,7 @@ class SemanticGatewayTests(unittest.TestCase):
         self.assertEqual(captured["messages"][-1]["content"], "in 40 minutes")
         history = db.recent_turns(current.conversation_id, 2)
         self.assertEqual(history[-2]["role"], "user")
-        self.assertEqual(history[-2]["content"], "in abt 40 mins")
+        self.assertEqual(history[-2]["content"], "in abt fourty mins")
 
     def test_proven_clean_continuation_stays_zero_token(self):
         _, draft = self._make_draft()
@@ -312,7 +312,7 @@ class SemanticGatewayTests(unittest.TestCase):
 
     def test_semantic_hint_normalizes_relative_time_for_deterministic_validator(self):
         _, draft = self._make_draft()
-        current = self._claim_actor("sg-relative", "in abt 40 mins")
+        current = self._claim_actor("sg-relative", "in abt fourty mins")
         with patch.object(
             brain,
             "interpret_control_intent",
@@ -324,7 +324,7 @@ class SemanticGatewayTests(unittest.TestCase):
             },
         ):
             continues, _, hint = ingress._reminder_draft_continuation(
-                current, draft, "in abt 40 mins"
+                current, draft, "in abt fourty mins"
             )
 
         self.assertTrue(continues)
@@ -333,7 +333,7 @@ class SemanticGatewayTests(unittest.TestCase):
         interpreted = replace(
             current,
             reminder_context_text=(
-                "Remind me to water the plants\nin abt 40 mins"
+                "Remind me to water the plants\nin abt fourty mins"
             ),
             reminder_semantic_text=hint,
         )
@@ -379,8 +379,8 @@ class SemanticGatewayTests(unittest.TestCase):
         )
 
         interpreted_cases = (
-            ("in 40 minits", "in 40 minutes"),
-            ("in abt 40 mins", "in 40 minutes"),
+            ("in fourty minits", "in 40 minutes"),
+            ("in abt fourty mins", "in 40 minutes"),
             ("tmr ard 7ish", "tomorrow around 7"),
         )
         for index, (raw, normalized) in enumerate(interpreted_cases):
@@ -504,7 +504,7 @@ class SemanticGatewayTests(unittest.TestCase):
 
         second = self._payload(
             "sg-flow-second",
-            "roughly forty minits from now",
+            "roughly fourty minits from now",
         )
         semantic = {
             "intent": "ANSWER_PENDING",
@@ -526,7 +526,7 @@ class SemanticGatewayTests(unittest.TestCase):
         self.assertEqual(semantic_mock.call_count, 1)
         self.assertEqual(seen["semantic"], "in 40 minutes")
         self.assertEqual(seen["semantic_user_text"], "in 40 minutes")
-        self.assertEqual(seen["raw_user_text"], "roughly forty minits from now")
+        self.assertEqual(seen["raw_user_text"], "roughly fourty minits from now")
         self.assertEqual(
             seen["context"]["pending_item"]["item_id"],
             draft["item_id"],
@@ -548,7 +548,7 @@ class SemanticGatewayTests(unittest.TestCase):
         self.assertEqual(state["status"], "PENDING")
         self.assertEqual(
             state["accumulated_text"].count(
-                "roughly forty minits from now"
+                "roughly fourty minits from now"
             ),
             1,
         )
@@ -592,7 +592,7 @@ class SemanticGatewayTests(unittest.TestCase):
                 "in 40 minutes",
             )
             self.assertEqual(semantic_user_text, "in 40 minutes")
-            self.assertEqual(user_text, "in abt 40 mins")
+            self.assertEqual(user_text, "in abt fourty mins")
             services.create_reminder(
                 with_action_key(actor, "sg-create-action"),
                 "check the mailbox",
@@ -602,7 +602,7 @@ class SemanticGatewayTests(unittest.TestCase):
 
         second = self._payload(
             "sg-create-second",
-            "in abt 40 mins",
+            "in abt fourty mins",
         )
         frozen = datetime(2026, 10, 6, 0, 0, tzinfo=timezone.utc)
         with patch.object(
@@ -706,7 +706,7 @@ class SemanticGatewayTests(unittest.TestCase):
 
         second = self._payload(
             "sg-live-quote-second",
-            "in abt 40 mins",
+            "in abt fourty mins",
         )
         second["quoted_message_id"] = "wa-sg-live-time-question"
         frozen = datetime(2026, 10, 5, 18, 39, tzinfo=timezone.utc)
@@ -732,8 +732,8 @@ class SemanticGatewayTests(unittest.TestCase):
 
         self.assertTrue(result["ok"])
         self.assertEqual(semantic_mock.call_count, 1)
-        self.assertEqual(seen["raw"], "in abt 40 mins")
-        self.assertEqual(seen["trusted"], "in abt 40 mins")
+        self.assertEqual(seen["raw"], "in abt fourty mins")
+        self.assertEqual(seen["trusted"], "in abt fourty mins")
         self.assertEqual(seen["semantic"], "in 40 minutes")
         self.assertEqual(
             seen["context"]["pending_item"]["item_id"],
@@ -754,7 +754,7 @@ class SemanticGatewayTests(unittest.TestCase):
             conn.close()
 
         self.assertEqual(state["status"], "RESOLVED")
-        self.assertIn("in abt 40 mins", state["accumulated_text"])
+        self.assertIn("in abt fourty mins", state["accumulated_text"])
         self.assertIsNotNone(reminder)
         self.assertEqual(
             datetime.fromisoformat(reminder["due_at_utc"]),
