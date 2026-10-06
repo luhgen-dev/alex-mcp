@@ -1050,6 +1050,10 @@ def _maybe_create_reminder_draft(actor, reply: str) -> dict | None:
         return None
 
     value = str(reply or "").strip()
+    if services.is_reminder_reference_question(value):
+        # "Which reminder do you mean?" is about an existing reminder, not a
+        # missing date/time, so it must not open or pin a reminder draft.
+        return None
     user_requested = _is_reminder_request(
         getattr(actor, "intent_text", "")
         or getattr(actor, "trusted_text", "")

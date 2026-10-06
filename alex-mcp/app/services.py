@@ -2293,6 +2293,59 @@ def _resolve_reminder_reference_id(
         conn.close()
 
 
+# Leads of the deterministic "which reminder do you mean?" questions. They ask
+# about an EXISTING reminder, so they must never open a reminder time draft.
+REMINDER_REFERENCE_QUESTION_LEADS = (
+    "Which reminder do you mean?",
+    "I couldn't find that exact reminder.",
+    "I couldn't find an active reminder for that.",
+)
+
+
+def is_reminder_reference_question(reply: str | None) -> bool:
+    value = str(reply or "").lstrip()
+    return any(value.startswith(lead) for lead in REMINDER_REFERENCE_QUESTION_LEADS)
+
+
+def reminder_reference_candidates(
+    actor: ActorContext, reference: str | None, limit: int = 5
+) -> list[dict]:
+    """Active reminders the user may have meant, for a deterministic question.
+
+    Read-only. Prefers reminders that share a meaningful word with the
+    reference; when none do (or no reference was given) it lists the nearest
+    active reminders so the user can pick one by name.
+    """
+    marks, spaces = _spaces_sql(actor)
+    conn = connect()
+    try:
+        rows = conn.execute(
+            f"""SELECT task_text,due_at_utc,timezone_name,status FROM reminders
+                WHERE space_id IN ({marks}) AND status IN ('OPEN','DUE','DEFERRED')
+                ORDER BY CASE status WHEN 'DUE' THEN 0 ELSE 1 END, due_at_utc ASC
+                LIMIT 200""",
+            spaces,
+        ).fetchall()
+    finally:
+        conn.close()
+    words = _reminder_reference_words(reference)
+    matched = [
+        r for r in rows
+        if words and (words & _reminder_reference_words(r["task_text"]))
+    ]
+    chosen = (matched or list(rows))[: max(1, min(8, int(limit)))]
+    return [
+        {
+            "task": r["task_text"],
+            "due": _friendly_reminder_time(
+                r["due_at_utc"], r["timezone_name"] or actor.timezone
+            ),
+            "matched": bool(matched),
+        }
+        for r in chosen
+    ]
+
+
 def _queue_family_claim_card(
     conn,
     *,
