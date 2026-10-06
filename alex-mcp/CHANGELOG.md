@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.29
+Fix from the v0.5.28 live smoke (T3).
+- "Mark v0528 as done" with two matching reminders used to show "I couldn't verify that change ... Error executing tool update_reminder: REMINDER_REFERENCE_AMBIGUOUS". Alex now asks "Which reminder do you mean?" and lists the matching active reminders with their local due times; nothing is changed until you name one. An unknown name gets the same treatment (it lists your active reminders instead of an error).
+- The question is deterministic and is never rewritten by the mutation-success guard, and it never opens or pins a reminder time draft.
+- Regressions added for both cases plus a guard that a clear reference still completes normally.
+
 ## 0.5.28
 Fixes from the first live v0.5.27 smoke test.
 - Personal reminder confirmations now get their unresolved ⏳ + pin at creation. Root cause: a DM can arrive addressed as `<lid>@lid` while reminders store the owner's phone JID, so the confirmation was matched to its reminder by comparing chat-id strings and silently found nothing; markers only appeared later, when the reminder fired. The confirmation is now bound by the authenticated owner, never by chat-id spelling.

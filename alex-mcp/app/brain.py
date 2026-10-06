@@ -3073,11 +3073,53 @@ def _reminder_clarification_from_error(error: str | None) -> str | None:
     return None
 
 
+_REMINDER_LIFECYCLE_TOOLS = {"update_reminder", "release_reminder_claim"}
+
+
+def _reminder_reference_question(
+    actor: ActorContext, args: dict, error: str | None
+) -> str | None:
+    """Ask which reminder was meant instead of showing a validator error."""
+    value = str(error or "")
+    ambiguous = "REMINDER_REFERENCE_AMBIGUOUS" in value
+    unknown = "REMINDER_REFERENCE_NOT_FOUND" in value
+    if not (ambiguous or unknown):
+        return None
+    try:
+        candidates = services_reminder_candidates(
+            actor, str((args or {}).get("reminder_reference") or "")
+        )
+    except Exception:
+        candidates = []
+    if not candidates:
+        return "I couldn't find an active reminder for that. Which one do you mean?"
+    lead = (
+        "Which reminder do you mean?"
+        if ambiguous or candidates[0].get("matched")
+        else "I couldn't find that exact reminder. Is it one of these?"
+    )  # leads must stay in sync with services.REMINDER_REFERENCE_QUESTION_LEADS
+    lines = [
+        f"{i}. {c['task']} ({c['due']})" for i, c in enumerate(candidates, 1)
+    ]
+    return (
+        lead + "\n" + "\n".join(lines)
+        + "\nTell me the name, for example “mark "
+        + str(candidates[0]["task"]) + " as done”."
+    )
+
+
+def services_reminder_candidates(actor: ActorContext, reference: str) -> list[dict]:
+    import services
+    return services.reminder_reference_candidates(actor, reference)
+
+
 def _reminder_clarification_from_evidence(
     tool_evidence: list[dict],
 ) -> str | None:
     for evidence in reversed(tool_evidence):
-        if evidence.get("_tool_name") != "create_reminder":
+        if evidence.get("_tool_name") not in (
+            {"create_reminder"} | _REMINDER_LIFECYCLE_TOOLS
+        ):
             continue
         question = str(evidence.get("clarification_question") or "").strip()
         if question:
@@ -3826,8 +3868,13 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
             )
             if reminder_question:
                 candidate = reminder_question
-            final = _guard_mutation_success(
-                candidate, action_basis or user_text, mutation_ledger
+            # A deterministic clarification question is never a success claim, so
+            # the mutation-success guard must not rewrite it.
+            final = (
+                candidate if reminder_question
+                else _guard_mutation_success(
+                    candidate, action_basis or user_text, mutation_ledger
+                )
             )
             final = _guard_warranty_grounding(final, tool_evidence)
             final = _guard_delivery_claim(final, attachments)
@@ -3935,6 +3982,28 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                         new_files.append(item)
                 attachments.extend(new_files)
                 payload = dict(result) if isinstance(result, dict) else {"result": result}
+                lifecycle_question = (
+                    _reminder_reference_question(
+                        actor, args, str(payload.get("error") or "")
+                    )
+                    if name in _REMINDER_LIFECYCLE_TOOLS and payload.get("error")
+                    else None
+                )
+                if lifecycle_question:
+                    # An unclear or unknown reminder reference is a question for
+                    # the user, not a failed mutation and not a validator error.
+                    payload = {
+                        "status": "needs_clarification",
+                        "clarification_question": lifecycle_question,
+                    }
+                    tool_evidence.append({**payload, "_tool_name": name})
+                    trace["tools_called"].append(name + ":clarification")
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": call.id,
+                        "content": json.dumps(payload, ensure_ascii=False),
+                    })
+                    continue
                 tool_evidence.append({**payload, "_tool_name": name})
                 if files:
                     # Tell the model delivery is automatic so it never claims
@@ -3959,6 +4028,10 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                     _reminder_clarification_from_error(error_text)
                     if name == "create_reminder" else None
                 )
+                if not reminder_question and name in _REMINDER_LIFECYCLE_TOOLS:
+                    reminder_question = _reminder_reference_question(
+                        actor, args, error_text
+                    )
                 if reminder_question:
                     payload = {
                         "status": "needs_clarification",

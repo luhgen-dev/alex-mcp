@@ -568,6 +568,86 @@ class V0527ReminderLifecycleTests(unittest.TestCase):
             )["ok"])
         self.assertIn("update_shopping_item", exposed[0])
 
+    # -- live v0.5.28 smoke finding (T3) ----------------------------------
+    def _last_reply(self, source_message_id):
+        return self.rows(
+            """SELECT text_body,context_kind FROM outbound_messages
+               WHERE source_message_id=? ORDER BY rowid DESC LIMIT 1""",
+            (source_message_id,),
+        )[0]
+
+    def test_ambiguous_reference_asks_which_reminder_instead_of_showing_an_error(self):
+        self._seed("alpha", "test v0528 alpha", 10)
+        self._seed("gamma", "test v0528 gamma", 5)
+        with patch.object(runtime_clock, "now_utc", return_value=FIXED):
+            self.assertTrue(self.run_turn(
+                self.dm("v528-t3", "Mark v0528 as done"),
+                [
+                    {"tool": "update_reminder", "args": {
+                        "reminder_reference": "v0528", "status": "complete",
+                    }},
+                    # What a real model says after the tool error: a success
+                    # claim, which the guard used to turn into a raw error.
+                    {"content": "I've marked it as done."},
+                ],
+            )["ok"])
+        reply = self._last_reply("v528-t3")["text_body"]
+        self.assertIn("Which reminder do you mean?", reply)
+        self.assertIn("test v0528 alpha", reply)
+        self.assertIn("test v0528 gamma", reply)
+        for leak in ("Error executing", "REMINDER_REFERENCE", "couldn't verify"):
+            self.assertNotIn(leak, reply)
+        statuses = {
+            r["reminder_id"]: r["status"]
+            for r in self.rows("SELECT reminder_id,status FROM reminders")
+        }
+        self.assertEqual(statuses, {"alpha": "OPEN", "gamma": "OPEN"})
+        # A lifecycle question is not a reminder time question: no draft, no pin.
+        self.assertEqual(
+            self.rows("SELECT 1 FROM pending_items WHERE kind='REMINDER_DRAFT'"), []
+        )
+        self.assertNotEqual(self._last_reply("v528-t3")["context_kind"], "PENDING_ITEM")
+
+    def test_unknown_reference_lists_active_reminders_instead_of_an_error(self):
+        self._seed("alpha", "test v0528 alpha", 10)
+        with patch.object(runtime_clock, "now_utc", return_value=FIXED):
+            self.assertTrue(self.run_turn(
+                self.dm("v528-nf", "Cancel the dentist reminder"),
+                [
+                    {"tool": "update_reminder", "args": {
+                        "reminder_reference": "dentist", "status": "cancel",
+                    }},
+                    {"content": "Cancelled."},
+                ],
+            )["ok"])
+        reply = self._last_reply("v528-nf")["text_body"]
+        self.assertIn("test v0528 alpha", reply)
+        for leak in ("Error executing", "REMINDER_REFERENCE", "couldn't verify"):
+            self.assertNotIn(leak, reply)
+        self.assertEqual(
+            self.rows("SELECT status FROM reminders WHERE reminder_id='alpha'"),
+            [{"status": "OPEN"}],
+        )
+
+    def test_a_clear_reference_still_completes_normally(self):
+        self._seed("alpha", "test v0528 alpha", 10)
+        self._seed("gamma", "test v0528 gamma", 5)
+        with patch.object(runtime_clock, "now_utc", return_value=FIXED):
+            self.assertTrue(self.run_turn(
+                self.dm("v528-ok", "Mark test v0528 gamma as done"),
+                [
+                    {"tool": "update_reminder", "args": {
+                        "reminder_reference": "test v0528 gamma", "status": "complete",
+                    }},
+                    {"content": "Marked it done."},
+                ],
+            )["ok"])
+        statuses = {
+            r["reminder_id"]: r["status"]
+            for r in self.rows("SELECT reminder_id,status FROM reminders")
+        }
+        self.assertEqual(statuses, {"alpha": "OPEN", "gamma": "COMP"})
+
 
 if __name__ == "__main__":
     unittest.main()
