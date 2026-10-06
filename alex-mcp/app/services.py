@@ -2310,6 +2310,9 @@ def is_reminder_reference_question(reply: str | None) -> bool:
 def reminder_reference_candidates(
     actor: ActorContext, reference: str | None, limit: int = 5
 ) -> list[dict]:
+    if actor.conversation_type != "GROUP":
+        # Same owner-DM scope as the lifecycle mutation the user attempted.
+        actor = replace(actor, read_scope="all")
     """Active reminders the user may have meant, for a deterministic question.
 
     Read-only. Prefers reminders that share a meaningful word with the
@@ -2686,6 +2689,13 @@ def update_reminder(actor: ActorContext, reminder_id: str | None, status: str = 
         raise ValueError("DUE is scheduler-owned; use snooze/reschedule/open instead")
     if resolved not in {"OPEN","ACK","DEFERRED","COMP","CANC"}:
         raise ValueError("unsupported reminder status")
+    # Lifecycle changes to the actor's OWN existing reminder must not require
+    # re-stating privacy ("Mark shoe as done" for a reminder created with an
+    # emoji). In the owner's own DM the actor can only ever see shared plus
+    # their own private space, so widening to "all" here exposes nothing new
+    # and the record keeps its stored scope. Group actors are never widened.
+    if actor.conversation_type != "GROUP":
+        actor = replace(actor, read_scope="all")
     reminder_id = _resolve_reminder_reference_id(
         actor,
         reminder_id,
@@ -3365,11 +3375,33 @@ def claim_reminder_from_reaction(
                  AND context_kind IN (
                      'REMINDER_SETUP','REMINDER_INITIAL','REMINDER_FOLLOWUP',
                      'REMINDER_CLAIMANT_FOLLOWUP','REMINDER_FAMILY_RESURFACE',
-                     'REMINDER_INITIATOR_ESCALATION','REMINDER_HANDOFF'
+                     'REMINDER_INITIATOR_ESCALATION','REMINDER_HANDOFF',
+                     'REMINDER_CREATED','REMINDER_ASSIGNED',
+                     'REMINDER_CLAIM_CONFIRMED'
                  )
                ORDER BY delivered_at_utc DESC,created_at_utc DESC LIMIT 1""",
             (actor.conversation_id, provider_message_id),
         ).fetchone()
+        dm_forms = [actor.conversation_id]
+        if not outbound and actor.conversation_type != "GROUP" and provider_message_id:
+            # A DM can be addressed as <lid>@lid on one event and as the phone
+            # JID on another. A provider message id is unique, so bind by it
+            # and require that the reminder belongs to this authenticated user.
+            outbound = conn.execute(
+                """SELECT o.outbound_id,o.context_kind,o.context_id,o.provider_message_id
+                   FROM outbound_messages o
+                   JOIN reminders r ON r.reminder_id=o.context_id
+                   WHERE o.provider_message_id=?
+                     AND o.context_kind IN (
+                         'REMINDER_INITIAL','REMINDER_FOLLOWUP',
+                         'REMINDER_CLAIMANT_FOLLOWUP',
+                         'REMINDER_CREATED','REMINDER_ASSIGNED',
+                         'REMINDER_CLAIM_CONFIRMED'
+                     )
+                     AND (r.owner_id=? OR r.claimed_by_user_id=?)
+                   ORDER BY o.delivered_at_utc DESC,o.created_at_utc DESC LIMIT 1""",
+                (provider_message_id, actor.user_id, actor.user_id),
+            ).fetchone()
         if not outbound:
             candidates = conn.execute(
                 """SELECT outbound_id,context_kind,context_id,provider_message_id
@@ -3378,7 +3410,9 @@ def claim_reminder_from_reaction(
                      AND context_kind IN (
                          'REMINDER_SETUP','REMINDER_INITIAL','REMINDER_FOLLOWUP',
                          'REMINDER_CLAIMANT_FOLLOWUP','REMINDER_FAMILY_RESURFACE',
-                         'REMINDER_INITIATOR_ESCALATION','REMINDER_HANDOFF'
+                         'REMINDER_INITIATOR_ESCALATION','REMINDER_HANDOFF',
+                         'REMINDER_CREATED','REMINDER_ASSIGNED',
+                         'REMINDER_CLAIM_CONFIRMED'
                      )
                    ORDER BY delivered_at_utc DESC,created_at_utc DESC""",
                 (actor.conversation_id,),
@@ -3510,7 +3544,27 @@ def claim_reminder_from_reaction(
         if reminder["status"] in {"COMP", "CANC"}:
             conn.rollback()
             return {"status": "closed", "reminder_id": reminder_id}
-        if actor.conversation_type != "GROUP" and reminder["status"] != "DUE":
+        confirmation_message = context_kind in {
+            "REMINDER_CREATED", "REMINDER_ASSIGNED", "REMINDER_CLAIM_CONFIRMED",
+        }
+        if confirmation_message:
+            # These DM messages carry the unresolved ⏳ + pin from creation or
+            # claim. Only the person responsible may act on them.
+            if actor.conversation_type == "GROUP" or actor.user_id not in {
+                str(reminder["owner_id"] or ""),
+                str(reminder["claimed_by_user_id"] or ""),
+            }:
+                conn.rollback()
+                return {"status": "not_assigned_to_you", "reminder_id": reminder_id}
+            if (
+                reaction.replace("\ufe0f", "") not in {"✅", "✔", "☑"}
+                and reminder["status"] != "DUE"
+            ):
+                # A "seen" reaction before the due time changes nothing: the
+                # reminder stays unresolved and keeps its markers.
+                conn.rollback()
+                return {"status": "seen_before_due", "reminder_id": reminder_id}
+        elif actor.conversation_type != "GROUP" and reminder["status"] != "DUE":
             conn.rollback()
             return {"status": "ignored_direct_reminder_reaction"}
 
