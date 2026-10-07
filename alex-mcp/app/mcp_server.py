@@ -461,7 +461,12 @@ def reminder_history(actor: Actor, reminder_id: str | None = None,
         "claims": claims,
         "presentation_rule": (
             "Present this naturally using local times. Never expose UUIDs, raw "
-            "state codes, provider ids, egress jargon or UTC."
+            "state codes, provider ids, egress jargon or UTC. status_time is when "
+            "the status happened (e.g. when it was completed); scheduled_for is "
+            "when the reminder was due. Never describe a scheduled time as a "
+            "completion time. Write dates as in the provided text (for example "
+            "7th October 2026), never as 2026-10-07. Do not add a closing "
+            "question offering more help."
         ),
     }
 

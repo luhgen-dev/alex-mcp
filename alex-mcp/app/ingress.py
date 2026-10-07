@@ -1045,6 +1045,32 @@ def _latest_reminder_draft_question(actor, pending: dict) -> str:
     return "What day, date, or time should I use for that reminder?"
 
 
+_REMINDER_CREATE_WORDS_RE = re.compile(
+    r"(?i)\bremind(?:\s+(?:me|us|him|her|them|\w+))?\b"
+    r"|\b(?:set|create|add|put|make|new)\s+(?:a\s+|an\s+|the\s+|another\s+)?reminders?\b"
+)
+_REMINDER_READ_WORDS_RE = re.compile(
+    r"(?i)\b(?:show|list|history|display|view|see|check|what|which|when\s+is|"
+    r"do\s+i\s+have|any|how\s+many|status|upcoming|pending|overdue|completed)\b"
+)
+
+
+def _is_reminder_read_request(text: str | None) -> bool:
+    """True for "show my reminders" / "reminder history" style questions.
+
+    A reply that merely offers further help ("Is there anything specific you
+    were looking for?") is not unfinished reminder work, so these turns must
+    never open a pinned reminder draft.
+    """
+    value = normalize_intent_text(str(text or ""))
+    if not value.strip():
+        return False
+    return bool(
+        _REMINDER_READ_WORDS_RE.search(value)
+        and not _REMINDER_CREATE_WORDS_RE.search(value)
+    )
+
+
 def _maybe_create_reminder_draft(actor, reply: str) -> dict | None:
     if _reminder_created_by_turn(actor):
         return None
@@ -1054,11 +1080,16 @@ def _maybe_create_reminder_draft(actor, reply: str) -> dict | None:
         # "Which reminder do you mean?" is about an existing reminder, not a
         # missing date/time, so it must not open or pin a reminder draft.
         return None
-    user_requested = _is_reminder_request(
-        getattr(actor, "intent_text", "")
-        or getattr(actor, "trusted_text", "")
+    request_text = (
+        getattr(actor, "intent_text", "") or getattr(actor, "trusted_text", "")
+    )
+    user_requested = (
+        _is_reminder_request(request_text)
+        and not _is_reminder_read_request(request_text)
     )
     ai_interpreted = _reply_explicitly_interprets_reminder(value)
+    if _is_reminder_read_request(request_text) and not _reply_is_reminder_clarification(value):
+        return None
     if not (user_requested or ai_interpreted):
         return None
 

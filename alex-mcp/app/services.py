@@ -2969,7 +2969,16 @@ def reminder_history(actor: ActorContext, reminder_id: str | None = None,
                     "number": 1,
                     "task": owned["task_text"],
                     "status": status_flow,
-                    "due_local": latest_due,
+                    # When the status happened vs. the scheduled time are
+                    # different facts and must never be labelled alike.
+                    "status_time": (
+                        _friendly_reminder_time(rows[-1]["created_at_utc"], actor.timezone)
+                        if rows else None
+                    ),
+                    "scheduled_for": (
+                        _friendly_reminder_time(latest_due, actor.timezone)
+                        if latest_due else None
+                    ),
                 }],
             }
             return {
@@ -3009,7 +3018,15 @@ def reminder_history(actor: ActorContext, reminder_id: str | None = None,
                 "number": len(grouped) + 1,
                 "task": row["task_text"],
                 "status": flow,
-                "due_local": latest_due,
+                # `row` is this reminder's newest event: that is when the
+                # status happened. The scheduled time is a separate fact.
+                "status_time": _friendly_reminder_time(
+                    row["created_at_utc"], actor.timezone
+                ),
+                "scheduled_for": (
+                    _friendly_reminder_time(latest_due, actor.timezone)
+                    if latest_due else None
+                ),
             })
         return {
             "history": history,
