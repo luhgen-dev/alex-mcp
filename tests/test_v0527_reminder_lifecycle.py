@@ -867,6 +867,67 @@ class V0527ReminderLifecycleTests(unittest.TestCase):
         }
         self.assertEqual(statuses, {"old-a": "DUE", "target": "OPEN"})
 
+    # -- live v0.5.31 smoke findings (history pinned; history dates) ------
+    HISTORY_REPLY = (
+        "Here is your recent reminder history:\n\n"
+        "* *test v0531 c*: Completed on 7th October 2026, 10.48AM\n\n"
+        "Is there anything specific from your history you were looking for?"
+    )
+
+    def test_reminder_read_replies_with_a_helpful_question_are_never_pinned(self):
+        self._seed("done-c", "test v0531 c", -10, "COMP")
+        for index, text in enumerate((
+            "Show me my reminder history", "Show me my reminders",
+            "Do I have any upcoming reminders?", "List my reminders",
+        )):
+            with patch.object(runtime_clock, "now_utc", return_value=FIXED):
+                self.assertTrue(self.run_turn(
+                    self.dm(f"v532-h{index}", text),
+                    [{"tool": "reminder_history", "args": {}},
+                     {"content": self.HISTORY_REPLY}],
+                )["ok"])
+            reply = self._last_reply(f"v532-h{index}")
+            self.assertNotEqual(reply["context_kind"], "PENDING_ITEM", text)
+        self.assertEqual(
+            self.rows("SELECT 1 FROM pending_items WHERE kind='REMINDER_DRAFT'"), []
+        )
+        # And nothing gets pinned/marked by the reconciler.
+        for index in range(4):
+            self.mark_sent(f"v532-h{index}", f"wa-h{index}")
+        self.assertEqual(self.sweep_controls(), [])
+
+    def test_a_real_missing_time_question_still_opens_a_pinned_draft(self):
+        with patch.object(runtime_clock, "now_utc", return_value=FIXED):
+            self.assertTrue(self.run_turn(
+                self.dm("v532-d1", "Remind me to test v0532"),
+                [{"content": "What time should I remind you?"}],
+            )["ok"])
+        self.assertEqual(
+            self.rows("SELECT kind,status FROM pending_items"),
+            [{"kind": "REMINDER_DRAFT", "status": "PENDING"}],
+        )
+        self.assertEqual(self._last_reply("v532-d1")["context_kind"], "PENDING_ITEM")
+
+    def test_history_separates_when_it_happened_from_when_it_was_due(self):
+        # A reminder scheduled for 9 Oct but completed today must not read as
+        # "completed on 9 Oct" (live: "wash my bike ... 2026-10-09 (Scheduled)").
+        self._seed("bike", "wash my bike", 60 * 24 * 3)  # due in 3 days
+        core.AlexCoreTests.claim(self, "v532-hist", "+60111111111", "")
+        actor = with_action_key(
+            core.AlexCoreTests.actor(self, "v532-hist", "+60111111111"), "hist-1"
+        )
+        with patch.object(runtime_clock, "now_utc", return_value=FIXED):
+            services.update_reminder(actor, "bike", "complete")
+            history = services.reminder_history(actor)
+        item = history["display"]["items"][0]
+        self.assertEqual(item["task"], "wash my bike")
+        self.assertIn("status_time", item)
+        self.assertIn("scheduled_for", item)
+        self.assertNotIn("due_local", item)
+        self.assertNotEqual(item["status_time"], item["scheduled_for"])
+        for value in (item["status_time"], item["scheduled_for"]):
+            self.assertNotRegex(str(value), r"\d{4}-\d{2}-\d{2}")
+
 
 if __name__ == "__main__":
     unittest.main()
