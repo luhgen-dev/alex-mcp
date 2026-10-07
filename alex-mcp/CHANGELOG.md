@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.31
+Fix from the v0.5.30 live smoke (T2).
+- "Mark v0530 b as done" asked "Which reminder do you mean?" and listed unrelated reminders even though the words you typed named exactly one. Cause: the AI passed a vague reminder reference ("b", "that" or nothing), and the resolver trusted it over your own words. When the AI's reference is vague or fails, Alex now retries with the words you actually typed, using the same mutation-safe matching (a single shared word still never picks a different reminder). A genuinely vague request ("mark that reminder as done") still asks which one and changes nothing. The "which one?" list is also built from your typed words when the AI's reference carries none.
+- Regressions added with the live situation (two older private reminders plus the target) and three kinds of vague AI reference; they fail on v0.5.30 and pass here.
+
 ## 0.5.30
 Fixes from the v0.5.29 live smoke.
 - A ✅ on a reminder's creation confirmation, an assignment message or a claim confirmation now completes the reminder and clears its ⏳ + pin. Those messages carry the unresolved markers from creation, but the reaction handler only recognised fired-reminder messages, so the ✅ was silently ignored. A "seen" reaction (👍) before the due time leaves the reminder unresolved and keeps the markers. Only the person responsible can act on these messages, and the message is matched by its unique provider id, so a DM addressed as `<lid>@lid` on one event and as the phone JID on another still resolves.
