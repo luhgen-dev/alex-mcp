@@ -2696,21 +2696,44 @@ def update_reminder(actor: ActorContext, reminder_id: str | None, status: str = 
     # and the record keeps its stored scope. Group actors are never widened.
     if actor.conversation_type != "GROUP":
         actor = replace(actor, read_scope="all")
-    reminder_id = _resolve_reminder_reference_id(
-        actor,
-        reminder_id,
-        reminder_reference,
-        include_closed=True,
+    pronoun_prefers_closed = bool(
         # Only a plain reopen ("reopen it") may mean the newest closed
         # reminder. "Mark it done" / "cancel it" / "snooze it" must never be
         # redirected to an already-closed reminder.
-        pronoun_prefers_closed=bool(
-            resolved == "OPEN"
-            and snooze_minutes is None
-            and not snooze_until_local
-            and not new_due_local
-        ),
+        resolved == "OPEN"
+        and snooze_minutes is None
+        and not snooze_until_local
+        and not new_due_local
     )
+
+    def _resolve_with(reference):
+        return _resolve_reminder_reference_id(
+            actor, reminder_id, reference,
+            include_closed=True,
+            pronoun_prefers_closed=pronoun_prefers_closed,
+        )
+
+    try:
+        reminder_id = _resolve_with(reminder_reference)
+    except ValueError as exc:
+        # The model's reference can be vague or empty ("b", "that", nothing)
+        # even when the user's own words name exactly one reminder
+        # ("Mark v0530 b as done"). The user's typed words are authoritative
+        # and deterministic, so retry with them before asking the user to
+        # repeat themselves. The resolver is still mutation-safe: it never
+        # accepts a single shared token across different reminders.
+        typed = str(getattr(actor, "trusted_text", "") or "").strip()
+        retryable = str(exc) in {
+            "REMINDER_REFERENCE_AMBIGUOUS", "REMINDER_REFERENCE_NOT_FOUND",
+        }
+        if (
+            not retryable
+            or reminder_id
+            or not _reminder_reference_words(typed)
+            or typed.casefold() == str(reminder_reference or "").strip().casefold()
+        ):
+            raise
+        reminder_id = _resolve_with(typed)
     marks, spaces = _spaces_sql(actor)
     conn = connect()
     try:
