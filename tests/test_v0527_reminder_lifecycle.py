@@ -797,6 +797,76 @@ class V0527ReminderLifecycleTests(unittest.TestCase):
         self.assertNotIn("UUID", only_rule)
         self.assertNotIn("Presentation rule", only_rule)
 
+    # -- live v0.5.30 smoke finding (T2: vague model reference) -----------
+    def _seed_private(self, rid, task, minutes, status="OPEN"):
+        conn = db.connect()
+        try:
+            conn.execute(
+                """INSERT INTO reminders(reminder_id,action_key,owner_id,space_id,
+                       conversation_id,task_text,due_at_utc,timezone_name,status)
+                   VALUES(?,?,'USR_HUSBAND','HUSBAND_PVT',?,?,?,
+                          'Asia/Kuala_Lumpur',?)""",
+                (rid, "ak-" + rid, DM, task,
+                 (FIXED + timedelta(minutes=minutes)).isoformat(), status),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_vague_model_reference_falls_back_to_what_the_user_typed(self):
+        self._seed_private("old-a", "Check v051", -6000, "DUE")
+        self._seed_private("old-b", "Dentist Appointment", -3000, "DUE")
+        self._seed_private("target", "v0530 b", 10)
+        for index, vague in enumerate(("b", "that", "")):
+            with self.subTest(model_reference=vague):
+                conn = db.connect()
+                try:
+                    conn.execute(
+                        "UPDATE reminders SET status='OPEN' WHERE reminder_id='target'"
+                    )
+                    conn.commit()
+                finally:
+                    conn.close()
+                args = {"status": "complete"}
+                if vague:
+                    args["reminder_reference"] = vague
+                with patch.object(runtime_clock, "now_utc", return_value=FIXED):
+                    self.assertTrue(self.run_turn(
+                        self.dm(f"v531-{index}", "Mark v0530 b as done"),
+                        [
+                            {"tool": "update_reminder", "args": args},
+                            {"content": "Marked it done."},
+                        ],
+                    )["ok"])
+                statuses = {
+                    r["reminder_id"]: r["status"]
+                    for r in self.rows("SELECT reminder_id,status FROM reminders")
+                }
+                self.assertEqual(statuses["target"], "COMP")
+                self.assertEqual(statuses["old-a"], "DUE")
+                self.assertEqual(statuses["old-b"], "DUE")
+
+    def test_truly_vague_request_still_asks_and_changes_nothing(self):
+        self._seed_private("old-a", "Check v051", -6000, "DUE")
+        self._seed_private("target", "v0530 b", 10)
+        with patch.object(runtime_clock, "now_utc", return_value=FIXED):
+            self.assertTrue(self.run_turn(
+                self.dm("v531-vague", "Mark that reminder as done"),
+                [
+                    {"tool": "update_reminder", "args": {
+                        "reminder_reference": "that", "status": "complete",
+                    }},
+                    {"content": "Done."},
+                ],
+            )["ok"])
+        reply = self._last_reply("v531-vague")["text_body"]
+        self.assertIn("Which reminder do you mean?", reply)
+        statuses = {
+            r["reminder_id"]: r["status"]
+            for r in self.rows("SELECT reminder_id,status FROM reminders")
+        }
+        self.assertEqual(statuses, {"old-a": "DUE", "target": "OPEN"})
+
 
 if __name__ == "__main__":
     unittest.main()

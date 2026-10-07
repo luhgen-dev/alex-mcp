@@ -3087,9 +3087,11 @@ def _reminder_reference_question(
     if not (ambiguous or unknown):
         return None
     try:
-        candidates = services_reminder_candidates(
-            actor, str((args or {}).get("reminder_reference") or "")
-        )
+        reference = str((args or {}).get("reminder_reference") or "")
+        # A vague model reference must not hide what the user actually typed.
+        if not services_reference_has_words(reference):
+            reference = str(getattr(actor, "trusted_text", "") or "")
+        candidates = services_reminder_candidates(actor, reference)
     except Exception:
         candidates = []
     if not candidates:
@@ -3107,6 +3109,11 @@ def _reminder_reference_question(
         + "\nTell me the name, for example “mark "
         + str(candidates[0]["task"]) + " as done”."
     )
+
+
+def services_reference_has_words(reference: str) -> bool:
+    import services
+    return bool(services._reminder_reference_words(reference))
 
 
 def services_reminder_candidates(actor: ActorContext, reference: str) -> list[dict]:
