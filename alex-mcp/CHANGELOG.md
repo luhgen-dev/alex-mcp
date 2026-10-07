@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.32
+Fixes from the v0.5.31 live smoke.
+- "Show me my reminder history" (and any reminder list or question) is never pinned as unfinished work. Any reply to a reminder-related message that contained a question mark used to open a pinned reminder draft, so a closing "Is there anything specific you were looking for?" pinned the history. A reminder draft now opens only for a reminder being created that still needs its time or date; read requests (show, list, history, do I have, what, when is...) never open one.
+- Reminder history no longer presents the scheduled time as the completion time. Each entry now carries when its status happened (for example when it was completed) separately from when it was scheduled, both in plain dates ("7th October 2026, 10.48AM"), not "2026-10-07"; previously a reminder scheduled for 9 October and completed on 7 October read "Completed on 2026-10-09".
+- Regressions added; the history and pin tests fail on v0.5.31 and pass here.
+
 ## 0.5.31
 Fix from the v0.5.30 live smoke (T2).
 - "Mark v0530 b as done" asked "Which reminder do you mean?" and listed unrelated reminders even though the words you typed named exactly one. Cause: the AI passed a vague reminder reference ("b", "that" or nothing), and the resolver trusted it over your own words. When the AI's reference is vague or fails, Alex now retries with the words you actually typed, using the same mutation-safe matching (a single shared word still never picks a different reminder). A genuinely vague request ("mark that reminder as done") still asks which one and changes nothing. The "which one?" list is also built from your typed words when the AI's reference carries none.
