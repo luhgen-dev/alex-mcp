@@ -4,6 +4,7 @@ import json
 import os
 import uuid
 import unittest
+from dataclasses import replace
 from unittest.mock import patch
 
 import test_core as core
@@ -13,6 +14,8 @@ diagnostics = core.diagnostics
 ingress = core.ingress
 outbox = core.outbox
 import shadow_router
+from context import with_action_key
+import services
 
 PHONE = "+60111111111"
 DM = "60111111111@s.whatsapp.net"
@@ -473,6 +476,166 @@ class DiagnosticBundleTests(V0537Base):
             payload = json.load(handle)
         self.assertEqual(payload["format"], "alex-diagnostic-export-v2")
         self.assertEqual(payload["error_id"], recorded["error_id"])
+
+
+class ScreenshotRegressionTests(V0537Base):
+    def test_numbered_fast_path_accepts_wording_alex_teaches(self):
+        cases = {
+            "Show 1": 1,
+            "Show me 1": 1,
+            "send me 2": 2,
+            "get me number 3": 3,
+            "private 5": 5,
+            "listen to 6": 6,
+            "hear 7": 7,
+        }
+        for text, expected in cases.items():
+            parsed = ingress._numbered_selection_request(text)
+            self.assertIsNotNone(parsed, text)
+            self.assertEqual(parsed[0], expected, text)
+            self.assertTrue(parsed[1], text)
+
+    def test_private_numbered_selection_keeps_original_scope(self):
+        self.claim("sel-private-save", PHONE, "save this privately")
+        private_writer = with_action_key(
+            replace(
+                self.actor("sel-private-save", PHONE),
+                trusted_text="save this privately",
+                read_scope="private",
+            ),
+            "sel-private-save-action",
+        )
+        services.save_item(
+            private_writer, "Private selector", "private selector content"
+        )
+
+        self.claim("sel-private-list", PHONE, "show my private saved items")
+        private_reader = replace(
+            self.actor("sel-private-list", PHONE),
+            trusted_text="show my private saved items",
+            read_scope="private",
+        )
+        found = services.search_saved_items(private_reader, "Private selector")
+        self.assertEqual(found["count"], 1)
+
+        # The next plain command normally defaults to Family Shared. The
+        # persisted selection object is the authorization-bearing continuation,
+        # so it must still retrieve the exact private item for the same owner/DM.
+        self.claim("sel-private-follow", PHONE, "Show me 1")
+        plain_follow = replace(
+            self.actor("sel-private-follow", PHONE),
+            trusted_text="Show me 1",
+            read_scope="family",
+        )
+        result = services.resolve_numbered_choice(plain_follow, 1)
+        self.assertEqual(result["title"], "Private selector")
+
+        ctx = services.latest_selection_set_context(plain_follow)
+        self.assertEqual(ctx["scope"], "private")
+
+    def test_privacy_emoji_is_control_not_model_subject(self):
+        turn = ingress.build_turn(
+            {"text": "Show me my 🎂 expenses"},
+            [],
+        )
+        self.assertEqual(turn["read_scope"], "private")
+        self.assertEqual(turn["semantic_text"], "Show me my expenses")
+        self.assertNotIn("🎂", turn["intent_text"])
+
+    def test_live_brain_receives_text_without_privacy_emoji(self):
+        captured = {}
+
+        async def fake_respond(actor, user_text, media_context=None,
+                               vision_parts=None, quoted_context=None, **kwargs):
+            captured["text"] = user_text
+            captured["scope"] = actor.read_scope
+            return ("No matching expenses.", [])
+
+        payload = self.payload(
+            "emoji-brain-1", "Show me my 🎂 expenses"
+        )
+        with patch.object(core.brain, "respond", new=fake_respond):
+            result = ingress.process(payload)
+        self.assertTrue(result["ok"])
+        self.assertEqual(captured["text"], "Show me my expenses")
+        self.assertEqual(captured["scope"], "private")
+
+    def test_not_configured_dependency_never_becomes_private_search_offer(self):
+        self.claim("roster-no-offer", PHONE, "What shift am I working next week")
+        actor = replace(
+            self.actor("roster-no-offer", PHONE),
+            trusted_text="What shift am I working next week",
+            read_scope="family",
+        )
+        candidate = ingress._private_search_offer_candidate(
+            actor,
+            "What shift am I working next week",
+            "Status: not_configured\nDependency: roster\n"
+            "Message: I don't have your work roster configured yet.",
+            [],
+        )
+        self.assertFalse(candidate)
+
+    def test_private_structured_miss_cannot_claim_shared_scope_or_offer_retry(self):
+        self.claim("private-miss-src", PHONE, "show my receipts ❤️")
+        actor = replace(
+            self.actor("private-miss-src", PHONE),
+            trusted_text="show my receipts ❤️",
+            read_scope="private",
+        )
+        conn = db.connect()
+        try:
+            conn.execute(
+                """INSERT INTO tool_audit(
+                       audit_id,action_key,source_message_id,user_id,tool_name,
+                       arguments_json,result_json,status,latency_ms
+                   ) VALUES(?,?,?,?,?,?,?,?,?)""",
+                (
+                    str(uuid.uuid4()), "private-miss-action",
+                    actor.source_message_id, actor.user_id, "find_receipts",
+                    "{}",
+                    json.dumps({
+                        "status": "not_found_in_current_scope",
+                        "domain": "receipt",
+                        "scope": "private",
+                        "private_search_available": False,
+                        "matches": [],
+                    }),
+                    "OK", 1,
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        pending, reply = ingress._maybe_create_private_search_offer(
+            actor, actor.trusted_text,
+            "I only checked your shared records. I can check private too.",
+            [],
+        )
+        self.assertIsNone(pending)
+        self.assertEqual(reply, "I couldn't find that in your private records.")
+
+    def test_permission_denial_is_user_visible_not_silent(self):
+        payload = self.payload("visible-denial", "Show me 1")
+        with patch.object(
+            services, "resolve_numbered_choice",
+            side_effect=PermissionError("private record"),
+        ):
+            result = ingress.process(payload)
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["unauthorized"])
+        conn = db.connect()
+        try:
+            row = conn.execute(
+                """SELECT text_body FROM outbound_messages
+                   WHERE source_message_id='visible-denial'
+                   ORDER BY rowid DESC LIMIT 1"""
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertIsNotNone(row)
+        self.assertIn("can’t use that record", row["text_body"])
+
 
 
 if __name__ == "__main__":
