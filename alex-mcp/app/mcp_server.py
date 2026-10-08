@@ -224,7 +224,13 @@ def find_receipts(actor: Actor, query: str | None = None, amount: float | None =
                   start_date: str | None = None, end_date: str | None = None, limit: int = 10,
                   scope: str | None = None) -> dict:
     """Find original receipts by merchant/bank/reference, amount or date. scope may be all/family/private and is enforced by the backend."""
-    return services.find_receipts(actor, query, amount, start_date, end_date, limit, scope)
+    result = services.find_receipts(
+        actor, query, amount, start_date, end_date, limit, scope
+    )
+    if not result.get("matches"):
+        miss = _structured_scoped_miss(actor, "receipt")
+        return {**result, **miss}
+    return result
 
 
 @alex_tool()
