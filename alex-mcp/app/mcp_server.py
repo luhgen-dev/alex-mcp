@@ -26,7 +26,7 @@ import scope_policy
 
 mcp = MCPServer(
     "Alex Household Tools",
-    version="0.5.37",
+    version="0.5.38",
     instructions="Deterministic household tools. Identity and permissions are injected by Alex and are never model-controlled.",
 )
 
@@ -1681,6 +1681,7 @@ def report_export(format: str, actor: Actor, period: str | None = None,
     Supplying only a period preserves a matching active report context.
     """
     import calendar
+    import hashlib
     import json
     import os
     import re
@@ -1861,12 +1862,25 @@ def report_export(format: str, actor: Actor, period: str | None = None,
     safe_period = str(effective_period or "current").replace("/", "-").replace("..", "-")
     path = out_dir / f"alex-{safe_period}-{uuid.uuid4().hex}.{fmt}"
 
+    pdf_renderer = None
     if fmt == "pdf":
         if report_kind in {"finance_query", "monthly_finance"}:
-            payload = phase2_reports.premium_finance_pdf(canonical)
+            payload, pdf_renderer = phase2_reports.render_finance_pdf(canonical)
         else:
-            payload = phase2_reports.minimal_pdf(canonical)
-        path.write_bytes(payload)
+            payload, pdf_renderer = phase2_reports.render_snapshot_pdf(canonical)
+        # Never expose a partially written report to the durable WhatsApp
+        # outbox. The file becomes visible atomically only after rendering and
+        # validation have completed.
+        tmp_path = path.with_name(path.name + ".tmp")
+        try:
+            tmp_path.write_bytes(payload)
+            os.replace(tmp_path, path)
+        finally:
+            try:
+                if tmp_path.exists():
+                    tmp_path.unlink()
+            except OSError:
+                pass
         mime = "application/pdf"
     elif fmt == "csv":
         payload = (
@@ -1904,6 +1918,9 @@ def report_export(format: str, actor: Actor, period: str | None = None,
             int((canonical.get("ledger") or {}).get("count") or 0)
             if report_kind in {"finance_query", "monthly_finance"} else None
         ),
+        "byte_size": path.stat().st_size,
+        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "pdf_renderer": pdf_renderer,
         "_attachments": [{"path": os.fspath(path), "kind": "DOCUMENT", "mime_type": mime}],
     }
 
