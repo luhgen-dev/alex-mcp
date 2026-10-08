@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.37
+Pre-live conversation ordering and diagnostic hardening.
+- WhatsApp ingress now uses one FIFO lane per conversation. Messages/reactions in the same DM/group are processed strictly in arrival order, while different conversations remain concurrent. A slow Luhgen DM turn therefore cannot reorder a dependent follow-up, and it does not block Priya's DM or the Family group.
+- Immediate Alex replies are durably anchored to the exact inbound WhatsApp message that triggered them, including context-bearing replies such as numbered lists, clarification prompts and diagnostic prompts. Delayed scheduler/monitor/recovery messages deliberately stay unquoted so an old command is not surfaced hours later.
+- Error reporting is now quote-bound end to end. Swipe-reply to the wrong Alex message and say "Mark this as error" (natural variants such as "this was wrong" are accepted). If an explanation is needed, Alex's "What was wrong?" prompt is a durable ERROR_REPORT_DRAFT with ⏳ + pin; only a swipe-reply to that exact prompt can complete/cancel it. Unrelated household messages are never swallowed by a pending report, and a second unfinished report cannot overwrite the first.
+- Diagnostic bundles are upgraded to `alex-diagnostic-v2`: structured semantic-router evidence, full turn-trace input/result, tool and mutation evidence, provider usage, stage status, timing timeline, WhatsApp-control evidence, version/build metadata and a local source fingerprint. `Export ALEX-XXXXXXXX` in the owner's DM returns the redacted JSON bundle as a document without invoking AI.
+- Runtime images now expose `ALEX_APP_VERSION`; CI builds also stamp `ALEX_BUILD_COMMIT`. When a deployment builder does not provide a commit, the diagnostic source fingerprint still identifies the running core source content.
+- No finance/reminder/privacy semantics, MCP tool catalogue, voice trust policy or semantic-router safety authority were changed.
+
 ## 0.5.36
 Semantic routing upgrade, still safe-by-default.
 - `ai_routing` now supports explicit `off | shadow | live` modes. The old saved value `on` remains a compatibility alias for `live`, so v0.5.35 installations upgrade without losing their current behaviour.
