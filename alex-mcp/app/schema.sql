@@ -693,6 +693,7 @@ ON monitor_notifications(owner_id,queued_at_utc);
 CREATE TABLE IF NOT EXISTS pending_error_reports (
     user_id TEXT NOT NULL,
     conversation_id TEXT NOT NULL,
+    error_draft_id TEXT,
     target_outbound_id TEXT NOT NULL,
     target_provider_message_id TEXT,
     target_source_message_id TEXT,
@@ -701,6 +702,9 @@ CREATE TABLE IF NOT EXISTS pending_error_reports (
     FOREIGN KEY(user_id) REFERENCES users(user_id),
     FOREIGN KEY(target_outbound_id) REFERENCES outbound_messages(outbound_id)
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pending_error_draft
+ON pending_error_reports(error_draft_id)
+WHERE error_draft_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS user_reported_errors (
     error_id TEXT PRIMARY KEY,
