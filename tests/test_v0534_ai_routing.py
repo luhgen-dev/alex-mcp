@@ -254,5 +254,78 @@ class EndToEndTests(V0534Base):
         self.assertEqual(summary["ai_router_wanted_a_tool_keywords_hid"], 1)
 
 
+class EmptyAnswerTests(V0534Base):
+    """v0.5.35: an empty ChatGPT answer must never dead-end a household message."""
+
+    def client(self, scripted):
+        self.sign_in_fixture()
+        factory = base.FakeOpenAIFactory(scripted)
+        return chatgpt_plan.PlanClient(PLAN_SETTINGS, openai_factory=factory), factory
+
+    def ask(self, client):
+        return client.chat.completions.create(
+            model="gpt-test", messages=[{"role": "user", "content": "hi"}])
+
+    def test_answer_delivered_only_as_streamed_items_is_not_lost(self):
+        item = {"type": "message", "role": "assistant",
+                "content": [{"type": "output_text", "text": "Hello there."}]}
+        client, _ = self.client([[
+            {"type": "response.output_item.done", "item": item},
+            base.completed_event([]),
+        ]])
+        self.assertEqual(self.ask(client).choices[0].message.content, "Hello there.")
+
+    def test_streamed_tool_call_is_recovered_too(self):
+        call = {"type": "function_call", "id": "fc_1", "call_id": "call_9",
+                "name": "list_reminders", "arguments": "{}"}
+        client, _ = self.client([[
+            {"type": "response.output_item.done", "item": call},
+            base.completed_event([]),
+        ]])
+        calls = self.ask(client).choices[0].message.tool_calls
+        self.assertEqual(calls[0].function.name, "list_reminders")
+
+    def test_one_empty_answer_is_retried_transparently(self):
+        client, factory = self.client([
+            [base.completed_event([])],
+            [base.completed_event(base.text_output("Second try worked."))],
+        ])
+        self.assertEqual(self.ask(client).choices[0].message.content, "Second try worked.")
+        self.assertEqual(len(factory.responses.bodies), 2)
+
+    def test_two_empty_answers_fail_like_a_provider(self):
+        client, factory = self.client([[base.completed_event([])],
+                                       [base.completed_event([])]])
+        with self.assertRaises(chatgpt_plan.ChatGPTPlanError) as caught:
+            self.ask(client)
+        self.assertEqual(caught.exception.code, "empty_response")
+        self.assertEqual(len(factory.responses.bodies), 2)
+
+    def test_alex_falls_back_to_gemini_instead_of_the_dead_end_message(self):
+        self.sign_in_fixture()
+        factory = base.FakeOpenAIFactory([[base.completed_event([])],
+                                          [base.completed_event([])]])
+        fallback_calls = []
+
+        def client_for(provider, settings=None):
+            if provider == "chatgpt":
+                return chatgpt_plan.PlanClient(settings, openai_factory=factory)
+
+            class Completions:
+                def create(self, **kwargs):
+                    fallback_calls.append(provider)
+                    return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
+                        content="Answered by fallback.", tool_calls=None))], usage=None)
+            return SimpleNamespace(chat=SimpleNamespace(completions=Completions()))
+
+        actor = self.claim_actor("v0535-empty", "What reminders do I have?")
+        with patch.object(brain, "get_settings", return_value=PLAN_SETTINGS), \
+             patch.object(brain, "_client_for", side_effect=client_for):
+            reply, _ = asyncio.run(brain.respond(actor, "What reminders do I have?"))
+        self.assertEqual(reply, "Answered by fallback.")
+        self.assertEqual(fallback_calls, ["gemini"])
+        self.assertNotIn("couldn't produce a reliable answer", reply)
+
+
 if __name__ == "__main__":
     unittest.main()

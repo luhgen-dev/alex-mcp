@@ -769,9 +769,15 @@ def _get(obj, name, default=None):
 def collect_stream(events):
     """Return the final Response from a plan-usage stream, or raise."""
     completed = None
+    streamed_items: list = []
     try:
         for event in events:
             kind = _get(event, "type")
+            if kind == "response.output_item.done":
+                item = _get(event, "item")
+                if item is not None:
+                    streamed_items.append(item)
+                continue
             if kind == "response.completed":
                 completed = _get(event, "response")
                 break
@@ -798,6 +804,16 @@ def collect_stream(events):
     if completed is None:
         raise ChatGPTPlanError("ChatGPT stream ended without completion.",
                                status_code=503, code="stream_incomplete")
+    if streamed_items and not (_get(completed, "output") or []):
+        # Some responses deliver the answer only as streamed output items and
+        # leave the final summary's output empty; keep what was streamed.
+        completed = {
+            "id": _get(completed, "id"),
+            "created_at": _get(completed, "created_at"),
+            "model": _get(completed, "model"),
+            "usage": _get(completed, "usage"),
+            "output": streamed_items,
+        }
     return completed
 
 
@@ -907,9 +923,20 @@ class _Completions:
         token = access_token()
         refreshed = False
         reasoning_dropped = False
+        empty_retried = False
         while True:
             try:
-                return responses_to_chat(self._send(body, token), model)
+                completion = responses_to_chat(self._send(body, token), model)
+                message = completion.choices[0].message
+                if not (message.content or "").strip() and not message.tool_calls:
+                    # An empty answer is never a valid reply. Retry once, then
+                    # fail like a provider so Alex's fallbacks answer instead.
+                    if not empty_retried:
+                        empty_retried = True
+                        continue
+                    raise ChatGPTPlanError("ChatGPT returned an empty answer.",
+                                           status_code=502, code="empty_response")
+                return completion
             except ChatGPTPlanError as exc:
                 if exc.code in REVOKED_ERRORS:
                     _mark_needs_sign_in(exc.code)

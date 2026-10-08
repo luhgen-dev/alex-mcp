@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.35
+Fixes a dead end seen in live testing with ChatGPT plan mode. Defaults and behaviour with other providers are unchanged.
+- An empty ChatGPT answer (no text and no tool call) used to end the turn with "I couldn't produce a reliable answer for that request". It is now retried once automatically; if it is empty again it counts as a provider failure and Alex falls back to the next provider (Gemini/Grok) so the message still gets answered. A repeated failure uses the existing short provider cool-down.
+- ChatGPT answers delivered only as streamed output items (with an empty final summary) are no longer lost: streamed items are kept and used when the final summary's output is empty.
+- Tests: 5 new tests (streamed text and tool-call recovery, transparent retry, failure after two empties, end-to-end fallback instead of the dead-end message). All fail without the fix.
+
 ## 0.5.34
 AI tool routing (`ai_routing`), off by default. With the shipped default nothing about routing or replies changes.
 - New option `ai_routing` (`off` | `on`, default `off`). When `on` (and `chatgpt_plan_mode` is `shadow_only` or `primary` with a signed-in plan), the plan model reads the message plus the last few turns and picks tools from the full catalogue (schema-bound to real tool names) BEFORE the reasoning model runs. Its picks are shown to the model first; keyword-routed tools stay behind them (total capped at 8), so a bad pick can only add noise, never hide what keyword routing found.
