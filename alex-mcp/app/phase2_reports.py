@@ -688,6 +688,105 @@ def minimal_pdf(snapshot):
     )
     return bytes(out)
 
+def _validated_pdf_bytes(payload):
+    """Reject a truncated/obviously malformed renderer result before WhatsApp sees it.
+
+    This is intentionally dependency-free. It is not a full PDF parser; it
+    verifies the structural markers every Alex-generated PDF must contain.
+    """
+    if not isinstance(payload, (bytes, bytearray)):
+        raise ValueError("PDF renderer did not return bytes")
+    data = bytes(payload)
+    if len(data) < 350:
+        raise ValueError("PDF renderer returned an implausibly small document")
+    if not data.startswith(b"%PDF-"):
+        raise ValueError("PDF header is missing")
+    tail = data[-256:]
+    required = (b"/Type /Catalog", b"/Type /Page", b"xref", b"trailer")
+    if b"%%EOF" not in tail or any(token not in data for token in required):
+        raise ValueError("PDF structural validation failed")
+    return data
+
+
+def _snapshot_text_lines(snapshot):
+    """Plain deterministic fallback content for the household PDF."""
+    plan = snapshot.get("baseline_plan") or {}
+    lines = ["ALEX Household Planning Snapshot", ""]
+    baseline = plan.get("available_baseline_monthly")
+    if baseline is not None:
+        lines.append(
+            f"Available monthly baseline: {plan.get('currency') or 'MYR'} "
+            f"{float(baseline):,.2f}"
+        )
+        lines.append("Variable income / OT excluded from baseline.")
+    lines.extend(["", "Goals:"])
+    goals = list(snapshot.get("goals") or [])
+    if goals:
+        for goal in goals:
+            lines.append(
+                f"- {goal.get('name')}: {goal.get('currency') or 'MYR'} "
+                f"{float(goal.get('funded') or 0):,.2f} / "
+                f"{float(goal.get('target') or 0):,.2f}"
+            )
+    else:
+        lines.append("- No entries.")
+    lines.extend(["", "Bills / obligations:"])
+    obligations = list(snapshot.get("obligations") or [])
+    if obligations:
+        for item in obligations:
+            expected = item.get("expected")
+            detail = (
+                "variable"
+                if expected is None
+                else f"{item.get('currency') or 'MYR'} {float(expected):,.2f}"
+            )
+            lines.append(f"- {item.get('name')}: {item.get('state')} - {detail}")
+    else:
+        lines.append("- No entries.")
+    lines.extend(["", "Assets:"])
+    assets = list(snapshot.get("assets") or [])
+    if assets:
+        for asset in assets:
+            lines.append(
+                "- " + " | ".join(
+                    x for x in (
+                        str(asset.get("name") or ""),
+                        str(asset.get("brand") or ""),
+                        str(asset.get("model") or ""),
+                    ) if x
+                )
+            )
+    else:
+        lines.append("- No entries.")
+    return lines
+
+
+def render_finance_pdf(report):
+    """Return (bytes, renderer) with a safe deterministic fallback.
+
+    The premium renderer remains the preferred locked layout. A data/layout
+    edge case must not make the user's reference export disappear: if premium
+    rendering or structural validation fails, generate the simpler text PDF
+    from the same canonical ledger data.
+    """
+    try:
+        return _validated_pdf_bytes(premium_finance_pdf(report)), "premium"
+    except Exception:
+        title = str((report.get("display") or {}).get("title") or "ALEX Finance Report")
+        lines = finance_query_text(report.get("ledger") or {})
+        return _validated_pdf_bytes(text_pdf(lines, title=title)), "fallback_text"
+
+
+def render_snapshot_pdf(snapshot):
+    """Return (bytes, renderer) with a safe deterministic fallback."""
+    try:
+        return _validated_pdf_bytes(minimal_pdf(snapshot)), "premium"
+    except Exception:
+        return _validated_pdf_bytes(
+            text_pdf(_snapshot_text_lines(snapshot), title="ALEX Household Planning Snapshot")
+        ), "fallback_text"
+
+
 def handoff_google_sheets(snapshot, uploader):
     """Use an injected, authorized uploader; no credentials live in this module."""
     if not callable(uploader):
