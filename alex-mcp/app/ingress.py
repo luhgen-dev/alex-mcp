@@ -555,7 +555,6 @@ def _turn_structured_scope_miss(actor) -> dict | None:
         if (
             isinstance(payload, dict)
             and payload.get("status") == "not_found_in_current_scope"
-            and payload.get("private_search_available") is True
         ):
             return payload
     return None
@@ -564,10 +563,15 @@ def _turn_structured_scope_miss(actor) -> dict | None:
 def _maybe_create_private_search_offer(actor, query: str, reply: str,
                                        attachments: list[dict]) -> tuple[dict | None, str]:
     structured_miss = (
-        _turn_structured_scope_miss(actor)
-        if not attachments and getattr(actor, "read_scope", None) == "family"
-        else None
+        _turn_structured_scope_miss(actor) if not attachments else None
     )
+    if structured_miss and not structured_miss.get("private_search_available"):
+        scope = str(structured_miss.get("scope") or "").casefold()
+        if scope == "private":
+            return None, "I couldn't find that in your private records."
+        if scope == "family":
+            return None, "I couldn't find that in your shared records."
+        return None, "I couldn't find that in the records available to this request."
     if not structured_miss and not _private_search_offer_candidate(
         actor, query, reply, attachments
     ):
