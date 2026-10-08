@@ -173,6 +173,91 @@ class ErrorLifecycleTests(V0537Base):
         finally:
             conn.close()
 
+    def test_bound_explanation_that_sounds_like_error_command_still_completes_draft(self):
+        self.sent_alex_message("src-bound", "WA-BOUND", "wrong answer")
+        started = ingress.process(self.payload(
+            "mark-bound", "Mark this as error", quoted="WA-BOUND"
+        ))
+        self.assertTrue(started["ok"])
+        conn = db.connect()
+        try:
+            prompt = conn.execute(
+                """SELECT outbound_id FROM outbound_messages
+                   WHERE source_message_id='mark-bound'
+                     AND context_kind='ERROR_REPORT_DRAFT'"""
+            ).fetchone()
+            conn.execute(
+                """UPDATE outbound_messages SET delivery_status='SENT',
+                   provider_message_id='WA-BOUND-PROMPT',
+                   delivered_at_utc=CURRENT_TIMESTAMP
+                   WHERE outbound_id=?""",
+                (prompt["outbound_id"],),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        result = ingress.process(self.payload(
+            "explain-bound",
+            "This was wrong because it used my DM instead of the group.",
+            quoted="WA-BOUND-PROMPT",
+        ))
+        self.assertTrue(result["ok"])
+        conn = db.connect()
+        try:
+            self.assertEqual(
+                conn.execute("SELECT COUNT(*) FROM pending_error_reports").fetchone()[0],
+                0,
+            )
+            row = conn.execute(
+                "SELECT user_explanation FROM user_reported_errors"
+            ).fetchone()
+            self.assertIn("used my DM", row["user_explanation"])
+        finally:
+            conn.close()
+
+    def test_inline_second_report_cannot_bypass_existing_unresolved_draft(self):
+        oid1 = self.sent_alex_message("src-first", "WA-FIRST", "first wrong")
+        self.claim("mark-first", PHONE, "mark")
+        actor = self.actor("mark-first", PHONE)
+        diagnostics.begin_user_error_report(actor, {"outbound_id": oid1})
+
+        # A second bad message is visible and quotable, but an inline report
+        # must not create a second incident while the first prompt is unresolved.
+        oid2 = db.queue_outbound(
+            DM, "TEXT", text="second wrong", source_message_id="src-first"
+        )
+        conn = db.connect()
+        try:
+            conn.execute(
+                """UPDATE outbound_messages SET delivery_status='SENT',
+                   provider_message_id='WA-SECOND',
+                   delivered_at_utc=CURRENT_TIMESTAMP WHERE outbound_id=?""",
+                (oid2,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        result = ingress.process(self.payload(
+            "mark-second",
+            "Mark this as error because this is also wrong",
+            quoted="WA-SECOND",
+        ))
+        self.assertTrue(result["ok"])
+        conn = db.connect()
+        try:
+            self.assertEqual(
+                conn.execute("SELECT COUNT(*) FROM pending_error_reports").fetchone()[0],
+                1,
+            )
+            self.assertEqual(
+                conn.execute("SELECT COUNT(*) FROM user_reported_errors").fetchone()[0],
+                0,
+            )
+        finally:
+            conn.close()
+
     def test_second_unresolved_report_does_not_overwrite_first(self):
         oid1 = self.sent_alex_message("src-1", "WA-1", "first wrong")
         self.claim("mark-direct", PHONE, "mark")
