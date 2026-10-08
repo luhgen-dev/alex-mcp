@@ -84,6 +84,7 @@ class AlexCoreTests(unittest.TestCase):
                 "alex_phase2_work_events", "alex_phase2_delegations",
                 "alex_profile_config_versions",
                 "tool_audit", "tool_execution_claims", "ai_usage", "diagnostic_runs", "monitor_notifications",
+                "pending_error_reports", "user_reported_errors",
                 "ha_notification_outbox", "outbound_messages", "conversation_turns", "selection_sets", "pending_selection_sets", "active_report_contexts",
                 "reminder_handoffs", "reminder_claim_events", "reminder_events",
                 "task_reminder_links", "task_events", "tasks",

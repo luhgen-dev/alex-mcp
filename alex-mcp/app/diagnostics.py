@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -405,13 +406,48 @@ def _json_or_text(value):
         return _redact_text(value)
 
 
+def _build_fingerprint() -> str:
+    """Content fingerprint when the image builder cannot supply a Git commit."""
+    digest = hashlib.sha256()
+    base = os.path.dirname(__file__)
+    names = (
+        "brain.py", "ingress.py", "services.py", "diagnostics.py",
+        "outbox.py", "db.py", "mcp_server.py", "connect.js",
+    )
+    found = 0
+    for name in names:
+        path = os.path.join(base, name)
+        try:
+            with open(path, "rb") as handle:
+                digest.update(name.encode("utf-8"))
+                digest.update(b"\0")
+                digest.update(handle.read())
+                digest.update(b"\0")
+            found += 1
+        except OSError:
+            continue
+    return digest.hexdigest()[:24] if found else "unknown"
+
+
 def begin_user_error_report(actor, quoted_context: dict) -> dict:
-    """Persist a pending swipe-reply error report without invoking AI."""
+    """Persist one quote-bound pending error report without invoking AI."""
     outbound_id = str((quoted_context or {}).get("outbound_id") or "").strip()
     if not outbound_id:
         raise ValueError("Swipe-reply to the Alex message you want to mark as an error")
     conn = connect()
     try:
+        existing = conn.execute(
+            """SELECT * FROM pending_error_reports
+               WHERE user_id=? AND conversation_id=? LIMIT 1""",
+            (actor.user_id, actor.conversation_id),
+        ).fetchone()
+        if existing:
+            return {
+                "status": "already_pending",
+                "error_draft_id": existing["error_draft_id"],
+                "target_outbound_id": existing["target_outbound_id"],
+            }
+
         row = conn.execute(
             """SELECT outbound_id,provider_message_id,source_message_id
                FROM outbound_messages
@@ -420,23 +456,25 @@ def begin_user_error_report(actor, quoted_context: dict) -> dict:
         ).fetchone()
         if not row:
             raise PermissionError("quoted Alex message is not in this conversation")
+
+        draft_id = "ERRD-" + uuid.uuid4().hex[:16].upper()
         conn.execute(
             """INSERT INTO pending_error_reports(
-                   user_id,conversation_id,target_outbound_id,
+                   user_id,conversation_id,error_draft_id,target_outbound_id,
                    target_provider_message_id,target_source_message_id,created_at_utc
-               ) VALUES(?,?,?,?,?,CURRENT_TIMESTAMP)
-               ON CONFLICT(user_id,conversation_id) DO UPDATE SET
-                   target_outbound_id=excluded.target_outbound_id,
-                   target_provider_message_id=excluded.target_provider_message_id,
-                   target_source_message_id=excluded.target_source_message_id,
-                   created_at_utc=CURRENT_TIMESTAMP""",
+               ) VALUES(?,?,?,?,?,?,CURRENT_TIMESTAMP)""",
             (
-                actor.user_id, actor.conversation_id, row["outbound_id"],
-                row["provider_message_id"], row["source_message_id"],
+                actor.user_id, actor.conversation_id, draft_id,
+                row["outbound_id"], row["provider_message_id"],
+                row["source_message_id"],
             ),
         )
         conn.commit()
-        return {"status": "awaiting_explanation", "target_outbound_id": outbound_id}
+        return {
+            "status": "awaiting_explanation",
+            "error_draft_id": draft_id,
+            "target_outbound_id": outbound_id,
+        }
     finally:
         conn.close()
 
@@ -454,12 +492,109 @@ def pending_user_error_report(actor) -> dict | None:
         conn.close()
 
 
+def pending_user_error_report_for_draft(actor, error_draft_id: str) -> dict | None:
+    conn = connect()
+    try:
+        row = conn.execute(
+            """SELECT * FROM pending_error_reports
+               WHERE user_id=? AND conversation_id=? AND error_draft_id=?
+               LIMIT 1""",
+            (
+                actor.user_id, actor.conversation_id,
+                str(error_draft_id or "").strip(),
+            ),
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def cancel_user_error_report(actor, error_draft_id: str) -> dict:
+    """Cancel only the explicitly quoted error draft."""
+    draft_id = str(error_draft_id or "").strip()
+    if not draft_id:
+        raise ValueError("error draft reference is required")
+    conn = connect()
+    try:
+        cur = conn.execute(
+            """DELETE FROM pending_error_reports
+               WHERE user_id=? AND conversation_id=? AND error_draft_id=?""",
+            (actor.user_id, actor.conversation_id, draft_id),
+        )
+        conn.commit()
+        return {
+            "status": "cancelled" if cur.rowcount else "not_pending",
+            "error_draft_id": draft_id,
+        }
+    finally:
+        conn.close()
+
+
+def _semantic_router_evidence(conn, source_id: str | None) -> dict | None:
+    if not source_id:
+        return None
+    try:
+        row = conn.execute(
+            """SELECT created_at_utc,keyword_tools,called_tools,live_outcome,
+                      shadow_tools,shadow_clarify,shadow_reason,status,error_code,
+                      model,latency_ms,ai_routed,semantic_intent,
+                      semantic_reference,semantic_slots,semantic_confidence,
+                      semantic_mode
+               FROM alex_shadow_router_log
+               WHERE source_message_id=?
+               ORDER BY id DESC LIMIT 1""",
+            (source_id,),
+        ).fetchone()
+    except Exception:
+        return None
+    if not row:
+        return None
+
+    def parsed(value, fallback):
+        try:
+            result = json.loads(value or "")
+            return result
+        except Exception:
+            return fallback
+
+    return _redact_json({
+        "created_at_utc": row["created_at_utc"],
+        "status": row["status"],
+        "error_code": row["error_code"],
+        "mode": row["semantic_mode"],
+        "model": row["model"],
+        "latency_ms": row["latency_ms"],
+        "ai_routed": bool(row["ai_routed"]),
+        "intent": row["semantic_intent"],
+        "reference": row["semantic_reference"],
+        "slots": parsed(row["semantic_slots"], {}),
+        "confidence": row["semantic_confidence"],
+        "needs_clarification": bool(row["shadow_clarify"]),
+        "reason": row["shadow_reason"],
+        "keyword_tools": parsed(row["keyword_tools"], []),
+        "selected_tools": parsed(row["shadow_tools"], []),
+        "called_tools": parsed(row["called_tools"], []),
+        "live_outcome": row["live_outcome"],
+    })
+
+
+def _timeline_sort_key(item: dict) -> tuple[int, str]:
+    parsed = _parse_utc(item.get("at"))
+    if parsed is None:
+        return (1, str(item.get("at") or ""))
+    return (0, parsed.isoformat())
+
+
 def _build_user_error_bundle(conn, actor, target_outbound_id: str,
                              explanation: str) -> tuple[dict, str]:
     outbound = conn.execute(
         """SELECT outbound_id,source_message_id,conversation_id,kind,text_body,
                   context_kind,context_id,provider_message_id,delivery_status,
-                  attempt_count,last_error,created_at_utc,delivered_at_utc
+                  attempt_count,last_error,created_at_utc,delivered_at_utc,
+                  job_reacted_at_utc,job_pinned_at_utc,job_pin_target,
+                  job_reaction_cleared_at_utc,job_unpinned_at_utc,
+                  job_control_attempts,job_control_last_error,
+                  job_control_last_kind,job_control_failed_at_utc
            FROM outbound_messages
            WHERE outbound_id=? AND conversation_id=? LIMIT 1""",
         (target_outbound_id, actor.conversation_id),
@@ -470,17 +605,18 @@ def _build_user_error_bundle(conn, actor, target_outbound_id: str,
     source_id = outbound["source_message_id"]
     inbound = conn.execute(
         """SELECT message_id,conversation_type,sender_phone,raw_text,
-                  processing_state,attempt_count,last_error,received_at_utc,
-                  completed_at_utc
+                  quoted_message_id,processing_state,attempt_count,last_error,
+                  received_at_utc,processing_started_at_utc,completed_at_utc
            FROM inbound_messages WHERE message_id=? LIMIT 1""",
         (source_id,),
     ).fetchone() if source_id else None
 
     tool_rows = conn.execute(
-        """SELECT tool_name,arguments_json,result_json,status,latency_ms,created_at_utc
+        """SELECT action_key,tool_name,arguments_json,result_json,status,
+                  latency_ms,created_at_utc
            FROM tool_audit
            WHERE source_message_id=?
-           ORDER BY created_at_utc""",
+           ORDER BY created_at_utc,rowid""",
         (source_id,),
     ).fetchall() if source_id else []
     usage_rows = conn.execute(
@@ -488,13 +624,31 @@ def _build_user_error_bundle(conn, actor, target_outbound_id: str,
                   reasoning_tokens,model_calls,tool_rounds,latency_ms,
                   estimated_cost_usd,created_at_utc
            FROM ai_usage WHERE source_message_id=?
-           ORDER BY created_at_utc""",
+           ORDER BY created_at_utc,rowid""",
         (source_id,),
     ).fetchall() if source_id else []
 
-    tool_errors = [r for r in tool_rows if r["status"] == "ERROR"]
+    mutation_rows = conn.execute(
+        """SELECT DISTINCT a.action_key,a.tool_name,c.state,c.started_at_utc,
+                           c.completed_at_utc,c.result_json
+           FROM tool_audit a
+           JOIN tool_execution_claims c ON c.action_key=a.action_key
+           WHERE a.source_message_id=? AND a.tool_name<>'_turn_trace'
+           ORDER BY c.started_at_utc""",
+        (source_id,),
+    ).fetchall() if source_id else []
+
+    semantic = _semantic_router_evidence(conn, source_id)
+    tool_errors = [
+        r for r in tool_rows
+        if r["tool_name"] != "_turn_trace" and r["status"] == "ERROR"
+    ]
     inbound_failed = bool(inbound and inbound["processing_state"] == "FAILED")
-    detected = inbound_failed or bool(tool_errors) or outbound["delivery_status"] == "FAILED"
+    control_failed = bool(outbound["job_control_failed_at_utc"])
+    detected = (
+        inbound_failed or bool(tool_errors)
+        or outbound["delivery_status"] == "FAILED" or control_failed
+    )
     detection_state = "both" if detected else "reported-by-user"
 
     tools = []
@@ -503,6 +657,7 @@ def _build_user_error_bundle(conn, actor, target_outbound_id: str,
         result = _json_or_text(row["result_json"])
         args = _json_or_text(row["arguments_json"])
         entry = {
+            "action_key": row["action_key"],
             "tool": row["tool_name"],
             "status": row["status"],
             "arguments": _redact_json(args),
@@ -511,24 +666,179 @@ def _build_user_error_bundle(conn, actor, target_outbound_id: str,
             "created_at_utc": row["created_at_utc"],
         }
         if row["tool_name"] == "_turn_trace":
-            trace = entry["result"]
+            trace = {
+                "input": entry["arguments"],
+                "result": entry["result"],
+            }
         else:
             tools.append(entry)
 
+    mutations = [{
+        "action_key": row["action_key"],
+        "tool": row["tool_name"],
+        "state": row["state"],
+        "started_at_utc": row["started_at_utc"],
+        "completed_at_utc": row["completed_at_utc"],
+        "result": _redact_json(_json_or_text(row["result_json"])),
+    } for row in mutation_rows]
+
+    trace_input = (trace or {}).get("input") or {}
+    trace_result = (trace or {}).get("result") or {}
+    semantic_status = (
+        "FAILED" if semantic and semantic.get("status") == "error"
+        else "OK" if semantic
+        else "NOT_USED"
+    )
+    tool_status = (
+        "FAILED" if tool_errors else "OK" if tools else "NOT_USED"
+    )
+    mutation_states = {str(row.get("state") or "") for row in mutations}
+    state_status = (
+        "FAILED" if "UNCERTAIN" in mutation_states
+        else "OK" if mutations
+        else "NOT_USED"
+    )
+    outbox_status = (
+        "FAILED" if outbound["delivery_status"] == "FAILED"
+        else "OK" if outbound["delivery_status"] == "SENT"
+        else "PENDING"
+    )
+    control_used = bool(
+        outbound["job_reacted_at_utc"] or outbound["job_pinned_at_utc"]
+        or outbound["job_control_attempts"]
+    )
+    control_status = (
+        "FAILED" if control_failed
+        else "OK" if control_used
+        else "NOT_USED"
+    )
+
+    first_machine_failure_stage = None
+    if semantic_status == "FAILED":
+        first_machine_failure_stage = "SEMANTIC_ROUTER"
+    elif tool_status == "FAILED":
+        first_machine_failure_stage = "TOOL"
+    elif state_status == "FAILED":
+        first_machine_failure_stage = "STATE"
+    elif inbound_failed:
+        first_machine_failure_stage = "INGRESS_OR_BRAIN"
+    elif outbox_status == "FAILED":
+        first_machine_failure_stage = "OUTBOX"
+    elif control_status == "FAILED":
+        first_machine_failure_stage = "WHATSAPP_CONTROL"
+
+    stages = {
+        "INPUT": {
+            "status": "OK" if inbound else "UNKNOWN",
+            "quoted_message": bool(inbound and inbound["quoted_message_id"]),
+        },
+        "CONTEXT": {
+            "status": "OK" if trace else "UNKNOWN",
+            "history_turns": trace_input.get("history_turns"),
+            "quoted_context": trace_input.get("quoted_context"),
+        },
+        "SEMANTIC_ROUTER": {
+            "status": semantic_status,
+            "intent": semantic.get("intent") if semantic else None,
+            "reference": semantic.get("reference") if semantic else None,
+            "confidence": semantic.get("confidence") if semantic else None,
+        },
+        "BRAIN": {
+            "status": "FAILED" if inbound_failed and not tool_errors else (
+                "OK" if trace else "UNKNOWN"
+            ),
+            "outcome": trace_result.get("outcome"),
+            "routes": trace_result.get("routes") or [],
+        },
+        "TOOL": {
+            "status": tool_status,
+            "called": [row["tool"] for row in tools],
+        },
+        "STATE": {
+            "status": state_status,
+            "mutations": [
+                {"tool": row["tool"], "state": row["state"]}
+                for row in mutations
+            ],
+        },
+        "OUTBOX": {
+            "status": outbox_status,
+            "attempts": int(outbound["attempt_count"] or 0),
+        },
+        "WHATSAPP_CONTROL": {
+            "status": control_status,
+            "kind": outbound["job_control_last_kind"],
+            "attempts": int(outbound["job_control_attempts"] or 0),
+        },
+    }
+
+    timeline = []
+    if inbound:
+        for event, field in (
+            ("inbound_received", "received_at_utc"),
+            ("processing_started", "processing_started_at_utc"),
+            ("inbound_completed", "completed_at_utc"),
+        ):
+            if inbound[field]:
+                timeline.append({"event": event, "at": inbound[field]})
+    if semantic and semantic.get("created_at_utc"):
+        timeline.append({
+            "event": "semantic_router",
+            "at": semantic["created_at_utc"],
+            "latency_ms": semantic.get("latency_ms"),
+        })
+    for row in tools:
+        timeline.append({
+            "event": "tool:" + str(row["tool"]),
+            "at": row["created_at_utc"],
+            "status": row["status"],
+            "latency_ms": row["latency_ms"],
+        })
+    for row in usage_rows:
+        timeline.append({
+            "event": "provider:" + str(row["provider"]),
+            "at": row["created_at_utc"],
+            "model": row["model"],
+            "latency_ms": row["latency_ms"],
+            "model_calls": row["model_calls"],
+        })
+    timeline.append({
+        "event": "outbound_queued",
+        "at": outbound["created_at_utc"],
+    })
+    if outbound["delivered_at_utc"]:
+        timeline.append({
+            "event": "whatsapp_bridge_delivered",
+            "at": outbound["delivered_at_utc"],
+        })
+    timeline.sort(key=_timeline_sort_key)
+
     bundle = {
+        "bundle_format": "alex-diagnostic-v2",
         "reported_at_utc": runtime_clock.now_utc().isoformat(),
-        "app_version": os.environ.get("ALEX_APP_VERSION", "0.5.0"),
+        "build": {
+            "app_version": os.environ.get("ALEX_APP_VERSION", "0.5.37"),
+            "git_commit": os.environ.get("ALEX_BUILD_COMMIT", "unknown"),
+            "source_fingerprint": _build_fingerprint(),
+        },
+        # Compatibility fields retained for older tooling.
+        "app_version": os.environ.get("ALEX_APP_VERSION", "0.5.37"),
         "build_commit": os.environ.get("ALEX_BUILD_COMMIT", "unknown"),
         "conversation": {
             "type": inbound["conversation_type"] if inbound else actor.conversation_type,
-            "id_hash": __import__("hashlib").sha256(
+            "id_hash": hashlib.sha256(
                 actor.conversation_id.encode("utf-8")
             ).hexdigest()[:16],
         },
         "original_user_message": _redact_text(inbound["raw_text"] if inbound else ""),
         "alex_message": _redact_text(outbound["text_body"]),
         "intent_trace": _redact_json(trace),
+        "semantic_router": semantic,
+        "stages": stages,
+        "first_machine_failure_stage": first_machine_failure_stage,
+        "timeline": timeline,
         "tools": tools,
+        "mutations": mutations,
         "provider_usage": [_redact_json(dict(r)) for r in usage_rows],
         "retries": {
             "inbound_attempts": int(inbound["attempt_count"] or 0) if inbound else 0,
@@ -536,10 +846,22 @@ def _build_user_error_bundle(conn, actor, target_outbound_id: str,
         },
         "ids": {
             "source_message_id": source_id,
+            "quoted_message_id": inbound["quoted_message_id"] if inbound else None,
             "outbound_id": outbound["outbound_id"],
             "provider_message_id": outbound["provider_message_id"],
             "context_kind": outbound["context_kind"],
             "context_id": outbound["context_id"],
+        },
+        "outbound_control": {
+            "reaction_at_utc": outbound["job_reacted_at_utc"],
+            "pinned_at_utc": outbound["job_pinned_at_utc"],
+            "pin_target": outbound["job_pin_target"],
+            "reaction_cleared_at_utc": outbound["job_reaction_cleared_at_utc"],
+            "unpinned_at_utc": outbound["job_unpinned_at_utc"],
+            "last_kind": outbound["job_control_last_kind"],
+            "attempts": int(outbound["job_control_attempts"] or 0),
+            "last_error": _redact_text(outbound["job_control_last_error"]),
+            "failed_at_utc": outbound["job_control_failed_at_utc"],
         },
         "machine_errors": {
             "inbound_error": _redact_text(inbound["last_error"]) if inbound else None,
@@ -548,29 +870,57 @@ def _build_user_error_bundle(conn, actor, target_outbound_id: str,
         },
         "user_explanation": _redact_text(explanation),
         "detection_state": detection_state,
+        "limits": {
+            "phone_ui_observable": False,
+            "note": (
+                "Alex records bridge/control evidence but cannot prove how the "
+                "WhatsApp client rendered pixels on the phone."
+            ),
+        },
     }
     return bundle, detection_state
 
 
 def complete_user_error_report(actor, explanation: str,
-                               quoted_context: dict | None = None) -> dict:
-    """Create a durable diagnostic bundle. Never retries or undoes the action."""
+                               quoted_context: dict | None = None,
+                               *, error_draft_id: str | None = None) -> dict:
+    """Create one durable diagnostic bundle; never retries or undoes the action."""
     explanation = str(explanation or "").strip()
     if not explanation:
         raise ValueError("error explanation is required")
     conn = connect()
+    pending_to_clear = None
     try:
-        if quoted_context and quoted_context.get("outbound_id"):
+        if error_draft_id:
+            pending = conn.execute(
+                """SELECT * FROM pending_error_reports
+                   WHERE user_id=? AND conversation_id=? AND error_draft_id=?
+                   LIMIT 1""",
+                (
+                    actor.user_id, actor.conversation_id,
+                    str(error_draft_id).strip(),
+                ),
+            ).fetchone()
+            if not pending:
+                raise ValueError("that error report is no longer pending")
+            target_outbound_id = pending["target_outbound_id"]
+            pending_to_clear = str(pending["error_draft_id"])
+        elif quoted_context and quoted_context.get("outbound_id"):
+            # Inline "Mark this as error because ..." is already bound to the
+            # exact wrong Alex message and therefore needs no pending draft.
             target_outbound_id = str(quoted_context["outbound_id"])
         else:
+            # Backward-compatible internal fallback. Ingress v0.5.37 never
+            # uses this for an unquoted user message.
             pending = conn.execute(
-                """SELECT target_outbound_id FROM pending_error_reports
+                """SELECT * FROM pending_error_reports
                    WHERE user_id=? AND conversation_id=? LIMIT 1""",
                 (actor.user_id, actor.conversation_id),
             ).fetchone()
             if not pending:
                 raise ValueError("no pending error report; swipe-reply to an Alex message first")
             target_outbound_id = pending["target_outbound_id"]
+            pending_to_clear = str(pending["error_draft_id"] or "")
 
         bundle, detection_state = _build_user_error_bundle(
             conn, actor, target_outbound_id, explanation
@@ -596,10 +946,12 @@ def complete_user_error_report(actor, explanation: str,
                 json.dumps(bundle, ensure_ascii=False, sort_keys=True),
             ),
         )
-        conn.execute(
-            "DELETE FROM pending_error_reports WHERE user_id=? AND conversation_id=?",
-            (actor.user_id, actor.conversation_id),
-        )
+        if pending_to_clear:
+            conn.execute(
+                """DELETE FROM pending_error_reports
+                   WHERE user_id=? AND conversation_id=? AND error_draft_id=?""",
+                (actor.user_id, actor.conversation_id, pending_to_clear),
+            )
         conn.commit()
         return {
             "status": "recorded",
@@ -650,6 +1002,35 @@ def list_user_reported_errors(actor, limit: int = 10) -> dict:
         return {"errors": [dict(r) for r in rows]}
     finally:
         conn.close()
+
+
+def export_user_reported_error(actor, error_id: str) -> dict:
+    """Export one owner-scoped incident bundle as a redacted JSON attachment."""
+    if str(getattr(actor, "conversation_type", "") or "") != "DIRECT_DM":
+        raise PermissionError("Diagnostic bundles can only be exported in your private DM")
+    report = get_user_reported_error(actor, error_id)
+    safe_id = str(report["error_id"]).upper()
+    directory = os.path.join(DATA_DIR, "diagnostics")
+    os.makedirs(directory, exist_ok=True)
+    path = os.path.join(directory, safe_id + ".json")
+    tmp = path + ".tmp"
+    payload = {
+        "format": "alex-diagnostic-export-v2",
+        **report,
+    }
+    with open(tmp, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, path)
+    return {
+        "status": "exported",
+        "error_id": safe_id,
+        "_attachments": [{
+            "kind": "DOCUMENT",
+            "path": path,
+            "mime_type": "application/json",
+        }],
+    }
 
 
 def recent_failures(actor, hours: int = 24, limit: int = 20) -> dict:

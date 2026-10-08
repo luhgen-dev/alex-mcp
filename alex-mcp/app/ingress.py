@@ -298,7 +298,11 @@ def build_turn(payload: dict, media_lines: list[str]) -> dict:
     typed = str(payload.get("text") or "").strip()
     _transcript, document_lines = media.split_voice_transcript(media_lines)
     trusted_text = typed
-    intent_text = normalize_intent_text(trusted_text)
+    # Emoji is an Alex privacy control signal, not semantic subject matter.
+    # Keep the raw text on ActorContext for scope enforcement/provenance, but
+    # remove control emoji before deterministic intent parsing and any model.
+    semantic_text = scope_policy.strip_control_emoji(trusted_text)
+    intent_text = normalize_intent_text(semantic_text)
     has_audio = bool(payload.get("audio_data"))
     has_image = bool(payload.get("image_data"))
     has_pdf = bool(payload.get("pdf_data"))
@@ -314,6 +318,7 @@ def build_turn(payload: dict, media_lines: list[str]) -> dict:
         source = "text"
     return {
         "trusted_text": trusted_text,
+        "semantic_text": semantic_text,
         "intent_text": intent_text,
         "read_scope": scope_policy.resolve_read_scope(trusted_text),
         "document_lines": document_lines,
@@ -357,16 +362,43 @@ def _dm_conversation_for_actor(actor) -> str:
 
 
 def _error_report_command(text: str) -> tuple[bool, str]:
-    raw = str(text or "").strip()
-    match = re.match(
-        r"(?is)^\s*mark\s+(?:this|that)\s+as\s+(?:an\s+)?error\b"
-        r"(?:\s*[:,-]?\s*(?:because\s+)?(.*))?$",
-        raw,
+    """Recognize a small deterministic vocabulary for quote-bound bug reports."""
+    raw = re.sub(r"\s+", " ", str(text or "").strip())
+    patterns = (
+        r"mark\s+(?:this|that)\s+(?:as\s+)?(?:an\s+)?error",
+        r"(?:this|that)\s+(?:is|was)\s+(?:an\s+)?(?:error|wrong)",
+        r"report\s+(?:this|that)\s+(?:as\s+)?(?:an\s+)?error",
     )
-    if not match:
-        return False, ""
-    explanation = str(match.group(1) or "").strip()
-    return True, explanation
+    for pattern in patterns:
+        match = re.match(
+            rf"(?is)^\s*(?:{pattern})\b"
+            r"(?:\s*[:,-]?\s*(?:because\s+)?(.*))?$",
+            raw,
+        )
+        if match:
+            return True, str(match.group(1) or "").strip()
+    return False, ""
+
+
+def _error_report_cancel_command(text: str) -> bool:
+    value = re.sub(
+        r"\s+", " ", normalize_intent_text(str(text or "")).strip().casefold()
+    ).rstrip(".!")
+    return bool(re.fullmatch(
+        r"(?:cancel|drop|stop)\s+(?:this|that|the)?\s*"
+        r"(?:error\s+)?report|never\s*mind",
+        value,
+    ))
+
+
+def _diagnostic_export_command(text: str) -> str | None:
+    match = re.fullmatch(
+        r"(?is)\s*(?:export|send|give\s+me)\s+"
+        r"(ALEX-[A-F0-9]{8})"
+        r"(?:\s+(?:diagnostic|error|incident)?\s*(?:report|bundle))?\s*[.!]?\s*",
+        str(text or ""),
+    )
+    return match.group(1).upper() if match else None
 
 
 
@@ -478,6 +510,14 @@ def _private_search_offer_candidate(actor, query: str, reply: str,
     """Offer one private retry after a Family-scope miss without probing private data."""
     if attachments or getattr(actor, "read_scope", None) != "family":
         return False
+    reply_value = str(reply or "")
+    if re.search(
+        r"(?i)\b(?:status\s*:\s*not_configured|dependency\s*:|"
+        r"not\s+configured|configure(?:d|\s+first)?|setup\s+required)\b",
+        reply_value,
+    ):
+        # A missing dependency/configuration is not a privacy-scope miss.
+        return False
     text = str(query or "").strip()
     if not text or not re.search(
         r"(?i)\b(?:show|find|search|list|what|where|when|which|how much|"
@@ -515,7 +555,6 @@ def _turn_structured_scope_miss(actor) -> dict | None:
         if (
             isinstance(payload, dict)
             and payload.get("status") == "not_found_in_current_scope"
-            and payload.get("private_search_available") is True
         ):
             return payload
     return None
@@ -524,10 +563,15 @@ def _turn_structured_scope_miss(actor) -> dict | None:
 def _maybe_create_private_search_offer(actor, query: str, reply: str,
                                        attachments: list[dict]) -> tuple[dict | None, str]:
     structured_miss = (
-        _turn_structured_scope_miss(actor)
-        if not attachments and getattr(actor, "read_scope", None) == "family"
-        else None
+        _turn_structured_scope_miss(actor) if not attachments else None
     )
+    if structured_miss and not structured_miss.get("private_search_available"):
+        scope = str(structured_miss.get("scope") or "").casefold()
+        if scope == "private":
+            return None, "I couldn't find that in your private records."
+        if scope == "family":
+            return None, "I couldn't find that in your shared records."
+        return None, "I couldn't find that in the records available to this request."
     if not structured_miss and not _private_search_offer_candidate(
         actor, query, reply, attachments
     ):
@@ -1153,16 +1197,20 @@ def _created_personal_reminder_id(actor) -> str | None:
         conn.close()
 
 
-def _selection_context_parts(context: dict | None) -> tuple[str, str] | None:
+def _selection_context_parts(
+    context: dict | None,
+) -> tuple[str, str, str | None] | None:
     if not context or context.get("context_kind") != "SELECTION":
         return None
     value = str(context.get("context_id") or "")
-    if ":" not in value:
+    pieces = value.split(":")
+    if len(pieces) < 2:
         return None
-    kind, target_id = value.split(":", 1)
+    kind, target_id = pieces[0], pieces[1]
+    scope = pieces[2].strip().casefold() if len(pieces) >= 3 else ""
     if not kind or not target_id:
         return None
-    return kind, target_id
+    return kind, target_id, scope if scope in {"family", "private", "all"} else None
 
 
 def _selection_set_context_parts(context: dict | None) -> tuple[str, str] | None:
@@ -1184,7 +1232,8 @@ def _numbered_selection_request(text: str) -> tuple[int, bool] | None:
     if bare:
         return int(bare.group(1)), False
     match = re.fullmatch(
-        r"(?is)\s*(?:play|listen(?:\s+to)?|hear|show|open|view|send|get)\s+"
+        r"(?is)\s*(?:(?:play|listen(?:\s+to)?|hear|show|open|view|send|get)"
+        r"(?:\s+me)?\s+|private\s+)"
         r"(?:(?:unresolved|pending)\s+)?"
         r"(?:(?:voice|audio)\s*note\s*)?"
         r"(?:number\s+|no\.?\s*|#\s*)?(\d+)\s*[.!]?\s*",
@@ -1254,7 +1303,9 @@ def _deliver_selection_followup(actor, context: dict) -> dict:
     parts = _selection_context_parts(context)
     if not parts:
         raise ValueError("invalid selection continuation context")
-    result = services.get_selection_target(actor, parts[0], parts[1])
+    result = services.get_selection_target(
+        actor, parts[0], parts[1], bound_scope=parts[2]
+    )
     attachments = list(result.get("_attachments") or [])
     reply = "Here it is." if attachments else str(result.get("content") or result.get("title") or "Here it is.")
     db.queue_outbound(
@@ -1280,10 +1331,15 @@ def _deliver_selection_followup(actor, context: dict) -> dict:
     return {"ok": True, "selection_followup": True}
 
 
-def _finish_simple_turn(actor, reply: str, **extra) -> dict:
+def _finish_simple_turn(actor, reply: str, *,
+                        context_kind: str | None = None,
+                        context_id: str | None = None,
+                        **extra) -> dict:
     db.queue_outbound(
         actor.conversation_id, "TEXT", text=reply,
         source_message_id=actor.source_message_id,
+        context_kind=context_kind,
+        context_id=context_id,
     )
     _record_deterministic_turn(actor, reply)
     db.finish_inbound(actor.source_message_id, reply)
@@ -1728,17 +1784,62 @@ def process(payload: dict) -> dict:
             )
         db.touch_inbound_processing(payload["message_id"])
 
-        # User-reported behavioural errors are captured deterministically from
-        # a swipe-reply. This is diagnostics only: no action is retried or undone.
+        # User-reported behavioural errors are object-bound at every step.
+        # A reply to the exact pending prompt has priority over the "start a
+        # report" vocabulary, so an explanation such as "this was wrong
+        # because..." cannot accidentally start a second incident.
+        pending_error = diagnostics.pending_user_error_report(actor)
+        quoted_error_draft = (
+            str(quoted_context.get("context_id") or "")
+            if quoted_context
+            and quoted_context.get("context_kind") == "ERROR_REPORT_DRAFT"
+            else ""
+        )
+        if quoted_error_draft:
+            bound_error = diagnostics.pending_user_error_report_for_draft(
+                actor, quoted_error_draft
+            )
+            if not bound_error:
+                return _finish_simple_turn(
+                    actor,
+                    "That error report is already closed.",
+                    error_report_closed=True,
+                )
+            if _error_report_cancel_command(turn["trusted_text"]):
+                diagnostics.cancel_user_error_report(actor, quoted_error_draft)
+                return _finish_simple_turn(
+                    actor,
+                    "Cancelled that error report.",
+                    error_report_cancelled=True,
+                )
+            if turn["trusted_text"].strip():
+                recorded = diagnostics.complete_user_error_report(
+                    actor, turn["trusted_text"],
+                    error_draft_id=quoted_error_draft,
+                )
+                return _finish_simple_turn(
+                    actor,
+                    f"Marked as {recorded['error_id']}. Diagnostic evidence is saved; I did not retry or undo anything.",
+                    error_report=True,
+                )
+
+        # Starting a new report requires a swipe-reply to the wrong Alex
+        # message. One unresolved report per user/chat keeps the visible
+        # pinned workflow unambiguous.
         is_error_command, inline_explanation = _error_report_command(
             turn["intent_text"]
         )
-        pending_error = diagnostics.pending_user_error_report(actor)
         if is_error_command:
             if not quoted_context or not quoted_context.get("outbound_id"):
                 return _finish_simple_turn(
                     actor,
                     "Swipe-reply to the Alex message that was wrong, then say “Mark this as error.”",
+                    error_report=True,
+                )
+            if pending_error:
+                return _finish_simple_turn(
+                    actor,
+                    "You already have an unresolved error report in this chat. Reply to the pinned “What was wrong?” message, or cancel that report first.",
                     error_report=True,
                 )
             if inline_explanation:
@@ -1747,23 +1848,43 @@ def process(payload: dict) -> dict:
                 )
                 return _finish_simple_turn(
                     actor,
-                    f"Marked as {recorded['error_id']}. I saved the diagnostic evidence only; I did not retry or undo anything.",
+                    f"Marked as {recorded['error_id']}. Diagnostic evidence is saved; I did not retry or undo anything.",
                     error_report=True,
                 )
-            diagnostics.begin_user_error_report(actor, quoted_context)
-            return _finish_simple_turn(
-                actor, "What was wrong?", error_report=True
-            )
-
-        if pending_error and turn["trusted_text"].strip():
-            recorded = diagnostics.complete_user_error_report(
-                actor, turn["trusted_text"]
-            )
+            started = diagnostics.begin_user_error_report(actor, quoted_context)
+            if started.get("status") == "already_pending":
+                return _finish_simple_turn(
+                    actor,
+                    "You already have an unresolved error report in this chat. Reply to the pinned “What was wrong?” message, or cancel that report first.",
+                    error_report=True,
+                )
             return _finish_simple_turn(
                 actor,
-                f"Marked as {recorded['error_id']}. I saved the diagnostic evidence only; I did not retry or undo anything.",
+                "What was wrong? Reply to this message with what happened and what you expected.",
+                context_kind="ERROR_REPORT_DRAFT",
+                context_id=started["error_draft_id"],
                 error_report=True,
             )
+
+        # A pending report never steals an unrelated message. The user must
+        # reply to the pinned error prompt, so normal household work continues.
+        export_error_id = _diagnostic_export_command(turn["trusted_text"])
+        if export_error_id:
+            exported = diagnostics.export_user_reported_error(
+                actor, export_error_id
+            )
+            attachment = exported["_attachments"][0]
+            reply = f"Diagnostic bundle {export_error_id}."
+            db.queue_outbound(
+                actor.conversation_id, "DOCUMENT",
+                text=reply,
+                local_path=attachment["path"],
+                mime_type=attachment["mime_type"],
+                source_message_id=actor.source_message_id,
+            )
+            _record_deterministic_turn(actor, reply)
+            db.finish_inbound(actor.source_message_id, reply)
+            return {"ok": True, "diagnostic_export": export_error_id}
 
         quoted_reminder_draft = (
             pending_item
@@ -1978,7 +2099,7 @@ def process(payload: dict) -> dict:
             )
             private_reply, private_attachments = asyncio.run(
                 brain.respond(
-                    dm_actor, turn["trusted_text"], turn["document_lines"],
+                    dm_actor, turn["semantic_text"], turn["document_lines"],
                     vision_parts, quoted_context=None,
                 )
             )
@@ -1992,7 +2113,13 @@ def process(payload: dict) -> dict:
                     source_message_id=actor.source_message_id,
                     context_kind="SELECTION" if private_selection else None,
                     context_id=(
-                        f"{private_selection['kind']}:{private_selection['id']}"
+                        (
+                            f"{private_selection['kind']}:{private_selection['id']}"
+                            + (
+                                f":{private_selection['scope']}"
+                                if private_selection.get("scope") else ""
+                            )
+                        )
                         if private_selection else None
                     ),
                 )
@@ -2044,13 +2171,13 @@ def process(payload: dict) -> dict:
         shadow_context = shadow_router.capture_context(actor)
         reply, attachments = asyncio.run(
             brain.respond(
-                actor, turn["trusted_text"], turn["document_lines"], vision_parts,
+                actor, turn["semantic_text"], turn["document_lines"], vision_parts,
                 **brain_kwargs,
             )
         )
         if shadow_context is not None:
             shadow_router.submit(
-                actor, turn["trusted_text"], quoted_context, shadow_context,
+                actor, turn["semantic_text"], quoted_context, shadow_context,
                 has_media=bool(turn["document_lines"] or vision_parts),
             )
         db.touch_inbound_processing(payload["message_id"])
@@ -2126,7 +2253,13 @@ def process(payload: dict) -> dict:
                 else reminder_draft["item_id"] if reminder_draft
                 else f"{selection_set_context['kind']}:{selection_set_context['id']}"
                 if selection_set_context
-                else f"{selection_context['kind']}:{selection_context['id']}"
+                else (
+                    f"{selection_context['kind']}:{selection_context['id']}"
+                    + (
+                        f":{selection_context['scope']}"
+                        if selection_context.get("scope") else ""
+                    )
+                )
                 if selection_context
                 else reminder_setup_id if reminder_setup_id
                 else personal_reminder_id if personal_reminder_id
@@ -2180,8 +2313,22 @@ def process(payload: dict) -> dict:
             raise
         return {"ok": True, "voice_uncertain": True}
     except PermissionError as exc:
-        db.fail_inbound(payload["message_id"], str(exc))
-        return {"ok": False, "unauthorized": True}
+        # Authorization denials are handled user-visible outcomes, not silent
+        # transport failures. Never expose the internal object/error text.
+        reply = (
+            "I can’t use that record from this chat. If it’s private, ask me "
+            "in your private DM or reply to the original private result."
+        )
+        try:
+            db.queue_outbound(
+                payload["conversation_id"], "TEXT",
+                text=reply, source_message_id=payload["message_id"],
+            )
+            db.finish_inbound(payload["message_id"], reply)
+        except Exception:
+            db.fail_inbound(payload["message_id"], str(exc))
+            raise
+        return {"ok": True, "unauthorized": True}
     except Exception as exc:
         db.fail_inbound(payload["message_id"], str(exc))
         _record_processing_error(exc, payload)

@@ -1,8 +1,9 @@
 ARG BUILD_FROM=ghcr.io/home-assistant/base:3.24
 FROM $BUILD_FROM
 
-ARG BUILD_VERSION=0.5.36
+ARG BUILD_VERSION=0.5.37
 ARG BUILD_ARCH=amd64
+ARG BUILD_COMMIT=unknown
 
 LABEL \
   io.hass.version="$BUILD_VERSION" \
@@ -43,5 +44,7 @@ COPY rootfs/ /
 RUN chmod -R a+x /etc/services.d /etc/cont-init.d
 
 ENV PATH="/opt/alex-venv/bin:$PATH"
+ENV ALEX_APP_VERSION="$BUILD_VERSION"
+ENV ALEX_BUILD_COMMIT="$BUILD_COMMIT"
 ENV ALEX_DATA_DIR="/data"
 ENV PYTHONUNBUFFERED=1

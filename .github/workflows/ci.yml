@@ -120,13 +120,16 @@ jobs:
       - name: Verify WhatsApp quoted-context payload contract
         run: node alex-mcp/app/quoted_payload.test.js
 
+      - name: Verify per-conversation FIFO contract
+        run: node alex-mcp/app/conversation_queue.test.js
+
   container:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - name: Build Home Assistant app image
-        run: docker build --build-arg BUILD_FROM=ghcr.io/home-assistant/base:3.24 -t alex-mcp-ci alex-mcp
+        run: docker build --build-arg BUILD_FROM=ghcr.io/home-assistant/base:3.24 --build-arg BUILD_COMMIT="$GITHUB_SHA" -t alex-mcp-ci alex-mcp
 
       - name: Verify local media binaries
         run: |

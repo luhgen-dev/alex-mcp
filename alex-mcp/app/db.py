@@ -152,6 +152,20 @@ def initialize() -> None:
         _ensure_column(conn, "media_objects", "transcript_meta_json", "TEXT")
         _ensure_column(conn, "pending_items", "accumulated_text", "TEXT")
         _ensure_column(conn, "pending_items", "routing_json", "TEXT")
+        _ensure_column(conn, "selection_sets", "read_scope", "TEXT")
+        # v0.5.37: quote-bound error reporting gives every unresolved draft a
+        # durable identity so only replies to its pinned prompt can complete it.
+        _ensure_column(conn, "pending_error_reports", "error_draft_id", "TEXT")
+        conn.execute(
+            """UPDATE pending_error_reports
+               SET error_draft_id='ERRD-' || upper(hex(randomblob(8)))
+               WHERE error_draft_id IS NULL OR TRIM(error_draft_id)=''"""
+        )
+        conn.execute(
+            """CREATE UNIQUE INDEX IF NOT EXISTS idx_pending_error_draft
+               ON pending_error_reports(error_draft_id)
+               WHERE error_draft_id IS NOT NULL"""
+        )
         # v0.5.13 reminder drafts carry the user's trusted clarification
         # fragments as one durable request. Backfill existing drafts from their
         # original inbound text without touching other pending-item kinds.

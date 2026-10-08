@@ -18,6 +18,15 @@ CONTROL_MAX_ATTEMPTS = 5
 CONTROL_BACKOFF_SECONDS = (5, 15, 60, 300, 900)
 _STARTUP_MANAGED_JOB_RECONCILED = False
 
+# These outbounds are generated later by schedulers/recovery workers. Quoting
+# the original command hours later would be misleading. Immediate replies use
+# the exact inbound message whenever they stay in the same WhatsApp chat.
+_NO_SOURCE_REPLY_CONTEXTS = {
+    "REMINDER_INITIAL", "REMINDER_FOLLOWUP", "REMINDER_CLAIMANT_FOLLOWUP",
+    "REMINDER_FAMILY_RESURFACE", "REMINDER_INITIATOR_ESCALATION",
+    "MONITOR", "INBOUND_RECOVERY",
+}
+
 
 def _now():
     return runtime_clock.utc_iso()
@@ -62,9 +71,24 @@ def _row_value(row, key, default=None):
 def _payload(row) -> dict:
     kind = row["kind"]
     message_id = _whatsapp_message_id(row["outbound_id"])
+    source_message_id = _row_value(row, "source_message_id")
+    source_chat = _row_value(row, "source_conversation_id")
+    same_chat = bool(
+        source_message_id
+        and source_chat
+        and str(source_chat) == str(row["conversation_id"])
+    )
+    # Backward compatibility for synthetic/unit-test rows that predate the
+    # joined source conversation field: plain replies keep the old behavior.
+    legacy_plain_reply = bool(
+        source_message_id and not source_chat and not row["context_kind"]
+    )
     reply_to = (
-        row["source_message_id"]
-        if row["source_message_id"] and not row["context_kind"]
+        source_message_id
+        if (
+            (same_chat and str(row["context_kind"] or "") not in _NO_SOURCE_REPLY_CONTEXTS)
+            or legacy_plain_reply
+        )
         else None
     )
     common = {
@@ -106,7 +130,8 @@ def _payload(row) -> dict:
 def _joined_row(conn, outbound_id: str):
     return conn.execute(
         """SELECT o.*,i.sender_provider_jid AS source_sender_provider_jid,
-                  i.raw_text AS source_raw_text
+                  i.raw_text AS source_raw_text,
+                  i.conversation_id AS source_conversation_id
            FROM outbound_messages o
            LEFT JOIN inbound_messages i ON i.message_id=o.source_message_id
            WHERE o.outbound_id=?""",
@@ -331,6 +356,40 @@ def _reconcile_pending_item_markers(conn) -> None:
         else:
             # Also cleans stale markers from transient offer/draft prompts.
             _cleanup_resolved_markers(conn, row)
+
+
+def _reconcile_error_report_markers(conn) -> None:
+    """Keep the one unresolved error-description prompt visibly active.
+
+    The prompt itself, not the user's source command, carries ⏳ + pin. Deleting
+    the matching pending_error_reports row on complete/cancel makes the next
+    sweep remove both markers deterministically.
+    """
+    rows = conn.execute(
+        """SELECT o.*,p.error_draft_id AS pending_error_draft
+           FROM outbound_messages o
+           LEFT JOIN pending_error_reports p
+             ON p.error_draft_id=o.context_id
+            AND p.conversation_id=o.conversation_id
+           WHERE o.context_kind='ERROR_REPORT_DRAFT'
+             AND o.delivery_status='SENT'
+             AND (
+                p.error_draft_id IS NOT NULL
+                OR (o.job_reacted_at_utc IS NOT NULL
+                    AND o.job_reaction_cleared_at_utc IS NULL)
+                OR (o.job_pinned_at_utc IS NOT NULL
+                    AND o.job_unpinned_at_utc IS NULL)
+             )
+           ORDER BY o.rowid DESC"""
+    ).fetchall()
+    for row in rows:
+        if row["pending_error_draft"]:
+            _ensure_claim_setup_markers(conn, row)
+        elif (
+            (row["job_reacted_at_utc"] and not row["job_reaction_cleared_at_utc"])
+            or (row["job_pinned_at_utc"] and not row["job_unpinned_at_utc"])
+        ):
+            _cleanup_claim_setup_markers(conn, row)
 
 
 def _ensure_claim_setup_markers(conn, row) -> None:
@@ -622,7 +681,8 @@ def _reconcile_managed_jobs(conn) -> None:
     """Restore invariant after restart: unresolved marked; SENT cleaned up."""
     rows = conn.execute(
         """SELECT o.*,i.sender_provider_jid AS source_sender_provider_jid,
-                  i.raw_text AS source_raw_text
+                  i.raw_text AS source_raw_text,
+                  i.conversation_id AS source_conversation_id
            FROM outbound_messages o
            LEFT JOIN inbound_messages i ON i.message_id=o.source_message_id
            WHERE o.kind='DOCUMENT' AND o.source_message_id IS NOT NULL
@@ -654,7 +714,8 @@ def sweep():
         now_iso = _now()
         rows = conn.execute(
             """SELECT o.*,i.sender_provider_jid AS source_sender_provider_jid,
-                      i.raw_text AS source_raw_text
+                      i.raw_text AS source_raw_text,
+                      i.conversation_id AS source_conversation_id
                FROM outbound_messages o
                LEFT JOIN inbound_messages i ON i.message_id=o.source_message_id
                WHERE o.delivery_status='PENDING'
@@ -808,6 +869,7 @@ def sweep():
         _reconcile_pending_item_markers(conn)
         _reconcile_claim_setup_markers(conn)
         _reconcile_reminder_pins(conn)
+        _reconcile_error_report_markers(conn)
 
         # Restart reconciliation is exactly that: restart recovery. Normal
         # document attempts already apply/clean their own markers above. Running
