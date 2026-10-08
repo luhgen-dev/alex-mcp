@@ -357,16 +357,43 @@ def _dm_conversation_for_actor(actor) -> str:
 
 
 def _error_report_command(text: str) -> tuple[bool, str]:
-    raw = str(text or "").strip()
-    match = re.match(
-        r"(?is)^\s*mark\s+(?:this|that)\s+as\s+(?:an\s+)?error\b"
-        r"(?:\s*[:,-]?\s*(?:because\s+)?(.*))?$",
-        raw,
+    """Recognize a small deterministic vocabulary for quote-bound bug reports."""
+    raw = re.sub(r"\s+", " ", str(text or "").strip())
+    patterns = (
+        r"mark\s+(?:this|that)\s+(?:as\s+)?(?:an\s+)?error",
+        r"(?:this|that)\s+(?:is|was)\s+(?:an\s+)?(?:error|wrong)",
+        r"report\s+(?:this|that)\s+(?:as\s+)?(?:an\s+)?error",
     )
-    if not match:
-        return False, ""
-    explanation = str(match.group(1) or "").strip()
-    return True, explanation
+    for pattern in patterns:
+        match = re.match(
+            rf"(?is)^\s*(?:{pattern})\b"
+            r"(?:\s*[:,-]?\s*(?:because\s+)?(.*))?$",
+            raw,
+        )
+        if match:
+            return True, str(match.group(1) or "").strip()
+    return False, ""
+
+
+def _error_report_cancel_command(text: str) -> bool:
+    value = re.sub(
+        r"\s+", " ", normalize_intent_text(str(text or "")).strip().casefold()
+    ).rstrip(".!")
+    return bool(re.fullmatch(
+        r"(?:cancel|drop|stop)\s+(?:this|that|the)?\s*"
+        r"(?:error\s+)?report|never\s*mind",
+        value,
+    ))
+
+
+def _diagnostic_export_command(text: str) -> str | None:
+    match = re.fullmatch(
+        r"(?is)\s*(?:export|send|give\s+me)\s+"
+        r"(ALEX-[A-F0-9]{8})"
+        r"(?:\s+(?:diagnostic|error|incident)?\s*(?:report|bundle))?\s*[.!]?\s*",
+        str(text or ""),
+    )
+    return match.group(1).upper() if match else None
 
 
 
@@ -1280,10 +1307,15 @@ def _deliver_selection_followup(actor, context: dict) -> dict:
     return {"ok": True, "selection_followup": True}
 
 
-def _finish_simple_turn(actor, reply: str, **extra) -> dict:
+def _finish_simple_turn(actor, reply: str, *,
+                        context_kind: str | None = None,
+                        context_id: str | None = None,
+                        **extra) -> dict:
     db.queue_outbound(
         actor.conversation_id, "TEXT", text=reply,
         source_message_id=actor.source_message_id,
+        context_kind=context_kind,
+        context_id=context_id,
     )
     _record_deterministic_turn(actor, reply)
     db.finish_inbound(actor.source_message_id, reply)
@@ -1728,8 +1760,10 @@ def process(payload: dict) -> dict:
             )
         db.touch_inbound_processing(payload["message_id"])
 
-        # User-reported behavioural errors are captured deterministically from
-        # a swipe-reply. This is diagnostics only: no action is retried or undone.
+        # User-reported behavioural errors are object-bound at every step.
+        # Starting requires a swipe-reply to the wrong Alex message. If Alex
+        # needs an explanation, its prompt is itself a durable/pinned object and
+        # only a swipe-reply to that exact prompt may complete or cancel it.
         is_error_command, inline_explanation = _error_report_command(
             turn["intent_text"]
         )
@@ -1747,23 +1781,77 @@ def process(payload: dict) -> dict:
                 )
                 return _finish_simple_turn(
                     actor,
-                    f"Marked as {recorded['error_id']}. I saved the diagnostic evidence only; I did not retry or undo anything.",
+                    f"Marked as {recorded['error_id']}. Diagnostic evidence is saved; I did not retry or undo anything.",
                     error_report=True,
                 )
-            diagnostics.begin_user_error_report(actor, quoted_context)
-            return _finish_simple_turn(
-                actor, "What was wrong?", error_report=True
-            )
-
-        if pending_error and turn["trusted_text"].strip():
-            recorded = diagnostics.complete_user_error_report(
-                actor, turn["trusted_text"]
-            )
+            started = diagnostics.begin_user_error_report(actor, quoted_context)
+            if started.get("status") == "already_pending":
+                return _finish_simple_turn(
+                    actor,
+                    "You already have an unresolved error report in this chat. Reply to the pinned “What was wrong?” message, or cancel that report first.",
+                    error_report=True,
+                )
             return _finish_simple_turn(
                 actor,
-                f"Marked as {recorded['error_id']}. I saved the diagnostic evidence only; I did not retry or undo anything.",
+                "What was wrong? Reply to this message with what happened and what you expected.",
+                context_kind="ERROR_REPORT_DRAFT",
+                context_id=started["error_draft_id"],
                 error_report=True,
             )
+
+        quoted_error_draft = (
+            str(quoted_context.get("context_id") or "")
+            if quoted_context
+            and quoted_context.get("context_kind") == "ERROR_REPORT_DRAFT"
+            else ""
+        )
+        if quoted_error_draft:
+            bound_error = diagnostics.pending_user_error_report_for_draft(
+                actor, quoted_error_draft
+            )
+            if not bound_error:
+                return _finish_simple_turn(
+                    actor,
+                    "That error report is already closed.",
+                    error_report_closed=True,
+                )
+            if _error_report_cancel_command(turn["trusted_text"]):
+                diagnostics.cancel_user_error_report(actor, quoted_error_draft)
+                return _finish_simple_turn(
+                    actor,
+                    "Cancelled that error report.",
+                    error_report_cancelled=True,
+                )
+            if turn["trusted_text"].strip():
+                recorded = diagnostics.complete_user_error_report(
+                    actor, turn["trusted_text"],
+                    error_draft_id=quoted_error_draft,
+                )
+                return _finish_simple_turn(
+                    actor,
+                    f"Marked as {recorded['error_id']}. Diagnostic evidence is saved; I did not retry or undo anything.",
+                    error_report=True,
+                )
+
+        # A pending report never steals an unrelated message. The user must
+        # reply to the pinned error prompt, so normal household work continues.
+        export_error_id = _diagnostic_export_command(turn["trusted_text"])
+        if export_error_id:
+            exported = diagnostics.export_user_reported_error(
+                actor, export_error_id
+            )
+            attachment = exported["_attachments"][0]
+            reply = f"Diagnostic bundle {export_error_id}."
+            db.queue_outbound(
+                actor.conversation_id, "DOCUMENT",
+                text=reply,
+                local_path=attachment["path"],
+                mime_type=attachment["mime_type"],
+                source_message_id=actor.source_message_id,
+            )
+            _record_deterministic_turn(actor, reply)
+            db.finish_inbound(actor.source_message_id, reply)
+            return {"ok": True, "diagnostic_export": export_error_id}
 
         quoted_reminder_draft = (
             pending_item
