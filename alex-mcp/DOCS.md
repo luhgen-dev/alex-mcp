@@ -62,6 +62,11 @@ Immediate replies are anchored to the exact inbound WhatsApp message that caused
 
 This means rapid logging is supported as a queueing pattern: the user does not need to wait for Alex's previous reply before sending the next message. Alex preserves per-chat order and the eventual replies visibly identify which request they answer.
 
+
+Numbered results are continuation objects, not fresh searches. Natural retrieval wording such as **Show me 1**, **Show 1**, **Send me 2**, **Private 3**, **Play 1**, **Listen to 1** and **Hear 1** is resolved deterministically. If Alex created the list from an explicitly private read, that owner/DM-bound list retains its original read scope for the numbered follow-up; the user does not need to repeat the privacy emoji/word. This scope binding cannot widen the authenticated household member's allowed spaces.
+
+Emoji remain a privacy shortcut on the raw trusted command, but they are removed before semantic/model interpretation. They therefore select private scope without becoming query subject matter (for example, a cake emoji in an expense query does not mean "cake expenses"). Dependency/configuration failures are also distinct from scope misses, so an unconfigured roster must not create a bogus offer to search private records.
+
 ### User-reported errors / diagnostic flight recorder (0.5.37)
 
 Behavioural bug reports are deterministic and never delegated to the model.
