@@ -80,23 +80,28 @@ The link is valid for 15 minutes. The session is stored only in `/data/chatgpt_p
 
 Notes: on ChatGPT Plus, Alex shares your plan's rolling usage limit with your own ChatGPT/Codex use. Plan usage is recorded in the usage card at $0 API cost and does not count toward the optional monthly API budget guard.
 
-### AI router comparison (shadow router)
+### Semantic router (0.5.36, off by default)
 
-Alex has about 120 tools but shows the reasoning model at most six per message, chosen by keyword routing. When `chatgpt_plan_mode` is `shadow_only` or `primary`, after each normal text reply Alex also asks ChatGPT, in the background, which tools from the **full** list that message needed. The answer is constrained to real tool names and is only **stored locally** next to what keyword routing showed and what Alex actually used. It never calls a tool, never changes a reply and never sends a message. It sees the few turns before your message, never Alex's reply to it.
+Alex has 121 tools but intentionally keeps the provider surface small. The semantic router lets the signed-in ChatGPT plan model read natural, typo-heavy household wording against the **full tool catalogue** and return strict structured JSON:
 
-The Web UI card **AI router comparison** summarises the last 7 days and lists recent disagreements. Rows are kept for 30 days. This is the evidence for deciding whether Alex's tool routing should become AI-led.
+- ordered real tool names;
+- a short intent such as `CREATE_REMINDER` or `READ_FINANCES`;
+- reference kind (`NONE`, `ACTIVE`, `QUOTED`, `LATEST_LIST`);
+- grounded slots such as date/time, relative minutes, item numbers, target, scope, amount/currency, name/query/action;
+- confidence and whether clarification is genuinely needed.
 
-### AI tool routing (0.5.34, off by default)
+Configuration → **Semantic AI routing**:
 
-Configuration → **AI tool routing**. `off` is today's behaviour. `on` lets your ChatGPT plan model choose which tools the reasoning model sees for each text message, instead of relying only on keyword rules. It needs **ChatGPT plan mode** set to `shadow_only` or `primary` and a signed-in plan.
+- `off` — no live semantic routing. Existing deterministic keyword routing remains the reply path.
+- `shadow` — the same semantic interpreter runs in the background after the reply and is logged for comparison. It never changes the reply or calls a tool.
+- `live` — the same interpreter runs before the brain. Its safe tool picks are placed first, keyword-routed tools stay behind them, and a high-confidence structured interpretation is supplied to the brain only as a **non-authoritative language hint**.
+- `on` — legacy v0.5.34/v0.5.35 value; automatically treated as `live` so existing installations upgrade without a configuration edit.
 
-- The model's picks are shown first and the keyword-routed tools stay behind them, so keyword routing is never lost.
-- If ChatGPT is slow (over 6 seconds), down, rate-limited or answers unusably, that message simply uses keyword routing as before. After three failures in a row it pauses for 2 minutes.
-- It adds one short ChatGPT call before each routed message (about 2 seconds with a light model). Photo, document and voice-note turns and plain chit-chat are not routed.
-- Safety is unchanged: a write tool is only offered when your own words ask for a write, and tools the keyword layer deliberately blocks stay blocked.
-- Switch it back to `off` at any time (save and restart) to return to keyword routing.
+This setting is independent of **ChatGPT plan mode**. For example, you can keep ChatGPT plan mode on `primary` so GPT-6 Luna answers Alex's text turns, while Semantic AI routing is set to `shadow`. Moving `shadow → live` later is only a Configuration change plus restart; it does not require another code release.
 
-The comparison card shows how many turns were routed live.
+Safety remains deterministic in every mode. The semantic model cannot grant write permission, privacy scope, recipient access or tool authorization. Alex still checks the original trusted user text, quote binding, block lists, actor/ACL rules and deterministic tool validation. If the router fails, times out after 6 seconds, returns unusable output or is paused after repeated failures, Alex falls back to the existing keyword route for that message.
+
+The Web UI **Semantic router** card shows recent structured interpretations, tools, slots, confidence and median router latency. Rows are kept for 30 days. Photo, document and voice-note turns and plain chit-chat are not live-routed.
 
 ## Provider switching
 
