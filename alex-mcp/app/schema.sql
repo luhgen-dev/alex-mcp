@@ -235,6 +235,7 @@ CREATE TABLE IF NOT EXISTS selection_sets (
     conversation_id TEXT NOT NULL,
     selection_kind TEXT NOT NULL CHECK(selection_kind IN ('RECEIPT','SAVED_ITEM')),
     items_json TEXT NOT NULL,
+    read_scope TEXT,
     created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     expires_at_utc TEXT NOT NULL,
     FOREIGN KEY(user_id) REFERENCES users(user_id)
