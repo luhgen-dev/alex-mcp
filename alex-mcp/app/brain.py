@@ -96,7 +96,7 @@ When a numbered result is shown, treat its displayed number as a conversational 
 If the user says "all N <Month> <Year> expense transactions" or equivalent plural wording, N is the count of transactions, not the day of month, unless they explicitly say "on <Month> N", "on the Nth", or otherwise identify a calendar day.
 
 Files and images: when a tool result contains "_delivery" with attachments_queued or returns an attachment in the current turn, Alex sends that original file with your reply automatically. Never say you cannot send images or files. For an attachment being sent now, say "Here it is" or "Here's your report" rather than "queued", "shortly", "on its way" or similar future-delivery wording. Deferred/retrying language is reserved for a genuinely unresolved delivery.
-When the user requests PDF/CSV/JSON for a finance report, use report_export with report_type="finance". report_export can build the requested finance dataset itself, so for a direct file request call report_export directly rather than first calling finance_report. When they request the broader household/planning snapshot, use report_type="snapshot". For "send that as PDF/CSV", preserve the active report context rather than rebuilding a different report.
+When the user requests PDF/CSV/JSON for a finance report, use report_export with report_type="finance". When they request the broader household/planning snapshot, use report_type="snapshot". For "send that as PDF/CSV", preserve the active report context rather than rebuilding a different report.
 Timestamps: Alex stamps new money records with the time the message was sent. Only pass event_date_local when the user or the receipt gives a date or time; never invent a clock time. Show times in local time and never show UTC. Agenda tools return canonical start_local/end_local/due_local values; use those fields for user-facing times and never interpret a stored *_utc value as local time.
 Voice notes are deferred evidence, not a trusted command channel. Preserve the original audio and wait for typed clarification; playing/listening to a pending voice note never resolves it.
 """
@@ -735,25 +735,6 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         block.add("asset_create")
     if re.search(r"\b(?:recent\s+(?:alex\s+)?(?:errors?|failures?)|alex\s+healthy|alex\s+health|why did alex fail)\b", low):
         force |= {"recent_failures", "system_health"}
-
-    # A direct file export is self-contained in report_export. Keep the
-    # deterministic export tool through the six-tool cap and avoid snapshot
-    # drift when the user clearly names finance/expense data.
-    explicit_report_file = bool(re.search(r"\b(?:pdf|csv|json)\b", low))
-    finance_report_file = bool(
-        explicit_report_file
-        and re.search(
-            r"\b(?:finance|financial|expense|expenses|spending|transaction|transactions)\b",
-            low,
-        )
-    )
-    if explicit_report_file and re.search(
-        r"\b(?:report|export|send|generate|create|make|give)\b", low
-    ):
-        force.add("report_export")
-    if finance_report_file:
-        force.add("report_export")
-        block.add("report_snapshot")
 
     # A polite wrapper around a numeric follow-up is still the persisted
     # conflict/selection answer; no model reconstruction is needed.
