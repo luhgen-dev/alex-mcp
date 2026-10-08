@@ -41,13 +41,10 @@ class V0537Base(unittest.TestCase):
             conn.close()
 
     def tearDown(self):
-        conn = db.connect()
-        try:
-            conn.execute("DELETE FROM pending_error_reports")
-            conn.execute("DELETE FROM user_reported_errors")
-            conn.commit()
-        finally:
-            conn.close()
+        # Leave the shared unittest database exactly as the canonical core
+        # fixture expects. This keeps focused v0.5.37 cases from leaking saved
+        # items/selections into later legacy test modules.
+        core.AlexCoreTests.setUp(self)
 
     def claim(self, mid, phone, text=""):
         return core.AlexCoreTests.claim(self, mid, phone, text)
