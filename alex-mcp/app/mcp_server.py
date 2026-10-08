@@ -1673,16 +1673,12 @@ def report_export(format: str, actor: Actor, period: str | None = None,
                   currency: str | None = None,
                   source: str | None = None,
                   use_active_context: bool = True) -> dict:
-    """Export PDF/CSV/JSON from the active or requested canonical report.
+    """Export PDF/CSV/JSON from the active canonical report.
 
-    This tool is self-contained: for a direct request such as "generate my
-    September finance report as PDF", call report_export once with
-    format="pdf", report_type="finance" and the period; do not call
-    finance_report first. report_type may be finance or snapshot when the user
-    explicitly names the report. category/search/scope express explicit finance
-    filters. Explicit filters override active context; full_report clears active
-    finance filters. Supplying only a period preserves a matching active report
-    context.
+    report_type may be finance or snapshot when the user explicitly names the
+    report. category/search/scope express explicit finance filters. Explicit
+    filters override active context; full_report clears active finance filters.
+    Supplying only a period preserves a matching active report context.
     """
     import calendar
     import hashlib
