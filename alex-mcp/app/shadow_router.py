@@ -1,20 +1,16 @@
-"""Shadow AI router (v0.5.33) — log only, never changes a reply.
+"""Semantic AI router for Alex (v0.5.36).
 
-Today Alex shows the reasoning model at most six of its ~120 tools per turn,
-chosen by deterministic keyword routing. When that routing picks the wrong
-domain, the model cannot call the right tool however well it understood the
-message. This module measures, on real household traffic, whether a model
-choosing from the FULL tool catalogue would pick better:
+The same schema-bound GPT plan call can run in two owner-selectable modes:
 
-* After a normal reply has already been produced, a background thread asks
-  the owner's ChatGPT plan (no API spend) which tools the turn needed.
-* The answer is constrained by a strict JSON schema to real tool names.
-* It is only stored in a local table next to what keyword routing exposed and
-  what Alex actually called. Nothing is executed, no tool is called, and no
-  message is sent.
+* shadow: interpret real household messages in the background and log the
+  proposed tool/intent/slots without changing Alex's reply;
+* live: run the same interpreter before the brain, safely merge its tool picks
+  ahead of keyword routing, and provide its structured interpretation as a
+  non-authoritative language hint.
 
-It runs only when ``chatgpt_plan_mode`` is "shadow_only" or "primary" and the
-owner is signed in. Any failure is swallowed and logged as a row.
+Alex's deterministic identity, privacy, mutation, scope and tool guards remain
+authoritative in both modes. Any router failure falls back to the existing
+keyword path.
 """
 from __future__ import annotations
 
@@ -35,16 +31,28 @@ TURN_TEXT_MAX = 400
 SNIPPET_MAX = 160
 RETENTION_DAYS = 30
 
-ROUTER_INSTRUCTIONS = """You route messages for Alex, a household assistant that works through tools.
+SEMANTIC_REFERENCES = {"NONE", "ACTIVE", "QUOTED", "LATEST_LIST"}
+SEMANTIC_TARGETS = {"UNSPECIFIED", "SELF", "SPOUSE", "BOTH", "GROUP", "PRIVATE"}
+SEMANTIC_SCOPES = {"UNSPECIFIED", "FAMILY_SHARED", "PRIVATE"}
+SEMANTIC_CURRENCIES = {"UNSPECIFIED", "MYR", "SGD"}
+SEMANTIC_CONFIDENCE_MIN = 0.70
 
-Given the recent conversation and the user's CURRENT message, choose the tools Alex would need to handle the current message completely and correctly. Choose only from the supplied tool list, at most six, most important first.
+ROUTER_INSTRUCTIONS = """You are Alex's semantic router. Read the household user's natural message and return a precise, grounded interpretation plus the tools Alex may need.
 
-- The user may write casually, with typos, abbreviations, Malay, Tamil or Tanglish. Read the intent, not the keywords.
-- Use the recent conversation to resolve follow-ups such as "that one", "the first one", "bought 1 and 3", or a bare time or amount answering Alex's last question.
-- Prefer the tool that performs the requested change or answers the question directly; add a lookup tool only when the change needs one first.
-- Return an empty list for pure chit-chat that needs no household data.
-- Set needs_clarification to true only when the message is genuinely ambiguous about which household domain it concerns.
-- reason: one short sentence."""
+The user may write casually, with typos, abbreviations, Malay, Tamil or Tanglish. Read meaning, not keywords. Use recent conversation and quoted text only to resolve genuine follow-ups such as "that one", "bought 1 and 3", or a bare time/amount answering Alex's last question.
+
+Rules:
+- Choose only from the supplied tool list, at most six, most important first.
+- intent: a short UPPER_SNAKE_CASE description such as READ_REMINDERS, CREATE_REMINDER, UPDATE_SHOPPING, READ_FINANCES, CHECK_AVAILABILITY or SHOW_RECEIPT.
+- reference: QUOTED only when the quoted message is the target; ACTIVE for an unresolved active interaction; LATEST_LIST for a numbered/list follow-up; otherwise NONE.
+- slots contain only information grounded in the current message or clearly resolved active/quoted context. Never invent a date, time, recipient, privacy scope, amount, currency, name or action.
+- date_text/time_text may normalize obvious wording (for example "tmr" -> "tomorrow"). relative_minutes may normalize an explicit duration such as "half an hour" -> 30.
+- target/scope describe only explicit or context-bound meaning; use UNSPECIFIED when not known.
+- Return an empty tools list for pure chit-chat that needs no household data.
+- needs_clarification is true only when the user's meaning genuinely cannot be resolved from current + active context.
+- confidence is 0..1 for the semantic interpretation, not for whether Alex is allowed to execute it.
+- reason: one short sentence.
+Alex's deterministic safety layer, not you, decides authorization and execution."""
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS alex_shadow_router_log (
@@ -63,7 +71,12 @@ CREATE TABLE IF NOT EXISTS alex_shadow_router_log (
     error_code TEXT,
     model TEXT,
     latency_ms INTEGER,
-    ai_routed INTEGER DEFAULT 0
+    ai_routed INTEGER DEFAULT 0,
+    semantic_intent TEXT,
+    semantic_reference TEXT,
+    semantic_slots TEXT,
+    semantic_confidence REAL,
+    semantic_mode TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_alex_shadow_router_created
     ON alex_shadow_router_log(created_at_utc);
@@ -82,6 +95,18 @@ def ensure_schema() -> None:
             conn.execute(
                 "ALTER TABLE alex_shadow_router_log ADD COLUMN ai_routed INTEGER DEFAULT 0"
             )
+        # v0.5.36 structured semantic translator fields. Additive migration only.
+        for name, kind in (
+            ("semantic_intent", "TEXT"),
+            ("semantic_reference", "TEXT"),
+            ("semantic_slots", "TEXT"),
+            ("semantic_confidence", "REAL"),
+            ("semantic_mode", "TEXT"),
+        ):
+            if name not in cols:
+                conn.execute(
+                    f"ALTER TABLE alex_shadow_router_log ADD COLUMN {name} {kind}"
+                )
         conn.commit()
     finally:
         conn.close()
@@ -148,9 +173,18 @@ LIVE_PAUSE_SECONDS = 120.0
 _live_state = {"fails": 0, "pause_until": 0.0}
 
 
+def routing_mode(settings=None) -> str:
+    """Return off/shadow/live; v0.5.35's saved "on" remains a live alias."""
+    settings = settings or get_settings()
+    raw = str(getattr(settings, "ai_routing", "off") or "off").strip().lower()
+    if raw == "on":
+        return "live"
+    return raw if raw in {"off", "shadow", "live"} else "off"
+
+
 def live_enabled(settings=None) -> bool:
     settings = settings or get_settings()
-    if str(getattr(settings, "ai_routing", "off") or "off") != "on":
+    if routing_mode(settings) != "live":
         return False
     if time.monotonic() < _live_state["pause_until"]:
         return False
@@ -244,6 +278,11 @@ def record_live(actor, user_text: str, trace: dict) -> None:
             "model": route.get("model"),
             "latency_ms": route.get("latency_ms") or 0,
             "ai_routed": 1,
+            "semantic_intent": route.get("intent"),
+            "semantic_reference": route.get("reference"),
+            "semantic_slots": route.get("slots") or {},
+            "semantic_confidence": route.get("confidence"),
+            "semantic_mode": "live",
         })
     except Exception:
         pass
@@ -329,14 +368,42 @@ def submit(actor, user_text: str, quoted_context: dict | None, context: dict | N
 
 
 def _schema(names: list[str]) -> dict:
+    slots = {
+        "type": "object",
+        "properties": {
+            "date_text": {"type": ["string", "null"]},
+            "time_text": {"type": ["string", "null"]},
+            "relative_minutes": {"type": ["integer", "null"]},
+            "item_numbers": {"type": "array", "items": {"type": "integer"}},
+            "target": {"type": "string", "enum": sorted(SEMANTIC_TARGETS)},
+            "scope": {"type": "string", "enum": sorted(SEMANTIC_SCOPES)},
+            "amount": {"type": ["number", "null"]},
+            "currency": {"type": "string", "enum": sorted(SEMANTIC_CURRENCIES)},
+            "name": {"type": ["string", "null"]},
+            "query": {"type": ["string", "null"]},
+            "action": {"type": ["string", "null"]},
+        },
+        "required": [
+            "date_text", "time_text", "relative_minutes", "item_numbers",
+            "target", "scope", "amount", "currency", "name", "query", "action",
+        ],
+        "additionalProperties": False,
+    }
     return {
         "type": "object",
         "properties": {
             "tools": {"type": "array", "items": {"type": "string", "enum": names}},
+            "intent": {"type": "string"},
+            "reference": {"type": "string", "enum": sorted(SEMANTIC_REFERENCES)},
+            "slots": slots,
+            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
             "needs_clarification": {"type": "boolean"},
             "reason": {"type": "string"},
         },
-        "required": ["tools", "needs_clarification", "reason"],
+        "required": [
+            "tools", "intent", "reference", "slots", "confidence",
+            "needs_clarification", "reason",
+        ],
         "additionalProperties": False,
     }
 
@@ -367,6 +434,66 @@ def build_request(job: dict, model: str) -> dict:
     }
 
 
+def _clean_semantic_slots(raw) -> dict:
+    raw = raw if isinstance(raw, dict) else {}
+
+    def text_slot(name: str, limit: int = 160):
+        value = raw.get(name)
+        if value is None:
+            return None
+        value = " ".join(str(value).split()).strip()
+        return value[:limit] or None
+
+    relative = raw.get("relative_minutes")
+    if isinstance(relative, bool) or not isinstance(relative, int) or not 1 <= relative <= 10080:
+        relative = None
+
+    numbers = []
+    for value in raw.get("item_numbers") or []:
+        if isinstance(value, bool):
+            continue
+        try:
+            value = int(value)
+        except (TypeError, ValueError):
+            continue
+        if 1 <= value <= 999 and value not in numbers:
+            numbers.append(value)
+        if len(numbers) >= 20:
+            break
+
+    target = str(raw.get("target") or "UNSPECIFIED").upper()
+    scope = str(raw.get("scope") or "UNSPECIFIED").upper()
+    currency = str(raw.get("currency") or "UNSPECIFIED").upper()
+    if target not in SEMANTIC_TARGETS:
+        target = "UNSPECIFIED"
+    if scope not in SEMANTIC_SCOPES:
+        scope = "UNSPECIFIED"
+    if currency not in SEMANTIC_CURRENCIES:
+        currency = "UNSPECIFIED"
+
+    amount = raw.get("amount")
+    if isinstance(amount, bool) or not isinstance(amount, (int, float)):
+        amount = None
+    elif abs(float(amount)) > 1_000_000_000:
+        amount = None
+    else:
+        amount = float(amount)
+
+    return {
+        "date_text": text_slot("date_text"),
+        "time_text": text_slot("time_text"),
+        "relative_minutes": relative,
+        "item_numbers": numbers,
+        "target": target,
+        "scope": scope,
+        "amount": amount,
+        "currency": currency,
+        "name": text_slot("name"),
+        "query": text_slot("query", 240),
+        "action": text_slot("action"),
+    }
+
+
 def parse_choice(content: str, allowed: set[str]) -> dict:
     data = json.loads(content or "{}")
     if not isinstance(data, dict):
@@ -376,11 +503,52 @@ def parse_choice(content: str, allowed: set[str]) -> dict:
         name = str(name)
         if name in allowed and name not in picked:
             picked.append(name)
+
+    intent = re.sub(r"[^A-Z0-9_]+", "_", str(data.get("intent") or "").upper()).strip("_")
+    reference = str(data.get("reference") or "NONE").upper()
+    if reference not in SEMANTIC_REFERENCES:
+        reference = "NONE"
+    try:
+        confidence = float(data.get("confidence", 0.0) or 0.0)
+    except (TypeError, ValueError):
+        confidence = 0.0
+    confidence = max(0.0, min(1.0, confidence))
+
     return {
         "tools": picked[:MAX_TOOLS],
+        "intent": intent[:64] or "UNSPECIFIED",
+        "reference": reference,
+        "slots": _clean_semantic_slots(data.get("slots")),
+        "confidence": confidence,
         "needs_clarification": bool(data.get("needs_clarification")),
         "reason": str(data.get("reason") or "")[:200],
     }
+
+
+def semantic_hint(choice: dict | None) -> str:
+    """Model-facing language hint. Never grants permission or changes trusted text."""
+    if not choice or choice.get("needs_clarification"):
+        return ""
+    if float(choice.get("confidence") or 0.0) < SEMANTIC_CONFIDENCE_MIN:
+        return ""
+    slots = {
+        key: value for key, value in (choice.get("slots") or {}).items()
+        if value not in (None, "", [], "UNSPECIFIED")
+    }
+    payload = {
+        "intent": choice.get("intent") or "UNSPECIFIED",
+        "reference": choice.get("reference") or "NONE",
+        "slots": slots,
+    }
+    return (
+        "AI semantic routing hint (non-authoritative): "
+        + json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        + "\nUse this only to understand the user's wording. The original user-authored "
+          "message, trusted quote/context and Alex's deterministic rules remain the sole "
+          "authority for privacy, recipient, scope, write permission and execution. "
+          "Never invent or execute a slot merely because it appears in this hint; if it "
+          "conflicts with the user's text, persisted state or tool evidence, ignore it."
+    )
 
 
 def _run_safely(job: dict, plan_client=None) -> None:
@@ -415,6 +583,11 @@ def _run(job: dict, plan_client=None) -> dict:
             "shadow_tools": choice["tools"],
             "shadow_clarify": choice["needs_clarification"],
             "shadow_reason": choice["reason"],
+            "semantic_intent": choice.get("intent"),
+            "semantic_reference": choice.get("reference"),
+            "semantic_slots": choice.get("slots") or {},
+            "semantic_confidence": choice.get("confidence"),
+            "semantic_mode": "shadow",
         })
     except Exception as exc:
         row.update({
@@ -443,8 +616,9 @@ def record(row: dict) -> None:
                 created_at_utc, source_message_id, conversation_type, message_snippet,
                 keyword_tools, called_tools, live_outcome, shadow_tools,
                 shadow_clarify, shadow_reason, status, error_code, model, latency_ms,
-                ai_routed)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                ai_routed, semantic_intent, semantic_reference, semantic_slots,
+                semantic_confidence, semantic_mode)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 now.isoformat(),
                 row.get("source_message_id"),
@@ -461,6 +635,11 @@ def record(row: dict) -> None:
                 row.get("model"),
                 int(row.get("latency_ms") or 0),
                 1 if row.get("ai_routed") else 0,
+                row.get("semantic_intent"),
+                row.get("semantic_reference"),
+                json.dumps(row.get("semantic_slots") or {}, ensure_ascii=False),
+                float(row.get("semantic_confidence") or 0.0),
+                row.get("semantic_mode"),
             ),
         )
         conn.execute(
@@ -489,6 +668,7 @@ def summary(days: int = 7, recent: int = 10) -> dict:
     compared = errors = with_used = agreed = keyword_hid = answered_without_tool = 0
     ai_routed_turns = 0
     disagreements = []
+    semantics = []
     latencies = []
     for r in rows:
         if r["status"] != "ok":
@@ -519,6 +699,21 @@ def summary(days: int = 7, recent: int = 10) -> dict:
                 "ai_router_picked": json.loads(r["shadow_tools"] or "[]"),
                 "ai_router_reason": r["shadow_reason"],
             })
+        if r["semantic_intent"] and len(semantics) < recent:
+            try:
+                semantic_slots = json.loads(r["semantic_slots"] or "{}")
+            except Exception:
+                semantic_slots = {}
+            semantics.append({
+                "at": r["created_at_utc"],
+                "message": r["message_snippet"],
+                "mode": r["semantic_mode"] or ("live" if r["ai_routed"] else "shadow"),
+                "intent": r["semantic_intent"],
+                "reference": r["semantic_reference"] or "NONE",
+                "slots": semantic_slots,
+                "confidence": float(r["semantic_confidence"] or 0.0),
+                "tools": json.loads(r["shadow_tools"] or "[]"),
+            })
     latencies.sort()
     return {
         "days": days,
@@ -530,5 +725,7 @@ def summary(days: int = 7, recent: int = 10) -> dict:
         "ai_router_wanted_a_tool_keywords_hid": keyword_hid,
         "alex_answered_without_tools_but_ai_router_picked_some": answered_without_tool,
         "median_latency_ms": latencies[len(latencies) // 2] if latencies else None,
+        "routing_mode": routing_mode(),
         "recent_disagreements": disagreements,
+        "recent_semantics": semantics,
     }
