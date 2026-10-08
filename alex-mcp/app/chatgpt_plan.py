@@ -499,7 +499,10 @@ def _refresh_locked(creds: dict, now: float, session=None) -> dict:
         raise ChatGPTPlanError(f"ChatGPT token refresh unreachable: {exc.__class__.__name__}",
                                status_code=503, code="refresh_unreachable")
     if response.status_code == 200:
-        token_data = response.json()
+        try:
+            token_data = response.json()
+        except Exception:
+            token_data = None
         if not isinstance(token_data, dict) or not token_data.get("access_token"):
             raise ChatGPTPlanError("ChatGPT token refresh returned no access token.",
                                    status_code=503, code="refresh_malformed")

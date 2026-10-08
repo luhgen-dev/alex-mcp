@@ -68,7 +68,7 @@ Alex can use your own ChatGPT subscription through OpenAI's "Sign in with ChatGP
 3. Your browser then lands on a page that cannot load (`127.0.0.1:1455/...`). That is expected: copy the whole address from the address bar.
 4. Paste it into the panel and tap **Finish sign-in**, then **Test ChatGPT**.
 
-The link is valid for 15 minutes. The session is stored only in `/data/chatgpt_plan/` (owner-only file permissions). It is never written to the configuration, logs, database or repository, and Alex refreshes it automatically. If Alex is offline for more than 30 days, or you disconnect Alex in ChatGPT settings, the panel asks you to sign in again. **Sign out** in the panel forgets the local session.
+The link is valid for 15 minutes. The session is stored only in `/data/chatgpt_plan/` (owner-only file permissions). It is never written to the configuration, logs, database or repository, and Alex refreshes it automatically whenever it uses ChatGPT. If Alex doesn't use ChatGPT for more than 30 days (for example the mode is `off` or the app is stopped), or you disconnect Alex in ChatGPT settings, the panel asks you to sign in again. **Sign out** in the panel forgets the local session.
 
 **Modes** (Configuration → **ChatGPT plan mode**):
 
