@@ -27,6 +27,15 @@ const USAGE_URL = 'http://127.0.0.1:5001/usage-summary';
 const CERT_STATUS_URL = 'http://127.0.0.1:5001/certification-status';
 const CERT_RUN_URL = 'http://127.0.0.1:5001/certification-live';
 const CERT_REPORT_URL = 'http://127.0.0.1:5001/certification-report';
+// v0.5.33 ChatGPT plan sign-in + shadow router report (local Python only).
+const CHATGPT_STATUS_URL = 'http://127.0.0.1:5001/chatgpt-status';
+const SHADOW_ROUTER_URL = 'http://127.0.0.1:5001/shadow-router-summary';
+const CHATGPT_POST_URLS = {
+  '/chatgpt-start': 'http://127.0.0.1:5001/chatgpt-signin-start',
+  '/chatgpt-finish': 'http://127.0.0.1:5001/chatgpt-signin-finish',
+  '/chatgpt-test': 'http://127.0.0.1:5001/chatgpt-test',
+  '/chatgpt-signout': 'http://127.0.0.1:5001/chatgpt-signout',
+};
 const EGRESS_PORT = 5002;
 const UI_PORT = 8099;
 // If a private-DM turn is genuinely slow (voice transcription, OCR, provider
@@ -704,6 +713,15 @@ const UI_HTML = [
 '<div class="card"><h2>WhatsApp</h2><div id="wa">Checking…</div><img id="qr" style="display:none"><p class="muted">On your phone: WhatsApp → Linked devices → Link a device, then scan the QR.</p><button onclick="resetPairing()">Reset / pair again</button></div>',
 '<div class="card"><h2>Configuration</h2><div id="cfg">Checking…</div><p class="muted">API keys and phone numbers are entered in the Home Assistant Configuration tab. To bind the shared family group, send <code>alex set family group</code> once from that group. No source-code editing is required.</p></div>',
 '<div class="card"><h2>AI connection</h2><div id="ai">Not tested yet</div><p><button onclick="testAi()">Test AI now</button></p></div>',
+'<div class="card"><h2>ChatGPT plan</h2><div id="gpt">Checking…</div>',
+'<div id="gptSignin" style="display:none;margin-top:12px"><p class="muted">1. Tap the link below and sign in to ChatGPT. Allow Alex to use your plan.<br>2. Your browser then shows a page that cannot load (127.0.0.1). That is expected.<br>3. Copy the whole address from the address bar, paste it here and tap Finish. The link works for 15 minutes.</p>',
+'<p><a id="gptLink" href="#" target="_blank" rel="noopener noreferrer" style="color:#8ab4f8">Open ChatGPT sign-in</a></p>',
+'<textarea id="gptPaste" rows="3" style="width:100%;box-sizing:border-box;background:#111;color:#eee;border:1px solid #444;border-radius:10px;padding:8px" placeholder="http://127.0.0.1:1455/auth/callback?code=…"></textarea>',
+'<p><button onclick="gptFinish()">Finish sign-in</button></p></div>',
+'<div id="gptMsg" class="muted"></div>',
+'<p><button onclick="gptStart()">Start sign-in</button> <button onclick="gptTest()">Test ChatGPT</button> <button onclick="gptSignout()" style="background:#444">Sign out</button></p>',
+'<p class="muted">Off by default. Choose the mode in Configuration → ChatGPT plan mode: <b>shadow_only</b> only compares tool choices below (no reply changes); <b>primary</b> lets ChatGPT answer text messages first, with your other providers as fallback.</p></div>',
+'<div class="card"><h2>AI router comparison — last 7 days</h2><div id="shadow">Checking…</div><p class="muted">Log only. Compares Alex\'s keyword tool routing with an AI choosing from all tools, using your ChatGPT plan. It never changes a reply.</p></div>',
 '<div class="card"><h2>AI usage — last 24h</h2><div id="usage">Checking…</div><p class="muted">Local telemetry only. Refreshing this card does not call the AI provider.</p></div>',
 '<div class="card"><h2>Live certification</h2><div id="cert">Checking…</div><p><button id="certBtn" onclick="runCert()">Run live benchmark — max $3</button></p><p class="muted">Uses Alex\'s configured API keys, but all household state is synthetic and Home Assistant is mocked. No WhatsApp messages are sent.</p><p id="certReport" style="display:none"><a href="./certification-report" target="_blank" style="color:#8ab4f8">Open full benchmark report</a></p></div>',
 '<div class="card"><h2>Core diagnostics</h2><div id="diag">Checking…</div></div>',
@@ -722,9 +740,34 @@ const UI_HTML = [
 'function esc(x){const e=document.createElement("div");e.textContent=String(x);return e.innerHTML}',
 'async function testAi(){const el=document.getElementById("ai");el.textContent="Testing…";try{await fetch("./test-ai",{method:"POST"});}catch(e){}setTimeout(load,500)}',
 'async function resetPairing(){if(!confirm("Reset WhatsApp pairing and generate a new QR?"))return;await fetch("./reset",{method:"POST"});setTimeout(load,800)}',
-'load();loadUsage();loadCert();setInterval(load,2000);setInterval(loadUsage,10000);setInterval(loadCert,3000);',
+'async function gptPost(path,body){const r=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body||{})});let s={};try{s=await r.json()}catch(e){}return {ok:r.ok,s:s}}',
+'async function loadGpt(){const el=document.getElementById("gpt");try{const r=await fetch("./chatgpt-state");const s=await r.json();let h="<b>Mode:</b> "+esc(s.mode||"off");if(s.signed_in){h+="<br><span class=ok>Signed in"+(s.account_email?" as "+esc(s.account_email):"")+" ✓</span>";h+="<br><b>Model:</b> "+esc(s.model_in_use||"—")}else if(s.needs_sign_in){h+="<br><span class=warn>Sign-in expired — please sign in again</span>"}else{h+="<br><span class=muted>Not signed in</span>"}if(s.models&&s.models.length){h+="<br><span class=muted>Available: "+esc(s.models.slice(0,8).join(", "))+"</span>"}const cd=(s.cooldowns||{}).chatgpt;if(cd){h+="<br><span class=warn>Paused "+esc(cd.seconds_left)+"s after "+esc(cd.category)+"</span>"}el.innerHTML=h}catch(e){el.textContent="Status unavailable: "+e}}',
+'async function gptStart(){const m=document.getElementById("gptMsg");m.textContent="Preparing…";try{const x=await gptPost("./chatgpt-start");if(!x.ok||!x.s.authorize_url)throw new Error(x.s.error||"Could not start sign-in");document.getElementById("gptLink").href=x.s.authorize_url;document.getElementById("gptSignin").style.display="block";document.getElementById("gptPaste").value="";m.textContent=""}catch(e){m.innerHTML="<span class=bad>"+esc(e.message||e)+"</span>"}}',
+'async function gptFinish(){const m=document.getElementById("gptMsg");const v=document.getElementById("gptPaste").value.trim();if(!v){m.innerHTML="<span class=warn>Paste the address first.</span>";return}m.textContent="Finishing…";try{const x=await gptPost("./chatgpt-finish",{redirect:v});if(!x.ok)throw new Error(x.s.error||"Sign-in failed");document.getElementById("gptSignin").style.display="none";document.getElementById("gptPaste").value="";m.innerHTML="<span class=ok>Signed in. Tap Test ChatGPT to check it.</span>";loadGpt()}catch(e){m.innerHTML="<span class=bad>"+esc(e.message||e)+"</span>"}}',
+'async function gptTest(){const m=document.getElementById("gptMsg");m.textContent="Testing…";try{const x=await gptPost("./chatgpt-test");if(x.s.status==="ok"){m.innerHTML="<span class=ok>✓ "+esc(x.s.model)+" responding · "+esc(x.s.latency_ms)+" ms</span>"}else{m.innerHTML="<span class=bad>✗ "+esc(x.s.message||x.s.code||"failed")+"</span>"}}catch(e){m.innerHTML="<span class=bad>"+esc(e.message||e)+"</span>"}loadGpt()}',
+'async function gptSignout(){if(!confirm("Sign Alex out of ChatGPT on this box? Your other AI providers keep working."))return;await gptPost("./chatgpt-signout");document.getElementById("gptMsg").textContent="Signed out.";loadGpt()}',
+'async function loadShadow(){const el=document.getElementById("shadow");try{const r=await fetch("./shadow-router");const s=await r.json();if(!s.compared&&!s.errors){el.innerHTML=s.enabled?"Waiting for the next messages…":"<span class=muted>Off. Set ChatGPT plan mode to shadow_only or primary and sign in.</span>";return}let h="<b>Compared:</b> "+esc(s.compared)+(s.errors?" · <span class=warn>errors: "+esc(s.errors)+"</span>":"")+"<br><b>AI router also picked the tools Alex used:</b> "+esc(s.ai_router_also_picked_what_alex_used)+"/"+esc(s.turns_where_alex_used_tools)+"<br><b>AI router wanted a tool the keywords hid:</b> "+esc(s.ai_router_wanted_a_tool_keywords_hid)+"<br><b>Alex answered without tools, AI router picked some:</b> "+esc(s.alex_answered_without_tools_but_ai_router_picked_some)+(s.median_latency_ms!=null?"<br><span class=muted>Median router time: "+esc(s.median_latency_ms)+" ms</span>":"");(s.recent_disagreements||[]).forEach(function(d){h+="<hr style=\\"border-color:#333\\"><span class=muted>"+esc(d.message)+"</span><br>Keywords showed: "+esc((d.keyword_tools||[]).join(", ")||"none")+"<br>Alex used: "+esc((d.alex_used||[]).join(", ")||"none")+"<br>AI router: "+esc((d.ai_router_picked||[]).join(", ")||"none")});el.innerHTML=h}catch(e){el.textContent="Comparison unavailable: "+e}}',
+'load();loadUsage();loadCert();loadGpt();loadShadow();setInterval(load,2000);setInterval(loadUsage,10000);setInterval(loadCert,3000);setInterval(loadGpt,10000);setInterval(loadShadow,30000);',
 '</script></main></body></html>'
 ].join('');
+
+function readSmallBody(req, limit) {
+  return new Promise(function(resolve, reject) {
+    let size = 0;
+    const chunks = [];
+    req.on('data', function(chunk) {
+      size += chunk.length;
+      if (size > limit) {
+        reject(new Error('body too large'));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', function() { resolve(Buffer.concat(chunks).toString('utf8')); });
+    req.on('error', reject);
+  });
+}
 
 function ingressAllowed(req) {
   const ip = String(req.socket.remoteAddress || '');
@@ -816,6 +859,37 @@ function startPairingUi() {
       await resetPairing();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+    if (req.method === 'GET' && (url.endsWith('/chatgpt-state') || url.endsWith('/shadow-router'))) {
+      const target = url.endsWith('/chatgpt-state') ? CHATGPT_STATUS_URL : SHADOW_ROUTER_URL;
+      try {
+        const result = await fetch(target);
+        const body = await result.text();
+        res.writeHead(result.ok ? 200 : 503, { 'Content-Type': 'application/json' });
+        res.end(body);
+      } catch (err) {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'local_status_unavailable' }));
+      }
+      return;
+    }
+    const chatgptKey = Object.keys(CHATGPT_POST_URLS).find(function(key) { return url.endsWith(key); });
+    if (req.method === 'POST' && chatgptKey) {
+      try {
+        const body = await readSmallBody(req, 16 * 1024);
+        const result = await fetch(CHATGPT_POST_URLS[chatgptKey], {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: body || '{}',
+        });
+        const text = await result.text();
+        res.writeHead(result.status, { 'Content-Type': 'application/json' });
+        res.end(text);
+      } catch (err) {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'Alex could not reach its local service. Try again.' }));
+      }
       return;
     }
     res.writeHead(404);

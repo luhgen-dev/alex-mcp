@@ -32,6 +32,11 @@ class Settings:
     monthly_ai_budget_usd: float = 0.0
     auto_grok_fallback_budget_usd: float = 0.50
     budget_safety_multiplier: float = 2.0
+    # v0.5.33: the owner's ChatGPT subscription via "Sign in with ChatGPT".
+    # off = unused; shadow_only = only the log-only shadow router uses it;
+    # primary = ChatGPT answers text turns first, existing providers fall back.
+    chatgpt_plan_mode: str = "off"
+    chatgpt_plan_model: str = ""
     ha_notify_devices: list[dict] = field(default_factory=list)
 
     def model_for(self, provider: str, *, lite: bool = False) -> str:
@@ -112,6 +117,11 @@ def get_settings() -> Settings:
         clean["budget_safety_multiplier"] = max(1.0, min(10.0, float(clean.get("budget_safety_multiplier", 2.0))))
     except (TypeError, ValueError):
         clean["budget_safety_multiplier"] = 2.0
+    plan_mode = str(clean.get("chatgpt_plan_mode", "off") or "off").strip().lower()
+    clean["chatgpt_plan_mode"] = (
+        plan_mode if plan_mode in {"off", "shadow_only", "primary"} else "off"
+    )
+    clean["chatgpt_plan_model"] = str(clean.get("chatgpt_plan_model", "") or "").strip()
     devices = clean.get("ha_notify_devices", [])
     if not isinstance(devices, list):
         devices = []

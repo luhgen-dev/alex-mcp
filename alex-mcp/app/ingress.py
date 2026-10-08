@@ -22,7 +22,9 @@ import phase2_intent
 import phase2_reports
 import scope_policy
 import diagnostics
-from config import DATA_DIR
+import chatgpt_plan
+import shadow_router
+from config import DATA_DIR, get_settings
 from text_normalization import normalize_intent_text
 
 PORT = 5001
@@ -2037,12 +2039,20 @@ def process(payload: dict) -> dict:
             # while keeping actor.trusted_text and durable pending text raw.
             brain_kwargs["semantic_user_text"] = semantic_current
 
+        # v0.5.33 shadow router: reads prior turns only when enabled; it
+        # never changes this reply (see shadow_router.py).
+        shadow_context = shadow_router.capture_context(actor)
         reply, attachments = asyncio.run(
             brain.respond(
                 actor, turn["trusted_text"], turn["document_lines"], vision_parts,
                 **brain_kwargs,
             )
         )
+        if shadow_context is not None:
+            shadow_router.submit(
+                actor, turn["trusted_text"], quoted_context, shadow_context,
+                has_media=bool(turn["document_lines"] or vision_parts),
+            )
         db.touch_inbound_processing(payload["message_id"])
         private_search_offer, reply = _maybe_create_private_search_offer(
             actor, turn["trusted_text"], reply, attachments
@@ -2208,6 +2218,20 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, _read_runtime_status())
         elif self.path == "/usage-summary":
             self._json(200, diagnostics.usage_summary(24))
+        elif self.path == "/chatgpt-status":
+            try:
+                body = chatgpt_plan.status(get_settings())
+                body["cooldowns"] = brain.provider_cooldowns()
+                self._json(200, body)
+            except Exception as exc:
+                self._json(500, {"error": str(exc)[:200]})
+        elif self.path == "/shadow-router-summary":
+            try:
+                body = shadow_router.summary(7)
+                body["enabled"] = shadow_router.enabled()
+                self._json(200, body)
+            except Exception as exc:
+                self._json(500, {"error": str(exc)[:200]})
         elif self.path == "/certification-status":
             self._json(200, certification_status())
         elif self.path == "/certification-report":
@@ -2233,6 +2257,9 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:
                 self._json(500, {"ok": False, "error": str(exc)[:500]})
             return
+        if self.path.startswith("/chatgpt-"):
+            self._chatgpt_post()
+            return
         if self.path != "/ingress":
             self._json(404, {"error": "not found"})
             return
@@ -2246,6 +2273,45 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200 if result.get("ok") else 400, result)
         except Exception as exc:
             self._json(500, {"error": str(exc)[:500]})
+
+    def _chatgpt_post(self):
+        """Owner sign-in/out and connection test for the ChatGPT plan.
+
+        Reachable only from the Home Assistant ingress panel (the Node bridge
+        enforces that; this server listens on 127.0.0.1 only). Tokens are never
+        returned in any response.
+        """
+        try:
+            if self.path == "/chatgpt-signin-start":
+                self._json(200, chatgpt_plan.start_sign_in())
+                return
+            if self.path == "/chatgpt-signin-finish":
+                length = int(self.headers.get("Content-Length", "0"))
+                if length <= 0 or length > 16 * 1024:
+                    self._json(400, {"ok": False, "error": "Paste the browser address first."})
+                    return
+                body = json.loads(self.rfile.read(length).decode("utf-8"))
+                pasted = str((body or {}).get("redirect") or "")
+                try:
+                    result = chatgpt_plan.finish_sign_in(pasted)
+                except chatgpt_plan.SignInError as exc:
+                    self._json(400, {"ok": False, "error": str(exc)})
+                    return
+                brain._clear_provider_cooldown("chatgpt")
+                self._json(200, {"ok": True, **result})
+                return
+            if self.path == "/chatgpt-test":
+                result = chatgpt_plan.test_connection(get_settings())
+                if result.get("status") == "ok":
+                    brain._clear_provider_cooldown("chatgpt")
+                self._json(200, result)
+                return
+            if self.path == "/chatgpt-signout":
+                self._json(200, {"ok": True, **chatgpt_plan.sign_out()})
+                return
+            self._json(404, {"error": "not found"})
+        except Exception as exc:
+            self._json(500, {"ok": False, "error": str(exc)[:200]})
 
     def log_message(self, fmt, *args):
         return

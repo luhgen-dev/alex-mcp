@@ -50,6 +50,12 @@ configuration:
   budget_safety_multiplier:
     name: Budget safety multiplier
     description: Conservative multiplier applied to estimated model spend before enforcing the optional monthly limit. Default is 2x.
+  chatgpt_plan_mode:
+    name: ChatGPT plan mode
+    description: Use your own ChatGPT subscription (sign in from the Alex MCP panel). off = not used. shadow_only = only the log-only AI router comparison uses it; replies are unchanged. primary = ChatGPT answers text messages first and your API providers stay as automatic fallbacks.
+  chatgpt_plan_model:
+    name: ChatGPT plan model
+    description: Optional. Leave empty to use the first model your plan offers (listed in the panel after sign-in).
   income_profiles:
     name: Income profiles
     description: Stable fixed/variable income facts. Edit here instead of source code; history is versioned into SQLite.
