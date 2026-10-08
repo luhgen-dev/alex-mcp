@@ -298,7 +298,11 @@ def build_turn(payload: dict, media_lines: list[str]) -> dict:
     typed = str(payload.get("text") or "").strip()
     _transcript, document_lines = media.split_voice_transcript(media_lines)
     trusted_text = typed
-    intent_text = normalize_intent_text(trusted_text)
+    # Emoji is an Alex privacy control signal, not semantic subject matter.
+    # Keep the raw text on ActorContext for scope enforcement/provenance, but
+    # remove control emoji before deterministic intent parsing and any model.
+    semantic_text = scope_policy.strip_control_emoji(trusted_text)
+    intent_text = normalize_intent_text(semantic_text)
     has_audio = bool(payload.get("audio_data"))
     has_image = bool(payload.get("image_data"))
     has_pdf = bool(payload.get("pdf_data"))
@@ -314,6 +318,7 @@ def build_turn(payload: dict, media_lines: list[str]) -> dict:
         source = "text"
     return {
         "trusted_text": trusted_text,
+        "semantic_text": semantic_text,
         "intent_text": intent_text,
         "read_scope": scope_policy.resolve_read_scope(trusted_text),
         "document_lines": document_lines,
@@ -504,6 +509,14 @@ def _private_search_offer_candidate(actor, query: str, reply: str,
                                     attachments: list[dict]) -> bool:
     """Offer one private retry after a Family-scope miss without probing private data."""
     if attachments or getattr(actor, "read_scope", None) != "family":
+        return False
+    reply_value = str(reply or "")
+    if re.search(
+        r"(?i)\b(?:status\s*:\s*not_configured|dependency\s*:|"
+        r"not\s+configured|configure(?:d|\s+first)?|setup\s+required)\b",
+        reply_value,
+    ):
+        # A missing dependency/configuration is not a privacy-scope miss.
         return False
     text = str(query or "").strip()
     if not text or not re.search(
@@ -1180,16 +1193,20 @@ def _created_personal_reminder_id(actor) -> str | None:
         conn.close()
 
 
-def _selection_context_parts(context: dict | None) -> tuple[str, str] | None:
+def _selection_context_parts(
+    context: dict | None,
+) -> tuple[str, str, str | None] | None:
     if not context or context.get("context_kind") != "SELECTION":
         return None
     value = str(context.get("context_id") or "")
-    if ":" not in value:
+    pieces = value.split(":")
+    if len(pieces) < 2:
         return None
-    kind, target_id = value.split(":", 1)
+    kind, target_id = pieces[0], pieces[1]
+    scope = pieces[2].strip().casefold() if len(pieces) >= 3 else ""
     if not kind or not target_id:
         return None
-    return kind, target_id
+    return kind, target_id, scope if scope in {"family", "private", "all"} else None
 
 
 def _selection_set_context_parts(context: dict | None) -> tuple[str, str] | None:
@@ -1211,7 +1228,8 @@ def _numbered_selection_request(text: str) -> tuple[int, bool] | None:
     if bare:
         return int(bare.group(1)), False
     match = re.fullmatch(
-        r"(?is)\s*(?:play|listen(?:\s+to)?|hear|show|open|view|send|get)\s+"
+        r"(?is)\s*(?:(?:play|listen(?:\s+to)?|hear|show|open|view|send|get)"
+        r"(?:\s+me)?\s+|private\s+)"
         r"(?:(?:unresolved|pending)\s+)?"
         r"(?:(?:voice|audio)\s*note\s*)?"
         r"(?:number\s+|no\.?\s*|#\s*)?(\d+)\s*[.!]?\s*",
@@ -1281,7 +1299,9 @@ def _deliver_selection_followup(actor, context: dict) -> dict:
     parts = _selection_context_parts(context)
     if not parts:
         raise ValueError("invalid selection continuation context")
-    result = services.get_selection_target(actor, parts[0], parts[1])
+    result = services.get_selection_target(
+        actor, parts[0], parts[1], bound_scope=parts[2]
+    )
     attachments = list(result.get("_attachments") or [])
     reply = "Here it is." if attachments else str(result.get("content") or result.get("title") or "Here it is.")
     db.queue_outbound(
@@ -2075,7 +2095,7 @@ def process(payload: dict) -> dict:
             )
             private_reply, private_attachments = asyncio.run(
                 brain.respond(
-                    dm_actor, turn["trusted_text"], turn["document_lines"],
+                    dm_actor, turn["semantic_text"], turn["document_lines"],
                     vision_parts, quoted_context=None,
                 )
             )
@@ -2089,7 +2109,13 @@ def process(payload: dict) -> dict:
                     source_message_id=actor.source_message_id,
                     context_kind="SELECTION" if private_selection else None,
                     context_id=(
-                        f"{private_selection['kind']}:{private_selection['id']}"
+                        (
+                            f"{private_selection['kind']}:{private_selection['id']}"
+                            + (
+                                f":{private_selection['scope']}"
+                                if private_selection.get("scope") else ""
+                            )
+                        )
                         if private_selection else None
                     ),
                 )
@@ -2141,13 +2167,13 @@ def process(payload: dict) -> dict:
         shadow_context = shadow_router.capture_context(actor)
         reply, attachments = asyncio.run(
             brain.respond(
-                actor, turn["trusted_text"], turn["document_lines"], vision_parts,
+                actor, turn["semantic_text"], turn["document_lines"], vision_parts,
                 **brain_kwargs,
             )
         )
         if shadow_context is not None:
             shadow_router.submit(
-                actor, turn["trusted_text"], quoted_context, shadow_context,
+                actor, turn["semantic_text"], quoted_context, shadow_context,
                 has_media=bool(turn["document_lines"] or vision_parts),
             )
         db.touch_inbound_processing(payload["message_id"])
@@ -2223,7 +2249,13 @@ def process(payload: dict) -> dict:
                 else reminder_draft["item_id"] if reminder_draft
                 else f"{selection_set_context['kind']}:{selection_set_context['id']}"
                 if selection_set_context
-                else f"{selection_context['kind']}:{selection_context['id']}"
+                else (
+                    f"{selection_context['kind']}:{selection_context['id']}"
+                    + (
+                        f":{selection_context['scope']}"
+                        if selection_context.get("scope") else ""
+                    )
+                )
                 if selection_context
                 else reminder_setup_id if reminder_setup_id
                 else personal_reminder_id if personal_reminder_id
@@ -2277,8 +2309,22 @@ def process(payload: dict) -> dict:
             raise
         return {"ok": True, "voice_uncertain": True}
     except PermissionError as exc:
-        db.fail_inbound(payload["message_id"], str(exc))
-        return {"ok": False, "unauthorized": True}
+        # Authorization denials are handled user-visible outcomes, not silent
+        # transport failures. Never expose the internal object/error text.
+        reply = (
+            "I can’t use that record from this chat. If it’s private, ask me "
+            "in your private DM or reply to the original private result."
+        )
+        try:
+            db.queue_outbound(
+                payload["conversation_id"], "TEXT",
+                text=reply, source_message_id=payload["message_id"],
+            )
+            db.finish_inbound(payload["message_id"], reply)
+        except Exception:
+            db.fail_inbound(payload["message_id"], str(exc))
+            raise
+        return {"ok": True, "unauthorized": True}
     except Exception as exc:
         db.fail_inbound(payload["message_id"], str(exc))
         _record_processing_error(exc, payload)
