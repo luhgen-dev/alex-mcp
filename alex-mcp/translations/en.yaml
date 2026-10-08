@@ -56,6 +56,9 @@ configuration:
   chatgpt_plan_model:
     name: ChatGPT plan model
     description: Optional. Leave empty to use the first model your plan offers (listed in the panel after sign-in).
+  ai_routing:
+    name: AI tool routing
+    description: off = Alex picks which tools the AI can see with its keyword rules (unchanged). on = your ChatGPT plan model reads the message and picks the tools first; if it fails or times out, the keyword rules take over automatically. Needs ChatGPT plan mode shadow_only or primary and a signed-in plan. Set back to off at any time.
   income_profiles:
     name: Income profiles
     description: Stable fixed/variable income facts. Edit here instead of source code; history is versioned into SQLite.

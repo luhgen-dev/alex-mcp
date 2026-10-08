@@ -62,7 +62,8 @@ CREATE TABLE IF NOT EXISTS alex_shadow_router_log (
     status TEXT NOT NULL,
     error_code TEXT,
     model TEXT,
-    latency_ms INTEGER
+    latency_ms INTEGER,
+    ai_routed INTEGER DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_alex_shadow_router_created
     ON alex_shadow_router_log(created_at_utc);
@@ -76,6 +77,11 @@ def ensure_schema() -> None:
     conn = connect()
     try:
         conn.executescript(_DDL)
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(alex_shadow_router_log)")}
+        if "ai_routed" not in cols:  # v0.5.33 tables predate this column
+            conn.execute(
+                "ALTER TABLE alex_shadow_router_log ADD COLUMN ai_routed INTEGER DEFAULT 0"
+            )
         conn.commit()
     finally:
         conn.close()
@@ -131,6 +137,118 @@ def enabled(settings=None) -> bool:
     return True
 
 
+# --------------------------------------------------------------------------
+# v0.5.34 live AI routing. The same schema-bound router call, made BEFORE the
+# brain runs, so the brain is shown the tools the model picked. Any failure
+# returns None and the caller keeps today's keyword routing untouched.
+# --------------------------------------------------------------------------
+LIVE_TIMEOUT_SECONDS = 6.0
+LIVE_FAIL_LIMIT = 3
+LIVE_PAUSE_SECONDS = 120.0
+_live_state = {"fails": 0, "pause_until": 0.0}
+
+
+def live_enabled(settings=None) -> bool:
+    settings = settings or get_settings()
+    if str(getattr(settings, "ai_routing", "off") or "off") != "on":
+        return False
+    if time.monotonic() < _live_state["pause_until"]:
+        return False
+    return enabled(settings)
+
+
+def _live_failed(exc: Exception, timed_out: bool) -> None:
+    _live_state["fails"] += 1
+    if _live_state["fails"] >= LIVE_FAIL_LIMIT:
+        _live_state["pause_until"] = time.monotonic() + LIVE_PAUSE_SECONDS
+        _live_state["fails"] = 0
+    if timed_out:
+        return  # slow is not the same as down; the pause above covers repeats
+    try:
+        import brain
+        brain._trip_provider(
+            "chatgpt", brain.classify_runtime_error(exc).get("category", "")
+        )
+    except Exception:
+        pass
+
+
+async def acatalogue() -> list[dict]:
+    """Async twin of catalogue() for callers already inside an event loop."""
+    global _CATALOGUE
+    with _CATALOGUE_LOCK:
+        cached = _CATALOGUE
+    if cached is None:
+        built = await _list_tools()
+        with _CATALOGUE_LOCK:
+            if _CATALOGUE is None:
+                _CATALOGUE = built
+            cached = _CATALOGUE
+    return list(cached)
+
+
+async def live_route(text: str, prior_turns: list[dict], quoted_text: str = "",
+                     *, plan_client=None) -> dict | None:
+    """Ask the plan model which tools this message needs. None on any failure."""
+    started = time.monotonic()
+    try:
+        cat = await acatalogue()
+        job = {
+            "catalogue": cat,
+            "prior_turns": [
+                {"role": str(t.get("role")), "text": str(t.get("text") or "")[:TURN_TEXT_MAX]}
+                for t in (prior_turns or [])[-PRIOR_TURNS:]
+            ],
+            "quoted_text": str(quoted_text or "")[:TURN_TEXT_MAX],
+            "text": str(text or ""),
+        }
+        allowed = {t["name"] for t in cat}
+
+        def _call() -> dict:
+            settings = get_settings()
+            model = chatgpt_plan.resolved_model(settings)
+            client = plan_client or chatgpt_plan.client(settings)
+            completion = client.chat.completions.create(**build_request(job, model))
+            choice = parse_choice(completion.choices[0].message.content, allowed)
+            choice["model"] = model
+            return choice
+
+        choice = await asyncio.wait_for(
+            asyncio.to_thread(_call), timeout=LIVE_TIMEOUT_SECONDS
+        )
+        _live_state["fails"] = 0
+        choice["latency_ms"] = int((time.monotonic() - started) * 1000)
+        return choice
+    except asyncio.TimeoutError as exc:
+        _live_failed(exc, True)
+    except Exception as exc:
+        _live_failed(exc, False)
+    return None
+
+
+def record_live(actor, user_text: str, trace: dict) -> None:
+    """One log row for a turn the AI router actually routed. Never raises."""
+    try:
+        route = trace.get("ai_route") or {}
+        record({
+            "source_message_id": str(getattr(actor, "source_message_id", "") or ""),
+            "conversation_type": str(getattr(actor, "conversation_type", "") or ""),
+            "message_snippet": str(user_text or "")[:SNIPPET_MAX],
+            "keyword_tools": list(trace.get("keyword_tools") or []),
+            "called_tools": _called_tools(trace.get("tools_called") or []),
+            "live_outcome": str(trace.get("outcome") or ""),
+            "shadow_tools": list(route.get("tools") or []),
+            "shadow_clarify": bool(route.get("needs_clarification")),
+            "shadow_reason": route.get("reason"),
+            "status": "ok",
+            "model": route.get("model"),
+            "latency_ms": route.get("latency_ms") or 0,
+            "ai_routed": 1,
+        })
+    except Exception:
+        pass
+
+
 def capture_context(actor) -> dict | None:
     """Called BEFORE the live reply, so the router never sees Alex's answer.
 
@@ -176,6 +294,11 @@ def submit(actor, user_text: str, quoted_context: dict | None, context: dict | N
         if trace is None:
             import brain
             trace = brain.recent_trace(getattr(actor, "source_message_id", None))
+        if trace and trace.get("ai_route"):
+            # v0.5.34: this turn was already routed by the model, so there is
+            # nothing left to compare in the background; just log it.
+            record_live(actor, text, trace)
+            return True
         if not trace or trace.get("outcome") not in {"answered", "max_steps"}:
             return False  # local replies/clarifications never reached the model
         tools = catalogue()
@@ -319,8 +442,9 @@ def record(row: dict) -> None:
             """INSERT INTO alex_shadow_router_log(
                 created_at_utc, source_message_id, conversation_type, message_snippet,
                 keyword_tools, called_tools, live_outcome, shadow_tools,
-                shadow_clarify, shadow_reason, status, error_code, model, latency_ms)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                shadow_clarify, shadow_reason, status, error_code, model, latency_ms,
+                ai_routed)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 now.isoformat(),
                 row.get("source_message_id"),
@@ -336,6 +460,7 @@ def record(row: dict) -> None:
                 row.get("error_code"),
                 row.get("model"),
                 int(row.get("latency_ms") or 0),
+                1 if row.get("ai_routed") else 0,
             ),
         )
         conn.execute(
@@ -362,6 +487,7 @@ def summary(days: int = 7, recent: int = 10) -> dict:
         conn.close()
 
     compared = errors = with_used = agreed = keyword_hid = answered_without_tool = 0
+    ai_routed_turns = 0
     disagreements = []
     latencies = []
     for r in rows:
@@ -369,6 +495,8 @@ def summary(days: int = 7, recent: int = 10) -> dict:
             errors += 1
             continue
         compared += 1
+        if r["ai_routed"]:
+            ai_routed_turns += 1
         latencies.append(int(r["latency_ms"] or 0))
         keyword = set(json.loads(r["keyword_tools"] or "[]"))
         called = set(json.loads(r["called_tools"] or "[]"))
@@ -395,6 +523,7 @@ def summary(days: int = 7, recent: int = 10) -> dict:
     return {
         "days": days,
         "compared": compared,
+        "turns_routed_by_ai": ai_routed_turns,
         "errors": errors,
         "turns_where_alex_used_tools": with_used,
         "ai_router_also_picked_what_alex_used": agreed,

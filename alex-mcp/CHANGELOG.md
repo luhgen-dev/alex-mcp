@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.34
+AI tool routing (`ai_routing`), off by default. With the shipped default nothing about routing or replies changes.
+- New option `ai_routing` (`off` | `on`, default `off`). When `on` (and `chatgpt_plan_mode` is `shadow_only` or `primary` with a signed-in plan), the plan model reads the message plus the last few turns and picks tools from the full catalogue (schema-bound to real tool names) BEFORE the reasoning model runs. Its picks are shown to the model first; keyword-routed tools stay behind them (total capped at 8), so a bad pick can only add noise, never hide what keyword routing found.
+- Fails safe: any error, 6 s timeout, empty or unusable answer leaves keyword routing exactly as before. Three failures in a row pause AI routing for 2 minutes. Slow calls never trip the ChatGPT provider cool-down; real provider failures do.
+- Existing safety gates still apply to AI picks: tools the keyword layer deliberately blocks (for example a write tool for a read-style question) stay blocked, a write tool is only offered when the user's own text asks for a write (the same gate as the discovery tool), and the discovery tool is never taken from the AI. Text-only turns only; photo, document and voice turns and pure chit-chat keep keyword routing.
+- Each AI-routed turn is logged once (no second background call) in the existing comparison table with a new `ai_routed` flag; the panel comparison card shows how many turns were routed live.
+- Tests: 13 new tests (defaults, gating, timeout/pause, merge order and cap, write and block gates, end-to-end replies identical when off or when the router fails, logging).
+
 ## 0.5.33
 Provider resilience, ChatGPT plan provider and a log-only AI router comparison. With the shipped defaults, routing and replies are unchanged.
 - Provider circuit breaker: a provider that fails provider-wide (quota/rate limit, rejected key or sign-in, billing block, model not found, outage, connection error) is skipped for a short cool-down (1–15 minutes by failure type), so later messages go straight to a working fallback instead of repeating the failed call first. Request-specific failures (for example a rejected request body) never trip it. If every route is cooling down, all routes are still tried. A successful manual "Test AI now" re-opens a provider. Applies to the main brain and the semantic gateway.
