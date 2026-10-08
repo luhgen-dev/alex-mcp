@@ -3719,6 +3719,13 @@ async def _apply_ai_route(trace: dict, tools: list[dict], user_text: str,
         trace["ai_route"]["applied"] = list(names)
         if not names:
             return tools
+        # v0.5.36: the router now returns a structured semantic interpretation.
+        # It may help the reasoning model understand messy wording, but it is
+        # deliberately non-authoritative: trusted user text still drives every
+        # deterministic privacy/mutation/routing guard above and below this call.
+        hint = shadow_router.semantic_hint(choice)
+        if hint:
+            trace["ai_route"]["semantic_hint"] = hint
         ai_specs = await _tool_specs_for_names(set(names))
         order = {n: i for i, n in enumerate(names)}
         ai_specs.sort(key=lambda s: order.get(s["function"]["name"], 99))
@@ -3940,6 +3947,12 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
     trusted_quote = _quoted_context_message(quoted_context)
     if trusted_quote:
         messages.append({"role": "system", "content": trusted_quote})
+
+    semantic_route_hint = str(
+        (trace.get("ai_route") or {}).get("semantic_hint") or ""
+    ).strip()
+    if semantic_route_hint:
+        messages.append({"role": "system", "content": semantic_route_hint})
 
     current = (model_user_text or "").strip()
     if media_context:
