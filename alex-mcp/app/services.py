@@ -1069,12 +1069,16 @@ def correct_expense(actor: ActorContext, event_id: str, amount: float | None = N
 def _store_selection(conn, actor: ActorContext, kind: str, ids: list[str]) -> str:
     selection_id = str(uuid.uuid4())
     expires = (runtime_clock.now_utc() + timedelta(hours=48)).isoformat()
+    bound_scope = str(getattr(actor, "read_scope", None) or "all").strip().casefold()
+    if bound_scope not in {"family", "private", "all"}:
+        bound_scope = "all"
     conn.execute(
         """INSERT INTO selection_sets(
-            selection_id,user_id,conversation_id,selection_kind,items_json,created_at_utc,expires_at_utc
-           ) VALUES(?,?,?,?,?,?,?)""",
+            selection_id,user_id,conversation_id,selection_kind,items_json,
+            read_scope,created_at_utc,expires_at_utc
+           ) VALUES(?,?,?,?,?,?,?,?)""",
         (selection_id, actor.user_id, actor.conversation_id, kind,
-         json.dumps(ids, ensure_ascii=False), utc_now(), expires),
+         json.dumps(ids, ensure_ascii=False), bound_scope, utc_now(), expires),
     )
     return selection_id
 
@@ -1748,12 +1752,14 @@ def latest_single_selection_context(actor: ActorContext,
             args_a.append(created_after_utc)
             args_b.append(created_after_utc)
         rows = conn.execute(
-            f"""SELECT selection_kind,items_json,created_at_utc
+            f"""SELECT selection_kind,items_json,created_at_utc,
+                       COALESCE(read_scope,'') AS read_scope
                   FROM selection_sets
                  WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
                        {where_after}
                 UNION ALL
-                SELECT 'MEDIA' AS selection_kind,items_json,created_at_utc
+                SELECT 'MEDIA' AS selection_kind,items_json,created_at_utc,
+                       '' AS read_scope
                   FROM media_selection_sets
                  WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
                        {where_after}
@@ -1765,20 +1771,34 @@ def latest_single_selection_context(actor: ActorContext,
         ids = json.loads(rows[0]["items_json"])
         if len(ids) != 1:
             return None
-        return {"kind": rows[0]["selection_kind"], "id": str(ids[0])}
+        return {
+            "kind": rows[0]["selection_kind"],
+            "id": str(ids[0]),
+            "scope": str(rows[0]["read_scope"] or "") or None,
+        }
     finally:
         conn.close()
 
 
-def get_selection_target(actor: ActorContext, kind: str, target_id: str) -> dict:
-    """Retrieve an exact trusted SELECTION context without model re-search."""
+def get_selection_target(actor: ActorContext, kind: str, target_id: str,
+                         bound_scope: str | None = None) -> dict:
+    """Retrieve one exact trusted selection without losing its original ACL scope.
+
+    bound_scope is accepted only from an Alex-created outbound selection
+    context. It cannot widen the user's allowed spaces; read_spaces still
+    enforces the authenticated actor's ACL.
+    """
+    effective_actor = actor
+    scope = str(bound_scope or "").strip().casefold()
+    if scope in {"family", "private", "all"}:
+        effective_actor = replace(actor, read_scope=scope)
     normalized = str(kind or "").upper()
     if normalized == "SAVED_ITEM":
-        return get_saved_item(actor, target_id)
+        return get_saved_item(effective_actor, target_id)
     if normalized == "RECEIPT":
-        return get_receipt(actor, target_id)
+        return get_receipt(effective_actor, target_id)
     if normalized == "MEDIA":
-        return get_media_original(actor, target_id)
+        return get_media_original(effective_actor, target_id)
     raise ValueError("unsupported selection context")
 
 
@@ -1797,17 +1817,20 @@ def latest_selection_set_context(actor: ActorContext,
     conn = connect()
     try:
         row = conn.execute(
-            f"""SELECT selection_id,selection_kind,items_json,created_at_utc
+            f"""SELECT selection_id,selection_kind,items_json,created_at_utc,
+                       COALESCE(read_scope,'') AS read_scope
                    FROM selection_sets
                   WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
                         {after_sql}
                   UNION ALL
-                 SELECT selection_id,'MEDIA' AS selection_kind,items_json,created_at_utc
+                 SELECT selection_id,'MEDIA' AS selection_kind,items_json,created_at_utc,
+                        '' AS read_scope
                    FROM media_selection_sets
                   WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
                         {after_sql}
                   UNION ALL
-                 SELECT selection_id,'PENDING_ITEM' AS selection_kind,items_json,created_at_utc
+                 SELECT selection_id,'PENDING_ITEM' AS selection_kind,items_json,created_at_utc,
+                        '' AS read_scope
                    FROM pending_selection_sets
                   WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
                         {after_sql}
@@ -1821,6 +1844,7 @@ def latest_selection_set_context(actor: ActorContext,
             "kind": str(row["selection_kind"]),
             "id": str(row["selection_id"]),
             "count": len(ids),
+            "scope": str(row["read_scope"] or "") or None,
         }
     finally:
         conn.close()
@@ -1840,7 +1864,8 @@ def resolve_numbered_choice(actor: ActorContext, choice: int,
             kind = str(selection_kind or "").strip().upper()
             if kind in {"RECEIPT", "SAVED_ITEM"}:
                 latest = conn.execute(
-                    """SELECT selection_kind,items_json FROM selection_sets
+                    """SELECT selection_kind,items_json,COALESCE(read_scope,'') AS read_scope
+                       FROM selection_sets
                        WHERE selection_id=? AND user_id=? AND conversation_id=?
                          AND expires_at_utc>? AND selection_kind=? LIMIT 1""",
                     (
@@ -1850,7 +1875,7 @@ def resolve_numbered_choice(actor: ActorContext, choice: int,
                 ).fetchone()
             elif kind == "MEDIA":
                 latest = conn.execute(
-                    """SELECT 'MEDIA' AS selection_kind,items_json
+                    """SELECT 'MEDIA' AS selection_kind,items_json,'' AS read_scope
                        FROM media_selection_sets
                        WHERE selection_id=? AND user_id=? AND conversation_id=?
                          AND expires_at_utc>? LIMIT 1""",
@@ -1858,7 +1883,7 @@ def resolve_numbered_choice(actor: ActorContext, choice: int,
                 ).fetchone()
             elif kind == "PENDING_ITEM":
                 latest = conn.execute(
-                    """SELECT 'PENDING_ITEM' AS selection_kind,items_json
+                    """SELECT 'PENDING_ITEM' AS selection_kind,items_json,'' AS read_scope
                        FROM pending_selection_sets
                        WHERE selection_id=? AND user_id=? AND conversation_id=?
                          AND expires_at_utc>? LIMIT 1""",
@@ -1868,15 +1893,18 @@ def resolve_numbered_choice(actor: ActorContext, choice: int,
                 raise ValueError("unsupported numbered selection context")
         else:
             latest = conn.execute(
-                """SELECT selection_id,selection_kind,items_json,created_at_utc
+                """SELECT selection_id,selection_kind,items_json,created_at_utc,
+                          COALESCE(read_scope,'') AS read_scope
                      FROM selection_sets
                     WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
                    UNION ALL
-                   SELECT selection_id,'MEDIA' AS selection_kind,items_json,created_at_utc
+                   SELECT selection_id,'MEDIA' AS selection_kind,items_json,created_at_utc,
+                          '' AS read_scope
                      FROM media_selection_sets
                     WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
                    UNION ALL
-                   SELECT selection_id,'PENDING_ITEM' AS selection_kind,items_json,created_at_utc
+                   SELECT selection_id,'PENDING_ITEM' AS selection_kind,items_json,created_at_utc,
+                          '' AS read_scope
                      FROM pending_selection_sets
                     WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
                    ORDER BY created_at_utc DESC LIMIT 1""",
@@ -1895,6 +1923,7 @@ def resolve_numbered_choice(actor: ActorContext, choice: int,
             raise ValueError("choice is outside the selected numbered list")
         target = str(ids[index - 1])
         kind = str(latest["selection_kind"]).upper()
+        bound_scope = str(latest["read_scope"] or "").strip().casefold()
         pending = None
         if kind == "PENDING_ITEM":
             pending_row = conn.execute(
@@ -1909,12 +1938,15 @@ def resolve_numbered_choice(actor: ActorContext, choice: int,
     finally:
         conn.close()
 
+    effective_actor = actor
+    if bound_scope in {"family", "private", "all"}:
+        effective_actor = replace(actor, read_scope=bound_scope)
     if kind == "RECEIPT":
-        return get_receipt(actor, target)
+        return get_receipt(effective_actor, target)
     if kind == "SAVED_ITEM":
-        return get_saved_item(actor, target)
+        return get_saved_item(effective_actor, target)
     if kind == "MEDIA":
-        return get_media_original(actor, target)
+        return get_media_original(effective_actor, target)
     if kind == "PENDING_ITEM":
         media_id = str((pending or {}).get("media_id") or "")
         if media_id:
