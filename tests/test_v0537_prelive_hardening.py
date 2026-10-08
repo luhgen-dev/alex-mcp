@@ -348,8 +348,8 @@ class ReplyBindingAndMarkersTests(V0537Base):
             finally:
                 conn.close()
 
-        self.assertEqual([x["kind"] for x in sent[:2]], ["reaction", "pin"])
-        self.assertEqual(sent[0]["emoji"], "⏳")
+        self.assertEqual([x["kind"] for x in sent[:2]], ["pin", "reaction"])
+        self.assertEqual(sent[1]["emoji"], "⏳")
         self.assertTrue(sent[0]["target_from_me"])
         conn = db.connect()
         try:
