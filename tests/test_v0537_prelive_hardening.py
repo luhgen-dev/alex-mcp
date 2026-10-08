@@ -18,13 +18,17 @@ PHONE = "+60111111111"
 DM = "60111111111@s.whatsapp.net"
 
 
-class V0537Base(core.AlexCoreTests):
+class V0537Base(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        db.initialize()
+
     def setUp(self):
-        super().setUp()
+        # Reuse the canonical fixture reset without inheriting its hundreds of
+        # test methods into this focused v0.5.37 class.
+        core.AlexCoreTests.setUp(self)
         conn = db.connect()
         try:
-            conn.execute("DELETE FROM pending_error_reports")
-            conn.execute("DELETE FROM user_reported_errors")
             try:
                 conn.execute("DELETE FROM alex_shadow_router_log")
             except Exception:
@@ -32,6 +36,21 @@ class V0537Base(core.AlexCoreTests):
             conn.commit()
         finally:
             conn.close()
+
+    def tearDown(self):
+        conn = db.connect()
+        try:
+            conn.execute("DELETE FROM pending_error_reports")
+            conn.execute("DELETE FROM user_reported_errors")
+            conn.commit()
+        finally:
+            conn.close()
+
+    def claim(self, mid, phone, text=""):
+        return core.AlexCoreTests.claim(self, mid, phone, text)
+
+    def actor(self, mid, phone, media_ids=None):
+        return core.AlexCoreTests.actor(self, mid, phone, media_ids)
 
     def sent_alex_message(self, source_id="bad-source", provider_id="WA-BAD",
                           text="Wrong answer"):
