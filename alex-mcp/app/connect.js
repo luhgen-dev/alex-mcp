@@ -14,6 +14,7 @@ import QRCode from 'qrcode';
 import { buildControlMessage } from './control_payload.js';
 import { reactionConversationJid, reactionSenderCandidates } from './reaction_payload.js';
 import { quotedHandoffFromContext } from './quoted_payload.js';
+import { ConversationQueue, conversationKeyFromMessage } from './conversation_queue.js';
 
 const DATA_DIR = process.env.ALEX_DATA_DIR || '/data';
 const AUTH_DIR = path.join(DATA_DIR, 'whatsapp_auth');
@@ -51,6 +52,8 @@ const logger = pino({ level: process.env.ALEX_LOG_LEVEL || 'silent' });
 let currentSock = null;
 let cachedVersion = null;
 let starting = false;
+// v0.5.37: one ordered lane per chat. Different chats remain concurrent.
+const inboundConversationQueue = new ConversationQueue();
 const recentInboundMessages = new Map();
 const INBOUND_QUOTE_TTL_MS = 2 * 60 * 60 * 1000;
 const INBOUND_QUOTE_MAX = 500;
@@ -598,11 +601,21 @@ async function startWhatsApp() {
     sock.ev.on('messages.upsert', async function(event) {
       if (event.type !== 'notify') return;
       for (const message of event.messages || []) {
-        try {
-          await handleIncoming(message);
-        } catch (err) {
-          console.error('[Alex MCP] Incoming message error:', err.message);
-        }
+        // Do not await the lane here: Baileys may emit another conversation
+        // while this one is slow. ConversationQueue preserves FIFO only within
+        // the same chat, so Luhgen/Priya/group work can progress independently.
+        inboundConversationQueue.enqueue(
+          conversationKeyFromMessage(message),
+          async function() {
+            try {
+              await handleIncoming(message);
+            } catch (err) {
+              console.error('[Alex MCP] Incoming message error:', err.message);
+            }
+          }
+        ).catch(function(err) {
+          console.error('[Alex MCP] Conversation queue error:', err.message);
+        });
       }
     });
 
@@ -612,11 +625,16 @@ async function startWhatsApp() {
     // and an authorized household sender.
     sock.ev.on('messages.reaction', async function(events) {
       for (const entry of events || []) {
-        try {
-          await forwardReactionEvent(entry.key, entry.reaction);
-        } catch (err) {
-          console.error('[Alex MCP] Incoming reaction error:', err.message);
-        }
+        const lane = String((entry.key && entry.key.remoteJid) || '__unknown__');
+        inboundConversationQueue.enqueue(lane, async function() {
+          try {
+            await forwardReactionEvent(entry.key, entry.reaction);
+          } catch (err) {
+            console.error('[Alex MCP] Incoming reaction error:', err.message);
+          }
+        }).catch(function(err) {
+          console.error('[Alex MCP] Reaction queue error:', err.message);
+        });
       }
     });
   } catch (err) {
