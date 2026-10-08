@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.36
+Semantic routing upgrade, still safe-by-default.
+- `ai_routing` now supports explicit `off | shadow | live` modes. The old saved value `on` remains a compatibility alias for `live`, so v0.5.35 installations upgrade without losing their current behaviour.
+- The ChatGPT-plan router now returns strict structured semantics as well as tool names: intent, reference kind, grounded date/time/relative/item/target/scope/amount/name/query/action slots, confidence and clarification need.
+- `shadow` uses the same interpreter after the normal reply and only records the prediction. `live` uses it before the brain; safe AI tool picks still merge ahead of keyword tools, and high-confidence semantics are passed only as a non-authoritative language hint. Original trusted text and all deterministic privacy/write/tool guards remain authoritative.
+- Router failures and timeouts still fall back to the unchanged keyword route. The Web UI comparison card now shows semantic intent, reference, slots, confidence and mode.
+- No household tool descriptions, tool implementations, ACL rules, reminder lifecycle, finance logic or voice-note trust policy were changed. The shipped default remains `off`.
+
 ## 0.5.35
 Fixes a dead end seen in live testing with ChatGPT plan mode. Defaults and behaviour with other providers are unchanged.
 - An empty ChatGPT answer (no text and no tool call) used to end the turn with "I couldn't produce a reliable answer for that request". It is now retried once automatically; if it is empty again it counts as a provider failure and Alex falls back to the next provider (Gemini/Grok) so the message still gets answered. A repeated failure uses the existing short provider cool-down.
