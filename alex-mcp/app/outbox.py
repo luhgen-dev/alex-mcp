@@ -393,7 +393,13 @@ def _reconcile_error_report_markers(conn) -> None:
 
 
 def _ensure_claim_setup_markers(conn, row) -> None:
-    """Mark an unclaimed pre-due family reminder as unresolved in the group."""
+    """Keep an unresolved Alex-owned message pinned, with ⏳ as a secondary cue.
+
+    Pinning is the durable user-facing invariant. A transient WhatsApp reaction
+    failure must never prevent the pin, so pin is attempted independently and
+    before the cosmetic ⏳ reaction. Each control is retried by the existing
+    bounded control backoff.
+    """
     if (
         row["delivery_status"] != "SENT"
         or not row["provider_message_id"]
@@ -401,24 +407,22 @@ def _ensure_claim_setup_markers(conn, row) -> None:
         return
 
     now = _now()
-    if not row["job_reacted_at_utc"]:
-        if _attempt_control(conn, row, "reaction", "⏳", outbound=True):
-            conn.execute(
-                """UPDATE outbound_messages
-                   SET job_reacted_at_utc=? WHERE outbound_id=?""",
-                (now, row["outbound_id"]),
-            )
-            conn.commit()
-            row = _joined_row(conn, row["outbound_id"])
-        else:
-            return
-
     if not row["job_pinned_at_utc"]:
         if _attempt_control(conn, row, "pin", outbound=True):
             conn.execute(
                 """UPDATE outbound_messages
                    SET job_pinned_at_utc=?,job_pin_target='OUTBOUND'
                    WHERE outbound_id=?""",
+                (now, row["outbound_id"]),
+            )
+            conn.commit()
+            row = _joined_row(conn, row["outbound_id"])
+
+    if not row["job_reacted_at_utc"]:
+        if _attempt_control(conn, row, "reaction", "⏳", outbound=True):
+            conn.execute(
+                """UPDATE outbound_messages
+                   SET job_reacted_at_utc=? WHERE outbound_id=?""",
                 (now, row["outbound_id"]),
             )
             conn.commit()
