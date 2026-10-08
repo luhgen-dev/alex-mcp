@@ -53,6 +53,39 @@ In the bound Family Shared group, Alex responds only when explicitly @mentioned 
 
 Swipe replies are bound locally to the exact Alex message in the same conversation. For attachments, Alex uses caption first, then explicit quoted-reply context, then a short same-sender recent-instruction pairing when the attachment has no caption.
 
+### Provider circuit breaker (0.5.33)
+
+If a provider fails provider-wide (quota or rate limit, sign-in/key rejected, billing block, outage or connection error), Alex skips it for a short cool-down (1–15 minutes depending on the failure) so the next messages go straight to a working fallback instead of repeating the failed call first. If every configured provider is cooling down, Alex still tries them all, so it is never left with no route. A successful **Test AI now** re-opens a cooled-down provider immediately.
+
+## ChatGPT plan (0.5.33, off by default)
+
+Alex can use your own ChatGPT subscription through OpenAI's "Sign in with ChatGPT" plan usage for self-hosted apps, so those calls draw on your plan's allowance instead of paid API credit. Nothing changes until you both sign in **and** choose a mode.
+
+**Sign in (from your phone is fine):**
+
+1. Open the Alex MCP **Web UI** → **ChatGPT plan** → **Start sign-in**.
+2. Tap **Open ChatGPT sign-in**, sign in and allow Alex to use your plan.
+3. Your browser then lands on a page that cannot load (`127.0.0.1:1455/...`). That is expected: copy the whole address from the address bar.
+4. Paste it into the panel and tap **Finish sign-in**, then **Test ChatGPT**.
+
+The link is valid for 15 minutes. The session is stored only in `/data/chatgpt_plan/` (owner-only file permissions). It is never written to the configuration, logs, database or repository, and Alex refreshes it automatically whenever it uses ChatGPT. If Alex doesn't use ChatGPT for more than 30 days (for example the mode is `off` or the app is stopped), or you disconnect Alex in ChatGPT settings, the panel asks you to sign in again. **Sign out** in the panel forgets the local session.
+
+**Modes** (Configuration → **ChatGPT plan mode**):
+
+- `off` — default; not used.
+- `shadow_only` — only the AI router comparison below uses ChatGPT. Every reply is still produced exactly as before.
+- `primary` — ChatGPT answers text messages first; your API providers stay as automatic fallbacks (for example when the plan's usage limit is reached). Photo/document turns keep the existing visual route first, with ChatGPT as the first fallback.
+
+**ChatGPT plan model** is optional; leave it empty to use the first model your plan offers (the panel lists them after sign-in).
+
+Notes: on ChatGPT Plus, Alex shares your plan's rolling usage limit with your own ChatGPT/Codex use. Plan usage is recorded in the usage card at $0 API cost and does not count toward the optional monthly API budget guard.
+
+### AI router comparison (shadow router)
+
+Alex has about 120 tools but shows the reasoning model at most six per message, chosen by keyword routing. When `chatgpt_plan_mode` is `shadow_only` or `primary`, after each normal text reply Alex also asks ChatGPT, in the background, which tools from the **full** list that message needed. The answer is constrained to real tool names and is only **stored locally** next to what keyword routing showed and what Alex actually used. It never calls a tool, never changes a reply and never sends a message. It sees the few turns before your message, never Alex's reply to it.
+
+The Web UI card **AI router comparison** summarises the last 7 days and lists recent disagreements. Rows are kept for 30 days. This is the evidence for deciding whether Alex's tool routing should become AI-led.
+
 ## Provider switching
 
 Changing Auto ↔ Grok ↔ Gemini ↔ OpenAI is an app setting. The MCP tools and household database do not change. Manual provider modes intentionally disable automatic cross-provider fallback so you can pin Alex to one provider when testing.
@@ -117,6 +150,7 @@ Persistent data lives under the app's `/data` volume:
 - `whatsapp_auth/`
 - `selftest.json`
 - `models/` (local Whisper model cache)
+- `chatgpt_plan/` (only if you sign in to the ChatGPT plan; owner-only permissions)
 
 Original household media and their selected transcripts/OCR are retained intentionally for provenance and later retrieval; Alex does not silently prune them. Plan storage capacity accordingly and take a full Home Assistant backup before upgrading or migrating the app.
 

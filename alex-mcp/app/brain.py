@@ -3,8 +3,10 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import threading
 import time
 import uuid
+from collections import OrderedDict
 from dataclasses import replace
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -19,6 +21,7 @@ from config import get_settings
 from context import ActorContext, use_actor, with_action_key
 from db import add_turn, connect, recent_turns, record_usage, current_month_ai_cost
 from mcp_server import mcp
+import chatgpt_plan
 import phase2_intent
 import scope_policy
 from text_normalization import normalize_intent_text
@@ -148,6 +151,10 @@ def _usage_breakdown(usage) -> tuple[int, int, int, int]:
 
 def _provider_reported_cost_usd(provider: str, usage) -> float | None:
     """Use provider billing truth when exposed; currently xAI returns exact cost ticks."""
+    if provider == "chatgpt":
+        # ChatGPT plan usage draws on the owner's subscription allowance, not
+        # pay-per-token API credit, so it adds nothing to the API budget guard.
+        return 0.0
     if provider != "grok" or usage is None:
         return None
     ticks = getattr(usage, "cost_in_usd_ticks", None)
@@ -1732,6 +1739,9 @@ async def _tool_specs(user_text: str, media_context: list[str] | None = None,
 
 def _client_for(provider: str, settings=None):
     settings = settings or get_settings()
+    if provider == "chatgpt":
+        # Same chat.completions surface, backed by the owner's ChatGPT plan.
+        return chatgpt_plan.client(settings)
     key = settings.api_key_for(provider)
     if not key:
         raise RuntimeError(
@@ -1835,6 +1845,42 @@ def _provider_routes(settings, *, user_text: str = "", tools: list[dict] | None 
                      vision_parts: list[dict] | None = None,
                      preflight: dict | None = None) -> list[dict]:
     """Return a cheapest-capable-first route with paid fallbacks only when needed."""
+    base = _api_provider_routes(
+        settings, user_text=user_text, tools=tools,
+        vision_parts=vision_parts, preflight=preflight,
+    )
+    plan = _chatgpt_plan_route(settings)
+    if not plan:
+        return base
+    if vision_parts and base:
+        # Photo/document turns keep the existing visual route first; the
+        # ChatGPT plan becomes the first fallback for them.
+        return base[:1] + [plan] + base[1:]
+    return [plan] + base
+
+
+def _chatgpt_plan_route(settings) -> dict | None:
+    """ChatGPT plan route, only in "primary" mode and only while signed in."""
+    if getattr(settings, "chatgpt_plan_mode", "off") != "primary":
+        return None
+    try:
+        model = chatgpt_plan.ready_model(settings)
+    except Exception:
+        return None
+    if not model:
+        return None
+    return {
+        "provider": "chatgpt",
+        "model": model,
+        "reasoning_effort": settings.reasoning_effort,
+        "role": "chatgpt_plan",
+    }
+
+
+def _api_provider_routes(settings, *, user_text: str = "", tools: list[dict] | None = None,
+                         vision_parts: list[dict] | None = None,
+                         preflight: dict | None = None) -> list[dict]:
+    """The pay-per-token API routes (unchanged pre-v0.5.33 behaviour)."""
     if settings.ai_provider != "auto":
         provider = settings.ai_provider
         if not settings.api_key_for(provider):
@@ -1979,6 +2025,77 @@ def _next_route_after_failure(routes: list[dict], current_index: int, info: dict
     return next_index
 
 
+# Provider circuit breaker (v0.5.33).
+#
+# A provider that just failed provider-wide (quota, sign-in, outage) is skipped
+# for a short cool-down, so the next household messages go straight to a
+# working fallback instead of paying the same failed round trip (or a hanging
+# connection) first. It never strands Alex: if every configured route is
+# cooling down, the full route list is used unchanged. State is per process and
+# in memory only; a restart simply starts with every provider available.
+_PROVIDER_COOLDOWN_SECONDS = {
+    "provider_rate_limit_or_quota": 600,
+    "provider_authentication_failed": 900,
+    "provider_access_or_billing_blocked": 900,
+    "provider_model_or_endpoint_not_found": 900,
+    "provider_temporarily_unavailable": 120,
+    "provider_connection_error": 60,
+}
+_PROVIDER_COOLDOWNS: dict[str, dict] = {}
+_PROVIDER_COOLDOWN_LOCK = threading.Lock()
+
+
+def _trip_provider(provider: str, category: str, *, now: float | None = None) -> None:
+    seconds = _PROVIDER_COOLDOWN_SECONDS.get(str(category or ""))
+    if not seconds or not provider:
+        return
+    current = time.monotonic() if now is None else now
+    with _PROVIDER_COOLDOWN_LOCK:
+        _PROVIDER_COOLDOWNS[str(provider)] = {
+            "until": current + seconds,
+            "category": str(category),
+        }
+
+
+def _clear_provider_cooldown(provider: str) -> None:
+    with _PROVIDER_COOLDOWN_LOCK:
+        _PROVIDER_COOLDOWNS.pop(str(provider or ""), None)
+
+
+def _provider_cooling(provider: str, *, now: float | None = None) -> bool:
+    current = time.monotonic() if now is None else now
+    with _PROVIDER_COOLDOWN_LOCK:
+        entry = _PROVIDER_COOLDOWNS.get(str(provider or ""))
+        if not entry:
+            return False
+        if entry["until"] <= current:
+            _PROVIDER_COOLDOWNS.pop(str(provider), None)
+            return False
+        return True
+
+
+def provider_cooldowns(*, now: float | None = None) -> dict:
+    """Read-only snapshot for diagnostics: provider -> seconds left + reason."""
+    current = time.monotonic() if now is None else now
+    with _PROVIDER_COOLDOWN_LOCK:
+        return {
+            provider: {
+                "seconds_left": int(max(0, entry["until"] - current)),
+                "category": entry["category"],
+            }
+            for provider, entry in _PROVIDER_COOLDOWNS.items()
+            if entry["until"] > current
+        }
+
+
+def _apply_circuit_breaker(routes: list[dict], *, now: float | None = None) -> list[dict]:
+    """Drop routes whose provider is cooling down, unless that drops them all."""
+    if not routes:
+        return routes
+    available = [r for r in routes if not _provider_cooling(r.get("provider", ""), now=now)]
+    return available or list(routes)
+
+
 def _completion_kwargs(route: dict, messages: list[dict], tools: list[dict] | None,
                        actor: ActorContext | None = None, *,
                        force_answer: bool = False) -> dict:
@@ -2030,6 +2147,9 @@ def provider_probe() -> dict:
                 None,
             ))
             call_ms = int((time.monotonic() - call_started) * 1000)
+            # The manual probe bypasses the circuit breaker on purpose (it is
+            # the owner's "is it working now?" check); a success re-opens it.
+            _clear_provider_cooldown(route["provider"])
             _accumulate_usage(
                 usage_by_route, route, getattr(response, "usage", None), call_ms
             )
@@ -2562,13 +2682,13 @@ def interpret_control_intent(
         if guarded >= settings.monthly_ai_budget_usd:
             return _semantic_unclear("budget_guard")
 
-    routes = _provider_routes(
+    routes = _apply_circuit_breaker(_provider_routes(
         settings,
         user_text=current,
         tools=None,
         vision_parts=None,
         preflight={"status": "semantic_control"},
-    )
+    ))
     if not routes:
         return _semantic_unclear("no_provider")
 
@@ -2599,6 +2719,7 @@ def interpret_control_intent(
                 **_completion_kwargs(route, messages, None, actor)
             )
             latency_ms = int((time.monotonic() - started) * 1000)
+            _clear_provider_cooldown(route["provider"])
             _accumulate_usage(
                 usage_by_route,
                 route,
@@ -2665,6 +2786,7 @@ def interpret_control_intent(
                 "category": info.get("category"),
                 "status_code": info.get("status_code"),
             })
+            _trip_provider(route["provider"], info.get("category"))
             route_index = _next_route_after_failure(routes, route_index, info)
 
     _record_usage_buckets(actor.source_message_id, usage_by_route)
@@ -2776,12 +2898,45 @@ def _history_user_text(actor: ActorContext, user_text: str,
     return out or "[attachment]"
 
 
+_RECENT_TRACES: "OrderedDict[str, dict]" = OrderedDict()
+_RECENT_TRACES_LOCK = threading.Lock()
+_RECENT_TRACES_MAX = 200
+
+
+def _remember_trace(actor: ActorContext, trace: dict) -> None:
+    """Keep a small in-memory copy of recent turn traces (for the shadow router)."""
+    key = str(getattr(actor, "source_message_id", "") or "")
+    if not key:
+        return
+    snapshot = {
+        "exposed_tools": sorted(trace.get("exposed_tools") or []),
+        "tools_called": list(trace.get("tools_called") or []),
+        "outcome": trace.get("outcome"),
+        "routes": list(trace.get("routes") or []),
+    }
+    with _RECENT_TRACES_LOCK:
+        _RECENT_TRACES[key] = snapshot
+        _RECENT_TRACES.move_to_end(key)
+        while len(_RECENT_TRACES) > _RECENT_TRACES_MAX:
+            _RECENT_TRACES.popitem(last=False)
+
+
+def recent_trace(source_message_id: str | None) -> dict | None:
+    with _RECENT_TRACES_LOCK:
+        found = _RECENT_TRACES.get(str(source_message_id or ""))
+        return dict(found) if found else None
+
+
 def _trace_turn(actor: ActorContext, trace: dict) -> None:
     """Phase-0 evidence: one compact local row per turn in the existing audit table.
 
     Stored only in the local SQLite database (never sent to a model or chat),
     truncated, and pruned after 14 days on startup.
     """
+    try:
+        _remember_trace(actor, trace)
+    except Exception:
+        pass
     try:
         _audit(
             actor, "_turn_trace",
@@ -3668,10 +3823,10 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
         ] + reminder_specs
 
     trace["exposed_tools"] = [x["function"]["name"] for x in tools] if tools else []
-    routes = _provider_routes(
+    routes = _apply_circuit_breaker(_provider_routes(
         settings, user_text=user_text, tools=tools,
         vision_parts=vision_parts, preflight=preflight,
-    )
+    ))
     if not routes:
         final = (
             "Alex has no usable AI provider configured. Add a Gemini, Grok, or OpenAI "
@@ -3792,6 +3947,7 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                 )
                 call_ms = int((time.monotonic() - call_started) * 1000)
                 active_route = route
+                _clear_provider_cooldown(route["provider"])
                 trace["routes"].append(f"{route['provider']}:{route['model']}")
                 break
             except Exception as exc:
@@ -3802,6 +3958,7 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                     "category": info["category"],
                     "status_code": info.get("status_code"),
                 })
+                _trip_provider(route["provider"], info["category"])
                 route_index = _next_route_after_failure(routes, route_index, info)
                 active_route = None
 
