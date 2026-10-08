@@ -7980,8 +7980,8 @@ class AlexCoreTests(unittest.TestCase):
         finally:
             conn.close()
 
-        self.assertEqual([x["kind"] for x in controls], ["reaction", "pin"])
-        self.assertEqual(controls[0]["emoji"], "⏳")
+        self.assertEqual([x["kind"] for x in controls], ["pin", "reaction"])
+        self.assertEqual(controls[1]["emoji"], "⏳")
         self.assertTrue(controls[0]["target_from_me"])
         self.assertTrue(controls[1]["target_from_me"])
         self.assertEqual(controls[0]["target_message_id"], "wa-v0519-setup")
@@ -8404,10 +8404,10 @@ class AlexCoreTests(unittest.TestCase):
 
         self.assertEqual(
             [x["kind"] for x in controls],
-            ["reaction", "pin", "reaction", "unpin"],
+            ["pin", "reaction", "reaction", "unpin"],
         )
         self.assertEqual(controls[0]["target_message_id"], "wa-v0520-new-card")
-        self.assertEqual(controls[0]["emoji"], "⏳")
+        self.assertEqual(controls[1]["emoji"], "⏳")
         self.assertEqual(controls[1]["target_message_id"], "wa-v0520-new-card")
         self.assertEqual(controls[2]["target_message_id"], "wa-v0520-old-card")
         self.assertEqual(controls[2]["emoji"], "")
@@ -9419,8 +9419,8 @@ class AlexCoreTests(unittest.TestCase):
         self.assertEqual(resolved["status"], "RESOLVED")
         self.assertIsNotNone(setup)
         self.assertEqual(setup["conversation_id"], group_id)
-        self.assertEqual([x["kind"] for x in controls], ["reaction", "pin"])
-        self.assertEqual(controls[0]["emoji"], "⏳")
+        self.assertEqual([x["kind"] for x in controls], ["pin", "reaction"])
+        self.assertEqual(controls[1]["emoji"], "⏳")
         self.assertIsNone(assigned_dm)
 
     def test_v0524_family_quote_explicit_assignee_overrides_family_default(self):
