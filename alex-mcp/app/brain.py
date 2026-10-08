@@ -22,6 +22,7 @@ from context import ActorContext, use_actor, with_action_key
 from db import add_turn, connect, recent_turns, record_usage, current_month_ai_cost
 from mcp_server import mcp
 import chatgpt_plan
+import shadow_router
 import phase2_intent
 import scope_policy
 from text_normalization import normalize_intent_text
@@ -2913,6 +2914,8 @@ def _remember_trace(actor: ActorContext, trace: dict) -> None:
         "tools_called": list(trace.get("tools_called") or []),
         "outcome": trace.get("outcome"),
         "routes": list(trace.get("routes") or []),
+        "keyword_tools": list(trace.get("keyword_tools") or []),
+        "ai_route": dict(trace["ai_route"]) if trace.get("ai_route") else None,
     }
     with _RECENT_TRACES_LOCK:
         _RECENT_TRACES[key] = snapshot
@@ -3673,6 +3676,66 @@ def _tool_evidence_fallback(tool_evidence: list[dict]) -> str:
     return "I found the record, but I couldn't produce a reliable summary from it."
 
 
+AI_ROUTE_MERGED_MAX = TOOL_EXPOSURE_MAX + 2
+
+
+async def _apply_ai_route(trace: dict, tools: list[dict], user_text: str,
+                          quoted_context: dict | None, prior_turns: list,
+                          prior_user_text: str | None) -> list[dict]:
+    """v0.5.34 AI tool routing (ai_routing=on). Never raises.
+
+    The plan model picks tools from the full catalogue; its picks are shown to
+    the brain FIRST, and the keyword-routed tools stay behind them, so a bad
+    AI pick can only add noise, never hide what keyword routing found. Any
+    failure, empty answer or filtered-out pick returns ``tools`` unchanged.
+    Safety gates are the existing ones: tools the keyword layer deliberately
+    blocked stay blocked, and a write tool is only offered when the user's own
+    text asks for a write (same gate as the discovery tool).
+    """
+    try:
+        quoted_text = ""
+        if quoted_context:
+            quoted_text = str(
+                quoted_context.get("quoted_user_text")
+                or quoted_context.get("quoted_text") or ""
+            )
+        choice = await shadow_router.live_route(
+            user_text,
+            [{"role": str(t["role"]), "text": str(t["content"] or "")}
+             for t in prior_turns],
+            quoted_text,
+        )
+        if not choice:
+            return tools
+        trace["ai_route"] = dict(choice)
+        _, block = _contextual_tool_hints(user_text, prior_user_text)
+        block = set(block) | set(_routing_refinements(user_text)[1])
+        allow_writes = _trusted_mutation_requested(user_text)
+        names = [
+            n for n in choice.get("tools") or []
+            if n not in block and n != DISCOVERY_TOOL_NAME
+            and (allow_writes or not _is_mutating_tool(n))
+        ]
+        trace["ai_route"]["applied"] = list(names)
+        if not names:
+            return tools
+        ai_specs = await _tool_specs_for_names(set(names))
+        order = {n: i for i, n in enumerate(names)}
+        ai_specs.sort(key=lambda s: order.get(s["function"]["name"], 99))
+        merged = list(ai_specs)
+        have = {s["function"]["name"] for s in merged}
+        for spec in tools:
+            name = spec["function"]["name"]
+            if name in have or len(merged) >= AI_ROUTE_MERGED_MAX:
+                continue
+            merged.append(spec)
+            have.add(name)
+        return merged
+    except Exception:
+        return tools
+
+
+
 async def respond(actor: ActorContext, user_text: str, media_context: list[str] | None = None,
                   vision_parts: list[dict] | None = None,
                   quoted_context: dict | None = None,
@@ -3767,6 +3830,17 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
         user_text, media_context, quoted_context,
         prior_user_text=prior_user_text,
     )
+    trace["keyword_tools"] = [x["function"]["name"] for x in tools]
+    if (
+        tools
+        and not media_context
+        and not vision_parts
+        and str(getattr(actor, "source", "text") or "text") == "text"
+        and shadow_router.live_enabled(settings)
+    ):
+        tools = await _apply_ai_route(
+            trace, tools, user_text, quoted_context, prior_turns, prior_user_text
+        )
     if _owned_cash_pool_name_mentioned(actor, user_text):
         forced_specs = await _tool_specs_for_names({
             "planning_cash_pool_balance", "planning_list_cash_pools"

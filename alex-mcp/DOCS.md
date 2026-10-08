@@ -86,6 +86,18 @@ Alex has about 120 tools but shows the reasoning model at most six per message, 
 
 The Web UI card **AI router comparison** summarises the last 7 days and lists recent disagreements. Rows are kept for 30 days. This is the evidence for deciding whether Alex's tool routing should become AI-led.
 
+### AI tool routing (0.5.34, off by default)
+
+Configuration → **AI tool routing**. `off` is today's behaviour. `on` lets your ChatGPT plan model choose which tools the reasoning model sees for each text message, instead of relying only on keyword rules. It needs **ChatGPT plan mode** set to `shadow_only` or `primary` and a signed-in plan.
+
+- The model's picks are shown first and the keyword-routed tools stay behind them, so keyword routing is never lost.
+- If ChatGPT is slow (over 6 seconds), down, rate-limited or answers unusably, that message simply uses keyword routing as before. After three failures in a row it pauses for 2 minutes.
+- It adds one short ChatGPT call before each routed message (about 2 seconds with a light model). Photo, document and voice-note turns and plain chit-chat are not routed.
+- Safety is unchanged: a write tool is only offered when your own words ask for a write, and tools the keyword layer deliberately blocks stay blocked.
+- Switch it back to `off` at any time (save and restart) to return to keyword routing.
+
+The comparison card shows how many turns were routed live.
+
 ## Provider switching
 
 Changing Auto ↔ Grok ↔ Gemini ↔ OpenAI is an app setting. The MCP tools and household database do not change. Manual provider modes intentionally disable automatic cross-provider fallback so you can pin Alex to one provider when testing.

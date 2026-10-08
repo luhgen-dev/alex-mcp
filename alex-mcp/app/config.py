@@ -37,6 +37,10 @@ class Settings:
     # primary = ChatGPT answers text turns first, existing providers fall back.
     chatgpt_plan_mode: str = "off"
     chatgpt_plan_model: str = ""
+    # v0.5.34: AI tool routing. off = keyword routing only (unchanged); on =
+    # the ChatGPT plan model picks which tools the brain sees, keyword routing
+    # stays as the automatic fallback. Needs chatgpt_plan_mode != off.
+    ai_routing: str = "off"
     ha_notify_devices: list[dict] = field(default_factory=list)
 
     def model_for(self, provider: str, *, lite: bool = False) -> str:
@@ -122,6 +126,8 @@ def get_settings() -> Settings:
         plan_mode if plan_mode in {"off", "shadow_only", "primary"} else "off"
     )
     clean["chatgpt_plan_model"] = str(clean.get("chatgpt_plan_model", "") or "").strip()
+    routing = str(clean.get("ai_routing", "off") or "off").strip().lower()
+    clean["ai_routing"] = routing if routing in {"off", "on"} else "off"
     devices = clean.get("ha_notify_devices", [])
     if not isinstance(devices, list):
         devices = []
