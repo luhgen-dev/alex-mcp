@@ -3,7 +3,7 @@
 ## 0.5.38
 Pre-live reminder-marker and report-export reliability hardening.
 - Unresolved reminder pinning now treats the WhatsApp pin as the primary invariant. Alex attempts the pin independently and before the secondary ⏳ reaction, so a transient reaction-control failure can no longer prevent the reminder from being pinned. Existing completion/cancellation lifecycle remains authoritative; acknowledgement alone does not close an unresolved reminder.
-- Direct PDF/CSV/JSON finance-file requests keep `report_export` through deterministic routing, and the brain is instructed to use the self-contained export once rather than spending an unnecessary `finance_report` round first.
+- The existing report-export routing/tool contract is preserved; the repair is inside the export/render/delivery path so the certified AI routing corpus does not change.
 - Generated PDFs are structurally validated before delivery. The premium finance/snapshot renderer remains preferred; if a data/layout edge case breaks it, Alex falls back to a simpler deterministic PDF from the same canonical data instead of losing the user's report.
 - PDF files are written atomically before entering the durable WhatsApp outbox, and the export result records file size, SHA-256 and renderer path for diagnostics.
 - Added regressions proving reminder pins survive an hourglass-control failure, acknowledgement does not resolve a reminder, normal premium PDFs validate, and simulated premium-renderer failure still produces a valid deliverable PDF.
