@@ -108,7 +108,6 @@ class SemanticRoutingModeTests(base.V0534Base):
 
     def test_live_route_can_help_language_without_bypassing_write_gate(self):
         keyword = self.specs("list_reminders")
-        trace = {}
 
         async def fake_live(*_a, **_k):
             return semantic_choice(
@@ -116,17 +115,29 @@ class SemanticRoutingModeTests(base.V0534Base):
                 intent="CREATE_REMINDER",
             )
 
+        read_trace = {}
         with patch.object(shadow_router, "live_route", new=fake_live):
-            tools = run(brain._apply_ai_route(
-                trace, keyword, "what reminders do i have", None, [], None
+            read_tools = run(brain._apply_ai_route(
+                read_trace, keyword, "what reminders do i have", None, [], None
             ))
 
-        names = [x["function"]["name"] for x in tools]
-        # The semantic model cannot turn a read question into a write.
-        self.assertNotIn("create_reminder", names)
-        self.assertIn("list_reminders", names)
-        self.assertIn("semantic_hint", trace["ai_route"])
-        self.assertIn("non-authoritative", trace["ai_route"]["semantic_hint"])
+        read_names = [x["function"]["name"] for x in read_tools]
+        # The semantic model cannot turn a read question into a write, and its
+        # conflicting structured hint is withheld as soon as safety filters it.
+        self.assertNotIn("create_reminder", read_names)
+        self.assertIn("list_reminders", read_names)
+        self.assertNotIn("semantic_hint", read_trace["ai_route"])
+
+        write_trace = {}
+        with patch.object(shadow_router, "live_route", new=fake_live):
+            write_tools = run(brain._apply_ai_route(
+                write_trace, keyword,
+                "set a reminder tomorrow at 7 pm for laundry", None, [], None
+            ))
+        write_names = [x["function"]["name"] for x in write_tools]
+        self.assertIn("create_reminder", write_names)
+        self.assertIn("semantic_hint", write_trace["ai_route"])
+        self.assertIn("non-authoritative", write_trace["ai_route"]["semantic_hint"])
 
     def test_structured_predictions_are_persisted_for_shadow_review(self):
         shadow_router.record({
