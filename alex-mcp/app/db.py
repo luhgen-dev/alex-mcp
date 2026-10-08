@@ -152,6 +152,7 @@ def initialize() -> None:
         _ensure_column(conn, "media_objects", "transcript_meta_json", "TEXT")
         _ensure_column(conn, "pending_items", "accumulated_text", "TEXT")
         _ensure_column(conn, "pending_items", "routing_json", "TEXT")
+        _ensure_column(conn, "selection_sets", "read_scope", "TEXT")
         # v0.5.37: quote-bound error reporting gives every unresolved draft a
         # durable identity so only replies to its pinned prompt can complete it.
         _ensure_column(conn, "pending_error_reports", "error_draft_id", "TEXT")
