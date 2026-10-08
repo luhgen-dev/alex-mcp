@@ -127,7 +127,11 @@ def get_settings() -> Settings:
     )
     clean["chatgpt_plan_model"] = str(clean.get("chatgpt_plan_model", "") or "").strip()
     routing = str(clean.get("ai_routing", "off") or "off").strip().lower()
-    clean["ai_routing"] = routing if routing in {"off", "on"} else "off"
+    # v0.5.36: explicit router modes. "on" is kept as a legacy alias so an
+    # installed v0.5.35 configuration upgrades safely without owner action.
+    if routing == "on":
+        routing = "live"
+    clean["ai_routing"] = routing if routing in {"off", "shadow", "live"} else "off"
     devices = clean.get("ha_notify_devices", [])
     if not isinstance(devices, list):
         devices = []

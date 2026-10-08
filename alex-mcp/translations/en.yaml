@@ -57,8 +57,8 @@ configuration:
     name: ChatGPT plan model
     description: Optional. Leave empty to use the first model your plan offers (listed in the panel after sign-in).
   ai_routing:
-    name: AI tool routing
-    description: off = Alex picks which tools the AI can see with its keyword rules (unchanged). on = your ChatGPT plan model reads the message and picks the tools first; if it fails or times out, the keyword rules take over automatically. Needs ChatGPT plan mode shadow_only or primary and a signed-in plan. Set back to off at any time.
+    name: Semantic AI routing
+    description: off = keep Alex's deterministic keyword routing. shadow = GPT-6/Luna interprets messages in the background for comparison only and never changes a reply. live = the same semantic router may guide tool exposure and interpretation, while Alex's deterministic privacy, mutation and tool guards remain authoritative. on is a legacy alias for live. Needs ChatGPT plan mode shadow_only or primary and a signed-in plan.
   income_profiles:
     name: Income profiles
     description: Stable fixed/variable income facts. Edit here instead of source code; history is versioned into SQLite.

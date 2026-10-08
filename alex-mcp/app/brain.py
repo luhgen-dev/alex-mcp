@@ -3711,14 +3711,26 @@ async def _apply_ai_route(trace: dict, tools: list[dict], user_text: str,
         _, block = _contextual_tool_hints(user_text, prior_user_text)
         block = set(block) | set(_routing_refinements(user_text)[1])
         allow_writes = _trusted_mutation_requested(user_text)
-        names = [
+        proposed_names = [
             n for n in choice.get("tools") or []
-            if n not in block and n != DISCOVERY_TOOL_NAME
+            if n != DISCOVERY_TOOL_NAME
+        ]
+        names = [
+            n for n in proposed_names
+            if n not in block
             and (allow_writes or not _is_mutating_tool(n))
         ]
         trace["ai_route"]["applied"] = list(names)
         if not names:
             return tools
+        # v0.5.36: only pass the structured language hint when deterministic
+        # safety accepted the router's complete proposed tool set. If a write or
+        # blocked tool was filtered, the possibly-conflicting semantics stay
+        # diagnostic-only and cannot influence the reasoning model.
+        if set(names) == set(proposed_names):
+            hint = shadow_router.semantic_hint(choice)
+            if hint:
+                trace["ai_route"]["semantic_hint"] = hint
         ai_specs = await _tool_specs_for_names(set(names))
         order = {n: i for i, n in enumerate(names)}
         ai_specs.sort(key=lambda s: order.get(s["function"]["name"], 99))
@@ -3940,6 +3952,12 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
     trusted_quote = _quoted_context_message(quoted_context)
     if trusted_quote:
         messages.append({"role": "system", "content": trusted_quote})
+
+    semantic_route_hint = str(
+        (trace.get("ai_route") or {}).get("semantic_hint") or ""
+    ).strip()
+    if semantic_route_hint:
+        messages.append({"role": "system", "content": semantic_route_hint})
 
     current = (model_user_text or "").strip()
     if media_context:

@@ -1,5 +1,5 @@
 name: "Alex MCP"
-version: "0.5.35"
+version: "0.5.36"
 slug: "alex_mcp"
 description: "MCP-first household assistant — natural WhatsApp conversation, deterministic tools, receipts, reminders and memory"
 arch:
@@ -74,7 +74,7 @@ schema:
   budget_safety_multiplier: "float(1,10)"
   chatgpt_plan_mode: "list(off|shadow_only|primary)"
   chatgpt_plan_model: "str?"
-  ai_routing: "list(off|on)"
+  ai_routing: "list(off|shadow|live|on)"
   income_profiles:
     - id: str
       owner: "list(husband|wife)"
