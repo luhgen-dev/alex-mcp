@@ -702,9 +702,6 @@ CREATE TABLE IF NOT EXISTS pending_error_reports (
     FOREIGN KEY(user_id) REFERENCES users(user_id),
     FOREIGN KEY(target_outbound_id) REFERENCES outbound_messages(outbound_id)
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_pending_error_draft
-ON pending_error_reports(error_draft_id)
-WHERE error_draft_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS user_reported_errors (
     error_id TEXT PRIMARY KEY,
