@@ -136,6 +136,17 @@ class V0538ReliabilityTests(unittest.TestCase):
         self.assertIn(b"%%EOF", payload[-256:])
         self.assertFalse(os.path.exists(path + ".tmp"))
 
+    def test_direct_finance_pdf_route_keeps_export_and_avoids_snapshot(self):
+        force, block = core.brain._routing_refinements(
+            "Generate my September 2026 finance report as PDF"
+        )
+        self.assertIn("report_export", force)
+        self.assertIn("report_snapshot", block)
+        names = core.brain._select_tool_names(
+            "Generate my September 2026 finance report as PDF"
+        )
+        self.assertIn("report_export", names)
+
     def test_normal_finance_pdf_passes_validation(self):
         report = {
             "period": "2026-09",
