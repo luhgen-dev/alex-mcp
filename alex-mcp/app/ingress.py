@@ -1761,44 +1761,10 @@ def process(payload: dict) -> dict:
         db.touch_inbound_processing(payload["message_id"])
 
         # User-reported behavioural errors are object-bound at every step.
-        # Starting requires a swipe-reply to the wrong Alex message. If Alex
-        # needs an explanation, its prompt is itself a durable/pinned object and
-        # only a swipe-reply to that exact prompt may complete or cancel it.
-        is_error_command, inline_explanation = _error_report_command(
-            turn["intent_text"]
-        )
+        # A reply to the exact pending prompt has priority over the "start a
+        # report" vocabulary, so an explanation such as "this was wrong
+        # because..." cannot accidentally start a second incident.
         pending_error = diagnostics.pending_user_error_report(actor)
-        if is_error_command:
-            if not quoted_context or not quoted_context.get("outbound_id"):
-                return _finish_simple_turn(
-                    actor,
-                    "Swipe-reply to the Alex message that was wrong, then say “Mark this as error.”",
-                    error_report=True,
-                )
-            if inline_explanation:
-                recorded = diagnostics.complete_user_error_report(
-                    actor, inline_explanation, quoted_context
-                )
-                return _finish_simple_turn(
-                    actor,
-                    f"Marked as {recorded['error_id']}. Diagnostic evidence is saved; I did not retry or undo anything.",
-                    error_report=True,
-                )
-            started = diagnostics.begin_user_error_report(actor, quoted_context)
-            if started.get("status") == "already_pending":
-                return _finish_simple_turn(
-                    actor,
-                    "You already have an unresolved error report in this chat. Reply to the pinned “What was wrong?” message, or cancel that report first.",
-                    error_report=True,
-                )
-            return _finish_simple_turn(
-                actor,
-                "What was wrong? Reply to this message with what happened and what you expected.",
-                context_kind="ERROR_REPORT_DRAFT",
-                context_id=started["error_draft_id"],
-                error_report=True,
-            )
-
         quoted_error_draft = (
             str(quoted_context.get("context_id") or "")
             if quoted_context
@@ -1832,6 +1798,49 @@ def process(payload: dict) -> dict:
                     f"Marked as {recorded['error_id']}. Diagnostic evidence is saved; I did not retry or undo anything.",
                     error_report=True,
                 )
+
+        # Starting a new report requires a swipe-reply to the wrong Alex
+        # message. One unresolved report per user/chat keeps the visible
+        # pinned workflow unambiguous.
+        is_error_command, inline_explanation = _error_report_command(
+            turn["intent_text"]
+        )
+        if is_error_command:
+            if not quoted_context or not quoted_context.get("outbound_id"):
+                return _finish_simple_turn(
+                    actor,
+                    "Swipe-reply to the Alex message that was wrong, then say “Mark this as error.”",
+                    error_report=True,
+                )
+            if pending_error:
+                return _finish_simple_turn(
+                    actor,
+                    "You already have an unresolved error report in this chat. Reply to the pinned “What was wrong?” message, or cancel that report first.",
+                    error_report=True,
+                )
+            if inline_explanation:
+                recorded = diagnostics.complete_user_error_report(
+                    actor, inline_explanation, quoted_context
+                )
+                return _finish_simple_turn(
+                    actor,
+                    f"Marked as {recorded['error_id']}. Diagnostic evidence is saved; I did not retry or undo anything.",
+                    error_report=True,
+                )
+            started = diagnostics.begin_user_error_report(actor, quoted_context)
+            if started.get("status") == "already_pending":
+                return _finish_simple_turn(
+                    actor,
+                    "You already have an unresolved error report in this chat. Reply to the pinned “What was wrong?” message, or cancel that report first.",
+                    error_report=True,
+                )
+            return _finish_simple_turn(
+                actor,
+                "What was wrong? Reply to this message with what happened and what you expected.",
+                context_kind="ERROR_REPORT_DRAFT",
+                context_id=started["error_draft_id"],
+                error_report=True,
+            )
 
         # A pending report never steals an unrelated message. The user must
         # reply to the pinned error prompt, so normal household work continues.
