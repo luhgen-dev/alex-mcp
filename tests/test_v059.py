@@ -22,10 +22,6 @@ class V059LiveRegressionTests(unittest.TestCase):
         conn = db.connect()
         try:
             for table in (
-                # v0.5.37 diagnostics reference the exact outbound/inbound turn,
-                # so clear those dependent rows before the legacy v0.5.9 fixture
-                # removes their parents.
-                "pending_error_reports", "user_reported_errors",
                 "outbound_messages", "reminder_handoffs", "reminder_claim_events",
                 "reminder_events", "reminders", "pending_items", "inbound_messages",
                 "tool_audit", "tool_execution_claims",
