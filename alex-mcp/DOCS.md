@@ -103,6 +103,68 @@ Safety remains deterministic in every mode. The semantic model cannot grant writ
 
 The Web UI **Semantic router** card shows recent structured interpretations, tools, slots, confidence and median router latency. Rows are kept for 30 days. Photo, document and voice-note turns and plain chit-chat are not live-routed.
 
+
+## Architecture direction: thin Alex + specialist local services
+
+This is the locked direction for future expansion. Alex should remain the household-facing orchestrator rather than becoming the place where every domain stores, calculates, monitors and renders its own data.
+
+**Alex owns:**
+
+- authenticated identity, privacy/ACL enforcement and trusted context;
+- natural-language understanding and safe intent/tool routing;
+- orchestration between specialist services;
+- WhatsApp conversation, progress/acknowledgement messages and final delivery.
+
+**Specialist local services own:**
+
+- domain-specific authoritative storage where appropriate;
+- deterministic calculations, statistics and background monitoring;
+- integration with external/local data sources;
+- report-ready structured data.
+
+A specialist service may run as its own Home Assistant add-on/container on the same Mini PC with explicit CPU/memory limits. Do not split every small feature into a microservice: create a subsystem only when a domain is substantial enough to benefit from independent storage, background work or deterministic computation. Alex must continue to work as the front door even as these services grow.
+
+### Shared report renderer
+
+PDF/image generation is a separate reusable subsystem, not work for the Alex brain and not a different renderer per domain.
+
+The report path is:
+
+`Alex request -> domain service -> trusted structured data -> report service -> fixed/versioned template -> PDF/PNG -> Alex -> WhatsApp`
+
+Rules:
+
+- Templates are deterministic and versioned (for example `expense_monthly_v1`, `fitness_monthly_v1`, `home_status_card_v1`).
+- Re-running the same template for another month changes the data, not the design.
+- Luna may help understand the request, but it does not invent the report layout on every run.
+- The renderer should prefer a free/self-hosted existing engine behind a small adapter. A Chromium/HTML renderer such as Gotenberg is the current leading candidate, but the architecture must not depend on one vendor before real deployment testing.
+- The same renderer should serve the pending **Expense PDF** and **Home Status Card**, and later Fitness/Health reports and other domains.
+- Heavy rendering may run asynchronously; Alex can acknowledge the request and deliver the finished file when the report service returns it.
+
+### Fitness/Health subsystem — next major direction
+
+Fitness/Health is the highest-priority planned subsystem after the current production validation.
+
+Its first responsibility is an authoritative **Alex workout ledger**, independent of Samsung Health:
+
+- workout programmes/templates and numbered exercises;
+- active workout sessions;
+- sets, reps, weights and exercise-specific fields;
+- corrections, notes, skipped exercises and completion state;
+- workout history, progression, PRs and deterministic statistics.
+
+WhatsApp is the primary logging interface. A user should be able to start a workout, receive the numbered template and log terse follow-ups such as `1, 80kg, 12 reps` without retyping exercise names. Planned data and performed data must remain distinct and traceable.
+
+Samsung Health is an enrichment/presentation ecosystem, not the sole workout source of truth. The preferred bridge is Samsung Health -> Android Health Connect -> Home Assistant/local Fitness service where supported. Health data such as sleep, weight/body composition, heart rate/HRV, steps and other available measurements can be retrieved on demand or used for wellness-oriented summaries. Alex must not diagnose medical conditions or invent missing measurements.
+
+The Fitness service should perform background analytics independently of Alex and expose a small deterministic tool/API surface. Alex fetches results when asked. Future reports use the shared report renderer rather than adding a fitness-specific PDF engine.
+
+If bidirectional Health Connect/Samsung Health writing is later added, Alex's own ledger remains the complete authoritative workout record until real-device testing proves exactly which fields Samsung Health preserves and renders.
+
+### Lower-priority future integration: marketplace order watcher
+
+The previously discussed Shopee/Lazada/TikTok Shop order watcher remains a useful future idea but is lower priority than Fitness/Health. The intended experience is: identify an order from user-supplied proof such as an order screenshot, retain the marketplace/order identity, monitor status through a reliable authenticated source when feasible, then switch to courier tracking once available. Do not depend on phone notifications as the primary source and never guess an order state when the marketplace cannot be checked.
+
 ## Provider switching
 
 Changing Auto ↔ Grok ↔ Gemini ↔ OpenAI is an app setting. The MCP tools and household database do not change. Manual provider modes intentionally disable automatic cross-provider fallback so you can pin Alex to one provider when testing.
