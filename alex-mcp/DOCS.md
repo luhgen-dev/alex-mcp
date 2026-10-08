@@ -53,6 +53,27 @@ In the bound Family Shared group, Alex responds only when explicitly @mentioned 
 
 Swipe replies are bound locally to the exact Alex message in the same conversation. For attachments, Alex uses caption first, then explicit quoted-reply context, then a short same-sender recent-instruction pairing when the attachment has no caption.
 
+
+### Ordered conversations and reply binding (0.5.37)
+
+Each WhatsApp conversation has its own FIFO processing lane. Messages and reactions from the same DM/group are completed in arrival order, so a rapid dependent follow-up cannot overtake the request that establishes its context. Different conversations remain independent and may run concurrently.
+
+Immediate replies are anchored to the exact inbound WhatsApp message that caused them whenever WhatsApp permits it. This remains durable across a Node/add-on restart by reconstructing the minimum quoted-message envelope from locally stored inbound provenance. Delayed scheduler/monitor/recovery messages do not quote an old command.
+
+This means rapid logging is supported as a queueing pattern: the user does not need to wait for Alex's previous reply before sending the next message. Alex preserves per-chat order and the eventual replies visibly identify which request they answer.
+
+### User-reported errors / diagnostic flight recorder (0.5.37)
+
+Behavioural bug reports are deterministic and never delegated to the model.
+
+1. Swipe-reply to the Alex message that was wrong and say **Mark this as error** (bounded variants such as **This was wrong** are accepted).
+2. If the explanation was not included inline, Alex replies **What was wrong? Reply to this message with what happened and what you expected.**
+3. That prompt carries the unresolved ⏳ + pin. The explanation is accepted only as a swipe-reply to that exact prompt; an unrelated later message continues as normal household work.
+4. Completing or explicitly cancelling the report removes the unresolved markers. Only one unfinished report may exist per user/conversation, so starting another cannot overwrite the first.
+5. A completed report gets an `ALEX-XXXXXXXX` identifier. In the owner's private DM, `Export ALEX-XXXXXXXX` returns a redacted JSON engineering bundle.
+
+The diagnostic bundle is designed to localise a fault without reconstructing the whole system manually. It records the input/context path, semantic-router decision when present, brain trace, tools and mutation state, provider usage/timing, outbox delivery, WhatsApp control evidence, machine errors, the user's explanation, app version/build metadata and a local source fingerprint. It never retries or undoes the reported household action. Alex can record bridge/control evidence but cannot prove how pixels rendered in the user's WhatsApp client, so a phone screenshot can still occasionally be useful for a client-only display defect.
+
 ### Provider circuit breaker (0.5.33)
 
 If a provider fails provider-wide (quota or rate limit, sign-in/key rejected, billing block, outage or connection error), Alex skips it for a short cool-down (1–15 minutes depending on the failure) so the next messages go straight to a working fallback instead of repeating the failed call first. If every configured provider is cooling down, Alex still tries them all, so it is never left with no route. A successful **Test AI now** re-opens a cooled-down provider immediately.
