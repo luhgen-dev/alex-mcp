@@ -63,7 +63,10 @@ class V0534Base(base.V0533Base):
 class SettingsAndGateTests(V0534Base):
     def test_default_is_off_and_bad_values_fall_back_to_off(self):
         self.assertEqual(Settings().ai_routing, "off")
-        for raw, expected in (("on", "on"), ("ON ", "on"), ("maybe", "off"), (None, "off")):
+        for raw, expected in (
+            ("on", "live"), ("ON ", "live"), ("live", "live"),
+            ("shadow", "shadow"), ("maybe", "off"), (None, "off"),
+        ):
             with patch.object(app_config, "_read_options", return_value={"ai_routing": raw}):
                 self.assertEqual(app_config.get_settings().ai_routing, expected)
 
