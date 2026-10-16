@@ -372,8 +372,9 @@ class ReplyBindingAndMarkersTests(V0537Base):
                 outbox._reconcile_error_report_markers(conn)
             finally:
                 conn.close()
-        self.assertEqual([x["kind"] for x in sent], ["reaction", "unpin"])
-        self.assertEqual(sent[0]["emoji"], "")
+        # Unpin must remain possible even when cosmetic reaction removal fails.
+        self.assertEqual([x["kind"] for x in sent], ["unpin", "reaction"])
+        self.assertEqual(sent[1]["emoji"], "")
 
 
 class DiagnosticBundleTests(V0537Base):

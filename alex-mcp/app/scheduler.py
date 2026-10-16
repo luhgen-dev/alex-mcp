@@ -54,7 +54,8 @@ def _presence_state(phone: str) -> str:
     return "unknown"
 
 
-def _delivery_decision(conn, row, now: datetime) -> dict:
+def _delivery_decision(conn, row, now: datetime,
+                       presence_states: dict | None = None) -> dict:
     if row["delivery_class"] == "time_critical":
         return {"decision": "DELIVER", "reason": "TIME_CRITICAL"}
     phone = _owner_phone(conn, row["owner_id"])
@@ -69,7 +70,12 @@ def _delivery_decision(conn, row, now: datetime) -> dict:
         }
     if row["presence_aware"]:
         pref["presence_aware"] = True
-    presence = _presence_state(phone) if pref.get("presence_aware") else "unknown"
+    presence = "unknown"
+    if pref.get("presence_aware"):
+        presence = (
+            presence_states.get(phone, "unknown")
+            if presence_states is not None else _presence_state(phone)
+        )
     try:
         local_now = now.astimezone(ZoneInfo(row["timezone_name"]))
     except Exception:
@@ -77,6 +83,41 @@ def _delivery_decision(conn, row, now: datetime) -> dict:
     return phase2_presence.delivery_decision(
         pref, presence, local_now, row["delivery_class"] or "routine"
     )
+
+
+def _presence_snapshot(conn, now: datetime) -> dict[str, str]:
+    """Fetch relevant HA presence before taking SQLite's single writer lock.
+
+    Reminder rows are selected again under the transaction. A newly eligible
+    owner missing from this snapshot uses unknown presence and safely defers.
+    No network call is permitted inside the scheduling write transaction.
+    """
+    rows = conn.execute(
+        """SELECT owner_id,claimed_by_user_id,status,presence_aware
+           FROM reminders WHERE delivery_class!='time_critical' AND (
+             (status IN ('OPEN','DEFERRED') AND due_at_utc<=?
+              AND (next_delivery_at_utc IS NULL OR next_delivery_at_utc<=?))
+             OR (status='DUE' AND claimable=1 AND claimed_by_user_id IS NOT NULL
+                 AND claimant_follow_up_at_utc IS NULL AND next_delivery_at_utc<=?)
+             OR (status='ACK' AND follow_up_after_hours>0
+                 AND (last_follow_up_at_utc IS NULL OR last_follow_up_at_utc<acknowledged_at_utc)
+                 AND datetime(acknowledged_at_utc,'+' || follow_up_after_hours || ' hours')<=datetime(?)
+                 AND (next_delivery_at_utc IS NULL OR next_delivery_at_utc<=?))
+           )""", (now.isoformat(),) * 5,
+    ).fetchall()
+    states = {}
+    for row in rows:
+        owner = row["claimed_by_user_id"] if row["status"] == "DUE" else row["owner_id"]
+        phone = _owner_phone(conn, owner)
+        if not phone or phone in states:
+            continue
+        try:
+            pref = phase2_presence.owner_preference(phone, "DIRECT_DM")
+        except Exception:
+            pref = {}
+        if row["presence_aware"] or pref.get("presence_aware"):
+            states[phone] = _presence_state(phone)
+    return states
 
 
 def _queue_to(conn, conversation_id: str, reminder_id: str,
@@ -125,6 +166,7 @@ def fire_due():
     now = runtime_clock.now_utc()
     conn = connect()
     try:
+        presence_states = _presence_snapshot(conn, now)
         conn.execute("BEGIN IMMEDIATE")
         rows = conn.execute(
             """SELECT * FROM reminders
@@ -136,7 +178,7 @@ def fire_due():
         ).fetchall()
 
         for row in rows:
-            decision = _delivery_decision(conn, row, now)
+            decision = _delivery_decision(conn, row, now, presence_states)
             if decision.get("decision") != "DELIVER":
                 next_try = (now + timedelta(minutes=15)).isoformat()
                 conn.execute(
@@ -232,7 +274,7 @@ def fire_due():
             claimant_conversation = claimant_phone.replace("+", "") + "@s.whatsapp.net"
             decision_row = dict(row)
             decision_row["owner_id"] = row["claimed_by_user_id"]
-            decision = _delivery_decision(conn, decision_row, now)
+            decision = _delivery_decision(conn, decision_row, now, presence_states)
             if decision.get("decision") != "DELIVER":
                 conn.execute(
                     """UPDATE reminders SET next_delivery_at_utc=?,defer_reason=?
@@ -328,7 +370,7 @@ def fire_due():
                         continue
                 except Exception:
                     pass
-            decision = _delivery_decision(conn, row, now)
+            decision = _delivery_decision(conn, row, now, presence_states)
             if decision.get("decision") != "DELIVER":
                 conn.execute(
                     "UPDATE reminders SET next_delivery_at_utc=?,defer_reason=? WHERE reminder_id=?",

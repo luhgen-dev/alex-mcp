@@ -16,7 +16,9 @@ export class ConversationQueue {
     const previous = this.tails.get(lane) || Promise.resolve();
     const run = previous.catch(() => undefined).then(() => task());
     let tail;
-    tail = run.finally(() => {
+    // The caller owns `run` and observes its error. The internal scheduling
+    // tail must always resolve, even if this is the last message in the lane.
+    tail = run.catch(() => undefined).finally(() => {
       if (this.tails.get(lane) === tail) this.tails.delete(lane);
     });
     this.tails.set(lane, tail);

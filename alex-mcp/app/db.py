@@ -418,6 +418,9 @@ def resolve_actor(phone: str, conversation_id: str, conversation_type: str,
 def claim_inbound(payload: dict) -> str:
     conn = connect()
     try:
+        # Serialize check + claim across ingress threads/transport redelivery.
+        # Without this, two workers can both reclaim the same stale message.
+        conn.execute("BEGIN IMMEDIATE")
         existing = conn.execute(
             """SELECT processing_state,cached_response,attempt_count,processing_started_at_utc,last_error
                FROM inbound_messages WHERE message_id=?""",

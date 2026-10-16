@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.39
+Reliability audit repairs, preserving the existing household architecture.
+- Semantic-router timeout now releases the request's event loop promptly. At most two optional router calls may remain in flight; busy/late workers fall back without queueing more model calls.
+- Per-conversation FIFO handles an isolated rejected task without an unhandled internal promise rejection.
+- Pin/unpin operations take priority over cosmetic hourglass controls. A previously exhausted reaction retry budget cannot disable a later unpin; control retries remain bounded. Delivered-document cleanup retries after startup using the existing backoff.
+- Home Assistant due notifications deduplicate per due occurrence, so daily and snoozed reminders can notify again. Pending due/follow-up notifications for completed or cancelled reminders are suppressed after transport recovery.
+- Presence checks run before the scheduler takes SQLite's writer lock, with reminder state re-read inside the transaction before queueing delivery.
+- Inbound message claims serialize the lease check and update, preventing simultaneous redelivery from reclaiming one stale message twice.
+- Adds failure-path/concurrency regressions. Four older assertions now expect unpin before reaction removal; their lifecycle assertions remain intact.
+
 ## 0.5.38
 Pre-live reminder-marker and report-export reliability hardening.
 - Unresolved reminder pinning now treats the WhatsApp pin as the primary invariant. Alex attempts the pin independently and before the secondary ⏳ reaction, so a transient reaction-control failure can no longer prevent the reminder from being pinned. Existing completion/cancellation lifecycle remains authoritative; acknowledgement alone does not close an unresolved reminder.

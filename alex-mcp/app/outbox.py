@@ -186,8 +186,12 @@ def _control_outbound(row, kind: str, emoji: str | None = None) -> bool:
     return _control_outbound_result(row, kind, emoji)[0]
 
 
-def _control_retry_ready(row) -> bool:
+def _control_retry_ready(row, kind: str | None = None) -> bool:
     """Whether this row may make another WhatsApp marker control attempt now."""
+    if kind and kind != _row_value(row, "job_control_last_kind"):
+        # Moving from setup to cleanup starts a new bounded operation. A
+        # failed cosmetic reaction must not permanently disable an unpin.
+        return True
     if _row_value(row, "job_control_failed_at_utc"):
         return False
     next_at = _row_value(row, "job_control_next_attempt_at_utc")
@@ -221,7 +225,11 @@ def _record_control_attempt(conn, row, kind: str,
         conn.commit()
         return True
 
-    attempts = int(_row_value(row, "job_control_attempts", 0) or 0) + 1
+    previous = (
+        int(_row_value(row, "job_control_attempts", 0) or 0)
+        if kind == _row_value(row, "job_control_last_kind") else 0
+    )
+    attempts = previous + 1
     error = str(detail or "WhatsApp control failed")[:1000]
     failed_at = _now() if attempts >= CONTROL_MAX_ATTEMPTS else None
     if failed_at:
@@ -257,7 +265,7 @@ def _record_control_attempt(conn, row, kind: str,
 
 def _attempt_control(conn, row, kind: str, emoji: str | None = None,
                      *, outbound: bool = False) -> bool:
-    if not _control_retry_ready(row):
+    if not _control_retry_ready(row, kind):
         return False
     ok, detail = (
         _control_outbound_result(row, kind, emoji)
@@ -417,6 +425,8 @@ def _ensure_claim_setup_markers(conn, row) -> None:
             )
             conn.commit()
             row = _joined_row(conn, row["outbound_id"])
+        else:
+            return  # keep the pin's bounded retry state until it succeeds
 
     if not row["job_reacted_at_utc"]:
         if _attempt_control(conn, row, "reaction", "⏳", outbound=True):
@@ -431,6 +441,17 @@ def _ensure_claim_setup_markers(conn, row) -> None:
 def _cleanup_claim_setup_markers(conn, row) -> None:
     """Clear the pre-due claim marker once claimed, due, cancelled, or complete."""
     now = _now()
+    if row["job_pinned_at_utc"] and not row["job_unpinned_at_utc"]:
+        if not _attempt_control(conn, row, "unpin", outbound=True):
+            return
+        conn.execute(
+            """UPDATE outbound_messages
+               SET job_unpinned_at_utc=?,job_unpin_failed_at_utc=NULL
+               WHERE outbound_id=?""", (now, row["outbound_id"]),
+        )
+        conn.commit()
+        row = _joined_row(conn, row["outbound_id"])
+
     if row["job_reacted_at_utc"] and not row["job_reaction_cleared_at_utc"]:
         if _attempt_control(conn, row, "reaction", "", outbound=True):
             conn.execute(
@@ -442,16 +463,6 @@ def _cleanup_claim_setup_markers(conn, row) -> None:
             row = _joined_row(conn, row["outbound_id"])
         else:
             return
-
-    if row["job_pinned_at_utc"] and not row["job_unpinned_at_utc"]:
-        if _attempt_control(conn, row, "unpin", outbound=True):
-            conn.execute(
-                """UPDATE outbound_messages
-                   SET job_unpinned_at_utc=?,job_unpin_failed_at_utc=NULL
-                   WHERE outbound_id=?""",
-                (now, row["outbound_id"]),
-            )
-            conn.commit()
 
 
 def _reconcile_claim_setup_markers(conn) -> None:
@@ -606,6 +617,15 @@ def _ensure_unresolved_markers(conn, row) -> None:
     if not managed or not row["source_message_id"]:
         return
     now = _now()
+    if not row["job_pinned_at_utc"]:
+        if not _attempt_control(conn, row, "pin"):
+            return
+        conn.execute(
+            """UPDATE outbound_messages SET job_pinned_at_utc=?,job_pin_target='SOURCE'
+               WHERE outbound_id=?""", (now, row["outbound_id"]),
+        )
+        conn.commit()
+        row = _joined_row(conn, row["outbound_id"])
     if not row["job_reacted_at_utc"]:
         if _attempt_control(conn, row, "reaction", "⏳"):
             conn.execute(
@@ -616,15 +636,6 @@ def _ensure_unresolved_markers(conn, row) -> None:
             row = _joined_row(conn, row["outbound_id"])
         else:
             return
-    if not row["job_pinned_at_utc"]:
-        if _attempt_control(conn, row, "pin"):
-            conn.execute(
-                """UPDATE outbound_messages
-                   SET job_pinned_at_utc=?,job_pin_target='SOURCE'
-                   WHERE outbound_id=?""",
-                (now, row["outbound_id"]),
-            )
-            conn.commit()
 
 
 def _cleanup_resolved_markers(conn, row) -> None:
@@ -633,6 +644,16 @@ def _cleanup_resolved_markers(conn, row) -> None:
     if not managed or not row["source_message_id"]:
         return
     now = _now()
+    if row["job_pinned_at_utc"] and not row["job_unpinned_at_utc"]:
+        outbound_pin = str(_row_value(row, "job_pin_target") or "").upper() == "OUTBOUND"
+        if not _attempt_control(conn, row, "unpin", outbound=outbound_pin):
+            return
+        conn.execute(
+            """UPDATE outbound_messages SET job_unpinned_at_utc=?,job_unpin_failed_at_utc=NULL
+               WHERE outbound_id=?""", (now, row["outbound_id"]),
+        )
+        conn.commit()
+        row = _joined_row(conn, row["outbound_id"])
     if row["job_reacted_at_utc"] and not row["job_reaction_cleared_at_utc"]:
         if _attempt_control(conn, row, "reaction", ""):
             conn.execute(
@@ -643,16 +664,6 @@ def _cleanup_resolved_markers(conn, row) -> None:
             row = _joined_row(conn, row["outbound_id"])
         else:
             return
-    if row["job_pinned_at_utc"] and not row["job_unpinned_at_utc"]:
-        outbound_pin = str(_row_value(row, "job_pin_target") or "").upper() == "OUTBOUND"
-        if _attempt_control(conn, row, "unpin", outbound=outbound_pin):
-            conn.execute(
-                """UPDATE outbound_messages
-                   SET job_unpinned_at_utc=?,job_unpin_failed_at_utc=NULL
-                   WHERE outbound_id=?""",
-                (now, row["outbound_id"]),
-            )
-            conn.commit()
 
 
 def _queue_document_notice(conn, row, permanent: bool = False) -> None:
@@ -708,6 +719,29 @@ def _reconcile_managed_jobs(conn) -> None:
                 conn, _joined_row(conn, row["outbound_id"]),
                 permanent=row["delivery_status"] == "FAILED",
             )
+
+
+def _retry_delivered_document_cleanup(conn) -> None:
+    """Retry only due cleanup for delivered documents, without hot-looping.
+
+    Startup reconciliation alone cannot recover an unpin that fails after
+    startup. Limit each sweep and select only unfinished, retryable controls;
+    permanently failed controls remain visible in diagnostics.
+    """
+    rows = conn.execute(
+        """SELECT outbound_id FROM outbound_messages
+           WHERE kind='DOCUMENT' AND delivery_status='SENT' AND source_message_id IS NOT NULL
+             AND ((job_pinned_at_utc IS NOT NULL AND job_unpinned_at_utc IS NULL)
+                  OR (job_reacted_at_utc IS NOT NULL AND job_reaction_cleared_at_utc IS NULL))
+             AND (COALESCE(job_control_last_kind,'') != CASE
+                    WHEN job_pinned_at_utc IS NOT NULL AND job_unpinned_at_utc IS NULL
+                    THEN 'unpin' ELSE 'reaction' END
+                  OR (job_control_failed_at_utc IS NULL
+                      AND (job_control_next_attempt_at_utc IS NULL OR job_control_next_attempt_at_utc<=?)))
+           ORDER BY rowid LIMIT 10""", (_now(),),
+    ).fetchall()
+    for row in rows:
+        _cleanup_resolved_markers(conn, _joined_row(conn, row["outbound_id"]))
 
 
 def sweep():
@@ -874,6 +908,7 @@ def sweep():
         _reconcile_claim_setup_markers(conn)
         _reconcile_reminder_pins(conn)
         _reconcile_error_report_markers(conn)
+        _retry_delivered_document_cleanup(conn)
 
         # Restart reconciliation is exactly that: restart recovery. Normal
         # document attempts already apply/clean their own markers above. Running

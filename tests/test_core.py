@@ -6893,8 +6893,8 @@ class AlexCoreTests(unittest.TestCase):
 
         self.assertEqual(final["status"], "COMP")
         # ✅ clears both unresolved markers: the ⏳ reaction and the pin.
-        self.assertEqual([p["kind"] for p in controls], ["reaction", "unpin"])
-        self.assertEqual(controls[0].get("emoji"), "")
+        self.assertEqual([p["kind"] for p in controls], ["unpin", "reaction"])
+        self.assertEqual(controls[1].get("emoji"), "")
         self.assertTrue(controls[1]["target_from_me"])
         self.assertIsNotNone(final["job_unpinned_at_utc"])
 
@@ -8086,8 +8086,8 @@ class AlexCoreTests(unittest.TestCase):
         finally:
             conn.close()
 
-        self.assertEqual([x["kind"] for x in controls], ["reaction", "unpin"])
-        self.assertEqual(controls[0]["emoji"], "")
+        self.assertEqual([x["kind"] for x in controls], ["unpin", "reaction"])
+        self.assertEqual(controls[1]["emoji"], "")
         self.assertTrue(controls[0]["target_from_me"])
         self.assertTrue(controls[1]["target_from_me"])
         self.assertEqual(state["claimed_by_user_id"], "USR_HUSBAND")
@@ -8404,13 +8404,13 @@ class AlexCoreTests(unittest.TestCase):
 
         self.assertEqual(
             [x["kind"] for x in controls],
-            ["pin", "reaction", "reaction", "unpin"],
+            ["pin", "reaction", "unpin", "reaction"],
         )
         self.assertEqual(controls[0]["target_message_id"], "wa-v0520-new-card")
         self.assertEqual(controls[1]["emoji"], "⏳")
         self.assertEqual(controls[1]["target_message_id"], "wa-v0520-new-card")
         self.assertEqual(controls[2]["target_message_id"], "wa-v0520-old-card")
-        self.assertEqual(controls[2]["emoji"], "")
+        self.assertEqual(controls[3]["emoji"], "")
         self.assertEqual(controls[3]["target_message_id"], "wa-v0520-old-card")
         self.assertIsNotNone(old_state["job_reaction_cleared_at_utc"])
         self.assertIsNotNone(old_state["job_unpinned_at_utc"])
