@@ -171,6 +171,49 @@ LIVE_TIMEOUT_SECONDS = 6.0
 LIVE_FAIL_LIMIT = 3
 LIVE_PAUSE_SECONDS = 120.0
 _live_state = {"fails": 0, "pause_until": 0.0}
+_LIVE_WORKER_SLOTS = threading.BoundedSemaphore(2)
+
+
+async def _bounded_live_call(call):
+    """Bound optional routing without tying up asyncio.run() shutdown.
+
+    Cancelling to_thread() cannot stop a synchronous network request, and the
+    per-message event loop waits for its default executor on exit. Use bounded
+    daemon workers instead; late results are discarded and saturation falls
+    back immediately, without accumulating queued model calls.
+    """
+    if not _LIVE_WORKER_SLOTS.acquire(blocking=False):
+        raise asyncio.TimeoutError("semantic router workers busy")
+    slots = _LIVE_WORKER_SLOTS
+    loop = asyncio.get_running_loop()
+    future = loop.create_future()
+
+    def deliver(value, error):
+        if not future.done():
+            if error is not None:
+                future.set_exception(error)
+            else:
+                future.set_result(value)
+
+    def worker():
+        value, error = None, None
+        try:
+            value = call()
+        except Exception as exc:
+            error = exc
+        finally:
+            slots.release()
+        try:
+            loop.call_soon_threadsafe(deliver, value, error)
+        except RuntimeError:
+            pass  # the timed-out message's event loop has already closed
+
+    try:
+        threading.Thread(target=worker, daemon=True, name="alex-live-router").start()
+    except Exception:
+        slots.release()
+        raise
+    return await asyncio.wait_for(future, timeout=LIVE_TIMEOUT_SECONDS)
 
 
 def routing_mode(settings=None) -> str:
@@ -247,9 +290,7 @@ async def live_route(text: str, prior_turns: list[dict], quoted_text: str = "",
             choice["model"] = model
             return choice
 
-        choice = await asyncio.wait_for(
-            asyncio.to_thread(_call), timeout=LIVE_TIMEOUT_SECONDS
-        )
+        choice = await _bounded_live_call(_call)
         _live_state["fails"] = 0
         choice["latency_ms"] = int((time.monotonic() - started) * 1000)
         return choice

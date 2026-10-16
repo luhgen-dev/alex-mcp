@@ -63,7 +63,20 @@ async function testFailureDoesNotBlockLane() {
   assert.equal(q.pendingLanes(), 0);
 }
 
+async function testIsolatedFailureDoesNotCreateUnhandledRejection() {
+  const q = new ConversationQueue();
+  await assert.rejects(q.enqueue('dm-a', async () => {
+    throw new Error('isolated failure');
+  }), /isolated failure/);
+  // Give Node a full turn to report a rejected internal tail, with no later
+  // message available to attach a handler to it.
+  await sleep(10);
+  assert.equal(q.pendingLanes(), 0);
+  assert.equal(await q.enqueue('dm-a', async () => 'recovered'), 'recovered');
+}
+
 await testSameConversationIsFifo();
 await testDifferentConversationsCanOverlap();
 await testFailureDoesNotBlockLane();
+await testIsolatedFailureDoesNotCreateUnhandledRejection();
 console.log('conversation queue contract OK');

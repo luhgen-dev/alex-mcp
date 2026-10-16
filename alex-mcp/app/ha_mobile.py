@@ -180,7 +180,10 @@ def queue_assigned_ack(conn, user_id: str, reminder_id: str, task: str, due_loca
 
 def queue_due(conn, row, message: str, phase: str = "due") -> int:
     reminder_id = str(row["reminder_id"])
-    task = str(row["task_text"])
+    # Snoozing or recurrence gives the same reminder another due occurrence.
+    # Retries of one occurrence still collapse to one notification per device.
+    occurrence = str(row["due_at_utc"])
+    event_key = f"{phase}:{reminder_id}:{occurrence}"
     claimed = row["claimed_by_user_id"] if "claimed_by_user_id" in row.keys() else None
     claimable = bool(int(row["claimable"] or 0))
     if claimable and not claimed:
@@ -190,7 +193,7 @@ def queue_due(conn, row, message: str, phase: str = "due") -> int:
         total = 0
         for user_id in ("USR_HUSBAND", "USR_WIFE"):
             total += _queue(
-                conn, user_id, f"{phase}:{reminder_id}:shared-due",
+                conn, user_id, f"{event_key}:shared-due",
                 message,
                 reminder_id=reminder_id, tag=f"alex-reminder-{reminder_id}",
                 actions=[
@@ -201,7 +204,7 @@ def queue_due(conn, row, message: str, phase: str = "due") -> int:
         return total
     target = str(claimed or row["owner_id"])
     return _queue(
-        conn, target, f"{phase}:{reminder_id}",
+        conn, target, event_key,
         message,
         reminder_id=reminder_id, tag=f"alex-reminder-{reminder_id}",
         actions=[
@@ -288,6 +291,23 @@ def sweep() -> None:
             (now,),
         ).fetchall()
         for row in rows:
+            # Do not send stale due/follow-up notifications after an outage.
+            # Status confirmations and handoff/info messages retain their own
+            # semantics. Prefixes also recognize queues from older releases.
+            if row["reminder_id"] and str(row["event_key"]).startswith((
+                "due:", "unclaimed-followup:", "claimant-followup:", "ack-followup:",
+            )):
+                reminder = conn.execute(
+                    "SELECT status FROM reminders WHERE reminder_id=?", (row["reminder_id"],)
+                ).fetchone()
+                if not reminder or reminder["status"] in {"COMP", "CANC"}:
+                    conn.execute(
+                        """UPDATE ha_notification_outbox SET delivery_status='FAILED',
+                           last_error='cancelled_before_delivery',next_attempt_at_utc=NULL
+                           WHERE notification_id=?""", (row["notification_id"],),
+                    )
+                    conn.commit()
+                    continue
             attempts = int(row["attempt_count"] or 0) + 1
             try:
                 data = json.loads(row["data_json"] or "{}")
