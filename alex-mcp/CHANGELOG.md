@@ -1,3 +1,13 @@
+## 0.5.43 — repair dot/WhatsApp listener coexistence
+
+- Fix the confirmed port collision: existing WhatsApp egress retains loopback
+  5002; dot uses dedicated loopback 5012 and tunnel health 5013 consistently.
+- Fix reproduced concurrent status-write FileNotFoundError using writer-owned
+  atomic staging files. Cleanup status errors no longer mask startup errors.
+- Test real egress and uvicorn sockets concurrently in the final HA image,
+  authenticated discovery, disable/restart lifecycle and tunnel endpoint args.
+  Outbound tunnel/cloud operations remain disabled in this test.
+
 ## 0.5.42 — precise private setup failure codes
 
 - Distinguish saved ID/key format categories from private bridge-file type,

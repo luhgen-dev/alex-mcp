@@ -247,3 +247,21 @@ HA options are reread from its options JSON; no key cache is introduced. Tests
 cover real options field mapping and a subsequent saved change. An incorrect or
 unsaved value cannot be diagnosed remotely without the new code; a key that
 starts with sk- is not by itself proof of complete saved configuration.
+
+### Listener coexistence repair (0.5.43)
+
+The earlier dot adapter incorrectly reused the established WhatsApp egress port
+5002. This was an implementation defect, not a runtime-key problem. Existing
+egress/outbox remains on 127.0.0.1:5002; dot now uses 127.0.0.1:5012 and tunnel
+health uses 127.0.0.1:5013. No public port mapping or HA configuration change is
+needed. The authenticated resource and tunnel arguments use the same constants.
+
+Concurrent drain/shutdown status writes also reproduced FileNotFoundError with
+the old shared staging filename. Each writer now owns a unique atomic staging
+file, and failure to write stopped status cannot mask the original failure.
+
+The final-image test runs real production egress and uvicorn HTTP listeners,
+authenticated discovery, independent local health socket, configuration disable
+and restart. Only the outbound tunnel process is replaced with an offline local
+health stand-in; no WhatsApp account is linked and no cloud service is contacted.
+This proves local coexistence, not live tunnel/plugin/WhatsApp completion.

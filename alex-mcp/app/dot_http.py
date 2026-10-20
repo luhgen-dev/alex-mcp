@@ -11,6 +11,7 @@ import asyncio
 import json
 from urllib.parse import urlsplit
 
+from dot_ports import DOT_RESOURCE
 from dot_bridge import BridgeError
 from dot_events import EventError, event_definition
 
@@ -214,7 +215,7 @@ def create_tunnel_app(bridge, *, credential_path, owner_subject):
     if not credential.isascii() or not 43 <= len(credential) <= 4096 or any(c.isspace() for c in credential):
         raise ValueError("dedicated high-entropy tunnel credential is required")
     issuer = "urn:alex:private-tunnel"
-    resource = "http://127.0.0.1:5002/mcp/"
+    resource = DOT_RESOURCE
 
     class LocalTunnelVerifier:
         async def verify_token(self, token):

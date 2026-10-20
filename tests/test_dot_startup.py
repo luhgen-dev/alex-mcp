@@ -43,7 +43,7 @@ class StartupTests(unittest.TestCase):
             self.assertTrue(process.called)
             self.assertTrue(server.called)
             command = process.call_args.args[0]
-            self.assertIn('--mcp.server-url=http://127.0.0.1:5002/mcp/', command)
+            self.assertIn('--mcp.server-url=http://127.0.0.1:5012/mcp/', command)
             self.assertNotIn(s.dot_tunnel_runtime_key, repr(process.call_args))
             self.assertTrue(Path(d, 'dot_events.db').exists())
 
@@ -127,6 +127,156 @@ class StartupTests(unittest.TestCase):
             runtime.run_service()
             self.assertIn(runtime.PRIVATE_HINTS['DOT_BRIDGE_MODE'], output.getvalue())
             self.assertNotIn('sk-', output.getvalue())
+
+    def test_dot_ports_do_not_overlap_existing_service_contracts(self):
+        import re
+        from dot_ports import DOT_PORT, DOT_HEALTH_PORT, DOT_RESOURCE
+        app_dir = Path(runtime.__file__).parent
+        node = (app_dir/'connect.js').read_text()
+        ingress = (app_dir/'ingress.py').read_text()
+        egress_port = int(re.search(r'const EGRESS_PORT = (\d+);', node).group(1))
+        ui_port = int(re.search(r'const UI_PORT = (\d+);', node).group(1))
+        ingress_port = int(re.search(r'^PORT = (\d+)', ingress, re.M).group(1))
+        self.assertEqual(len({egress_port,ui_port,ingress_port,DOT_PORT,DOT_HEALTH_PORT}),5)
+        self.assertIn(f'127.0.0.1:{egress_port}/send', (app_dir/'outbox.py').read_text())
+        self.assertEqual(DOT_RESOURCE, f'http://127.0.0.1:{DOT_PORT}/mcp/')
+
+    def test_concurrent_status_writers_have_independent_staging_files(self):
+        import threading
+        barrier = threading.Barrier(2)
+        original = os.replace
+        errors = []
+        def replace(src, dst):
+            barrier.wait(timeout=3)
+            return original(src, dst)
+        def write(state):
+            try: runtime.write_status(state)
+            except Exception as exc: errors.append(type(exc).__name__)
+        with tempfile.TemporaryDirectory() as d, patch.object(runtime, 'DATA_DIR', d), \
+             patch.object(runtime.os, 'replace', side_effect=replace):
+            threads = [threading.Thread(target=write, args=(state,)) for state in ('waiting', 'stopped')]
+            for thread in threads: thread.start()
+            for thread in threads: thread.join(timeout=5)
+            self.assertEqual(errors, [])
+            self.assertIn(json.loads(Path(d, 'dot_status.json').read_text())['state'], ('waiting', 'stopped'))
+            self.assertEqual(os.listdir(d), ['dot_status.json'])
+
+    @unittest.skipUnless(os.environ.get('ALEX_TEST_PACKAGED_RUNTIME') == '1', 'real HA image socket coexistence')
+    def test_real_egress_and_dot_sockets_coexist(self):
+        import subprocess
+        import time
+        import urllib.request
+        import urllib.error
+        from dot_ports import DOT_PORT, DOT_RESOURCE, DOT_HEALTH_PORT
+        self.assertNotIn(DOT_PORT, (5002, DOT_HEALTH_PORT))
+        app_dir = Path(runtime.__file__).parent
+        # Execute the unchanged production egress function and its declared port.
+        # Do not load startWhatsApp or link/contact any account.
+        node_script = r"""
+const fs=require('fs'), vm=require('vm'), http=require('http');
+const source=fs.readFileSync(process.argv[1], 'utf8');
+const port=source.match(/const EGRESS_PORT = (\d+);/)[1];
+const start=source.indexOf('function startEgress() {');
+const end=source.indexOf('\nstartPairingUi();', start);
+if(start < 0 || end < 0) throw new Error('egress function not found');
+vm.runInNewContext(source.slice(start,end)+'\nstartEgress();',
+  {http, EGRESS_PORT:Number(port), currentSock:null, console});
+"""
+        dot_script = r"""
+import dot_runtime, threading
+from unittest.mock import patch
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from dot_ports import DOT_HOST, DOT_HEALTH_PORT, DOT_RESOURCE
+class Health(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200); self.end_headers(); self.wfile.write(b"offline-test")
+    def log_message(self, *args): pass
+class OfflineTunnel:
+    def __init__(self, command, **kwargs):
+        assert '--mcp.server-url='+DOT_RESOURCE in command
+        assert f'--health.listen-addr={DOT_HOST}:{DOT_HEALTH_PORT}' in command
+        assert any(x.startswith('--control-plane.api-key=file:') for x in command)
+        assert any(x.startswith('--mcp.extra-headers=X-Alex-Bridge-Key: file:') for x in command)
+        self.server=HTTPServer((DOT_HOST,DOT_HEALTH_PORT),Health)
+        self.stopped=False
+        threading.Thread(target=self.server.serve_forever,daemon=True).start()
+    def poll(self): return 0 if self.stopped else None
+    def terminate(self):
+        if not self.stopped:
+            self.stopped=True; self.server.shutdown(); self.server.server_close()
+    def wait(self, timeout=None): return 0
+    def kill(self): self.terminate()
+# Real uvicorn.Server, threads, SQLite, options and auth; only outbound tunnel
+# process is replaced. Packaged binary/flags are verified by separate test.
+with patch.object(dot_runtime.subprocess, 'Popen', side_effect=OfflineTunnel):
+    dot_runtime.main()
+"""
+        def request(url, data=None, headers=None):
+            req = urllib.request.Request(url, data=data, headers=headers or {})
+            try:
+                with urllib.request.urlopen(req, timeout=1) as response:
+                    return response.status, response.read()
+            except urllib.error.HTTPError as exc:
+                return exc.code, exc.read()
+        with tempfile.TemporaryDirectory() as d:
+            options = {'ai_provider':'dot','dot_enabled':True,'dot_transport':'private_tunnel',
+                       'dot_tunnel_id':'tunnel_'+'a'*32,'dot_tunnel_runtime_key':'sk-'+'x'*40}
+            options_path = Path(d,'options.json'); options_path.write_text(json.dumps(options))
+            env = {**os.environ, 'ALEX_DATA_DIR':d, 'ALEX_OPTIONS_PATH':str(options_path), 'PYTHONPATH':str(app_dir)}
+            processes = []
+            try:
+                processes.append(subprocess.Popen(['node','-e',node_script,str(app_dir/'connect.js')], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+                processes.append(subprocess.Popen([sys.executable,'-c',dot_script], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+                deadline = time.monotonic()+10
+                while True:
+                    self.assertTrue(all(p.poll() is None for p in processes), 'one real listener exited')
+                    try:
+                        self.assertEqual(request('http://127.0.0.1:5002/')[0],404)
+                        self.assertEqual(request(DOT_RESOURCE,b'{}',{'Content-Type':'application/json'})[0],401)
+                        break
+                    except (OSError, AssertionError):
+                        if time.monotonic() >= deadline: raise
+                        time.sleep(0.05)
+                token = Path(d,'dot-bridge-token').read_text()
+                status, body = request(DOT_RESOURCE,json.dumps({'jsonrpc':'2.0','id':1,'method':'server/discover'}).encode(),
+                                       {'Content-Type':'application/json','X-Alex-Bridge-Key':token})
+                self.assertEqual(status,200)
+                self.assertIn('2026-07-28',json.loads(body)['result']['supportedVersions'])
+                status, body = request('http://127.0.0.1:5002/send',b'{}',{'Content-Type':'application/json'})
+                self.assertEqual(status,500)
+                self.assertEqual(json.loads(body)['error'],'WhatsApp is not connected')
+                self.assertEqual(request(DOT_RESOURCE,b'{}',{'Content-Type':'application/json'})[0],401)
+                self.assertEqual(request(f'http://127.0.0.1:{DOT_HEALTH_PORT}/readyz')[0],200)
+                # Real settings watcher: disable must release dot+health sockets
+                # while the unchanged WhatsApp egress listener remains alive.
+                options['dot_enabled'] = False
+                options_path.write_text(json.dumps(options))
+                self.assertEqual(processes[1].wait(timeout=10),0)
+                self.assertEqual(request('http://127.0.0.1:5002/')[0],404)
+                with self.assertRaises(OSError): request(DOT_RESOURCE)
+                with self.assertRaises(OSError): request(f'http://127.0.0.1:{DOT_HEALTH_PORT}/readyz')
+                # Re-enable/restart reuses the existing credential and ports.
+                options['dot_enabled'] = True
+                options_path.write_text(json.dumps(options))
+                processes[1] = subprocess.Popen([sys.executable,'-c',dot_script],env=env,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+                deadline=time.monotonic()+10
+                while True:
+                    self.assertIsNone(processes[1].poll())
+                    try:
+                        status, body=request(DOT_RESOURCE,json.dumps({'jsonrpc':'2.0','id':2,'method':'server/discover'}).encode(),
+                                             {'Content-Type':'application/json','X-Alex-Bridge-Key':token})
+                        self.assertEqual(status,200)
+                        break
+                    except (OSError,AssertionError):
+                        if time.monotonic()>=deadline: raise
+                        time.sleep(0.05)
+                self.assertEqual(request('http://127.0.0.1:5002/')[0],404)
+            finally:
+                for process in processes: process.terminate()
+                for process in processes:
+                    try: process.wait(timeout=8)
+                    except subprocess.TimeoutExpired:
+                        process.kill(); process.wait(timeout=3)
 
     def test_diagnostic_never_emits_exception_values_or_arbitrary_class_names(self):
         for error in [ValueError('sk-DO-NOT-LOG secret config'), type('SecretClassName', (Exception,), {})('secret')]:
