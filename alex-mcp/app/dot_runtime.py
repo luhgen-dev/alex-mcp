@@ -15,6 +15,7 @@ import threading
 import time
 
 from config import DATA_DIR, get_settings
+from dot_ports import DOT_HOST, DOT_PORT, DOT_HEALTH_PORT, DOT_RESOURCE, DOT_HEALTH_URL
 
 
 class StartupFailure(ValueError):
@@ -241,9 +242,16 @@ def write_status(state, *, subscription=False, tunnel=False, diagnostic=None):
     if diagnostic:
         data["diagnostic"] = diagnostic
     path = os.path.join(DATA_DIR, "dot_status.json")
-    with open(path + ".tmp", "w", encoding="utf-8") as f:
-        json.dump(data, f)
-    os.replace(path + ".tmp", path)
+    # Drain/shutdown can overlap. Each writer owns its staging path; a shared
+    # .tmp name lets one writer rename away the other's file (FileNotFoundError).
+    fd, tmp = tempfile.mkstemp(prefix=".dot-status-", dir=DATA_DIR)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
 
 
 def tunnel_command(settings):
@@ -256,9 +264,9 @@ def tunnel_command(settings):
     return ["/usr/local/bin/tunnel-client-runtime", "run",
             "--control-plane.tunnel-id=" + settings.dot_tunnel_id,
             "--control-plane.api-key=file:" + key_path,
-            "--mcp.server-url=http://127.0.0.1:5002/mcp/",
+            "--mcp.server-url=" + DOT_RESOURCE,
             "--mcp.extra-headers=X-Alex-Bridge-Key: file:" + os.path.join(DATA_DIR, "dot-bridge-token"),
-            "--health.listen-addr=127.0.0.1:5003"]
+            f"--health.listen-addr={DOT_HOST}:{DOT_HEALTH_PORT}"]
 
 
 def watch_configuration(settings, stop, shutdown, *, read_settings=None, interval=5):
@@ -304,7 +312,7 @@ def main():
                              resource=settings.dot_resource_url,
                              owner_subject=owner_binding(settings))
         uvicorn = checked("DOT_SERVER_IMPORT", __import__, "uvicorn")
-        server = checked("DOT_SERVER_CONFIG", lambda: uvicorn.Server(uvicorn.Config(app,host="127.0.0.1",port=5002,proxy_headers=False,access_log=False,timeout_graceful_shutdown=5)))
+        server = checked("DOT_SERVER_CONFIG", lambda: uvicorn.Server(uvicorn.Config(app,host=DOT_HOST,port=DOT_PORT,proxy_headers=False,access_log=False,timeout_graceful_shutdown=5)))
         def drain():
             while not stop.is_set():
                 try:
@@ -313,7 +321,7 @@ def main():
                     tunnel_ready = False
                     if tunnel and tunnel.poll() is None:
                         try:
-                            with urllib.request.urlopen("http://127.0.0.1:5003/readyz",timeout=2) as response:
+                            with urllib.request.urlopen(DOT_HEALTH_URL,timeout=2) as response:
                                 tunnel_ready = response.status == 200
                         except OSError:
                             pass
@@ -340,7 +348,11 @@ def main():
                 tunnel.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 tunnel.kill()
-        write_status("stopped")
+        # Cleanup diagnostics must not mask the original startup error.
+        try:
+            write_status("stopped")
+        except Exception:
+            print("[Alex dot] DOT_STATUS_WRITE: could not save stopped status.", flush=True)
 
 def run_service():
     try:
