@@ -262,7 +262,7 @@ def main() -> dict:
     require('reasoning_effort: "low"' in config_text,
             "default reasoning is low for latency/cost-sensitive household calls")
     require('ai_provider: "auto"' in config_text
-            and 'list(auto|grok|gemini|openai)' in config_text,
+            and 'list(auto|grok|gemini|openai|dot)' in config_text,
             "Auto Saver is the shipped provider-neutral default")
     require('auto_grok_fallback_budget_usd: 0.5' in config_text,
             "automatic Grok fallback has a conservative monthly spend cap")
@@ -506,3 +506,4 @@ def main() -> dict:
 
 if __name__ == "__main__":
     main()
+

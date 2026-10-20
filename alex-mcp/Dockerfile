@@ -1,7 +1,7 @@
 ARG BUILD_FROM=ghcr.io/home-assistant/base:3.24
 FROM $BUILD_FROM
 
-ARG BUILD_VERSION=0.5.39
+ARG BUILD_VERSION=0.5.40
 ARG BUILD_ARCH=amd64
 ARG BUILD_COMMIT=unknown
 
@@ -11,6 +11,8 @@ LABEL \
   io.hass.arch="$BUILD_ARCH"
 
 RUN apk add --no-cache \
+      ca-certificates \
+      unzip \
       nodejs \
       npm \
       python3 \
@@ -27,6 +29,17 @@ RUN apk add --no-cache \
 
 RUN test -n "$(find /usr/share/fonts -type f -name 'DejaVuSans.ttf' -print -quit)" \
  && test -n "$(find /usr/share/fonts -type f -name 'DejaVuSans-Bold.ttf' -print -quit)"
+
+# Pinned official runtime-only tunnel client; no admin/provisioning CLI.
+# Existing add-on supports amd64 only. Verify before extracting/executing.
+RUN wget -q -O /tmp/tunnel.zip https://github.com/openai/tunnel-client/releases/download/v0.0.16/tunnel-client-runtime-v0.0.16-linux-amd64.zip \
+ && echo "f8f48017e752810c2c6f02065cdc4ca1ad045b91a6d045cbab144b957fdcbdb1  /tmp/tunnel.zip" | sha256sum -c - \
+ && mkdir -p /usr/local/share/tunnel-client \
+ && unzip -q /tmp/tunnel.zip -d /usr/local/share/tunnel-client \
+ && cp /usr/local/share/tunnel-client/tunnel-client-runtime /usr/local/bin/tunnel-client-runtime \
+ && chmod 755 /usr/local/bin/tunnel-client-runtime \
+ && /usr/local/bin/tunnel-client-runtime --version \
+ && rm /tmp/tunnel.zip
 
 WORKDIR /app
 
@@ -48,3 +61,4 @@ ENV ALEX_APP_VERSION="$BUILD_VERSION"
 ENV ALEX_BUILD_COMMIT="$BUILD_COMMIT"
 ENV ALEX_DATA_DIR="/data"
 ENV PYTHONUNBUFFERED=1
+

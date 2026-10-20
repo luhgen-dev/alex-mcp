@@ -1,5 +1,5 @@
 name: "Alex MCP"
-version: "0.5.39"
+version: "0.5.40"
 slug: "alex_mcp"
 description: "MCP-first household assistant — natural WhatsApp conversation, deterministic tools, receipts, reminders and memory"
 arch:
@@ -16,6 +16,13 @@ map:
   - data:rw
 options:
   ai_provider: "auto"
+  dot_enabled: false
+  dot_transport: "disabled"
+  dot_owner_subject: ""
+  dot_tunnel_id: ""
+  dot_oauth_issuer: ""
+  dot_oauth_jwks_url: ""
+  dot_resource_url: ""
   grok_model: "grok-4.7"
   gemini_model: "gemini-3.8-flash"
   gemini_lite_model: "gemini-3.1-flash-lite"
@@ -50,7 +57,14 @@ options:
   presence_mappings: []
   ha_notify_devices: []
 schema:
-  ai_provider: "list(auto|grok|gemini|openai)"
+  ai_provider: "list(auto|grok|gemini|openai|dot)"
+  dot_enabled: bool
+  dot_transport: "list(disabled|private_tunnel|oauth)"
+  dot_owner_subject: str?
+  dot_tunnel_id: str?
+  dot_oauth_issuer: str?
+  dot_oauth_jwks_url: str?
+  dot_resource_url: str?
   grok_model: str
   gemini_model: str
   gemini_lite_model: str
@@ -178,3 +192,4 @@ schema:
       owner: "list(husband|wife)"
       notify_service: str
       active: bool
+

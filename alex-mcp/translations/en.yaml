@@ -1,7 +1,28 @@
 configuration:
   ai_provider:
     name: AI brain
-    description: Choose the conversational/reasoning provider. The rest of Alex stays unchanged.
+    description: "Choose the brain. dot is EXPERIMENTAL: shared-shopping text only and requires a verified connection; it never falls back to another provider. Existing modes stay unchanged."
+  dot_enabled:
+    name: Enable dot experiment
+    description: "Off by default. Enable only during guided connection setup. This does not by itself connect your dot."
+  dot_transport:
+    name: Dot connection transport
+    description: "disabled, approved private tunnel, or OAuth-protected HTTPS. No public port is opened by this setting."
+  dot_owner_subject:
+    name: Dot owner binding
+    description: "Verified OAuth subject or dedicated private-tunnel owner binding. Not a phone number and not model-controlled."
+  dot_tunnel_id:
+    name: Dot private tunnel ID
+    description: "Owner-only personal tunnel identifier, not a key. Runtime key and bridge credential are stored in separate protected files during approved setup."
+  dot_oauth_issuer:
+    name: Dot OAuth issuer (OAuth transport only)
+    description: "Existing authorization server HTTPS issuer; must support authorization code with PKCE."
+  dot_oauth_jwks_url:
+    name: Dot OAuth JWKS URL
+    description: "Administrator-approved HTTPS signing-key endpoint for that issuer."
+  dot_resource_url:
+    name: Dot OAuth resource URL
+    description: "Approved public HTTPS resource ending in /mcp/. Leave empty for private tunnel."
   grok_model:
     name: Grok model
     description: xAI model used when AI brain is Grok.
@@ -83,3 +104,4 @@ configuration:
   presence_mappings:
     name: Presence mappings
     description: Optional Home Assistant person/device-tracker entities used only for routine reminder delivery policy.
+

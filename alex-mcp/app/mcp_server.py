@@ -26,7 +26,7 @@ import scope_policy
 
 mcp = MCPServer(
     "Alex Household Tools",
-    version="0.5.39",
+    version="0.5.40",
     instructions="Deterministic household tools. Identity and permissions are injected by Alex and are never model-controlled.",
 )
 
@@ -1957,3 +1957,4 @@ def set_money_bucket(name: str, amount: float, actor: Actor, currency: str = "MY
 def list_money_buckets(actor: Actor) -> dict:
     """Read the user's current named allowances, allocations and stash amounts for planning."""
     return services.list_money_buckets(actor)
+
