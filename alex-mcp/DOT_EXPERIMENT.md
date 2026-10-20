@@ -223,3 +223,27 @@ also appear in the local status file without secret values.
 
 A `tunnel_not_ready` state after successful startup is a separate transport/auth
 problem. None of these diagnostics proves plugin eligibility or completed work.
+
+### Precise private-setup codes (0.5.42)
+
+If 0.5.41 reported only `DOT_PRIVATE_CONFIG/ValueError`, 0.5.42 splits that
+category without guessing the cause. Update/restart with saved settings, and
+report only the new code and fixed explanation. Do not send the secret or an
+options screenshot; do not recreate keys unless a later authenticated response
+requires it. These are local startup checks, not Platform authentication results.
+
+- `DOT_ID_TYPE` / `DOT_ID_FORMAT`: saved tunnel ID type or exact format.
+- `DOT_KEY_TYPE` / `DOT_KEY_EMPTY` / `DOT_KEY_NONASCII` / `DOT_KEY_LENGTH` /
+  `DOT_KEY_WHITESPACE`: distinct saved runtime-key format checks. No actual
+  value, length, prefix or character is emitted.
+- `DOT_BRIDGE_TYPE` / `DOT_BRIDGE_MODE` / `DOT_BRIDGE_OWNER` /
+  `DOT_BRIDGE_CONTENT`: persisted local bridge file, not the Platform key.
+  Report the code; do not delete it, chmod/chown it or paste its contents.
+- `DOT_DATA_DIRECTORY`, `DOT_BRIDGE_CREATE` / `OPEN` / `STAT` / `READ` / `CLOSE`,
+  `DOT_RUNTIME_KEY_CREATE` / `WRITE` / `INSTALL` / `CLEANUP`: specific private
+  storage stage failed. A fixed safe hint accompanies each code in the log.
+
+HA options are reread from its options JSON; no key cache is introduced. Tests
+cover real options field mapping and a subsequent saved change. An incorrect or
+unsaved value cannot be diagnosed remotely without the new code; a key that
+starts with sk- is not by itself proof of complete saved configuration.

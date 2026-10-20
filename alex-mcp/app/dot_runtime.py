@@ -10,13 +10,14 @@ import subprocess
 import urllib.request
 import stat
 import platform
+from contextlib import contextmanager
 import threading
 import time
 
 from config import DATA_DIR, get_settings
 
 
-class StartupFailure(Exception):
+class StartupFailure(ValueError):
     def __init__(self, code, error_type):
         self.code, self.error_type = code, error_type
         super().__init__(code)
@@ -36,6 +37,46 @@ def checked(code, function, *args, **kwargs):
         raise StartupFailure(code, name if name in safe_types else "Exception") from None
 
 
+PRIVATE_HINTS = {
+    "DOT_ID_TYPE": "Saved tunnel ID is not text. Check HA Configuration and Save.",
+    "DOT_ID_FORMAT": "Saved tunnel ID must be tunnel_ followed by 32 lowercase hexadecimal characters.",
+    "DOT_KEY_TYPE": "Saved runtime key is not text. Check the masked HA field and Save.",
+    "DOT_KEY_EMPTY": "Saved runtime key is empty. Check the masked HA field and Save.",
+    "DOT_KEY_NONASCII": "Saved runtime key contains non-ASCII characters. Re-copy the secret locally; never send it in chat.",
+    "DOT_KEY_LENGTH": "Saved runtime key length is outside the supported range. Verify the full secret was saved locally.",
+    "DOT_KEY_WHITESPACE": "Saved runtime key contains whitespace. Remove accidental spaces or line breaks locally.",
+    "DOT_DATA_DIRECTORY": "Could not prepare the private data directory. Report this code; do not loosen permissions.",
+    "DOT_BRIDGE_CREATE": "Could not create the private bridge credential. Report this code; do not delete existing credentials.",
+    "DOT_BRIDGE_OPEN": "Could not open the bridge credential safely. Report this code; do not follow links or loosen permissions.",
+    "DOT_BRIDGE_STAT": "Could not inspect the private bridge credential. Report this code.",
+    "DOT_BRIDGE_TYPE": "Bridge credential is not a regular file. Report this code; do not replace it manually.",
+    "DOT_BRIDGE_MODE": "Bridge credential permissions are not private. Report this code; do not make permissions broader.",
+    "DOT_BRIDGE_OWNER": "Bridge credential owner differs from the service. Report this code; do not change ownership blindly.",
+    "DOT_BRIDGE_CONTENT": "Existing bridge credential is malformed. Report this code; do not paste or delete it.",
+    "DOT_BRIDGE_READ": "Could not read the private bridge credential. Report this code without file contents.",
+    "DOT_BRIDGE_CLOSE": "Could not close the private bridge credential. Report this code.",
+    "DOT_RUNTIME_KEY_CREATE": "Could not create a private runtime-key staging file. Report this code.",
+    "DOT_RUNTIME_KEY_WRITE": "Could not write the private runtime-key staging file. Report this code; do not share its contents.",
+    "DOT_RUNTIME_KEY_INSTALL": "Could not install the private runtime-key file. Report this code.",
+    "DOT_RUNTIME_KEY_CLEANUP": "Could not clean up a private staging file. Report this code; do not inspect its contents.",
+}
+
+
+@contextmanager
+def private_stage(code):
+    try:
+        yield
+    except StartupFailure:
+        raise
+    except Exception as exc:
+        # Route through the same fixed-type sanitizer as other startup stages.
+        checked(code, lambda error=exc: (_ for _ in ()).throw(error))
+
+
+def reject_private(code):
+    raise StartupFailure(code, "ValueError")
+
+
 def validate_runtime(path="/usr/local/bin/tunnel-client-runtime"):
     # Packaged release is Linux amd64 only. Detect packaging/host mismatch before
     # trying to start the daemon; never inspect the credential file here.
@@ -53,7 +94,7 @@ def validate_runtime(path="/usr/local/bin/tunnel-client-runtime"):
 
 def owner_binding(settings):
     if settings.dot_transport == "private_tunnel":
-        return "private-tunnel:" + settings.dot_tunnel_id if settings.dot_tunnel_id else ""
+        return "private-tunnel:" + settings.dot_tunnel_id if isinstance(settings.dot_tunnel_id, str) and settings.dot_tunnel_id else ""
     return settings.dot_owner_subject
 
 
@@ -63,59 +104,96 @@ def configured(settings):
                 and settings.dot_transport in ("private_tunnel", "oauth"))
 
 
+def private_opt_in(settings):
+    # Permit the startup validator to diagnose missing/malformed fields after
+    # explicit enablement, without weakening get_bridge's configured gate.
+    return (settings.dot_enabled is True and settings.ai_provider == "dot"
+            and settings.dot_transport == "private_tunnel")
+
+
 def prepare_private_tunnel(settings, *, data_dir=None):
     """Opt-in provisioning from masked HA options; never returns a secret.
 
     No key generation, directories, reads or writes while disabled. Caller must
     select dot AND private_tunnel AND explicitly enable the connection first.
     """
-    if not configured(settings) or settings.dot_transport != "private_tunnel":
+    if not private_opt_in(settings):
         return {"prepared": False, "generated_bridge_token": False}
+    if not isinstance(settings.dot_tunnel_id, str):
+        reject_private("DOT_ID_TYPE")
     if not re.fullmatch(r"tunnel_[0-9a-f]{32}", settings.dot_tunnel_id):
-        raise ValueError("valid private tunnel ID required")
+        reject_private("DOT_ID_FORMAT")
     key = settings.dot_tunnel_runtime_key
-    if not isinstance(key, str) or not key.isascii() or not 20 <= len(key) <= 4096 or any(c.isspace() for c in key):
-        raise ValueError("approved restricted runtime key required in masked HA configuration")
+    if not isinstance(key, str):
+        reject_private("DOT_KEY_TYPE")
+    if not key:
+        reject_private("DOT_KEY_EMPTY")
+    if not key.isascii():
+        reject_private("DOT_KEY_NONASCII")
+    if any(c.isspace() for c in key):
+        reject_private("DOT_KEY_WHITESPACE")
+    if not 20 <= len(key) <= 4096:
+        reject_private("DOT_KEY_LENGTH")
     directory = data_dir or DATA_DIR
-    os.makedirs(directory, mode=0o700, exist_ok=True)
+    with private_stage("DOT_DATA_DIRECTORY"):
+        os.makedirs(directory, mode=0o700, exist_ok=True)
     token_path = os.path.join(directory, "dot-bridge-token")
     generated = False
-    # Install a complete token atomically; a crash must not leave a zero-byte
-    # canonical credential file that requires shell recovery.
-    if not os.path.lexists(token_path):
-        fd, token_tmp = tempfile.mkstemp(prefix=".dot-token-", dir=directory)
+    with private_stage("DOT_BRIDGE_CREATE"):
+        # Install a complete token atomically, retaining the no-follow checks.
+        if not os.path.lexists(token_path):
+            fd, token_tmp = tempfile.mkstemp(prefix=".dot-token-", dir=directory)
+            try:
+                with os.fdopen(fd, "w", encoding="ascii") as f:
+                    f.write(secrets.token_urlsafe(32))
+                    f.flush()
+                    os.fsync(f.fileno())
+                try:
+                    os.link(token_tmp, token_path, follow_symlinks=False)
+                    generated = True
+                except FileExistsError:
+                    pass
+            finally:
+                os.unlink(token_tmp)
+    with private_stage("DOT_BRIDGE_OPEN"):
+        fd = os.open(token_path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        with private_stage("DOT_BRIDGE_STAT"):
+            info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode):
+            reject_private("DOT_BRIDGE_TYPE")
+        if info.st_mode & 0o077:
+            reject_private("DOT_BRIDGE_MODE")
+        if info.st_uid != os.getuid():
+            reject_private("DOT_BRIDGE_OWNER")
+        with private_stage("DOT_BRIDGE_READ"):
+            raw = os.read(fd, 4097)
         try:
+            credential = raw.decode("utf-8").strip()
+        except UnicodeDecodeError:
+            reject_private("DOT_BRIDGE_CONTENT")
+        # Same format requirement as private auth, checked here to distinguish
+        # persisted-file corruption from a masked configuration problem.
+        if (not credential.isascii() or not 43 <= len(credential) <= 4096
+                or any(c.isspace() for c in credential)):
+            reject_private("DOT_BRIDGE_CONTENT")
+    finally:
+        with private_stage("DOT_BRIDGE_CLOSE"):
+            os.close(fd)
+    with private_stage("DOT_RUNTIME_KEY_CREATE"):
+        fd, tmp = tempfile.mkstemp(prefix=".dot-runtime-", dir=directory)
+    try:
+        with private_stage("DOT_RUNTIME_KEY_WRITE"):
             with os.fdopen(fd, "w", encoding="ascii") as f:
-                f.write(secrets.token_urlsafe(32))
+                f.write(key)
                 f.flush()
                 os.fsync(f.fileno())
-            try:
-                os.link(token_tmp, token_path, follow_symlinks=False)
-                generated = True
-            except FileExistsError:
-                pass
-        finally:
-            os.unlink(token_tmp)
-    fd = os.open(token_path, os.O_RDONLY | os.O_NOFOLLOW)
-    try:
-        info = os.fstat(fd)
-        if not stat.S_ISREG(info.st_mode) or info.st_mode & 0o077 or info.st_uid != os.getuid():
-            raise ValueError("bridge credential must remain an owner-only regular file")
+        with private_stage("DOT_RUNTIME_KEY_INSTALL"):
+            os.replace(tmp, os.path.join(directory, "dot-tunnel-api-key"))
     finally:
-        os.close(fd)
-    # Atomically replace only our derived runtime-key file, never a symlink's
-    # target. The key remains in Supervisor's protected options as with existing
-    # provider password fields; masking is not a claim of encryption at rest.
-    fd, tmp = tempfile.mkstemp(prefix=".dot-runtime-", dir=directory)
-    try:
-        with os.fdopen(fd, "w", encoding="ascii") as f:
-            f.write(key)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp, os.path.join(directory, "dot-tunnel-api-key"))
-    finally:
-        if os.path.exists(tmp):
-            os.unlink(tmp)
+        with private_stage("DOT_RUNTIME_KEY_CLEANUP"):
+            if os.path.exists(tmp):
+                os.unlink(tmp)
     return {"prepared": True, "generated_bridge_token": generated}
 
 
@@ -196,7 +274,10 @@ def watch_configuration(settings, stop, shutdown, *, read_settings=None, interva
 
 def main():
     # Dormant by default; never binds a public/LAN socket or uses proxy headers.
-    while not configured(get_settings()):
+    while True:
+        current = get_settings()
+        if configured(current) or private_opt_in(current):
+            break
         write_status("disabled")
         time.sleep(10)
     settings = get_settings()
@@ -265,14 +346,15 @@ def run_service():
     try:
         checked("DOT_STARTUP", main)
     except StartupFailure as exc:
-        diagnostic = {"code": exc.code, "error_type": exc.error_type}
+        hint = PRIVATE_HINTS.get(exc.code, "See DOT_EXPERIMENT.md; report only this diagnostic code.")
+        diagnostic = {"code": exc.code, "error_type": exc.error_type, "hint": hint}
         # Only fixed stage codes and allowlisted type names, never repr/str(exc).
         try:
             write_status("setup_required", diagnostic=diagnostic)
         except Exception:
             pass
         print(f"[Alex dot] Setup required [{exc.code}/{exc.error_type}]; "
-              "see DOT_EXPERIMENT.md. No fallback was invoked.", flush=True)
+              f"{hint} No fallback was invoked.", flush=True)
         time.sleep(30)
 
 
