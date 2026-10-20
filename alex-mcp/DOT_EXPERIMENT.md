@@ -1,8 +1,8 @@
-# dot shared-shopping experiment — DRAFT, not a live-ready release
+# dot shared-shopping experiment — setup release, live acceptance pending
 
 ## What this changes
 
-Proposed add-on version **0.5.40** adds `dot` to **AI brain**. Existing `auto`,
+Add-on version **0.5.40** adds `dot` to **AI brain**. Existing `auto`,
 `grok`, `gemini` and `openai` behavior remains available. Default stays `auto`;
 `dot_enabled` defaults false and `dot_transport` defaults `disabled`.
 
@@ -20,23 +20,32 @@ is unchanged. No workout code, home control, finance, reminders or other tools
 are exposed remotely. Unsupported commands should receive a short explanation
 or clarification, not be attempted through another provider.
 
-## Status and mandatory setup gates
+## Two separate gates: installation and live acceptance
 
-The code is locally testable with isolated signed callbacks, an ASGI client and
-a temporary database. It is **not yet a verified ChatGPT/WhatsApp roundtrip**.
-Do not merge/release it merely because a selector or a subscription exists.
-The following gates remain:
+**Gate 1 — installable, default-off experimental setup release.** Merge/release
+requires independent code/security review and passing CI with pinned project
+dependencies, including the add-on image build. This permits the normal Home
+Assistant update so the actual HA host can serve the later handshake. Installation
+alone retains the existing brain and does not generate bridge credentials, start
+the dot tunnel, expose ports or link accounts. It is not a claim of live readiness.
+
+**Gate 2 — approved activation and live household acceptance (still pending).**
+After installation, the owner must approve/provision the private connection and
+runtime credential, explicitly enable the experiment, and then:
 
 1. Verify this owner's ChatGPT account permits the intended custom plugin write
    tools **and MCP Events with this dot**. Pro entitlement for this particular
    path is unverified; do not assume an upgrade is necessary or sufficient.
-2. Approve and provision one transport below. No credentials, port mappings,
-   public endpoints or account links are created by this patch.
-3. Register/install the plugin to the same owner account, rescan tools/events,
-   subscribe this actual dot, and verify callback challenge + live roundtrip.
-4. Verify supported protocol `2026-07-28` against the installed `mcp==2.2.0`
-   runtime and real ChatGPT client. Local tooling has a different SDK version;
-   successful local tests do not replace this check.
+2. Register/install the plugin to the same owner account only while the HA tunnel
+   is healthy; rescan tools/events and subscribe this actual dot.
+3. Verify callback challenge and protocol `2026-07-28` with the installed
+   `mcp==2.2.0` runtime and real ChatGPT client, then complete the household
+   acceptance test below. CI/sandbox callback tests do not replace this check.
+
+A selector, healthy tunnel or verified subscription alone is not a completed
+ChatGPT/WhatsApp roundtrip. Do not call this route ready for routine household use
+until the recorded action and delivered reply have both been verified. No live
+latency, usage or cost estimate is promised.
 
 ### Preferred HA-only route: private Secure MCP Tunnel
 
@@ -46,7 +55,8 @@ with `MCP_EXTRA_HEADERS` injected **only on its final local backend hop**.
 
 ### Minimal user steps — no SSH or manual file editing
 
-After the owner-approved personal tunnel and plugin have been prepared:
+Installation comes first; plugin discovery needs the enabled HA runtime online.
+After approval for the personal tunnel and its restricted runtime credential:
 
 1. Update the Alex MCP add-on through the normal Home Assistant updater.
 2. In **Configuration**, enter the provided **Dot private tunnel ID** and paste
@@ -66,6 +76,22 @@ The private tunnel's owner binding is derived automatically from its approved
 ID. Leave OAuth fields empty. No SSH, terminal commands, pasted bridge token or
 manual file permissions are needed. If the connection has not yet been approved
 and provisioned, updating/selecting dot alone cannot activate it.
+
+### Restricted runtime key: owner-operated Platform setup
+
+After explicit approval, open [Platform Runtime API keys](https://platform.openai.com/settings/organization/api-keys)
+in the personal organization that owns the tunnel. Create a dedicated runtime
+key (for example, `Alex MCP tunnel runtime`), select **Restricted**, and allow
+only **Tunnels: Read + Use**. Do not choose All, Tunnels Manage, model API access
+or an admin key. The key's principal must also have Read + Use on the approved
+tunnel; keep its organization/workspace scope personal and do not share the plugin.
+If the UI does not offer these restrictions, stop and inspect permissions rather
+than substituting a broadly privileged key.
+
+Copy the one-time secret directly into the masked HA configuration field on your
+own device, then Save. Do not paste it into dot chat, GitHub, screenshots or logs.
+No bridge token needs to be copied. These instructions do not create a key or
+authorize broader account permissions. See the official [tunnel permissions guide](https://github.com/openai/tunnel-client/blob/v0.0.16/docs/permissions.md).
 
 **Handled automatically after opt-in:** the add-on creates a dedicated random
 32-byte local bridge credential in `/data/dot-bridge-token` with mode `0600`,
@@ -134,7 +160,7 @@ private-tunnel configuration. Network/auth setup must be reviewed before enablin
   request until completion or explicit review. All-DONE expired requests receive
   a status-only timeout reply and are closed. Revoked users receive no timeout data.
 - UNCERTAIN/RUNNING expiry is quarantined as `REVIEW`. Inspect `alex_request` and
-  authoritative shopping records; never retry under a new action ID. This draft
+  authoritative shopping records; never retry under a new action ID. This experiment
   intentionally has no automatic uncertainty-clear tool. An operator must verify
   the effect and approve explicit recovery before the conversation is unlocked.
 - Callback verification/signatures, HTTPS DNS pinning, redirect rejection,
@@ -142,7 +168,7 @@ private-tunnel configuration. Network/auth setup must be reviewed before enablin
 - Database files persist independently of this cloud development task. Actual
   continuous bridge/tunnel execution would be on the user's running HA host.
 
-## Household acceptance test (after the gates above)
+## Household acceptance test (Gate 2, after approved setup)
 
 Use a clearly disposable shared-list item, not a real expense or home action.
 Ask this dot to monitor `alex.request.created`, read `alex_request`, execute only
@@ -160,7 +186,7 @@ instructions. Do not confirm success without a recorded tool result.
 6. Replay an event, disconnect, expire a request, and switch the selector back.
    Confirm no duplicated writes and no silent API fallback.
 7. Record end-to-end timestamps/latency and plan usage. No live latency or cost
-   estimate is claimed by this draft. ChatGPT usage and tunnel costs remain to
+   estimate is claimed by this experiment. ChatGPT usage and tunnel costs remain to
    be measured/verified on the actual account.
 
 Local tests: `python -m unittest discover -s tests -p 'test_dot_*.py' -v`.

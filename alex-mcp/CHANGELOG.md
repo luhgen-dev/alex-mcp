@@ -1,4 +1,4 @@
-## 0.5.40 — draft: existing-dot shared-shopping experiment
+## 0.5.40 — default-off existing-dot shared-shopping setup release
 
 - Add a default-off `dot` brain choice without changing existing provider modes.
 - Add actor-bound request/action ledger, shared-shopping-only tools, MCP Events
@@ -9,7 +9,9 @@
   generation; no SSH/manual secret files. Disabled/other-brain modes generate
   no credentials or tunnel connections; disabling stops the connection.
 - **Not live-ready:** account/plugin write+event eligibility, private connection provisioning and real roundtrip verification remain pending.
-  See `DOT_EXPERIMENT.md`. No credentials or public ports are created.
+  Installation and activation are separate gates: the normal update supplies
+  dormant software for setup; live acceptance follows approved activation.
+  See `DOT_EXPERIMENT.md`. Default-off installation creates no credentials or public ports.
 
 # Changelog
 

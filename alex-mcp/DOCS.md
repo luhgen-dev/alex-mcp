@@ -281,8 +281,9 @@ If no `ha_notify_devices` entries are configured, normal WhatsApp reminders cont
 
 
 
-## Experimental existing-dot route (draft 0.5.40)
+## Experimental existing-dot route (setup release 0.5.40)
 
 See [DOT_EXPERIMENT.md](DOT_EXPERIMENT.md) for the default-off shared-shopping
-experiment, exact setup gates, security boundaries and test checklist. This is
+experiment, separate installation/live-acceptance gates, security boundaries
+and test checklist. The normal update supplies dormant setup software. This is
 not a substitute API agent and is not yet verified for live household use.
