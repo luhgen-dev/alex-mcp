@@ -44,29 +44,59 @@ This avoids opening Home Assistant publicly or building a separate OAuth server.
 The official `openai/tunnel-client` supports an unauthenticated remote MCP mode
 with `MCP_EXTRA_HEADERS` injected **only on its final local backend hop**.
 
-Required, separate setup (not performed):
-- Owner's personal Platform organization/tunnel associated with the correct
-  ChatGPT personal workspace; no household or organization-wide plugin sharing.
-- A dedicated runtime tunnel key stored privately on the HA host, never in this
-  repository, logs, screenshots or chat messages. Tunnel provisioning and any
-  unknown costs must be confirmed separately; no API-model usage is introduced.
-- A dedicated high-entropy bridge credential in `/data/dot-bridge-token`, regular
-  file owned by the process user with mode `0600`. This is **not** an HA token,
-  OpenAI key or user password. A rotation requires restarting the add-on.
-- Configure tunnel-client's final backend as `http://127.0.0.1:5002/mcp/` and
-  inject `X-Alex-Bridge-Key: file:/data/dot-bridge-token` through its private
-  header-file mechanism. Never put the credential in a plugin manifest.
-- Set a stable `dot_owner_subject` for this one owner-bound tunnel, choose
-  `dot_transport: private_tunnel`, and enable the experiment only when approved.
+### Minimal user steps — no SSH or manual file editing
+
+After the owner-approved personal tunnel and plugin have been prepared:
+
+1. Update the Alex MCP add-on through the normal Home Assistant updater.
+2. In **Configuration**, enter the provided **Dot private tunnel ID** and paste
+   the approved restricted runtime key into **Dot restricted tunnel runtime key**.
+   This is a masked `password` field, like Alex's existing provider-key fields.
+   Never send the key in chat. Do not use an OpenAI admin key.
+3. Choose **AI brain: dot** and **Dot connection transport: private_tunnel**.
+4. Turn on **Enable dot experiment**, Save, and restart the add-on. This explicit
+   opt-in authorizes the outbound tunnel and automatic local bridge-token
+   generation. Leaving the switch off, or another AI brain selected, creates no
+   credentials and starts no tunnel.
+5. Complete the one-time same-owner plugin connection/subscription with this dot.
+   Wait for `subscription_verified` before the disposable shopping test below.
+   That status is not itself proof of completed tool work or WhatsApp delivery.
+
+The private tunnel's owner binding is derived automatically from its approved
+ID. Leave OAuth fields empty. No SSH, terminal commands, pasted bridge token or
+manual file permissions are needed. If the connection has not yet been approved
+and provisioned, updating/selecting dot alone cannot activate it.
+
+**Handled automatically after opt-in:** the add-on creates a dedicated random
+32-byte local bridge credential in `/data/dot-bridge-token` with mode `0600`,
+preserves it across restarts, and atomically copies the masked runtime key to
+`/data/dot-tunnel-api-key` with mode `0600`. It injects only a file reference via
+`X-Alex-Bridge-Key` to its loopback backend; neither secret appears in process
+arguments, logs, status JSON or tool results. The local token is not an HA token
+or an OpenAI key. Home Assistant stores the runtime key in its options as with
+existing provider keys: UI masking is **not** a promise of encryption at rest.
+
+For rollback, switch AI brain to the prior provider or disable the experiment;
+an independent configuration watcher terminates the outbound tunnel and requests
+local-server shutdown within its five-second check. In-flight callback work may
+finish or time out during shutdown (a normal add-on restart also applies the change). Existing
+secret files remain private for a later deliberate re-enable. To rotate the
+runtime key, replace its masked field, Save and restart; no terminal work needed.
+
+Account setup remains separate and requires approval: a personal-only tunnel
+and plugin, a restricted runtime key, and actual write/event eligibility for
+this dot. No organization-wide sharing, router forwarding or public HA endpoint
+is required. No API-model usage is introduced; any tunnel costs remain to be
+verified on the account.
 
 The image bundles official **runtime-only tunnel-client v0.0.16**, pinned to
 SHA256 `f8f48017e752810c2c6f02065cdc4ca1ad045b91a6d045cbab144b957fdcbdb1`.
 Its license/notice files remain in `/usr/local/share/tunnel-client`. The build
 checks the hash and runs `--version`; the release binary was separately inspected
 as statically linked. The existing HA add-on update supplies this software but
-cannot grant account access or provision secrets by itself. Set `dot_tunnel_id`
-and store the dedicated raw runtime key in `/data/dot-tunnel-api-key` (0600);
-never use an admin key. The service passes only file references to the runtime. The Python bridge service is present but dormant by default. When enabled,
+cannot grant account access by itself. After explicit enablement it manages
+the protected local credential files as described above. The service passes only
+file references to the runtime. The Python bridge service is present but dormant by default. When enabled,
 it binds only loopback, disables proxy-header trust, requires the dedicated
 credential and rejects non-loopback clients. Do not expose this private transport
 through HA ingress, a LAN port, reverse proxy or public URL. A private tunnel

@@ -16,6 +16,7 @@ class Settings:
     dot_transport: str = "disabled"
     dot_owner_subject: str = ""
     dot_tunnel_id: str = ""
+    dot_tunnel_runtime_key: str = field(default="", repr=False)
     dot_oauth_issuer: str = ""
     dot_oauth_jwks_url: str = ""
     dot_resource_url: str = ""

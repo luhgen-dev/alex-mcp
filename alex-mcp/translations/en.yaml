@@ -4,16 +4,19 @@ configuration:
     description: "Choose the brain. dot is EXPERIMENTAL: shared-shopping text only and requires a verified connection; it never falls back to another provider. Existing modes stay unchanged."
   dot_enabled:
     name: Enable dot experiment
-    description: "Off by default. Enable only during guided connection setup. This does not by itself connect your dot."
+    description: "Off by default. With AI brain set to dot, enabling permits an outbound private tunnel and creates a local bridge credential. Enable only after approving the personal connection; this alone does not prove dot is connected."
   dot_transport:
     name: Dot connection transport
     description: "disabled, approved private tunnel, or OAuth-protected HTTPS. No public port is opened by this setting."
   dot_owner_subject:
-    name: Dot owner binding
-    description: "Verified OAuth subject or dedicated private-tunnel owner binding. Not a phone number and not model-controlled."
+    name: Dot OAuth owner binding (OAuth only)
+    description: "Exact verified OAuth subject for OAuth mode only. Private tunnel derives its stable binding automatically from the approved tunnel ID."
   dot_tunnel_id:
     name: Dot private tunnel ID
-    description: "Owner-only personal tunnel identifier, not a key. Runtime key and bridge credential are stored in separate protected files during approved setup."
+    description: "Owner-only personal tunnel identifier, not a key. Use the masked runtime-key field below; the add-on manages private credential files."
+  dot_tunnel_runtime_key:
+    name: Dot restricted tunnel runtime key
+    description: "Paste only the approved restricted runtime key here, never in chat. Masked like existing provider keys; stored by Home Assistant. No admin key. Used only after explicit dot/private-tunnel enablement."
   dot_oauth_issuer:
     name: Dot OAuth issuer (OAuth transport only)
     description: "Existing authorization server HTTPS issuer; must support authorization code with PKCE."
