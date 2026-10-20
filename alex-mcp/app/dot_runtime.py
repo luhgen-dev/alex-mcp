@@ -70,7 +70,7 @@ def private_stage(code):
         raise
     except Exception as exc:
         # Route through the same fixed-type sanitizer as other startup stages.
-        checked(code, lambda: (_ for _ in ()).throw(exc))
+        checked(code, lambda error=exc: (_ for _ in ()).throw(error))
 
 
 def reject_private(code):
