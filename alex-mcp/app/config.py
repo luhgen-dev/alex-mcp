@@ -11,6 +11,15 @@ DATA_DIR = os.environ.get("ALEX_DATA_DIR", "/data")
 @dataclass(frozen=True)
 class Settings:
     ai_provider: str = "auto"
+    # Experimental existing-dot route; no connection or credential by default.
+    dot_enabled: bool = False
+    dot_transport: str = "disabled"
+    dot_owner_subject: str = ""
+    dot_tunnel_id: str = ""
+    dot_tunnel_runtime_key: str = field(default="", repr=False)
+    dot_oauth_issuer: str = ""
+    dot_oauth_jwks_url: str = ""
+    dot_resource_url: str = ""
     grok_model: str = "grok-4.7"
     gemini_model: str = "gemini-3.8-flash"
     gemini_lite_model: str = "gemini-3.1-flash-lite"
@@ -144,3 +153,4 @@ def get_settings() -> Settings:
 def normalize_phone(value: str) -> str:
     digits = "".join(ch for ch in (value or "") if ch.isdigit())
     return f"+{digits}" if digits else ""
+

@@ -278,3 +278,12 @@ The Companion action bridge connects outbound to Home Assistant's WebSocket API;
 
 If no `ha_notify_devices` entries are configured, normal WhatsApp reminders continue unchanged.
 
+
+
+
+## Experimental existing-dot route (setup release 0.5.40)
+
+See [DOT_EXPERIMENT.md](DOT_EXPERIMENT.md) for the default-off shared-shopping
+experiment, separate installation/live-acceptance gates, security boundaries
+and test checklist. The normal update supplies dormant setup software. This is
+not a substitute API agent and is not yet verified for live household use.

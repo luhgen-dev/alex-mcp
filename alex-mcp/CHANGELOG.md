@@ -1,3 +1,18 @@
+## 0.5.40 — default-off existing-dot shared-shopping setup release
+
+- Add a default-off `dot` brain choice without changing existing provider modes.
+- Add actor-bound request/action ledger, shared-shopping-only tools, MCP Events
+  and local OAuth/private-tunnel adapters. Never silently fall back to another
+  semantic brain or API after a dot request.
+- Add duplicate, stale, expiry, uncertain-execution and callback security tests.
+- Provide masked HA runtime-key configuration and opt-in local bridge-token
+  generation; no SSH/manual secret files. Disabled/other-brain modes generate
+  no credentials or tunnel connections; disabling stops the connection.
+- **Not live-ready:** account/plugin write+event eligibility, private connection provisioning and real roundtrip verification remain pending.
+  Installation and activation are separate gates: the normal update supplies
+  dormant software for setup; live acceptance follows approved activation.
+  See `DOT_EXPERIMENT.md`. Default-off installation creates no credentials or public ports.
+
 # Changelog
 
 ## 0.5.39
@@ -296,3 +311,4 @@ Repair release from the v0.4.3 live smoke test (Claude audit, cross-reviewed wit
 - WhatsApp Baileys transport with HA Ingress QR pairing UI.
 - Plug-and-play HA configuration fields for providers, keys and household phone numbers.
 - Startup core diagnostics.
+

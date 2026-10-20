@@ -1536,6 +1536,18 @@ def process(payload: dict) -> dict:
             db.finish_inbound(actor.source_message_id, reply)
             return {"ok": True, "voice_pending": True, "pending_item_id": pending["item_id"]}
 
+        # Existing authentication, group gating, privacy derivation and voice
+        # pending policy above remain authoritative. Dot bypasses all semantic
+        # routing/model layers below. It never silently falls back to an API.
+        if get_settings().ai_provider == "dot":
+            import dot_runtime
+            reply = dot_runtime.submit(
+                actor, turn["trusted_text"],
+                has_quote=bool(payload.get("quoted_message_id")),
+                has_media=bool(media_ids or media_lines or vision_parts),
+            )
+            return _finish_simple_turn(actor, reply, dot_experimental=True)
+
         explicit_group_quote_handoff = bool(
             actor.conversation_type == "GROUP"
             and payload.get("alex_mentioned")
@@ -2480,3 +2492,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

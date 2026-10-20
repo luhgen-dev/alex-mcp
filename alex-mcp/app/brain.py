@@ -3752,6 +3752,10 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                   vision_parts: list[dict] | None = None,
                   quoted_context: dict | None = None,
                   semantic_user_text: str | None = None) -> tuple[str, list[dict]]:
+    if get_settings().ai_provider == "dot":
+        # Defensive backstop: all dot turns must enter through authenticated
+        # ingress, not this legacy provider/semantic path.
+        return "Dot requests must use the authenticated dot bridge; no action was taken.", []
     history_user = _history_user_text(actor, user_text, media_context, vision_parts)
 
     # A semantic reminder interpretation may change only what the model sees as
@@ -4398,4 +4402,5 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
     trace["attachments_queued"] = len(attachments)
     _trace_turn(actor, trace)
     return final, attachments
+
 
