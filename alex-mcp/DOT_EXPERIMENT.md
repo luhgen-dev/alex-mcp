@@ -198,3 +198,28 @@ Official references:
 - https://developers.openai.com/api/docs/guides/secure-mcp-tunnels
 - https://github.com/openai/tunnel-client/blob/master/docs/onboarding.md
 - https://github.com/openai/tunnel-client/blob/master/docs/architecture.md
+
+## Startup diagnostics (0.5.41)
+
+Update normally, retain the approved saved settings, and restart. If startup
+fails, share only the bracketed `DOT_.../ErrorType` code from the add-on log;
+never share keys, options files or credential screenshots. These fixed codes
+also appear in the local status file without secret values.
+
+- `DOT_PRIVATE_CONFIG`: check the saved tunnel ID (tunnel_ + 32 lowercase hex)
+  and nonempty runtime-key field for accidental spaces/newlines. Private-file
+  permission failures also stop here; do not loosen permissions or delete files.
+- `DOT_LEDGER`: protected event storage or local database initialization failed.
+- `DOT_HTTP_IMPORT`, `DOT_SERVER_IMPORT`: packaged dependency/import failure.
+- `DOT_PRIVATE_AUTH`: local bridge credential validation or adapter composition failed.
+- `DOT_RUNTIME_MISSING`, `DOT_RUNTIME_PERMISSION`, `DOT_RUNTIME_FORMAT`,
+  `DOT_RUNTIME_ARCH`: installed runtime artifact missing/not executable/incompatible;
+  this release supports Linux amd64. Report the code; do not download random binaries.
+- `DOT_RUNTIME_CONFIG`: protected runtime-key file validation failed.
+- `DOT_RUNTIME_START`: OS could not launch the packaged runtime.
+- `DOT_OAUTH_CONFIG`: externally managed OAuth configuration failed (not the private route).
+- `DOT_SERVER_CONFIG`, `DOT_SERVER_RUN`, `DOT_STARTUP`, `DOT_RUNTIME_CHECK`:
+  report the code for targeted investigation; do not change security settings.
+
+A `tunnel_not_ready` state after successful startup is a separate transport/auth
+problem. None of these diagnostics proves plugin eligibility or completed work.

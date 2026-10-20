@@ -1,3 +1,12 @@
+## 0.5.41 — safe dot startup diagnostics
+
+- Replace uninformative startup failures with fixed stage/error codes and safe
+  exception types, never exception messages, configuration values or credentials.
+- Detect missing, non-executable or incompatible packaged tunnel runtime before launch.
+- Add production startup composition smoke test inside the HA image with network
+  disabled and synthetic credentials. Existing safety/opt-in checks are unchanged.
+- This diagnoses the pilot startup failure; it does not claim a live roundtrip fix.
+
 ## 0.5.40 — default-off existing-dot shared-shopping setup release
 
 - Add a default-off `dot` brain choice without changing existing provider modes.
