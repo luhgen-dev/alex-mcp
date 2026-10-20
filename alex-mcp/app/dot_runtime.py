@@ -9,10 +9,46 @@ import tempfile
 import subprocess
 import urllib.request
 import stat
+import platform
 import threading
 import time
 
 from config import DATA_DIR, get_settings
+
+
+class StartupFailure(Exception):
+    def __init__(self, code, error_type):
+        self.code, self.error_type = code, error_type
+        super().__init__(code)
+
+
+def checked(code, function, *args, **kwargs):
+    try:
+        return function(*args, **kwargs)
+    except StartupFailure:
+        raise
+    except Exception as exc:
+        # Never retain or serialize exception messages: they may contain secrets.
+        safe_types = {"ValueError", "PermissionError", "FileNotFoundError", "ImportError",
+                      "ModuleNotFoundError", "OSError", "OperationalError", "TypeError",
+                      "RuntimeError", "AttributeError"}
+        name = type(exc).__name__
+        raise StartupFailure(code, name if name in safe_types else "Exception") from None
+
+
+def validate_runtime(path="/usr/local/bin/tunnel-client-runtime"):
+    # Packaged release is Linux amd64 only. Detect packaging/host mismatch before
+    # trying to start the daemon; never inspect the credential file here.
+    if platform.system() != "Linux" or platform.machine().lower() not in ("x86_64", "amd64"):
+        raise StartupFailure("DOT_RUNTIME_ARCH", "RuntimeError")
+    if not os.path.isfile(path):
+        raise StartupFailure("DOT_RUNTIME_MISSING", "FileNotFoundError")
+    if not os.access(path, os.X_OK):
+        raise StartupFailure("DOT_RUNTIME_PERMISSION", "PermissionError")
+    with open(path, "rb") as f:
+        header = f.read(20)
+    if len(header) < 20 or header[:6] != b"\x7fELF\x02\x01" or int.from_bytes(header[18:20], "little") != 62:
+        raise StartupFailure("DOT_RUNTIME_FORMAT", "RuntimeError")
 
 
 def owner_binding(settings):
@@ -121,9 +157,11 @@ def submit(actor, text, *, has_quote=False, has_media=False):
     return "Sent to dot for the shared-shopping test. This is pending, not confirmation that an action completed."
 
 
-def write_status(state, *, subscription=False, tunnel=False):
+def write_status(state, *, subscription=False, tunnel=False, diagnostic=None):
     data = {"state": state, "subscription_verified": subscription,
             "tunnel_ready": tunnel, "updated_at": time.time()}
+    if diagnostic:
+        data["diagnostic"] = diagnostic
     path = os.path.join(DATA_DIR, "dot_status.json")
     with open(path + ".tmp", "w", encoding="utf-8") as f:
         json.dump(data, f)
@@ -162,54 +200,57 @@ def main():
         write_status("disabled")
         time.sleep(10)
     settings = get_settings()
-    prepare_private_tunnel(settings)
-    bridge = get_bridge()
-    from dot_http import create_app, create_tunnel_app
+    checked("DOT_PRIVATE_CONFIG", prepare_private_tunnel, settings)
+    bridge = checked("DOT_LEDGER", get_bridge)
+    http = checked("DOT_HTTP_IMPORT", __import__, "dot_http")
+    create_app, create_tunnel_app = http.create_app, http.create_tunnel_app
     tunnel = None
-    if settings.dot_transport == 'private_tunnel':
-        app = create_tunnel_app(bridge, credential_path=os.path.join(DATA_DIR,'dot-bridge-token'),
-                                owner_subject=owner_binding(settings))
-        # Only runtime permissions; no administration/provisioning command. No
-        # key is in argv, stdout, status JSON, or inherited HA secret environment.
-        tunnel = subprocess.Popen(tunnel_command(settings),
-            env={"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": DATA_DIR},
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    else:
-        app = create_app(bridge,issuer=settings.dot_oauth_issuer,
-                         jwks_url=settings.dot_oauth_jwks_url,
-                         resource=settings.dot_resource_url,
-                         owner_subject=owner_binding(settings))
-    import uvicorn
-    server = uvicorn.Server(uvicorn.Config(app,host="127.0.0.1",port=5002,proxy_headers=False,access_log=False,timeout_graceful_shutdown=5))
     stop = threading.Event()
-    def drain():
-        while not stop.is_set():
-            try:
-                bridge.publish_pending()
-                subscribed = bridge.ready()
-                tunnel_ready = False
-                if tunnel and tunnel.poll() is None:
-                    try:
-                        with urllib.request.urlopen("http://127.0.0.1:5003/readyz",timeout=2) as response:
-                            tunnel_ready = response.status == 200
-                    except OSError:
-                        pass
-                state = "subscription_verified" if subscribed else "waiting_for_subscription"
-                if tunnel and not tunnel_ready:
-                    state = "tunnel_not_ready"
-                write_status(state, subscription=subscribed, tunnel=tunnel_ready)
-            except Exception:
-                write_status("disabled_or_connection_error")
-            stop.wait(5)
-    def shutdown():
-        server.should_exit = True
-        if tunnel and tunnel.poll() is None:
-            tunnel.terminate()
-    threading.Thread(target=watch_configuration,
-                     args=(settings, stop, shutdown),daemon=True).start()
-    threading.Thread(target=drain,daemon=True).start()
     try:
-        server.run()
+        if settings.dot_transport == 'private_tunnel':
+            app = checked("DOT_PRIVATE_AUTH", create_tunnel_app, bridge, credential_path=os.path.join(DATA_DIR,'dot-bridge-token'),
+                                    owner_subject=owner_binding(settings))
+            # Only runtime permissions; no administration/provisioning command. No
+            # key is in argv, stdout, status JSON, or inherited HA secret environment.
+            checked("DOT_RUNTIME_CHECK", validate_runtime)
+            command = checked("DOT_RUNTIME_CONFIG", tunnel_command, settings)
+            tunnel = checked("DOT_RUNTIME_START", subprocess.Popen, command,
+                env={"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": DATA_DIR},
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:
+            app = checked("DOT_OAUTH_CONFIG", create_app, bridge,issuer=settings.dot_oauth_issuer,
+                             jwks_url=settings.dot_oauth_jwks_url,
+                             resource=settings.dot_resource_url,
+                             owner_subject=owner_binding(settings))
+        uvicorn = checked("DOT_SERVER_IMPORT", __import__, "uvicorn")
+        server = checked("DOT_SERVER_CONFIG", lambda: uvicorn.Server(uvicorn.Config(app,host="127.0.0.1",port=5002,proxy_headers=False,access_log=False,timeout_graceful_shutdown=5)))
+        def drain():
+            while not stop.is_set():
+                try:
+                    bridge.publish_pending()
+                    subscribed = bridge.ready()
+                    tunnel_ready = False
+                    if tunnel and tunnel.poll() is None:
+                        try:
+                            with urllib.request.urlopen("http://127.0.0.1:5003/readyz",timeout=2) as response:
+                                tunnel_ready = response.status == 200
+                        except OSError:
+                            pass
+                    state = "subscription_verified" if subscribed else "waiting_for_subscription"
+                    if tunnel and not tunnel_ready:
+                        state = "tunnel_not_ready"
+                    write_status(state, subscription=subscribed, tunnel=tunnel_ready)
+                except Exception:
+                    write_status("disabled_or_connection_error")
+                stop.wait(5)
+        def shutdown():
+            server.should_exit = True
+            if tunnel and tunnel.poll() is None:
+                tunnel.terminate()
+        threading.Thread(target=watch_configuration,
+                         args=(settings, stop, shutdown),daemon=True).start()
+        threading.Thread(target=drain,daemon=True).start()
+        checked("DOT_SERVER_RUN", server.run)
     finally:
         stop.set()
         if tunnel:
@@ -220,10 +261,20 @@ def main():
                 tunnel.kill()
         write_status("stopped")
 
-if __name__=='__main__':
+def run_service():
     try:
-        main()
-    except Exception:
-        write_status("setup_required")
-        print("[Alex dot] Setup required; see DOT_EXPERIMENT.md. No fallback was invoked.",flush=True)
+        checked("DOT_STARTUP", main)
+    except StartupFailure as exc:
+        diagnostic = {"code": exc.code, "error_type": exc.error_type}
+        # Only fixed stage codes and allowlisted type names, never repr/str(exc).
+        try:
+            write_status("setup_required", diagnostic=diagnostic)
+        except Exception:
+            pass
+        print(f"[Alex dot] Setup required [{exc.code}/{exc.error_type}]; "
+              "see DOT_EXPERIMENT.md. No fallback was invoked.", flush=True)
         time.sleep(30)
+
+
+if __name__ == '__main__':
+    run_service()
