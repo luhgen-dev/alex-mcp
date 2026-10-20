@@ -74,7 +74,7 @@ class OnboardingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             target=Path(d,'unrelated');target.write_text('untouched')
             link=Path(d,'dot-bridge-token');link.symlink_to(target)
-            with self.assertRaises(OSError):prepare_private_tunnel(self.settings(),data_dir=d)
+            with self.assertRaises(ValueError):prepare_private_tunnel(self.settings(),data_dir=d)
             self.assertEqual(target.read_text(),'untouched')
             link.unlink();link.write_text('x'*43);os.chmod(link,0o644)
             with self.assertRaises(ValueError):prepare_private_tunnel(self.settings(),data_dir=d)

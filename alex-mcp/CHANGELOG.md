@@ -1,3 +1,12 @@
+## 0.5.42 — precise private setup failure codes
+
+- Distinguish saved ID/key format categories from private bridge-file type,
+  permissions, ownership, content and individual file-I/O stages.
+- Print fixed safe explanations only; no keys, key lengths, IDs, file contents,
+  exception messages or ownership IDs appear in diagnostics.
+- Verify HA options mapping and rereading plus valid startup in isolated tests.
+  No permission repair, credential deletion or authentication bypass is added.
+
 ## 0.5.41 — safe dot startup diagnostics
 
 - Replace uninformative startup failures with fixed stage/error codes and safe
