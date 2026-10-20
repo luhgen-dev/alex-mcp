@@ -21,6 +21,11 @@ class StartupTests(unittest.TestCase):
         result = subprocess.run(['/usr/local/bin/tunnel-client-runtime', '--version'],
                                 capture_output=True, text=True, timeout=10, check=True)
         self.assertIn('0.0.16', result.stdout + result.stderr)
+        help_result = subprocess.run(['/usr/local/bin/tunnel-client-runtime', 'run', '--help'],
+                                     capture_output=True, text=True, timeout=10, check=True)
+        for flag in ['control-plane.tunnel-id', 'control-plane.api-key', 'mcp.server-url',
+                     'mcp.extra-headers', 'health.listen-addr']:
+            self.assertIn(flag, help_result.stdout + help_result.stderr)
 
     def test_production_private_startup_composes_real_app_and_ledger(self):
         s = Settings(ai_provider='dot', dot_enabled=True, dot_transport='private_tunnel',
@@ -41,6 +46,21 @@ class StartupTests(unittest.TestCase):
             self.assertIn('--mcp.server-url=http://127.0.0.1:5002/mcp/', command)
             self.assertNotIn(s.dot_tunnel_runtime_key, repr(process.call_args))
             self.assertTrue(Path(d, 'dot_events.db').exists())
+
+    def test_startup_failure_after_spawn_reaps_tunnel(self):
+        s = Settings(ai_provider='dot', dot_enabled=True, dot_transport='private_tunnel',
+                     dot_tunnel_id='tunnel_'+'a'*32, dot_tunnel_runtime_key='test-only-'+'x'*40)
+        with tempfile.TemporaryDirectory() as d, patch.object(runtime, 'DATA_DIR', d), \
+             patch.object(db, 'DB_PATH', os.path.join(d, 'alex.db')), \
+             patch.object(runtime, 'get_settings', return_value=s), \
+             patch.object(runtime, 'validate_runtime'), \
+             patch.object(runtime.subprocess, 'Popen') as process, \
+             patch('uvicorn.Config', side_effect=ValueError('synthetic secret')):
+            with self.assertRaises(runtime.StartupFailure) as error:
+                runtime.main()
+            self.assertEqual(error.exception.code, 'DOT_SERVER_CONFIG')
+            process.return_value.terminate.assert_called_once()
+            process.return_value.wait.assert_called_once_with(timeout=5)
 
     def test_diagnostic_never_emits_exception_values_or_arbitrary_class_names(self):
         for error in [ValueError('sk-DO-NOT-LOG secret config'), type('SecretClassName', (Exception,), {})('secret')]:

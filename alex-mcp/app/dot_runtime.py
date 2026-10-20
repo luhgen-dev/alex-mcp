@@ -205,51 +205,51 @@ def main():
     http = checked("DOT_HTTP_IMPORT", __import__, "dot_http")
     create_app, create_tunnel_app = http.create_app, http.create_tunnel_app
     tunnel = None
-    if settings.dot_transport == 'private_tunnel':
-        app = checked("DOT_PRIVATE_AUTH", create_tunnel_app, bridge, credential_path=os.path.join(DATA_DIR,'dot-bridge-token'),
-                                owner_subject=owner_binding(settings))
-        # Only runtime permissions; no administration/provisioning command. No
-        # key is in argv, stdout, status JSON, or inherited HA secret environment.
-        checked("DOT_RUNTIME_CHECK", validate_runtime)
-        command = checked("DOT_RUNTIME_CONFIG", tunnel_command, settings)
-        tunnel = checked("DOT_RUNTIME_START", subprocess.Popen, command,
-            env={"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": DATA_DIR},
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    else:
-        app = checked("DOT_OAUTH_CONFIG", create_app, bridge,issuer=settings.dot_oauth_issuer,
-                         jwks_url=settings.dot_oauth_jwks_url,
-                         resource=settings.dot_resource_url,
-                         owner_subject=owner_binding(settings))
-    uvicorn = checked("DOT_SERVER_IMPORT", __import__, "uvicorn")
-    server = checked("DOT_SERVER_CONFIG", lambda: uvicorn.Server(uvicorn.Config(app,host="127.0.0.1",port=5002,proxy_headers=False,access_log=False,timeout_graceful_shutdown=5)))
     stop = threading.Event()
-    def drain():
-        while not stop.is_set():
-            try:
-                bridge.publish_pending()
-                subscribed = bridge.ready()
-                tunnel_ready = False
-                if tunnel and tunnel.poll() is None:
-                    try:
-                        with urllib.request.urlopen("http://127.0.0.1:5003/readyz",timeout=2) as response:
-                            tunnel_ready = response.status == 200
-                    except OSError:
-                        pass
-                state = "subscription_verified" if subscribed else "waiting_for_subscription"
-                if tunnel and not tunnel_ready:
-                    state = "tunnel_not_ready"
-                write_status(state, subscription=subscribed, tunnel=tunnel_ready)
-            except Exception:
-                write_status("disabled_or_connection_error")
-            stop.wait(5)
-    def shutdown():
-        server.should_exit = True
-        if tunnel and tunnel.poll() is None:
-            tunnel.terminate()
-    threading.Thread(target=watch_configuration,
-                     args=(settings, stop, shutdown),daemon=True).start()
-    threading.Thread(target=drain,daemon=True).start()
     try:
+        if settings.dot_transport == 'private_tunnel':
+            app = checked("DOT_PRIVATE_AUTH", create_tunnel_app, bridge, credential_path=os.path.join(DATA_DIR,'dot-bridge-token'),
+                                    owner_subject=owner_binding(settings))
+            # Only runtime permissions; no administration/provisioning command. No
+            # key is in argv, stdout, status JSON, or inherited HA secret environment.
+            checked("DOT_RUNTIME_CHECK", validate_runtime)
+            command = checked("DOT_RUNTIME_CONFIG", tunnel_command, settings)
+            tunnel = checked("DOT_RUNTIME_START", subprocess.Popen, command,
+                env={"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": DATA_DIR},
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:
+            app = checked("DOT_OAUTH_CONFIG", create_app, bridge,issuer=settings.dot_oauth_issuer,
+                             jwks_url=settings.dot_oauth_jwks_url,
+                             resource=settings.dot_resource_url,
+                             owner_subject=owner_binding(settings))
+        uvicorn = checked("DOT_SERVER_IMPORT", __import__, "uvicorn")
+        server = checked("DOT_SERVER_CONFIG", lambda: uvicorn.Server(uvicorn.Config(app,host="127.0.0.1",port=5002,proxy_headers=False,access_log=False,timeout_graceful_shutdown=5)))
+        def drain():
+            while not stop.is_set():
+                try:
+                    bridge.publish_pending()
+                    subscribed = bridge.ready()
+                    tunnel_ready = False
+                    if tunnel and tunnel.poll() is None:
+                        try:
+                            with urllib.request.urlopen("http://127.0.0.1:5003/readyz",timeout=2) as response:
+                                tunnel_ready = response.status == 200
+                        except OSError:
+                            pass
+                    state = "subscription_verified" if subscribed else "waiting_for_subscription"
+                    if tunnel and not tunnel_ready:
+                        state = "tunnel_not_ready"
+                    write_status(state, subscription=subscribed, tunnel=tunnel_ready)
+                except Exception:
+                    write_status("disabled_or_connection_error")
+                stop.wait(5)
+        def shutdown():
+            server.should_exit = True
+            if tunnel and tunnel.poll() is None:
+                tunnel.terminate()
+        threading.Thread(target=watch_configuration,
+                         args=(settings, stop, shutdown),daemon=True).start()
+        threading.Thread(target=drain,daemon=True).start()
         checked("DOT_SERVER_RUN", server.run)
     finally:
         stop.set()
