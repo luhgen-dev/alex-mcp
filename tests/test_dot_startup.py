@@ -128,6 +128,19 @@ class StartupTests(unittest.TestCase):
             self.assertIn(runtime.PRIVATE_HINTS['DOT_BRIDGE_MODE'], output.getvalue())
             self.assertNotIn('sk-', output.getvalue())
 
+    def test_dot_ports_do_not_overlap_existing_service_contracts(self):
+        import re
+        from dot_ports import DOT_PORT, DOT_HEALTH_PORT, DOT_RESOURCE
+        app_dir = Path(runtime.__file__).parent
+        node = (app_dir/'connect.js').read_text()
+        ingress = (app_dir/'ingress.py').read_text()
+        egress_port = int(re.search(r'const EGRESS_PORT = (\d+);', node).group(1))
+        ui_port = int(re.search(r'const UI_PORT = (\d+);', node).group(1))
+        ingress_port = int(re.search(r'^PORT = (\d+)', ingress, re.M).group(1))
+        self.assertEqual(len({egress_port,ui_port,ingress_port,DOT_PORT,DOT_HEALTH_PORT}),5)
+        self.assertIn(f'127.0.0.1:{egress_port}/send', (app_dir/'outbox.py').read_text())
+        self.assertEqual(DOT_RESOURCE, f'http://127.0.0.1:{DOT_PORT}/mcp/')
+
     def test_concurrent_status_writers_have_independent_staging_files(self):
         import threading
         barrier = threading.Barrier(2)
