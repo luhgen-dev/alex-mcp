@@ -307,15 +307,10 @@ def main() -> dict:
         "isAlexMentioned(message)" in connect
         and "isReplyToAlex(message)" in connect
         and "async function jidMatchesSelf" in connect
-        and (
-            "if (!(await isAlexMentioned(message)) && !(await isReplyToAlex(message))) return;" in connect
-            or (
-                "alexMentioned = await isAlexMentioned(message);" in connect
-                and "replyToAlex = await isReplyToAlex(message);" in connect
-                and "if (!alexMentioned && !replyToAlex) return;" in connect
-            )
-        ),
-        "Family Shared responds only to explicit mention or swipe reply",
+        and "listeningEntry(remoteJid)" in connect
+        and "listeningActive = Boolean" in connect
+        and "if (!alexMentioned && !replyToAlex && !listeningActive) return;" in connect,
+        "Family Shared reaches Python only by explicit mention/swipe reply or active bounded Listening Mode",
     )
     quoted_payload = (APP / "quoted_payload.js").read_text(encoding="utf-8")
     require(
@@ -328,8 +323,10 @@ def main() -> dict:
         "explicit Family quote handoff carries WhatsApp quoted content/type at the bridge boundary",
     )
     require(
-        "if (!alexMentioned && !replyToAlex) return;" in connect,
-        "ordinary Family Shared chat still stops before Python unless Alex is explicitly invoked",
+        "listening_capture_only: listeningCaptureOnly" in connect
+        and "bare_alex_mention: bareAlexMention" in connect
+        and "if (!alexMentioned && !replyToAlex && !listeningActive) return;" in connect,
+        "ordinary Family Shared chat stops before Python unless explicitly invoked or a visible Listening Mode session is active",
     )
     require(
         "USAGE_URL" in connect and "AI usage — last 24h" in connect,
@@ -378,7 +375,7 @@ def main() -> dict:
     # 7. Core trust rules are explicit in the brain and cannot rely on memory.
     prompt = brain.SYSTEM_PROMPT
     for phrase, label in (
-        ("never guess MYR versus SGD", "currency no-guess contract"),
+        ("MYR is the household default when the user does not state a currency", "MYR-default currency contract"),
         ("automatic receipt retention", "automatic receipt retention contract"),
         ("never invent a clock time", "date-only no-invented-time contract"),
         ("never read or reveal the spouse's private roster/Diary", "spouse privacy contract"),
