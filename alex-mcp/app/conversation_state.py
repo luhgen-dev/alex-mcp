@@ -267,10 +267,8 @@ def required_tools(state: dict | None) -> set[str]:
         tools |= {"query_finances", "correct_expense"}
         if active.get("status") == "PENDING_HUMAN_REVIEW":
             tools.add("confirm_expense")
-    if state.get("latest_list"):
-        tools.add("resolve_numbered_choice")
-        if (state.get("latest_list") or {}).get("kind") == "FINANCE":
-            tools |= {"query_finances", "correct_expense", "get_transaction_receipt"}
+    # A persisted list is context, not permission to retrieve anything on an
+    # unrelated turn. The current message (or an explicit quote) must select it.
     return tools
 
 
