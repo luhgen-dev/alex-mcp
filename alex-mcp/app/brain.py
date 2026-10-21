@@ -211,7 +211,7 @@ DISCOVERY_TOOL = {
 
 CORE_FINANCE = {
     "log_expense","confirm_expense","query_finances","list_pending_expenses",
-    "correct_expense","find_receipts","get_receipt","calculate",
+    "correct_expense","find_receipts","get_receipt","get_transaction_receipt","calculate",
 }
 MEDIA_TOOLS = {
     "find_media","get_media_original","list_pending_items","resolve_numbered_choice",
@@ -257,7 +257,7 @@ HOME_READ_TOOLS = {"ha_find_entities","ha_get_state","ha_home_summary","ha_draft
 PLAN_TOOLS = {"create_plan","list_plans","update_plan","confirm_plan","share_plan"}
 TASK_TOOLS = {"create_task","list_tasks","update_task","complete_task","reopen_task","cancel_task"}
 DIARY_EVENT_TOOLS = {"add_diary_event","update_diary_event","get_agenda","get_agenda_range","check_my_availability","check_spouse_availability","resolve_diary_conflict","resolve_latest_diary_conflict"}
-FINANCE_READ_TOOLS = {"query_finances","find_receipts","get_receipt","calculate"}
+FINANCE_READ_TOOLS = {"query_finances","find_receipts","get_receipt","get_transaction_receipt","calculate"}
 ASSET_TOOLS = {"asset_create","asset_update","asset_link_document","asset_list","warranty_expiring"}
 DIAGNOSTIC_TOOLS = {"system_health","recent_failures"}
 MONITOR_TOOLS = {"monitor_delegate","monitor_home_state","monitor_list","monitor_cancel"}
@@ -298,6 +298,7 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
         "list_pending_expenses": (r"pending|clarif|which expense|that expense", 105),
         "find_receipts": (r"\b(?:find|show|receipt|reference|ref)\b", 110),
         "get_receipt": (r"receipt|original|show", 90),
+        "get_transaction_receipt": (r"(?:receipt|proof|original).*?(?:payment|transaction|expense)|(?:payment|transaction|expense).*?(?:receipt|proof)", 150),
         "resolve_numbered_choice": (r"^\s*\d+\s*$|\b(?:play|listen(?:\s+to)?|hear|show|open|send|get|view)\s+(?:(?:unresolved|pending)\s+)?(?:(?:voice|audio)\s*note\s*)?(?:number\s+|no\.?\s*|#\s*)?\d+\b", 140),
         "create_reminder": (r"remind|reminder|notify", 110),
         "list_reminders": (r"list|what reminders|reminders", 95),
@@ -674,6 +675,12 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
     )
     if receipt_read:
         force |= {"find_receipts", "get_receipt"}
+    if re.search(
+        r"\b(?:receipt|payment proof|proof)\b.*\b(?:that|this|the)?\s*(?:payment|transaction|expense)\b"
+        r"|\b(?:payment|transaction|expense)\b.*\b(?:receipt|payment proof|proof)\b",
+        low,
+    ):
+        force |= {"query_finances", "get_transaction_receipt"}
         if explicit_saved_receipt_memory:
             # "Show the receipt photo I asked you to save" explicitly targets
             # the saved-memory index even though the subject is a receipt.
@@ -1757,7 +1764,7 @@ async def _tool_specs(user_text: str, media_context: list[str] | None = None,
         if carried_intent:
             wanted |= _select_tool_names(str(carried_intent), media_context)
         if quoted_context.get("financial_event"):
-            wanted |= {"query_finances", "correct_expense", "confirm_expense", "list_pending_expenses"}
+            wanted |= {"query_finances", "correct_expense", "confirm_expense", "list_pending_expenses", "get_transaction_receipt"}
         if quoted_context.get("report_context") or quoted_context.get("context_kind") == "REPORT":
             wanted |= {"query_finances", "finance_report", "report_export"}
         if str(quoted_context.get("context_kind") or "").startswith("REMINDER"):
@@ -2525,7 +2532,7 @@ def _action_key(actor: ActorContext, tool_name: str, args: dict, occurrence: int
 
 
 READ_ONLY_TOOLS = {
-    "query_finances","list_pending_expenses","find_receipts","get_receipt",
+    "query_finances","list_pending_expenses","find_receipts","get_receipt","get_transaction_receipt",
     "finance_report","planning_list_cash_pools",
     "find_media","get_media_original",
     "search_saved_items","get_saved_item","resolve_numbered_choice","list_reminders","reminder_history",
