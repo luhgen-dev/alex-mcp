@@ -117,6 +117,55 @@ class LockedAdditionTests(ConversationFixture):
         self.assertEqual(stopped["status"], "stopped")
         self.assertEqual(len(stopped["messages"]), 1)
 
+    def test_owner_work_profile_import_persists_permanent_roster_and_leave(self):
+        actor = self.actor("profile-import", "Import my work profile")
+        payload = {
+            "roster": {
+                "id": "permanent_roster", "name": "Permanent roster",
+                "cycle_start": "2026-10-19", "pattern": "evening,morning",
+                "day_start": "07:45", "day_end": "16:15",
+                "evening_start": "16:15", "evening_end": "01:00",
+                "active": True,
+            },
+            "overtime": {
+                "id": "permanent_ot", "name": "Permanent OT",
+                "currency": "MYR",
+                "morning_pre_hours": 2, "morning_pre_start": "05:45",
+                "morning_weekend_standard_start": "04:45",
+                "morning_weekend_standard_end": "16:45",
+                "morning_weekend_low_start": "05:45",
+                "morning_weekend_low_end": "15:45",
+                "evening_post_hours": 3.25,
+                "evening_post_start": "01:00", "evening_post_end": "04:15",
+                "evening_weekend_days": "saturday",
+                "evening_weekend_standard_start": "16:15",
+                "evening_weekend_standard_end": "04:15",
+                "evening_weekend_low_start": "16:15",
+                "evening_weekend_low_end": "23:59",
+                "active": True,
+            },
+            "leave": [{
+                "id": "annual_leave", "name": "Annual leave",
+                "entitlement_days": 13, "used_days": 12,
+                "as_of_date": "2026-10-22", "active": True,
+            }],
+        }
+        result = core.profile_config.import_user_work_profile(
+            actor, json.dumps(payload)
+        )
+        self.assertEqual(result["status"], "imported")
+        shift = core.phase2_work.effective_shift(
+            "2026-10-22", actor.phone, actor.conversation_type
+        )
+        self.assertEqual(shift["shift"], "evening")
+        leave = core.phase2_work.leave_balance(
+            "annual_leave", actor.phone, actor.conversation_type,
+            "2026-10-22",
+        )
+        self.assertEqual(leave["entitlement_days"], 13)
+        self.assertEqual(leave["used_days"], 12)
+        self.assertEqual(leave["remaining_days"], 1)
+
     def test_daily_brief_uses_permanent_roster_profile(self):
         core.profile_config.sync_options({
             "roster_profiles": [{
