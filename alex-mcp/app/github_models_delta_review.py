@@ -15,11 +15,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import os
-import re
 import tempfile
-import urllib.error
-import urllib.request
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -65,102 +61,131 @@ def _extract_parent(snapshot: dict[str, Any]) -> tuple[str, str]:
     )
 
 
-def _json_object(text: str) -> dict[str, Any]:
-    value = str(text or "").strip()
-    if value.startswith("```"):
-        value = re.sub(r"^\s*```(?:json)?\s*", "", value, flags=re.I)
-        value = re.sub(r"\s*```\s*$", "", value)
-    try:
-        parsed = json.loads(value)
-    except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", value, flags=re.S)
-        if not match:
-            raise
-        parsed = json.loads(match.group(0))
-    if not isinstance(parsed, dict):
-        raise ValueError("reviewer response must be one JSON object")
-    return parsed
-
-
-def _call_model(token: str, model: str, packet: dict[str, Any]) -> dict[str, Any]:
-    available = [
-        str(tool.get("name") or "")
-        for tool in packet.get("available_tools", [])
-        if str(tool.get("name") or "").strip()
-    ]
-    system = (
-        "You are an isolated independent reviewer for a household-assistant reasoning packet. "
-        "You can see ONLY public packet data and must not infer hidden expected answers. "
-        "Follow the packet's reasoning_instruction and runtime_policy. "
-        "Choose exactly one decision from: tools, clarify, refuse, answer. "
-        "If decision=tools, choose only capability/tool names present in available_tools and "
-        "include every tool needed for the whole turn, but no unrelated tools. "
-        "If clarify/refuse/answer, tools must be an empty list. "
-        "Return ONLY one JSON object with keys packet_id, decision, tools, reply_language, rationale. "
-        "Do not use markdown."
-    )
-    body = {
-        "model": model,
-        "temperature": 0,
-        "messages": [
-            {"role": "system", "content": system},
-            {
-                "role": "user",
-                "content": json.dumps(packet, ensure_ascii=False, separators=(",", ":")),
+def _compact_delta(delta: list[dict[str, Any]]) -> dict[str, Any]:
+    if not delta:
+        return {"shared_packet_fields": {}, "tools_by_ref": {}, "packets": []}
+    shared = {}
+    for key in (
+        "packet_version", "reasoning_instruction", "runtime_policy",
+        "evaluation_scope", "reply_language_policy",
+    ):
+        if key in delta[0] and all(row.get(key) == delta[0][key] for row in delta):
+            shared[key] = delta[0][key]
+    tools_by_ref = {}
+    packets = []
+    import hashlib
+    for row in delta:
+        refs = []
+        for tool in row.get("available_tools", []):
+            canonical = json.dumps(
+                tool, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+            )
+            ref = "tool-" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+            tools_by_ref[ref] = tool
+            refs.append(ref)
+        packets.append({
+            **{
+                key: value for key, value in row.items()
+                if key not in shared and key != "available_tools"
             },
-        ],
-    }
-    request = urllib.request.Request(
-        MODELS_URL,
-        data=json.dumps(body).encode("utf-8"),
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        },
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=120) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")[:2000]
-        raise RuntimeError(f"GitHub Models HTTP {exc.code}: {detail}") from exc
-
-    choices = payload.get("choices") or []
-    if not choices:
-        raise RuntimeError("GitHub Models returned no choices")
-    content = ((choices[0].get("message") or {}).get("content") or "")
-    decision = _json_object(content)
-    pid = str(packet["packet_id"])
-    if str(decision.get("packet_id") or "") != pid:
-        raise ValueError(f"reviewer packet id mismatch for {pid}")
-    kind = str(decision.get("decision") or "").strip().casefold()
-    if kind not in human_ai_lab.DECISION_KINDS:
-        raise ValueError(f"invalid reviewer decision {kind!r} for {pid}")
-    tools = decision.get("tools")
-    if not isinstance(tools, list) or any(not isinstance(name, str) for name in tools):
-        raise ValueError(f"invalid tool list for {pid}")
-    if kind != "tools" and tools:
-        raise ValueError(f"non-tool decision returned tools for {pid}")
-    unknown = sorted(set(tools) - set(available))
-    if unknown:
-        raise ValueError(f"reviewer selected unavailable tools for {pid}: {unknown}")
-    language = str(decision.get("reply_language") or "").strip()
-    if not language:
-        raise ValueError(f"reviewer omitted reply language for {pid}")
+            "tool_refs": refs,
+        })
     return {
-        "packet_id": pid,
-        "decision": kind,
-        "tools": tools,
-        "reply_language": language,
-        "rationale": str(decision.get("rationale") or "").strip()[:2000],
+        "shared_packet_fields": shared,
+        "tools_by_ref": tools_by_ref,
+        "packets": packets,
     }
 
 
-async def refresh(snapshot_path: Path, model: str, token: str, report_path: Path | None) -> dict[str, Any]:
+async def prepare(
+    snapshot_path: Path, prompt_path: Path, metadata_path: Path
+) -> dict[str, Any]:
     packets = await human_ai_lab.build_packets("all")
-    current_fingerprint = human_ai_lab._corpus_fingerprint(packets)
+    fingerprint = human_ai_lab._corpus_fingerprint(packets)
+    snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    _parent_raw, bundle_raw = _extract_parent(snapshot)
+    parent_bundle = json.loads(bundle_raw)
+    delta = _public_delta(packets, parent_bundle)
+    metadata = {
+        "corpus_fingerprint": fingerprint,
+        "delta_packets": len(delta),
+        "packet_ids": [str(row["packet_id"]) for row in delta],
+    }
+    metadata_path.parent.mkdir(parents=True, exist_ok=True)
+    metadata_path.write_text(
+        json.dumps(metadata, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    if not delta:
+        prompt_path.write_text(
+            "No independent delta review is required.\n", encoding="utf-8"
+        )
+        return metadata
+
+    compact = _compact_delta(delta)
+    reviewer = "GitHub Copilot gpt-4.1 isolated public-packet reviewer"
+    prompt = f"""You are an isolated independent reviewer for Alex, a household assistant.
+
+You are given ONLY public reasoning packets. Hidden certification contracts,
+expected answers, previous decisions and scorer output are not available to you.
+
+For EACH packet:
+1. Expand tool_refs using tools_by_ref.
+2. Follow reasoning_instruction and runtime_policy exactly.
+3. Choose exactly one decision: tools, clarify, refuse, or answer.
+4. If decision=tools, select only supplied tool names and include all capabilities
+   required for the whole turn, but no unrelated capability.
+5. If decision is clarify/refuse/answer, tools MUST be [].
+6. Never invent record IDs, facts, amounts, currency, dates or permissions.
+7. reply_language must follow the packet's language policy.
+
+Return ONLY valid JSON with this exact top-level shape:
+{{
+  "format": "alex-independent-review-v1",
+  "corpus_fingerprint": "{fingerprint}",
+  "reviewer": "{reviewer}",
+  "review_date": "{date.today().isoformat()}",
+  "review_scope": "public_packets_only",
+  "expected_answers_visible": false,
+  "decisions": [
+    {{
+      "packet_id": "exact packet id",
+      "decision": "tools|clarify|refuse|answer",
+      "tools": ["exact supplied tool name"],
+      "reply_language": "en",
+      "rationale": "brief reason based only on public evidence"
+    }}
+  ]
+}}
+
+Every packet below must have exactly one decision. Do not add unknown packet IDs.
+Do not use Markdown or code fences.
+
+PUBLIC DELTA PACKETS:
+{json.dumps(compact, ensure_ascii=False, separators=(",", ":"))}
+"""
+    prompt_path.parent.mkdir(parents=True, exist_ok=True)
+    prompt_path.write_text(prompt, encoding="utf-8")
+    return metadata
+
+
+def _raw_json_response(path: Path) -> str:
+    raw = path.read_text(encoding="utf-8").strip()
+    if raw.startswith(chr(96) * 3):
+        raise ValueError(
+            "independent reviewer returned Markdown fences; raw JSON is required"
+        )
+    parsed = json.loads(raw)
+    if not isinstance(parsed, dict):
+        raise ValueError("independent reviewer response must be a JSON object")
+    return raw
+
+
+async def import_review(
+    snapshot_path: Path, response_path: Path, report_path: Path | None
+) -> dict[str, Any]:
+    packets = await human_ai_lab.build_packets("all")
+    fingerprint = human_ai_lab._corpus_fingerprint(packets)
     existing = json.loads(snapshot_path.read_text(encoding="utf-8"))
     parent_raw, bundle_raw = _extract_parent(existing)
     parent_bundle = json.loads(bundle_raw)
@@ -168,62 +193,61 @@ async def refresh(snapshot_path: Path, model: str, token: str, report_path: Path
     if not delta:
         return {
             "status": "UNCHANGED",
-            "corpus_fingerprint": current_fingerprint,
+            "corpus_fingerprint": fingerprint,
             "delta_packets": 0,
         }
 
-    decisions = []
-    for index, packet in enumerate(delta, 1):
-        print(
-            f"[independent-review] {index}/{len(delta)} {packet['packet_id']}",
-            flush=True,
+    raw = _raw_json_response(response_path)
+    document = json.loads(raw)
+    expected_ids = [str(row["packet_id"]) for row in delta]
+    decisions = document.get("decisions") or []
+    actual_ids = [
+        str(row.get("packet_id") or "")
+        for row in decisions
+        if isinstance(row, dict)
+    ]
+    if len(actual_ids) != len(expected_ids) or set(actual_ids) != set(expected_ids):
+        raise ValueError(
+            "independent reviewer did not cover the exact delta packet set"
         )
-        decisions.append(_call_model(token, model, packet))
+    if document.get("corpus_fingerprint") != fingerprint:
+        raise ValueError("independent reviewer corpus fingerprint mismatch")
+    if document.get("review_scope") != "public_packets_only":
+        raise ValueError("independent reviewer did not attest public-only review")
+    if document.get("expected_answers_visible") is not False:
+        raise ValueError(
+            "independent reviewer did not attest hidden expected answers"
+        )
 
-    source_document = {
-        "format": "alex-independent-review-v1",
-        "corpus_fingerprint": current_fingerprint,
-        "reviewer": f"GitHub Models {model} isolated public-packet reviewer",
-        "review_date": date.today().isoformat(),
-        "review_scope": "public_packets_only",
-        "expected_answers_visible": False,
-        "decisions": decisions,
-    }
-
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        root = Path(tmp_dir)
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
         parent_path = root / "parent-v5.json"
         bundle_path = root / "parent-public.json"
-        review_path = root / "github-models-delta.json"
+        review_path = root / "copilot-delta.json"
         parent_path.write_text(parent_raw, encoding="utf-8")
         bundle_path.write_text(bundle_raw, encoding="utf-8")
-        raw_review = json.dumps(source_document, ensure_ascii=False, indent=2) + "\n"
-        review_path.write_text(raw_review, encoding="utf-8")
-
+        review_path.write_text(raw + "\n", encoding="utf-8")
         refreshed = real_ai_snapshot_review.import_delta_review(
             packets, [review_path], parent_path, bundle_path
         )
-        # Reconstruct from the raw evidence before scoring. This is the same
-        # fail-closed validation used by normal CI.
-        model_decisions = real_ai_snapshot_review._decisions_from_snapshot(
+        validated = real_ai_snapshot_review._decisions_from_snapshot(
             packets, refreshed
         )
-        score = human_ai_lab.score_packets(packets, model_decisions, "all")
+        score = human_ai_lab.score_packets(packets, validated, "all")
         result = {
             "status": score.get("status"),
-            "corpus_fingerprint": current_fingerprint,
+            "corpus_fingerprint": fingerprint,
             "delta_packets": len(delta),
-            "reviewer": source_document["reviewer"],
+            "reviewer": document.get("reviewer"),
             "score_summary": score.get("summary"),
-            "reviewed_packet_ids": [row["packet_id"] for row in decisions],
         }
         if report_path:
             report_path.parent.mkdir(parents=True, exist_ok=True)
             report_path.write_text(
                 json.dumps(
                     {
-                        **result,
-                        "raw_review": source_document,
+                        "result": result,
+                        "raw_review": document,
                         "score": score,
                     },
                     ensure_ascii=False,
@@ -233,8 +257,8 @@ async def refresh(snapshot_path: Path, model: str, token: str, report_path: Path
             )
         if score.get("status") != "PASS":
             raise RuntimeError(
-                "Fresh independent delta review disagrees with certification contracts; "
-                "snapshot was not updated. Inspect the preserved review report."
+                "Fresh independent delta review disagrees with certification "
+                "contracts. The shipped snapshot was left unchanged."
             )
         snapshot_path.write_text(
             json.dumps(refreshed, ensure_ascii=False, indent=2) + "\n",
@@ -245,24 +269,35 @@ async def refresh(snapshot_path: Path, model: str, token: str, report_path: Path
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--snapshot",
-        default=str(Path(__file__).resolve().parent / "real_ai_snapshot.json"),
-    )
-    parser.add_argument("--model", default=os.environ.get("ALEX_REVIEW_MODEL", "openai/gpt-4.1"))
-    parser.add_argument("--report", default="/tmp/alex-github-models-review.json")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    prepare_parser = sub.add_parser("prepare")
+    prepare_parser.add_argument("--snapshot", required=True)
+    prepare_parser.add_argument("--prompt-out", required=True)
+    prepare_parser.add_argument("--metadata-out", required=True)
+
+    import_parser = sub.add_parser("import")
+    import_parser.add_argument("--snapshot", required=True)
+    import_parser.add_argument("--response", required=True)
+    import_parser.add_argument("--report")
+
     args = parser.parse_args()
-    token = os.environ.get("GITHUB_TOKEN", "").strip()
-    if not token:
-        raise SystemExit("GITHUB_TOKEN is required")
-    result = asyncio.run(
-        refresh(
-            Path(args.snapshot),
-            args.model,
-            token,
-            Path(args.report) if args.report else None,
+    if args.command == "prepare":
+        result = asyncio.run(
+            prepare(
+                Path(args.snapshot),
+                Path(args.prompt_out),
+                Path(args.metadata_out),
+            )
         )
-    )
+    else:
+        result = asyncio.run(
+            import_review(
+                Path(args.snapshot),
+                Path(args.response),
+                Path(args.report) if args.report else None,
+            )
+        )
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
