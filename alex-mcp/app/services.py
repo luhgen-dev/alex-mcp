@@ -1909,6 +1909,59 @@ def _saved_local_date(value: str | None, tz_name: str) -> str | None:
         return None
 
 
+def save_existing_media_item(actor: ActorContext, title: str, content: str,
+                             media_id: str, shared: bool = False,
+                             tags: str | None = None) -> dict:
+    """Save an already-preserved owner media object after a trusted typed instruction."""
+    if not str(title or "").strip():
+        raise ValueError("saved item title is required")
+    conn = connect()
+    try:
+        media_row = conn.execute(
+            """SELECT m.media_id,m.media_type,i.sender_phone
+               FROM media_objects m
+               JOIN inbound_messages i ON i.message_id=m.source_message_id
+               WHERE m.media_id=? LIMIT 1""",
+            (media_id,),
+        ).fetchone()
+        if not media_row or normalize_phone(media_row["sender_phone"]) != normalize_phone(actor.phone):
+            raise PermissionError("media is not owned by the authenticated user")
+        space = scope_policy.resolve_new_write_space(actor, requested_shared=shared)
+        if space not in actor.allowed_spaces:
+            raise PermissionError("requested memory space is not accessible")
+        action_key = hashlib.sha256(
+            f"{actor.source_message_id}|save-existing-media|{media_id}|{space}".encode("utf-8")
+        ).hexdigest()
+        existing = conn.execute(
+            "SELECT item_id FROM saved_items WHERE action_key=?", (action_key,)
+        ).fetchone()
+        if existing:
+            return {
+                "status": "already_saved",
+                "item_id": existing["item_id"],
+                "media_saved": True,
+            }
+        item_id = str(uuid.uuid4())
+        conn.execute(
+            """INSERT INTO saved_items(
+                   item_id,action_key,source_message_id,space_id,owner_id,
+                   title,content,tags,media_id
+               ) VALUES(?,?,?,?,?,?,?,?,?)""",
+            (
+                item_id, action_key, actor.source_message_id, space, actor.user_id,
+                str(title).strip()[:200], str(content or title).strip()[:20000],
+                (tags or "")[:500] or None, media_id,
+            ),
+        )
+        conn.commit()
+        return {
+            "status": "saved", "item_id": item_id, "space": space,
+            "media_saved": True, "media_type": media_row["media_type"],
+        }
+    finally:
+        conn.close()
+
+
 def search_saved_items(actor: ActorContext, query: str | None = None, limit: int = 10,
                        kind: str | None = None) -> dict:
     """Find explicitly saved items. Empty/general query = browse newest items.
@@ -1979,6 +2032,7 @@ def search_saved_items(actor: ActorContext, query: str | None = None, limit: int
                 "tags": m["tags"],
                 "kind": (
                     "picture" if m.get("media_type") == "IMAGE"
+                    else "voice note" if m.get("media_type") == "AUDIO"
                     else "document" if m.get("media_type") in ("PDF", "DOCUMENT")
                     else "note"
                 ),
