@@ -237,6 +237,20 @@ def _recurring(raw):
         "frequency": frequency,
         "category": str(raw.get("category") or "").strip() or None,
         "auto_pay": _bool(raw.get("auto_pay"), False),
+        "match_aliases": [
+            value.strip() for value in str(raw.get("match_aliases") or "").split(",")
+            if value.strip()
+        ][:20],
+        "reference_patterns": [
+            value.strip() for value in str(raw.get("reference_patterns") or "").split(",")
+            if value.strip()
+        ][:20],
+        "account_last4": (
+            re.sub(r"\D", "", str(raw.get("account_last4") or ""))[-4:] or None
+        ),
+        "amount_tolerance_minor": _minor(
+            raw.get("amount_tolerance"), allow_none=True
+        ),
         "effective_from": effective_from,
         "active": _bool(raw.get("active"), True),
     }
