@@ -5,17 +5,21 @@ import uuid
 import json
 import os
 import hashlib
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from dateutil.rrule import rrulestr
 
 from db import connect, utc_now
+import db
 import runtime_clock
 import ha
 import ha_mobile
 import phase2_presence
 import phase2_monitor
+import daily_brief
+from config import get_settings
 
 
 def _owner_phone(conn, user_id: str) -> str | None:
@@ -520,11 +524,72 @@ def run_delegated_monitors():
         conn.close()
 
 
+def queue_daily_briefs():
+    settings = get_settings()
+    if not settings.daily_brief_enabled:
+        return
+    local_now = runtime_clock.now_in(settings.timezone)
+    try:
+        hh, mm = (int(x) for x in settings.daily_brief_time.split(":", 1))
+    except Exception:
+        hh, mm = 4, 30
+    if (local_now.hour, local_now.minute) < (hh, mm):
+        return
+
+    conn = connect()
+    try:
+        users = conn.execute(
+            """SELECT u.user_id,p.phone_number FROM users u
+               JOIN user_phone_history p ON p.user_id=u.user_id
+               WHERE p.valid_to_utc IS NULL"""
+        ).fetchall()
+    finally:
+        conn.close()
+
+    for row in users:
+        phone = str(row["phone_number"] or "")
+        if not phone:
+            continue
+        dm = phone.replace("+", "") + "@s.whatsapp.net"
+        source_id = f"DAILY_BRIEF:{row['user_id']}:{local_now.date().isoformat()}"
+        try:
+            actor = db.resolve_actor(phone, dm, "DIRECT_DM", source_id, [])
+            actor = replace(
+                actor, read_scope="all", trusted_text="daily brief",
+                intent_text="daily brief",
+            )
+            brief = daily_brief.create_or_get(actor, local_now.date().isoformat())
+        except Exception as exc:
+            print(f"[Alex MCP daily brief] build failed for {row['user_id']}: {exc}", flush=True)
+            continue
+        if not brief.get("actionable"):
+            continue
+        conn = connect()
+        try:
+            existing = conn.execute(
+                """SELECT 1 FROM outbound_messages
+                   WHERE context_kind='DAILY_BRIEF' AND context_id=? LIMIT 1""",
+                (brief["brief_id"],),
+            ).fetchone()
+            if existing:
+                continue
+            conn.execute(
+                """INSERT INTO outbound_messages(
+                       outbound_id,conversation_id,kind,text_body,context_kind,context_id
+                   ) VALUES(?,?, 'TEXT', ?, 'DAILY_BRIEF', ?)""",
+                (str(uuid.uuid4()), dm, brief["text"], brief["brief_id"]),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+
 def main():
     while True:
         try:
             fire_due()
             run_delegated_monitors()
+            queue_daily_briefs()
         except Exception as exc:
             print(f"[Alex MCP scheduler] {exc}", flush=True)
         time.sleep(15)
