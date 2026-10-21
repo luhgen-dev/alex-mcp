@@ -658,6 +658,17 @@ def _human_date(d):
     return f"{d.day} {d.strftime('%B')}"
 
 
+def _display_shift(value):
+    code = str(value or "").strip().casefold()
+    if code == "evening":
+        return "Afternoon"
+    if code == "morning":
+        return "Morning"
+    if code == "off":
+        return "Off"
+    return str(value or "")
+
+
 def historical_work_day(on_date, sender_phone,
                         conversation_type="DIRECT_DM",
                         answer_focus="summary"):
@@ -744,8 +755,8 @@ def historical_work_day(on_date, sender_phone,
         attendance_source = "ROSTER_NO_ABSENCE_RECORDED"
 
     date_label = _human_date(d)
-    shift_name = actual_shift
-    scheduled_name = scheduled_shift
+    shift_name = _display_shift(actual_shift)
+    scheduled_name = _display_shift(scheduled_shift)
 
     if leave:
         brief = (
@@ -842,6 +853,7 @@ def work_summary(start_date, end_date, sender_phone,
         days.append({
             "date": d.isoformat(),
             "shift": shift["shift"],
+            "shift_label": _display_shift(shift["shift"]),
             "effective_ot": ot,
             "ot_available": ot_available,
         })
