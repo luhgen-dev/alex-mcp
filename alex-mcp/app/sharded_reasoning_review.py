@@ -69,8 +69,11 @@ async def prepare(snapshot: Path, prompt_dir: Path, metadata: Path, shard_size: 
     packets = await human_ai_lab.build_packets("all")
     fingerprint = human_ai_lab._corpus_fingerprint(packets)
     existing = json.loads(snapshot.read_text(encoding="utf-8"))
-    _parent, bundle_raw = _extract_parent(existing)
-    delta = _public_delta(packets, json.loads(bundle_raw))
+    if str(existing.get("corpus_fingerprint") or "") == fingerprint:
+        delta = []
+    else:
+        _parent, bundle_raw = _extract_parent(existing)
+        delta = _public_delta(packets, json.loads(bundle_raw))
     size = max(12, min(80, int(shard_size)))
     shards = [delta[i:i + size] for i in range(0, len(delta), size)]
     prompt_dir.mkdir(parents=True, exist_ok=True)
@@ -112,6 +115,9 @@ async def import_shards(snapshot: Path, response_dir: Path, report: Path | None)
     packets = await human_ai_lab.build_packets("all")
     fingerprint = human_ai_lab._corpus_fingerprint(packets)
     existing = json.loads(snapshot.read_text(encoding="utf-8"))
+    if str(existing.get("corpus_fingerprint") or "") == fingerprint:
+        return {"status": "UNCHANGED", "delta_packets": 0,
+                "corpus_fingerprint": fingerprint}
     parent_raw, bundle_raw = _extract_parent(existing)
     delta = _public_delta(packets, json.loads(bundle_raw))
     expected = [str(row["packet_id"]) for row in delta]
