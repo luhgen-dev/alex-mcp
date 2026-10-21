@@ -1,3 +1,38 @@
+## 0.5.45 — consolidated live-smoke repair and household workflow hardening
+
+- Repair the shared natural-language → exact-domain → exact-record → tool handoff exposed
+  by live WhatsApp testing. Goal edits, diary cancellation, shopping continuation,
+  commitments, task details and task-linked reminders now have explicit grounded paths.
+- Make bookkeeping fail closed: ordinary reads remain Family Shared, unspecified currency
+  defaults to MYR, stash spending cannot partially create an ordinary expense, transaction
+  lists are frozen/numbered, and corrections retain provenance.
+- Bind payment proof only through the exact transaction’s media link. Receipt searches keep
+  date/scope filters; unrelated saved/receipt media can no longer leak into shopping or other
+  turns. “Send that as PDF” reuses the exact displayed finance payload.
+- Add durable pinned finance-review questions and conservative recurring-payment matching:
+  amount alone never identifies a commitment; configured payee/reference/account evidence is
+  required.
+- Keep date-specific Agenda clean: undated drafts stay out, privacy scope is enforced, and
+  finalising a Plan no longer silently creates a Diary event.
+- Add deterministic Daily Brief with shift/leave, Diary, due tasks/reminders, commitments and
+  unresolved carry-forward items; ✅ acknowledges only the brief.
+- Add Family Shared Listening Mode: bare @Alex start/stop, 👂 after successful capture,
+  one-hour inactivity timeout, bounded active context and later discussion recall.
+- Add deterministic /menu discovery, private/shared custom Ledgers & Trackers with money-
+  meaning clarification, task provenance/details and exact numbered task selection.
+- Preserve explicitly saved original voice notes and videos without granting audio/video
+  command authority.
+- Enable native 24-hour disappearing messages for Alex DMs by default; Family Shared remains
+  normal history. Structured Alex records remain durable.
+- Work profiles can be imported privately at runtime and versioned locally. Leave snapshots
+  accept entitled/used format and support Annual, Childcare, Medical, Wellness,
+  Hospitalisation and DOIL balances.
+- Reported diagnostic bundles are archived locally automatically; manual Export remains an
+  optional sharing/debug surface, not a prerequisite for evidence preservation.
+
+Live acceptance is still required after installing 0.5.45. Offline/CI success must not be
+treated as proof of WhatsApp rendering, provider behavior or Home Assistant device state.
+
 ## 0.5.44 — grounded conversation and reminder execution repair
 
 - Give the Python brain and semantic router the same bounded, owner/chat-bound
