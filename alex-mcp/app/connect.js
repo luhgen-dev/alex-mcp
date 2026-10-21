@@ -155,6 +155,7 @@ function extractText(message) {
     m.conversation ||
     (m.extendedTextMessage && m.extendedTextMessage.text) ||
     (m.imageMessage && m.imageMessage.caption) ||
+    (m.videoMessage && m.videoMessage.caption) ||
     (m.documentMessage && m.documentMessage.caption) ||
     ''
   );
@@ -166,6 +167,7 @@ function extractContextInfo(message) {
   return (
     (m.extendedTextMessage && m.extendedTextMessage.contextInfo) ||
     (m.imageMessage && m.imageMessage.contextInfo) ||
+    (m.videoMessage && m.videoMessage.contextInfo) ||
     (m.audioMessage && m.audioMessage.contextInfo) ||
     (m.documentMessage && m.documentMessage.contextInfo) ||
     null
@@ -265,6 +267,7 @@ function detectMedia(message) {
   const m = unwrapMessage(message);
   if (!m) return { type: null, node: null };
   if (m.imageMessage) return { type: 'image', node: m.imageMessage };
+  if (m.videoMessage) return { type: 'video', node: m.videoMessage };
   if (m.audioMessage) return { type: 'audio', node: m.audioMessage };
   if (m.documentMessage && m.documentMessage.mimetype === 'application/pdf') {
     return { type: 'pdf', node: m.documentMessage };
@@ -283,6 +286,7 @@ async function downloadMedia(message, mediaType) {
     const m = unwrapMessage(message);
     let mime = 'application/octet-stream';
     if (mediaType === 'image') mime = (m.imageMessage && m.imageMessage.mimetype) || 'image/jpeg';
+    if (mediaType === 'video') mime = (m.videoMessage && m.videoMessage.mimetype) || 'video/mp4';
     if (mediaType === 'audio') mime = (m.audioMessage && m.audioMessage.mimetype) || 'audio/ogg';
     if (mediaType === 'pdf') mime = 'application/pdf';
     return { data: buffer.toString('base64'), mimeType: mime };
@@ -488,6 +492,8 @@ async function handleIncoming(message) {
     sent_at_ms: messageTimestampMs(message),
     image_data: media.type === 'image' && mediaData ? mediaData.data : null,
     image_mime_type: media.type === 'image' && mediaData ? mediaData.mimeType : null,
+    video_data: media.type === 'video' && mediaData ? mediaData.data : null,
+    video_mime_type: media.type === 'video' && mediaData ? mediaData.mimeType : null,
     audio_data: media.type === 'audio' && mediaData ? mediaData.data : null,
     audio_mime_type: media.type === 'audio' && mediaData ? mediaData.mimeType : null,
     pdf_data: media.type === 'pdf' && mediaData ? mediaData.data : null,
@@ -984,6 +990,9 @@ function startEgress() {
           const mime = String(payload.mimetype || 'audio/ogg').toLowerCase();
           const ptt = mime.includes('audio/ogg') || mime.includes('audio/opus');
           sent = await currentSock.sendMessage(to, { audio: buf, mimetype: payload.mimetype || 'audio/ogg', ptt }, sendOptions);
+        } else if (payload.kind === 'video') {
+          const buf = Buffer.from(payload.file_b64 || '', 'base64');
+          sent = await currentSock.sendMessage(to, { video: buf, mimetype: payload.mimetype || 'video/mp4', caption: payload.caption || undefined }, sendOptions);
         } else {
           throw new Error('Unsupported outbound kind');
         }
