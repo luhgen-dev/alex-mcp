@@ -675,18 +675,18 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
     )
     if receipt_read:
         force |= {"find_receipts", "get_receipt"}
-    if re.search(
-        r"\b(?:receipt|payment proof|proof)\b.*\b(?:that|this|the)?\s*(?:payment|transaction|expense)\b"
-        r"|\b(?:payment|transaction|expense)\b.*\b(?:receipt|payment proof|proof)\b",
-        low,
-    ):
-        force |= {"query_finances", "get_transaction_receipt"}
         if explicit_saved_receipt_memory:
             # "Show the receipt photo I asked you to save" explicitly targets
             # the saved-memory index even though the subject is a receipt.
             force |= {"search_saved_items", "get_saved_item"}
         else:
             block |= {"save_item", "search_saved_items", "get_saved_item", "remove_saved_item"}
+    if re.search(
+        r"\b(?:receipt|payment proof|proof)\b.*\b(?:that|this|the)?\s*(?:payment|transaction|expense)\b"
+        r"|\b(?:payment|transaction|expense)\b.*\b(?:receipt|payment proof|proof)\b",
+        low,
+    ):
+        force |= {"query_finances", "get_transaction_receipt"}
 
     # Explicit saved-picture/document retrieval is a two-stage operation:
     # search the owner's saved-memory index, then fetch the exact attachment.
@@ -1637,23 +1637,6 @@ def _attachment_delivery_authorized(user_text: str, tool_name: str) -> bool:
     return bool(re.search(
         r"\b(?:show|open|send|get|view|play|listen|hear|original|receipt|proof|file|photo|picture|image|document|video|voice|audio)\b",
         text,
-    ))
-
-
-def _finance_read_needs_grounding(user_text: str) -> bool:
-    """Financial facts must come from a current backend read, never chat memory."""
-    low = normalize_intent_text(user_text).strip().casefold()
-    if not low:
-        return False
-    if _trusted_mutation_requested(user_text) and re.search(
-        r"\b(?:log|record|add|correct|fix|change|update|spent|paid|bought|contribute|allocate)\b",
-        low,
-    ):
-        return False
-    return bool(re.search(
-        r"\b(?:expenses?|transactions?|spending|spent|paid|payments?|receipts?|"
-        r"bills?|commitments?|obligations?|how much|did i pay|what did i spend)\b",
-        low,
     ))
 
 
@@ -4298,7 +4281,6 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
     active_route: dict | None = None
     provider_failures: list[dict] = []
     capability_retry_used = False
-    grounding_retry_used = False
     language_retry_used = False
     mutation_ledger: list[dict] = []
     tool_evidence: list[dict] = []
@@ -4395,31 +4377,6 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                 if not str(name).endswith(":error")
                 and not str(name).endswith(":not_offered")
             }
-            if (
-                not final_answer_call
-                and not grounding_retry_used
-                and _finance_read_needs_grounding(user_text)
-                and not successful_tools.intersection({
-                    "query_finances", "finance_report", "bills_list",
-                    "find_receipts", "get_receipt", "get_transaction_receipt",
-                })
-            ):
-                grounding_retry_used = True
-                messages.append({
-                    "role": "system",
-                    "content": (
-                        "This request asks for financial/bookkeeping facts. Do not answer from "
-                        "conversation memory. Use the relevant finance/bill/receipt read tool now, "
-                        "within the current authenticated privacy scope. If nothing is recorded, "
-                        "say so from the tool result."
-                    ),
-                })
-                messages.append({
-                    "role": "user",
-                    "content": current_content if vision_parts else current,
-                })
-                trace["routes"].append("self_repair:finance_grounding")
-                continue
             raw_candidate = _content_text(msg.content).strip()
             if raw_candidate:
                 candidate = raw_candidate
