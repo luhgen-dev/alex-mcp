@@ -25,6 +25,7 @@ import diagnostics
 import chatgpt_plan
 import shadow_router
 import daily_brief
+import listening
 from config import DATA_DIR, get_settings
 from text_normalization import normalize_intent_text
 
@@ -377,6 +378,50 @@ _MENU_SECTIONS = {
     9: ("Alex Listening", "Start/stop a Family Shared discussion-listening session."),
     10: ("Ledgers & Trackers", "Create or use private/shared specialist or custom trackers."),
 }
+
+
+def _listening_start_command(text: str) -> bool:
+    low = normalize_intent_text(str(text or "")).strip().casefold()
+    return bool(re.fullmatch(
+        r"(?:alex\s+)?(?:start listening|listen to (?:this|our) discussion|listen in)",
+        low,
+    ))
+
+
+def _listening_stop_command(text: str) -> bool:
+    low = normalize_intent_text(str(text or "")).strip().casefold()
+    return bool(re.fullmatch(
+        r"(?:alex\s+)?(?:stop listening|you can stop listening|end listening|stop listening now)",
+        low,
+    ))
+
+
+def _listening_resume_query(text: str) -> str | None:
+    low = normalize_intent_text(str(text or "")).strip()
+    match = re.fullmatch(
+        r"(?is)(?:alex\s+)?resume\s+(?:our\s+|the\s+)?(.+?)(?:\s+discussion)?",
+        low,
+    )
+    return match.group(1).strip() if match else None
+
+
+def _listening_summary(actor, stopped: dict) -> str:
+    context = {
+        "listening_context": {
+            "previous_summary": stopped.get("previous_summary"),
+            "messages": stopped.get("messages") or [],
+        }
+    }
+    summary_prompt = (
+        "Summarize the captured family discussion only. Separate Agreed, Tentative, "
+        "Rejected/changed, and Still unresolved. Do not create, save, schedule, remind, "
+        "delete, or change anything. End by asking whether the user wants any agreed "
+        "outcome saved as a plan, diary item, task or reminder."
+    )
+    reply, _attachments = asyncio.run(
+        brain.respond(actor, summary_prompt, quoted_context=context)
+    )
+    return str(reply or "").strip()
 
 
 def _menu_command(text: str) -> bool:
@@ -1777,6 +1822,30 @@ def process(payload: dict) -> dict:
             )
             db.finish_inbound(payload["message_id"], reply)
             return {"ok": True, "media_failed": True}
+        if (
+            payload.get("conversation_type") == "GROUP"
+            and payload.get("listening_capture_only")
+        ):
+            capture_actor = db.resolve_actor(
+                payload["sender_phone"], payload["conversation_id"], "GROUP",
+                payload["message_id"], [],
+            )
+            capture_text = str(payload.get("text") or "").strip()
+            if not capture_text:
+                capture_text = (
+                    "[video]" if payload.get("video_data")
+                    else "[image]" if payload.get("image_data")
+                    else "[audio]" if payload.get("audio_data")
+                    else "[document]" if payload.get("pdf_data")
+                    else "[message]"
+                )
+            result = listening.capture(
+                capture_actor, payload["message_id"], capture_text,
+                _received_at_utc(payload),
+            )
+            db.finish_inbound(payload["message_id"], json.dumps(result, sort_keys=True))
+            return {"ok": True, "listening_capture": result.get("status") == "captured"}
+
         db.touch_inbound_processing(payload["message_id"])
         media_ids, media_lines, vision_parts = media.process_payload_media(payload)
         db.touch_inbound_processing(payload["message_id"])
@@ -1802,6 +1871,58 @@ def process(payload: dict) -> dict:
                 and turn["read_scope"] == "private"
             ),
         )
+        if actor.conversation_type == "GROUP":
+            current_listening = listening.active_session(actor.conversation_id)
+            resume_query = _listening_resume_query(turn["trusted_text"])
+            start_requested = _listening_start_command(turn["trusted_text"])
+            stop_requested = _listening_stop_command(turn["trusted_text"])
+            bare_toggle = bool(payload.get("bare_alex_mention"))
+
+            if (bare_toggle and not current_listening) or start_requested or resume_query:
+                started = listening.start(actor, resume_query=resume_query)
+                reply = (
+                    "👂 Listening resumed. I’ll capture this Family discussion until you "
+                    "tag me alone again or there is 1 hour of inactivity."
+                    if started.get("resumed")
+                    else "👂 I’m listening. I’ll capture this Family discussion until you "
+                    "tag me alone again or there is 1 hour of inactivity."
+                )
+                db.queue_outbound(
+                    actor.conversation_id, "TEXT", text=reply,
+                    source_message_id=actor.source_message_id,
+                    context_kind="LISTENING_SESSION",
+                    context_id=started.get("session_id"),
+                )
+                _record_deterministic_turn(actor, reply)
+                db.finish_inbound(actor.source_message_id, reply)
+                return {"ok": True, "listening_started": True}
+
+            if (bare_toggle and current_listening) or stop_requested:
+                stopped = listening.stop(actor)
+                if stopped.get("status") != "stopped":
+                    reply = "I’m not currently listening to a discussion."
+                elif stopped.get("messages"):
+                    reply = _listening_summary(actor, stopped)
+                    listening.save_summary(stopped["session_id"], reply)
+                else:
+                    reply = "👂 Listening stopped. No discussion messages were captured."
+                db.queue_outbound(
+                    actor.conversation_id, "TEXT", text=reply,
+                    source_message_id=actor.source_message_id,
+                    context_kind="LISTENING_SUMMARY",
+                    context_id=stopped.get("session_id"),
+                )
+                _record_deterministic_turn(actor, reply)
+                db.finish_inbound(actor.source_message_id, reply)
+                return {"ok": True, "listening_stopped": True}
+
+            if payload.get("listening_active") and current_listening:
+                listening.capture(
+                    actor, actor.source_message_id,
+                    str(turn["trusted_text"] or "[Alex interaction]"),
+                    turn["received_at_utc"],
+                )
+
         menu_section = None
         if _menu_command(turn["trusted_text"]):
             reply = _menu_text()
@@ -2144,6 +2265,12 @@ def process(payload: dict) -> dict:
             quoted_context = db.resolve_recent_instruction_context(
                 actor.conversation_id, actor.phone, actor.source_message_id
             )
+        if actor.conversation_type == "GROUP" and payload.get("listening_active"):
+            listening_context = listening.context(actor.conversation_id)
+            if listening_context:
+                quoted_context = dict(quoted_context or {})
+                quoted_context["listening_context"] = listening_context
+
         db.touch_inbound_processing(payload["message_id"])
 
         # User-reported behavioural errors are object-bound at every step.
