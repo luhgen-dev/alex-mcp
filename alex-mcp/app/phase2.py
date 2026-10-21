@@ -1723,14 +1723,15 @@ def get_agenda(actor: ActorContext, start_date: str, end_date: str,
                include_plans: bool = True) -> dict:
     start_utc = _to_utc(start_date + "T00:00:00", actor.timezone)
     end_utc = _to_utc(end_date + "T23:59:59", actor.timezone)
-    marks = ",".join("?" for _ in actor.allowed_spaces)
+    agenda_spaces = scope_policy.read_spaces(actor)
+    marks = ",".join("?" for _ in agenda_spaces)
     conn = connect()
     try:
         diary = [dict(r) for r in conn.execute(
             f"""SELECT diary_id,title,start_at_utc,end_at_utc,time_known,notes,space_id,'DIARY' AS kind
                 FROM diary_events WHERE space_id IN ({marks}) AND status='ACTIVE'
                   AND start_at_utc BETWEEN ? AND ? ORDER BY start_at_utc""",
-            list(actor.allowed_spaces) + [start_utc, end_utc],
+            list(agenda_spaces) + [start_utc, end_utc],
         ).fetchall()]
         reminders = [dict(r) for r in conn.execute(
             f"""SELECT reminder_id AS id,task_text AS title,due_at_utc AS start_at_utc,
@@ -1738,7 +1739,7 @@ def get_agenda(actor: ActorContext, start_date: str, end_date: str,
                 FROM reminders WHERE space_id IN ({marks})
                   AND status IN ('OPEN','DUE','DEFERRED') AND due_at_utc BETWEEN ? AND ?
                 ORDER BY due_at_utc""",
-            list(actor.allowed_spaces) + [start_utc, end_utc],
+            list(agenda_spaces) + [start_utc, end_utc],
         ).fetchall()]
         if actor.conversation_type == "GROUP":
             # Roster and leave lifecycle are owner-private work facts. A family
@@ -1766,10 +1767,11 @@ def get_agenda(actor: ActorContext, start_date: str, end_date: str,
         if include_plans:
             plans = [dict(r) for r in conn.execute(
                 f"""SELECT plan_id AS id,title,start_at_utc,end_at_utc,time_known,status,space_id,'PLAN' AS kind
-                    FROM plans WHERE space_id IN ({marks}) AND status!='CANCELLED'
-                      AND (start_at_utc IS NULL OR start_at_utc BETWEEN ? AND ?)
-                    ORDER BY COALESCE(start_at_utc,created_at_utc)""",
-                list(actor.allowed_spaces) + [start_utc, end_utc],
+                    FROM plans WHERE space_id IN ({marks})
+                      AND status IN ('DRAFT','LOCKED')
+                      AND start_at_utc BETWEEN ? AND ?
+                    ORDER BY start_at_utc""",
+                list(agenda_spaces) + [start_utc, end_utc],
             ).fetchall()]
         # Provider-facing agenda rows expose canonical local timestamps so the
         # model never has to mentally convert stored UTC values.
