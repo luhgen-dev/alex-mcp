@@ -269,6 +269,19 @@ CREATE TABLE IF NOT EXISTS media_selection_sets (
 CREATE INDEX IF NOT EXISTS idx_media_selection_context
 ON media_selection_sets(user_id,conversation_id,created_at_utc);
 
+CREATE TABLE IF NOT EXISTS task_selection_sets (
+    selection_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    items_json TEXT NOT NULL,
+    read_scope TEXT,
+    created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at_utc TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_task_selection_context
+ON task_selection_sets(user_id,conversation_id,created_at_utc);
+
 CREATE TABLE IF NOT EXISTS pending_selection_sets (
     selection_id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
