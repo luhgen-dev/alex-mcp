@@ -1622,6 +1622,24 @@ def _money_only_reply(user_text: str) -> bool:
     )) and not bool(re.fullmatch(r"\s*[123]\s*", text))
 
 
+def _attachment_delivery_authorized(user_text: str, tool_name: str) -> bool:
+    """Only the current trusted request may cause an old/original file to be sent."""
+    text = normalize_intent_text(user_text).strip().casefold()
+    if tool_name == "report_export":
+        return bool(re.search(r"\b(?:pdf|csv|json|export|send .*report|report .*file)\b", text))
+    if tool_name not in {
+        "get_receipt", "get_transaction_receipt", "get_saved_item",
+        "get_media_original", "resolve_numbered_choice",
+    }:
+        return False
+    if re.fullmatch(r"\s*\d+\s*", text):
+        return True
+    return bool(re.search(
+        r"\b(?:show|open|send|get|view|play|listen|hear|original|receipt|proof|file|photo|picture|image|document|video|voice|audio)\b",
+        text,
+    ))
+
+
 def _is_contextual_followup(user_text: str) -> bool:
     """Whether a turn is unsafe to route without the preceding user intent."""
     text = (user_text or "").strip()
@@ -1740,6 +1758,12 @@ async def _tool_specs(user_text: str, media_context: list[str] | None = None,
     wanted -= contextual_block
     quoted_required = conversation_state.required_tools(conversation_context)
     active = (conversation_context or {}).get("active") or {}
+    latest_list = (conversation_context or {}).get("latest_list") or {}
+    if (
+        latest_list.get("kind") == "FINANCE"
+        and re.search(r"\b(?:receipt|payment proof|proof)\b", normalize_intent_text(user_text), re.I)
+    ):
+        quoted_required |= {"query_finances", "get_transaction_receipt"}
     fresh_read = bool(current_names) and all(
         not _is_mutating_tool(name) for name in current_names
     ) and not _is_contextual_followup(user_text)
@@ -4596,6 +4620,10 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                             result = {**result, "selection_binding": {
                                 "id": after_list["id"], "kind": after_list["kind"],
                             }}
+                if files and not _attachment_delivery_authorized(user_text, name):
+                    # Tool context may still be useful for reasoning, but stale
+                    # media must never leak into an unrelated current request.
+                    files = []
                 new_files = []
                 for item in files or []:
                     path = item.get("path") if isinstance(item, dict) else None
