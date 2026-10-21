@@ -106,7 +106,7 @@ CREATE TABLE IF NOT EXISTS financial_event_corrections (
 CREATE TABLE IF NOT EXISTS media_objects (
     media_id TEXT PRIMARY KEY,
     source_message_id TEXT NOT NULL,
-    media_type TEXT NOT NULL CHECK(media_type IN ('IMAGE','AUDIO','PDF','DOCUMENT')),
+    media_type TEXT NOT NULL CHECK(media_type IN ('IMAGE','AUDIO','VIDEO','PDF','DOCUMENT')),
     mime_type TEXT NOT NULL,
     sha256 TEXT NOT NULL,
     original_name TEXT,
@@ -590,7 +590,7 @@ CREATE TABLE IF NOT EXISTS outbound_messages (
     outbound_id TEXT PRIMARY KEY,
     source_message_id TEXT,
     conversation_id TEXT NOT NULL,
-    kind TEXT NOT NULL CHECK(kind IN ('TEXT','IMAGE','DOCUMENT')),
+    kind TEXT NOT NULL CHECK(kind IN ('TEXT','IMAGE','AUDIO','VIDEO','DOCUMENT')),
     text_body TEXT,
     local_path TEXT,
     mime_type TEXT,
