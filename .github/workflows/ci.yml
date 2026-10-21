@@ -8,7 +8,10 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      copilot-requests: write
     steps:
       - uses: actions/checkout@v4
 
@@ -87,6 +90,53 @@ jobs:
           python alex-mcp/app/human_ai_lab.py --mode selftest --phase all \
             --packets /tmp/alex-human-ai-packets.jsonl \
             --report /tmp/alex-human-ai-report.json
+
+      - name: Prepare independent reasoning delta
+        id: prepare_review
+        run: |
+          python alex-mcp/app/github_models_delta_review.py prepare \
+            --snapshot alex-mcp/app/real_ai_snapshot.json \
+            --prompt-out /tmp/alex-independent-review-prompt.txt \
+            --metadata-out /tmp/alex-independent-review-meta.json
+          python - <<'PY'
+          import json, os
+          meta = json.load(open("/tmp/alex-independent-review-meta.json", encoding="utf-8"))
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+              out.write("needs_review=" + ("true" if meta.get("delta_packets") else "false") + "\n")
+              out.write("delta_packets=" + str(meta.get("delta_packets", 0)) + "\n")
+          PY
+
+      - name: Install Copilot CLI for independent review
+        if: steps.prepare_review.outputs.needs_review == 'true'
+        run: npm install -g @github/copilot
+
+      - name: Run isolated independent reasoning review
+        if: steps.prepare_review.outputs.needs_review == 'true'
+        id: independent_review
+        uses: actions/ai-inference@v3
+        with:
+          prompt-file: /tmp/alex-independent-review-prompt.txt
+          model: gpt-4.1
+          system-prompt: Return only the exact JSON requested by the prompt. Do not use markdown or tools.
+
+      - name: Import and verify independent reasoning delta
+        if: steps.prepare_review.outputs.needs_review == 'true'
+        run: |
+          python alex-mcp/app/github_models_delta_review.py import \
+            --snapshot alex-mcp/app/real_ai_snapshot.json \
+            --response "${{ steps.independent_review.outputs.response-file }}" \
+            --report /tmp/alex-copilot-independent-review.json
+
+      - name: Preserve refreshed independent-review evidence
+        if: steps.prepare_review.outputs.needs_review == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: alex-independent-review-snapshot
+          path: |
+            alex-mcp/app/real_ai_snapshot.json
+            /tmp/alex-copilot-independent-review.json
+            /tmp/alex-independent-review-meta.json
+          retention-days: 14
 
       - name: Run frozen real-AI reasoning snapshot
         run: |
