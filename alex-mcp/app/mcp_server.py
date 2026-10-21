@@ -1541,10 +1541,13 @@ def bills_list(actor: Actor, period: str | None = None,
 
 
 @alex_tool()
-def bills_match_payment(label: str, amount: float, event_date: str, actor: Actor) -> dict:
-    """Conservatively match payment/receipt facts to exactly one authorized recurring obligation. Ambiguous matches are returned, never guessed."""
+def bills_match_payment(label: str, amount: float, event_date: str, actor: Actor,
+                        reference: str | None = None,
+                        account_reference: str | None = None) -> dict:
+    """Conservatively match payment/receipt evidence to exactly one recurring obligation. Amount alone never identifies a commitment; configured payee aliases, reference patterns or account fingerprint must match."""
     return phase2_finance.resolve_obligation_from_evidence(
-        label, amount, event_date, actor.phone, actor.conversation_type, "all"
+        label, amount, event_date, actor.phone, actor.conversation_type, "all",
+        reference=reference, account_reference=account_reference,
     )
 
 
