@@ -1448,6 +1448,60 @@ def resolve_latest_diary_conflict(actor: ActorContext, choice: int,
         conn.close()
     return resolve_diary_conflict(actor, conflict_id, choice, reminder_recipient)
 
+def resolve_diary_reference(actor: ActorContext, diary_id: str | None = None,
+                            diary_name: str | None = None,
+                            on_date: str | None = None) -> str:
+    """Resolve one accessible active diary event by exact id or natural title/date."""
+    spaces = scope_policy.read_spaces(actor)
+    marks = ",".join("?" for _ in spaces)
+    conn = connect()
+    try:
+        if diary_id:
+            row = conn.execute(
+                f"""SELECT diary_id FROM diary_events
+                    WHERE diary_id=? AND space_id IN ({marks}) AND status='ACTIVE'
+                    LIMIT 1""",
+                [str(diary_id)] + spaces,
+            ).fetchone()
+            if not row:
+                raise PermissionError("diary event not found in the current authorized scope")
+            return str(row["diary_id"])
+
+        wanted = " ".join(re.findall(r"[a-z0-9]+", str(diary_name or "").casefold()))
+        if not wanted:
+            raise ValueError("provide diary_id or diary_name")
+        rows = conn.execute(
+            f"""SELECT diary_id,title,start_at_utc FROM diary_events
+                WHERE space_id IN ({marks}) AND status='ACTIVE'
+                ORDER BY start_at_utc DESC""",
+            spaces,
+        ).fetchall()
+        if on_date:
+            target_day = date.fromisoformat(str(on_date)[:10]).isoformat()
+            rows = [
+                row for row in rows
+                if _local_date_from_utc(row["start_at_utc"], actor.timezone) == target_day
+            ]
+        def norm(value):
+            return " ".join(re.findall(r"[a-z0-9]+", str(value or "").casefold()))
+        exact = [row for row in rows if norm(row["title"]) == wanted]
+        candidates = exact or [
+            row for row in rows
+            if wanted in norm(row["title"]) or norm(row["title"]) in wanted
+        ]
+        if len(candidates) == 1:
+            return str(candidates[0]["diary_id"])
+        if not candidates:
+            raise ValueError(f"no active diary appointment matches {diary_name!r}")
+        labels = ", ".join(
+            f"{row['title']} on {_local_date_from_utc(row['start_at_utc'], actor.timezone)}"
+            for row in candidates[:5]
+        )
+        raise ValueError("more than one diary appointment matches; ask which one: " + labels)
+    finally:
+        conn.close()
+
+
 def update_diary_event(actor: ActorContext, diary_id: str, status: str | None = None,
                        start_local: str | None = None, end_local: str | None = None,
                        title: str | None = None, notes: str | None = None,
