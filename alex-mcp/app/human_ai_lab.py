@@ -136,6 +136,8 @@ def _prompt_fixture_history(contract_id: str) -> list[dict[str, str]]:
 def _conversation_result_fixture(contract_id: str, step_index: int) -> str:
     if contract_id == "conv.memory.numbered" and step_index == 0:
         return "Saved pictures\n1. Vinyl — original saved picture."
+    if contract_id == "conv.diary.reminder" and step_index == 0:
+        return "1 October 2026 agenda\n1. Dentist appointment — 4:00 PM."
     return "[previous synthetic Alex result; use only user-turn continuity]"
 
 
