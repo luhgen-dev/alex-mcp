@@ -179,6 +179,7 @@ def _list(conn, actor, quoted_context: dict) -> dict | None:
         ("selection_sets", None), ("media_selection_sets", "MEDIA"),
         ("pending_selection_sets", "PENDING_ITEM"),
         ("finance_selection_sets", "FINANCE"),
+        ("task_selection_sets", "TASK"),
     ):
         if quoted_set and kind and requested_kind != kind:
             continue
