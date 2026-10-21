@@ -281,8 +281,11 @@ def required_tools(state: dict | None) -> set[str]:
         tools |= {"query_finances", "correct_expense"}
         if active.get("status") == "PENDING_HUMAN_REVIEW":
             tools.add("confirm_expense")
-    # A persisted list is context, not permission to retrieve anything on an
-    # unrelated turn. The current message (or an explicit quote) must select it.
+    # A persisted latest list is context only. An explicitly quoted list is
+    # authoritative for numbered follow-ups and must retain the resolver.
+    quoted = state.get("quoted") or {}
+    if quoted.get("kind") == "SELECTION_SET":
+        tools.add("resolve_numbered_choice")
     return tools
 
 
