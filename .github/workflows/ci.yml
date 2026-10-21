@@ -121,6 +121,8 @@ jobs:
       - name: Run isolated independent reasoning review
         if: steps.prepare_review.outputs.needs_review == 'true'
         id: independent_review
+        env:
+          RUNNER_DEBUG: "1"
         uses: actions/ai-inference@v3
         with:
           prompt: Read review.txt from the current workspace and follow its instructions exactly. Return only the requested JSON.
