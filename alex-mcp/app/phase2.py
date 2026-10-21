@@ -802,6 +802,129 @@ def list_tasks(actor: ActorContext, status: str = "open",
         conn.close()
 
 
+def resolve_task_reference(actor: ActorContext, task_id: str | None = None,
+                           task_name: str | None = None,
+                           include_closed: bool = True) -> str:
+    """Resolve one visible task conservatively by exact id or natural title."""
+    read_spaces = scope_policy.read_spaces(actor)
+    marks = ",".join("?" for _ in read_spaces)
+    conn = connect()
+    try:
+        if task_id:
+            row = conn.execute(
+                f"SELECT task_id FROM tasks WHERE task_id=? AND space_id IN ({marks})",
+                [str(task_id)] + read_spaces,
+            ).fetchone()
+            if not row:
+                raise PermissionError("task not found in the current authorized scope")
+            return str(row["task_id"])
+        wanted = " ".join(re.findall(r"[a-z0-9]+", str(task_name or "").casefold()))
+        if not wanted:
+            raise ValueError("provide task_id or task_name")
+        status_clause = "" if include_closed else " AND status='OPEN'"
+        rows = conn.execute(
+            f"""SELECT task_id,title,status,due_date_local,due_at_utc
+                FROM tasks WHERE space_id IN ({marks}){status_clause}
+                ORDER BY updated_at_utc DESC""",
+            read_spaces,
+        ).fetchall()
+        def norm(value):
+            return " ".join(re.findall(r"[a-z0-9]+", str(value or "").casefold()))
+        exact = [row for row in rows if norm(row["title"]) == wanted]
+        candidates = exact or [
+            row for row in rows
+            if wanted in norm(row["title"]) or norm(row["title"]) in wanted
+        ]
+        if len(candidates) == 1:
+            return str(candidates[0]["task_id"])
+        if not candidates:
+            raise ValueError(f"no authorized task uniquely matches {task_name!r}")
+        labels = ", ".join(
+            f"{row['title']} ({row['status']})" for row in candidates[:5]
+        )
+        raise ValueError("task name is ambiguous; ask which one: " + labels)
+    finally:
+        conn.close()
+
+
+def task_detail(actor: ActorContext, task_id: str) -> dict:
+    """Return one task's human provenance and lifecycle without exposing ids."""
+    read_spaces = scope_policy.read_spaces(actor)
+    marks = ",".join("?" for _ in read_spaces)
+    conn = connect()
+    try:
+        row = conn.execute(
+            f"""SELECT t.*,i.raw_text AS original_instruction,
+                       i.received_at_utc AS source_received_at
+                FROM tasks t
+                LEFT JOIN inbound_messages i ON i.message_id=t.source_message_id
+                WHERE t.task_id=? AND t.space_id IN ({marks}) LIMIT 1""",
+            [task_id] + read_spaces,
+        ).fetchone()
+        if not row:
+            raise PermissionError("task not found in the current authorized scope")
+        events = conn.execute(
+            """SELECT event_type,from_status,to_status,title_snapshot,notes_snapshot,
+                      created_at_utc
+               FROM task_events WHERE task_id=? ORDER BY created_at_utc""",
+            (task_id,),
+        ).fetchall()
+        reminder = conn.execute(
+            """SELECT r.reminder_id,r.task_text,r.due_at_utc,r.status
+               FROM task_reminder_links l
+               JOIN reminders r ON r.reminder_id=l.reminder_id
+               WHERE l.task_id=? ORDER BY l.created_at_utc DESC LIMIT 1""",
+            (task_id,),
+        ).fetchone()
+        tz = ZoneInfo(actor.timezone)
+        def local(value):
+            if not value:
+                return None
+            try:
+                dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return dt.astimezone(tz).isoformat()
+            except Exception:
+                return str(value)
+        return {
+            "title": row["title"],
+            "status": row["status"],
+            "notes": row["notes"],
+            "assignee": row["assignee"],
+            "scope": "family" if row["space_id"] == "FAMILY_SHARED" else "private",
+            "due_local": local(row["due_at_utc"]),
+            "due_date_local": row["due_date_local"],
+            "created_local": local(row["source_received_at"] or row["created_at_utc"]),
+            "original_instruction": str(row["original_instruction"] or "")[:1000] or None,
+            "plan_linked": bool(row["plan_id"]),
+            "reminder": (
+                {
+                    "task": reminder["task_text"],
+                    "due_local": local(reminder["due_at_utc"]),
+                    "status": reminder["status"],
+                } if reminder else None
+            ),
+            "history": [
+                {
+                    "action": event["event_type"],
+                    "from": event["from_status"],
+                    "to": event["to_status"],
+                    "title": event["title_snapshot"],
+                    "notes": event["notes_snapshot"],
+                    "at_local": local(event["created_at_utc"]),
+                }
+                for event in events
+            ],
+            "presentation_rule": (
+                "Present task title, status, due date/time, created local time, original instruction "
+                "and concise lifecycle history. Never expose UUIDs or raw internal state codes."
+            ),
+        }
+    finally:
+        conn.close()
+
+
 def update_task(actor: ActorContext, task_id: str,
                 title: str | None = None, notes: str | None = None,
                 due_local: str | None = None, assignee: str | None = None,
