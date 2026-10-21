@@ -46,7 +46,7 @@ import human_ai_lab
 # deterministic rules below explicitly clarify the new ambiguous fixtures and
 # no longer infer private ownership from a person's label. The independent
 # full review is imported separately with its original raw decisions intact.
-REVIEWED_CORPUS_FINGERPRINT = "67e1d51a6c8e38865ce4eb47b1cad4e632f8f27c015d1d1fafbefce8d2d7a276"
+REVIEWED_CORPUS_FINGERPRINT = "68669bae29681c4d19bab85a35a8afb36857b48174a67f9a99099bb3c835cd64"
 
 
 def _low(value: str) -> str:
@@ -722,6 +722,29 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
                 _pick(tools, "list_tasks", "cancel_task")
                 or _one(tools, "cancel_task"),
             )
+
+    # 0.5.45 deterministic additions. These are repeatable regression rules;
+    # independent model evidence remains real_ai_snapshot.json.
+    if "daily brief" in text or "what's in for me today" in text:
+        return result("tools", _one(tools, "get_daily_brief"))
+    if re.search(r"\b(?:recall|remember|what did we discuss)\b.*\b(?:discussion|holiday|greece)\b", text):
+        return result("tools", _one(tools, "recall_discussion"))
+    if re.search(r"\b(?:create|set up|setup)\b.*\b(?:ledger|tracker)\b", text):
+        return result("tools", _one(tools, "create_custom_ledger"))
+    if re.search(r"\b(?:show|what)\b.*\b(?:ledgers|trackers)\b", text):
+        return result("tools", _one(tools, "list_custom_ledgers"))
+    if re.search(r"\b(?:add|record)\b.*\b(?:ledger|tracker)\b", text):
+        return result("tools", _one(tools, "add_custom_ledger_entry"))
+    if re.search(r"\b(?:history|what is in|show)\b.*\b(?:ledger|tracker)\b", text):
+        return result("tools", _one(tools, "query_custom_ledger"))
+    if re.search(r"\b(?:close|stop tracking)\b.*\b(?:ledger|tracker)\b", text):
+        return result("tools", _one(tools, "close_custom_ledger"))
+    if re.search(r"\b(?:details|original).*\btask\b|\btask\b.*\b(?:details|original)\b", text):
+        return result("tools", _one(tools, "get_task_details"))
+    if re.search(r"\b(?:remind|heads-up|heads up)\b.*\btask\b|\btask\b.*\bremind\b", text):
+        return result("tools", _one(tools, "create_task_reminder"))
+    if re.search(r"\b(?:import|configure)\b.*\b(?:work profile|permanent roster)\b", text):
+        return result("tools", _one(tools, "work_import_profile"))
 
     # Diary / agenda / availability.
     if (
