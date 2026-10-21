@@ -255,7 +255,7 @@ BILL_TOOLS = {"bills_list","bills_match_payment","bills_record_payment","bills_d
 HOME_TOOLS = {"ha_find_entities","ha_get_state","ha_home_summary","ha_home_report","ha_draft_automation","ha_control"}
 HOME_READ_TOOLS = {"ha_find_entities","ha_get_state","ha_home_summary","ha_draft_automation"}
 PLAN_TOOLS = {"create_plan","list_plans","update_plan","confirm_plan","share_plan"}
-TASK_TOOLS = {"create_task","list_tasks","update_task","complete_task","reopen_task","cancel_task"}
+TASK_TOOLS = {"create_task","list_tasks","get_task_details","create_task_reminder","update_task","complete_task","reopen_task","cancel_task"}
 DIARY_EVENT_TOOLS = {"add_diary_event","update_diary_event","get_agenda","get_agenda_range","check_my_availability","check_spouse_availability","resolve_diary_conflict","resolve_latest_diary_conflict"}
 FINANCE_READ_TOOLS = {"query_finances","find_receipts","get_receipt","get_transaction_receipt","calculate"}
 ASSET_TOOLS = {"asset_create","asset_update","asset_link_document","asset_list","warranty_expiring"}
@@ -330,6 +330,8 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
         "list_plans": (r"plans|what.*plan|show.*(?:plan|draft)|draft.*so far|what do we have.*trip", 124),
         "create_task": (r"(?:add|make|create|need).*?\btask\b|\btask\b.*(?:for|under)", 138),
         "list_tasks": (r"what.*tasks|show.*tasks|unfinished tasks|left to do|active tasks", 136),
+        "get_task_details": (r"(?:show|details?|what did i say|original).*\btask\b|\btask\b.*(?:details?|original|history)", 150),
+        "create_task_reminder": (r"(?:for|about).*\btask\b.*\bremind|\bremind\b.*\btask\b", 154),
         "update_task": (r"(?:change|update|edit|rename).*\btask\b|task.*(?:title|note|name)", 140),
         "complete_task": (r"(?:mark|complete|finish).*\btask\b.*(?:done|complete)?|task.*\bdone\b", 142),
         "reopen_task": (r"reopen.*\btask\b|task.*back to open", 144),
@@ -784,6 +786,15 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         r"\b(?:what tasks|show .*tasks|unfinished tasks|what is left to do|what's left to do|active tasks)\b",
         low,
     ))
+    task_detail = bool(re.search(
+        r"\b(?:show|details?|what did i say|original|history)\b.*\btask\b"
+        r"|\btask\b.*\b(?:details?|original|history)\b",
+        low,
+    ))
+    task_reminder = bool(
+        re.search(r"\b(?:for|about)\b.{0,80}\btask\b.{0,80}\bremind\b", low)
+        or re.search(r"\bremind\b.{0,80}\b(?:for|about)?\s*.*\btask\b", low)
+    )
     task_update = bool(re.search(
         r"\b(?:change|update|edit|rename)\b.*\btask\b|\btask\b.*\b(?:title|note|name)\b",
         low,
@@ -800,7 +811,12 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         r"\bcancel\b.*\btask\b|\bremove\b.*\btask\b.*\bactive tasks?\b",
         low,
     ))
-    if task_reopen:
+    if task_reminder:
+        force |= {"create_task_reminder", "get_task_details"}
+        block.add("create_reminder")
+    elif task_detail:
+        force |= {"get_task_details", "list_tasks"}
+    elif task_reopen:
         force.add("reopen_task")
     elif task_cancel:
         force.add("cancel_task")
@@ -812,7 +828,7 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         force.add("list_tasks")
     elif task_create:
         force.add("create_task")
-    if any((task_create, task_read, task_update, task_complete, task_reopen, task_cancel)):
+    if any((task_create, task_read, task_detail, task_reminder, task_update, task_complete, task_reopen, task_cancel)):
         # The task lifecycle is first-class. Plan/reminder tools may still be
         # discovered on a truly compound turn, but ordinary task wording must
         # not silently degrade into a plan edit or a reminder.
