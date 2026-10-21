@@ -164,6 +164,7 @@ def _list(conn, actor, quoted_context: dict) -> dict | None:
     for table, kind in (
         ("selection_sets", None), ("media_selection_sets", "MEDIA"),
         ("pending_selection_sets", "PENDING_ITEM"),
+        ("finance_selection_sets", "FINANCE"),
     ):
         if quoted_set and kind and requested_kind != kind:
             continue
@@ -268,6 +269,8 @@ def required_tools(state: dict | None) -> set[str]:
             tools.add("confirm_expense")
     if state.get("latest_list"):
         tools.add("resolve_numbered_choice")
+        if (state.get("latest_list") or {}).get("kind") == "FINANCE":
+            tools |= {"query_finances", "correct_expense", "get_transaction_receipt"}
     return tools
 
 
