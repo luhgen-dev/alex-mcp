@@ -105,7 +105,7 @@ def log_expense(description: str, actor: Actor, amount: float | None = None,
                 category: str | None = None, currency: str | None = None,
                 event_date_local: str | None = None, reference: str | None = None,
                 event_type: str = "Expense") -> dict:
-    """Record an expense or income. Currency must be explicitly known as MYR or SGD; never guess it. Use null category/amount when genuinely unclear. Omit event_date_local unless the user or the receipt states a date/time; Alex stamps the message time automatically and never needs an invented clock time."""
+    """Record an expense or income. MYR is the default when the user states no currency; explicit SGD/S$ overrides it. Use null category/amount when genuinely unclear. Omit event_date_local unless the user or the receipt states a date/time; Alex stamps the message time automatically and never needs an invented clock time."""
     return services.log_expense(actor, description, amount, category, currency, event_date_local, reference, event_type)
 
 
@@ -208,6 +208,18 @@ def query_finances(actor: Actor, start_date: str | None = None, end_date: str | 
         actor, start_date, end_date, category, search, currency, limit,
         effective_scope, source,
     )
+    # Freeze the exact transaction order shown to the user. Numbered follow-ups
+    # resolve this set directly instead of re-running a fuzzy finance search.
+    event_ids = [str(row.get("event_id") or "") for row in result.get("records", [])]
+    selection_id = services.store_finance_selection(actor, event_ids)
+    if selection_id:
+        for index, row in enumerate(result.get("records", []), 1):
+            row["choice"] = index
+        result["selection_id"] = selection_id
+        result["presentation_rule"] = (
+            "Present general expense queries as a numbered transaction list in this exact order. "
+            "Do not expose event_id or selection_id. Category summaries are secondary unless the user asks for a category breakdown."
+        )
     preserve_presented_monthly = bool(
         active
         and active.get("kind") == "monthly_finance"
@@ -262,6 +274,12 @@ def find_receipts(actor: Actor, query: str | None = None, amount: float | None =
 def get_receipt(media_id: str, actor: Actor) -> dict:
     """Retrieve one original receipt previously found by find_receipts so Alex can send the actual image/document back."""
     return services.get_receipt(actor, media_id)
+
+
+@alex_tool()
+def get_transaction_receipt(event_id: str, actor: Actor) -> dict:
+    """Retrieve receipt evidence linked to one exact transaction. Never substitute a different/latest receipt when the transaction has no linked evidence."""
+    return services.get_receipt_for_event(actor, event_id)
 
 
 @alex_tool()
