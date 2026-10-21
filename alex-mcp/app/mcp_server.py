@@ -639,11 +639,14 @@ def list_shopping_items(actor: Actor, include_purchased: bool = False, limit: in
 
 
 @alex_tool()
-def update_shopping_item(item_id: str, actor: Actor, status: str | None = None,
+def update_shopping_item(actor: Actor, item_id: str | None = None,
+                         item_name: str | None = None,
+                         status: str | None = None,
                          quantity: str | None = None, notes: str | None = None,
                          item: str | None = None) -> dict:
-    """Rename a shopping item or update status/quantity/notes. Omitted status preserves its existing state; never mark purchased unless the user explicitly indicates it."""
-    return services.update_shopping_item(actor, item_id, status, quantity, notes, item)
+    """Rename/update one shopping item by exact id or natural item_name. Omitted status preserves state; explicit bought/purchased wording marks it purchased."""
+    resolved = services.resolve_shopping_reference(actor, item_id, item_name)
+    return services.update_shopping_item(actor, resolved, status, quantity, notes, item)
 
 
 @alex_tool()
