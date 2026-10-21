@@ -809,13 +809,17 @@ def resolve_latest_diary_conflict(choice: int, actor: Actor,
 
 
 @alex_tool()
-def update_diary_event(diary_id: str, actor: Actor, status: str | None = None,
+def update_diary_event(actor: Actor, diary_id: str | None = None,
+                       diary_name: str | None = None,
+                       on_date: str | None = None,
+                       status: str | None = None,
                        start_local: str | None = None, end_local: str | None = None,
                        title: str | None = None, notes: str | None = None,
                        linked_reminders: str = "ask") -> dict:
-    """Reschedule/cancel a diary event. If linked reminders exist, keep/shift/cancel must be explicit."""
+    """Reschedule/cancel a diary event by exact id or natural title/date. If linked reminders exist, keep/shift/cancel must be explicit."""
+    resolved = phase2.resolve_diary_reference(actor, diary_id, diary_name, on_date)
     return phase2.update_diary_event(
-        actor, diary_id, status, start_local, end_local, title, notes, linked_reminders
+        actor, resolved, status, start_local, end_local, title, notes, linked_reminders
     )
 
 
