@@ -114,6 +114,27 @@ function cleanNumber(value) {
   return String(value || '').replace(/\D/g, '');
 }
 
+function dmEphemeralSeconds() {
+  const opts = readOptions();
+  const value = Number(opts.dm_disappearing_seconds === undefined ? 86400 : opts.dm_disappearing_seconds);
+  return [0, 86400, 604800, 7776000].includes(value) ? value : 86400;
+}
+
+async function applyDmDisappearingMode(sock) {
+  const seconds = dmEphemeralSeconds();
+  for (const phone of allowedNumbers()) {
+    const jid = phone + '@s.whatsapp.net';
+    try {
+      await sock.sendMessage(
+        jid,
+        { disappearingMessagesInChat: seconds > 0 ? seconds : false }
+      );
+    } catch (err) {
+      console.error('[Alex MCP] Could not set DM disappearing mode for ' + maskId(jid) + ': ' + err.message);
+    }
+  }
+}
+
 function allowedNumbers() {
   const opts = readOptions();
   return [cleanNumber(opts.husband_phone), cleanNumber(opts.wife_phone)].filter(Boolean);
@@ -611,6 +632,7 @@ async function startWhatsApp() {
           lastError: null,
         });
         console.log('[Alex MCP] WhatsApp connected.');
+        await applyDmDisappearingMode(sock);
       }
 
       if (connection === 'close') {
@@ -1007,6 +1029,10 @@ function startEgress() {
         const sendOptions = {};
         if (payload.message_id) sendOptions.messageId = String(payload.message_id);
         if (quoted) sendOptions.quoted = quoted;
+        const ephemeralSeconds = dmEphemeralSeconds();
+        if (!String(to).endsWith('@g.us') && ephemeralSeconds > 0) {
+          sendOptions.ephemeralExpiration = ephemeralSeconds;
+        }
         if (payload.kind === 'text') {
           sent = await currentSock.sendMessage(to, { text: payload.text || '' }, sendOptions);
         } else if (payload.kind === 'reaction' || payload.kind === 'pin' || payload.kind === 'unpin') {
