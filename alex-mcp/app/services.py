@@ -4487,6 +4487,53 @@ def list_shopping_items(actor: ActorContext, include_purchased: bool = False, li
         conn.close()
 
 
+def resolve_shopping_reference(actor: ActorContext, item_id: str | None = None,
+                               item_name: str | None = None) -> str:
+    """Resolve one shopping item in the current trusted scope by id or natural name."""
+    marks, spaces = _spaces_sql(actor)
+    conn = connect()
+    try:
+        if item_id:
+            row = conn.execute(
+                f"""SELECT item_id FROM shopping_items
+                    WHERE item_id=? AND space_id IN ({marks}) LIMIT 1""",
+                [str(item_id)] + spaces,
+            ).fetchone()
+            if not row:
+                raise PermissionError("shopping item not found in your accessible list")
+            return str(row["item_id"])
+        wanted = " ".join(re.findall(r"[a-z0-9]+", str(item_name or "").casefold()))
+        if not wanted:
+            raise ValueError("provide item_id or item_name")
+        rows = conn.execute(
+            f"""SELECT item_id,item_name,status,space_id FROM shopping_items
+                WHERE space_id IN ({marks}) AND status IN ('OPEN','PURCHASED')
+                ORDER BY status='OPEN' DESC,updated_at_utc DESC""",
+            spaces,
+        ).fetchall()
+        def norm(value):
+            text = " ".join(re.findall(r"[a-z0-9]+", str(value or "").casefold()))
+            # Cheap singularization covers normal household wording such as
+            # "2 detergents" referring to the listed "detergent".
+            return text[:-1] if text.endswith("s") and len(text) > 3 else text
+        wanted_n = norm(wanted)
+        exact = [row for row in rows if norm(row["item_name"]) == wanted_n]
+        candidates = exact or [
+            row for row in rows
+            if wanted_n in norm(row["item_name"]) or norm(row["item_name"]) in wanted_n
+        ]
+        open_candidates = [row for row in candidates if row["status"] == "OPEN"]
+        candidates = open_candidates or candidates
+        if len(candidates) == 1:
+            return str(candidates[0]["item_id"])
+        if not candidates:
+            raise ValueError(f"no shopping item matches {item_name!r}")
+        labels = ", ".join(str(row["item_name"]) for row in candidates[:5])
+        raise ValueError("more than one shopping item matches; ask which one: " + labels)
+    finally:
+        conn.close()
+
+
 def update_shopping_item(actor: ActorContext, item_id: str, status: str | None = None,
                          quantity: str | None = None, notes: str | None = None,
                          item: str | None = None) -> dict:
