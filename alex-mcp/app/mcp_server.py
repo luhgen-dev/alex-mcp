@@ -1856,73 +1856,113 @@ def report_export(format: str, actor: Actor, period: str | None = None,
             ),
         }
 
-    if report_kind in {"finance_query", "monthly_finance"}:
+    reuse_active_exact = bool(
+        active
+        and use_active_context
+        and not include_raw_income
+        and not explicit_filter
+        and not full_report
+        and not period_changed
+        and report_kind == active_kind
+        and isinstance(active.get("payload"), dict)
+    )
+    if reuse_active_exact:
+        # "Send that as PDF/CSV/JSON" means the exact dataset Alex just
+        # displayed. Never reconstruct it from category/search wording.
         if report_kind == "monthly_finance":
-            effective_period = spec.get("period") or effective_period
+            canonical = active["payload"]
+        elif report_kind == "finance_query":
+            ledger = active["payload"]
             scope = spec.get("scope") or "all"
-            if not effective_period:
-                raise ValueError("monthly finance report has no period")
-            year, month = (int(x) for x in effective_period.split("-", 1))
-            start_date = f"{year:04d}-{month:02d}-01"
-            end_date = f"{year:04d}-{month:02d}-{calendar.monthrange(year, month)[1]:02d}"
-            ledger = services.query_finances(
-                actor, start_date=start_date, end_date=end_date,
-                category=spec.get("category"), search=spec.get("search"),
-                scope=scope, include_all_records=True,
-            )
-        else:
-            scope = spec.get("scope")
-            query_start = spec.get("start_date")
-            query_end = spec.get("end_date")
-            # A frozen monthly report may carry category/scope filters without
-            # explicit start/end fields. The period still bounds the dataset.
-            if (
-                effective_period
-                and re.fullmatch(r"\d{4}-\d{2}", str(effective_period))
-                and not query_start and not query_end
-            ):
-                year, month = (int(x) for x in str(effective_period).split("-", 1))
-                query_start = f"{year:04d}-{month:02d}-01"
-                query_end = (
-                    f"{year:04d}-{month:02d}-"
-                    f"{calendar.monthrange(year, month)[1]:02d}"
+            if effective_period and re.fullmatch(r"\d{4}-\d{2}", str(effective_period)):
+                canonical = phase2_reports.build_monthly_finance_report(
+                    ledger, effective_period, actor.phone, actor.conversation_type,
+                    scope,
                 )
-            ledger = services.query_finances(
-                actor,
-                start_date=query_start,
-                end_date=query_end,
-                category=spec.get("category"),
-                search=spec.get("search"),
-                currency=spec.get("currency"),
-                limit=max(int(spec.get("limit") or 20), 1),
-                scope=scope,
-                source=spec.get("source"),
-                include_all_records=True,
-            )
-        if effective_period and re.fullmatch(r"\d{4}-\d{2}", str(effective_period)):
-            report = phase2_reports.build_monthly_finance_report(
-                ledger, effective_period, actor.phone, actor.conversation_type,
-                scope or "all",
-            )
+            else:
+                canonical = {
+                    "report_type": "finance_query",
+                    "period": effective_period or "Custom range",
+                    "scope": scope,
+                    "ledger": ledger,
+                    "category_totals": [
+                        {**row, "label": phase2_reports._human_category(row.get("category"))}
+                        for row in ledger.get("category_totals", [])
+                    ],
+                    "obligations": [],
+                    "goals": [],
+                }
         else:
-            report = {
-                "report_type": "finance_query",
-                "period": effective_period or "Custom range",
-                "scope": scope or "all",
-                "ledger": ledger,
-                "category_totals": [
-                    {**row, "label": phase2_reports._human_category(row.get("category"))}
-                    for row in ledger.get("category_totals", [])
-                ],
-                "obligations": [],
-                "goals": [],
-            }
-        canonical = report
+            canonical = active["payload"]
     else:
-        canonical = phase2_reports.build_snapshot(
-            actor.phone, actor.conversation_type, "all", effective_period,
-            include_raw_income=include_raw_income, include_assets=True, include_leave=True,
-        )
+        if report_kind in {"finance_query", "monthly_finance"}:
+            if report_kind == "monthly_finance":
+                effective_period = spec.get("period") or effective_period
+                scope = spec.get("scope") or "all"
+                if not effective_period:
+                    raise ValueError("monthly finance report has no period")
+                year, month = (int(x) for x in effective_period.split("-", 1))
+                start_date = f"{year:04d}-{month:02d}-01"
+                end_date = f"{year:04d}-{month:02d}-{calendar.monthrange(year, month)[1]:02d}"
+                ledger = services.query_finances(
+                    actor, start_date=start_date, end_date=end_date,
+                    category=spec.get("category"), search=spec.get("search"),
+                    scope=scope, include_all_records=True,
+                )
+            else:
+                scope = spec.get("scope")
+                query_start = spec.get("start_date")
+                query_end = spec.get("end_date")
+                # A frozen monthly report may carry category/scope filters without
+                # explicit start/end fields. The period still bounds the dataset.
+                if (
+                    effective_period
+                    and re.fullmatch(r"\d{4}-\d{2}", str(effective_period))
+                    and not query_start and not query_end
+                ):
+                    year, month = (int(x) for x in str(effective_period).split("-", 1))
+                    query_start = f"{year:04d}-{month:02d}-01"
+                    query_end = (
+                        f"{year:04d}-{month:02d}-"
+                        f"{calendar.monthrange(year, month)[1]:02d}"
+                    )
+                ledger = services.query_finances(
+                    actor,
+                    start_date=query_start,
+                    end_date=query_end,
+                    category=spec.get("category"),
+                    search=spec.get("search"),
+                    currency=spec.get("currency"),
+                    limit=max(int(spec.get("limit") or 20), 1),
+                    scope=scope,
+                    source=spec.get("source"),
+                    include_all_records=True,
+                )
+            if effective_period and re.fullmatch(r"\d{4}-\d{2}", str(effective_period)):
+                report = phase2_reports.build_monthly_finance_report(
+                    ledger, effective_period, actor.phone, actor.conversation_type,
+                    scope or "all",
+                )
+            else:
+                report = {
+                    "report_type": "finance_query",
+                    "period": effective_period or "Custom range",
+                    "scope": scope or "all",
+                    "ledger": ledger,
+                    "category_totals": [
+                        {**row, "label": phase2_reports._human_category(row.get("category"))}
+                        for row in ledger.get("category_totals", [])
+                    ],
+                    "obligations": [],
+                    "goals": [],
+                }
+            canonical = report
+        else:
+            canonical = phase2_reports.build_snapshot(
+                actor.phone, actor.conversation_type, "all", effective_period,
+                include_raw_income=include_raw_income, include_assets=True, include_leave=True,
+            )
+    
 
     out_dir = Path(DATA_DIR) / "reports"
     out_dir.mkdir(parents=True, exist_ok=True)
