@@ -2110,6 +2110,8 @@ def get_selection_target(actor: ActorContext, kind: str, target_id: str,
         return get_receipt(effective_actor, target_id)
     if normalized == "MEDIA":
         return get_media_original(effective_actor, target_id)
+    if normalized == "FINANCE":
+        return get_financial_event_detail(effective_actor, target_id)
     raise ValueError("unsupported selection context")
 
 
