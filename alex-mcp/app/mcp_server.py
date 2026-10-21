@@ -23,6 +23,7 @@ import phase2_delegation
 import phase2_monitor
 import phase2_home
 import phase2_reports
+import daily_brief
 import scope_policy
 
 mcp = MCPServer(
@@ -2048,6 +2049,12 @@ def report_payload(target: str, actor: Actor, period: str | None = None) -> dict
     if target_name in {"tv", "dashboard"}:
         return {"target": "tv", "payload": phase2_reports.tv_payload(snapshot)}
     raise ValueError("target must be google_sheets or tv")
+
+
+@alex_tool()
+def get_daily_brief(actor: Actor, on_date: str | None = None) -> dict:
+    """Build the owner's deterministic private Daily Brief for a local date. Combines Family Shared plus this owner's private records; never exposes a spouse's private records. This is read-only."""
+    return daily_brief.build(actor, on_date)
 
 
 @alex_tool()
