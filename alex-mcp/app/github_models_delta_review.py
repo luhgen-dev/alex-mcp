@@ -103,9 +103,12 @@ async def prepare(
     packets = await human_ai_lab.build_packets("all")
     fingerprint = human_ai_lab._corpus_fingerprint(packets)
     snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
-    _parent_raw, bundle_raw = _extract_parent(snapshot)
-    parent_bundle = json.loads(bundle_raw)
-    delta = _public_delta(packets, parent_bundle)
+    if str(snapshot.get("corpus_fingerprint") or "") == fingerprint:
+        delta = []
+    else:
+        _parent_raw, bundle_raw = _extract_parent(snapshot)
+        parent_bundle = json.loads(bundle_raw)
+        delta = _public_delta(packets, parent_bundle)
     metadata = {
         "corpus_fingerprint": fingerprint,
         "delta_packets": len(delta),
@@ -187,9 +190,12 @@ async def import_review(
     packets = await human_ai_lab.build_packets("all")
     fingerprint = human_ai_lab._corpus_fingerprint(packets)
     existing = json.loads(snapshot_path.read_text(encoding="utf-8"))
-    parent_raw, bundle_raw = _extract_parent(existing)
-    parent_bundle = json.loads(bundle_raw)
-    delta = _public_delta(packets, parent_bundle)
+    if str(existing.get("corpus_fingerprint") or "") == fingerprint:
+        delta = []
+    else:
+        parent_raw, bundle_raw = _extract_parent(existing)
+        parent_bundle = json.loads(bundle_raw)
+        delta = _public_delta(packets, parent_bundle)
     if not delta:
         return {
             "status": "UNCHANGED",
