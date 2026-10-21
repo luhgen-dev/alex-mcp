@@ -2189,9 +2189,11 @@ def latest_single_selection_context(actor: ActorContext,
             args_b.append(created_after_utc)
         args_c = [actor.user_id, actor.conversation_id, utc_now()]
         args_d = [actor.user_id, actor.conversation_id, utc_now()]
+        args_e = [actor.user_id, actor.conversation_id, utc_now()]
         if created_after_utc:
             args_c.append(created_after_utc)
             args_d.append(created_after_utc)
+            args_e.append(created_after_utc)
         rows = conn.execute(
             f"""SELECT selection_kind,items_json,created_at_utc,
                        COALESCE(read_scope,'') AS read_scope
@@ -2216,8 +2218,14 @@ def latest_single_selection_context(actor: ActorContext,
                   FROM task_selection_sets
                  WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
                        {where_after}
+                UNION ALL
+                SELECT 'LEDGER_ENTRY' AS selection_kind,items_json,created_at_utc,
+                       COALESCE(read_scope,'') AS read_scope
+                  FROM custom_ledger_selection_sets
+                 WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
+                       {where_after}
                 ORDER BY created_at_utc DESC LIMIT 1""",
-            args_a + args_b + args_c + args_d,
+            args_a + args_b + args_c + args_d + args_e,
         ).fetchall()
         if not rows:
             return None
@@ -2254,6 +2262,12 @@ def get_selection_target(actor: ActorContext, kind: str, target_id: str,
         return get_media_original(effective_actor, target_id)
     if normalized == "FINANCE":
         return get_financial_event_detail(effective_actor, target_id)
+    if normalized == "TASK":
+        import phase2
+        return phase2.task_detail(effective_actor, target_id)
+    if normalized == "LEDGER_ENTRY":
+        import custom_ledgers
+        return custom_ledgers.get_entry(effective_actor, target_id)
     raise ValueError("unsupported selection context")
 
 
@@ -2267,12 +2281,14 @@ def latest_selection_set_context(actor: ActorContext,
     args_c = [actor.user_id, actor.conversation_id, now]
     args_d = [actor.user_id, actor.conversation_id, now]
     args_e = [actor.user_id, actor.conversation_id, now]
+    args_f = [actor.user_id, actor.conversation_id, now]
     if created_after_utc:
         args_a.append(created_after_utc)
         args_b.append(created_after_utc)
         args_c.append(created_after_utc)
         args_d.append(created_after_utc)
         args_e.append(created_after_utc)
+        args_f.append(created_after_utc)
     conn = connect()
     try:
         row = conn.execute(
@@ -2305,8 +2321,14 @@ def latest_selection_set_context(actor: ActorContext,
                    FROM task_selection_sets
                   WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
                         {after_sql}
+                  UNION ALL
+                 SELECT selection_id,'LEDGER_ENTRY' AS selection_kind,items_json,created_at_utc,
+                        COALESCE(read_scope,'') AS read_scope
+                   FROM custom_ledger_selection_sets
+                  WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
+                        {after_sql}
                   ORDER BY created_at_utc DESC LIMIT 1""",
-            args_a + args_b + args_c + args_d + args_e,
+            args_a + args_b + args_c + args_d + args_e + args_f,
         ).fetchone()
         if not row:
             return None
@@ -2378,6 +2400,15 @@ def resolve_numbered_choice(actor: ActorContext, choice: int,
                          AND expires_at_utc>? LIMIT 1""",
                     (selection_id, actor.user_id, actor.conversation_id, now),
                 ).fetchone()
+            elif kind == "LEDGER_ENTRY":
+                latest = conn.execute(
+                    """SELECT 'LEDGER_ENTRY' AS selection_kind,items_json,
+                              COALESCE(read_scope,'') AS read_scope
+                       FROM custom_ledger_selection_sets
+                       WHERE selection_id=? AND user_id=? AND conversation_id=?
+                         AND expires_at_utc>? LIMIT 1""",
+                    (selection_id, actor.user_id, actor.conversation_id, now),
+                ).fetchone()
             else:
                 raise ValueError("unsupported numbered selection context")
         else:
@@ -2406,8 +2437,14 @@ def resolve_numbered_choice(actor: ActorContext, choice: int,
                           COALESCE(read_scope,'') AS read_scope
                      FROM task_selection_sets
                     WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
+                   UNION ALL
+                   SELECT selection_id,'LEDGER_ENTRY' AS selection_kind,items_json,created_at_utc,
+                          COALESCE(read_scope,'') AS read_scope
+                     FROM custom_ledger_selection_sets
+                    WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
                    ORDER BY created_at_utc DESC LIMIT 1""",
                 (
+                    actor.user_id, actor.conversation_id, now,
                     actor.user_id, actor.conversation_id, now,
                     actor.user_id, actor.conversation_id, now,
                     actor.user_id, actor.conversation_id, now,
@@ -2453,6 +2490,9 @@ def resolve_numbered_choice(actor: ActorContext, choice: int,
     if kind == "TASK":
         import phase2
         return phase2.task_detail(effective_actor, target)
+    if kind == "LEDGER_ENTRY":
+        import custom_ledgers
+        return custom_ledgers.get_entry(effective_actor, target)
     if kind == "PENDING_ITEM":
         media_id = str((pending or {}).get("media_id") or "")
         if media_id:
