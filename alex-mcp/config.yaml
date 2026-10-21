@@ -164,6 +164,10 @@ schema:
       frequency: "list(weekly|monthly|quarterly|annual)"
       category: "str?"
       auto_pay: bool
+      match_aliases: "str?"
+      reference_patterns: "str?"
+      account_last4: "str?"
+      amount_tolerance: "float?"
       effective_from: "str?"
       active: bool
   account_aliases:
