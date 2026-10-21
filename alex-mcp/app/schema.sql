@@ -590,6 +590,37 @@ CREATE INDEX IF NOT EXISTS idx_daily_brief_status
 ON daily_briefs(user_id,status,brief_date);
 
 
+CREATE TABLE IF NOT EXISTS discussion_sessions (
+    session_id TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL,
+    started_by_user_id TEXT NOT NULL,
+    parent_session_id TEXT,
+    status TEXT NOT NULL CHECK(status IN ('ACTIVE','STOPPED','TIMED_OUT')) DEFAULT 'ACTIVE',
+    previous_summary TEXT,
+    summary_text TEXT,
+    started_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_message_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    ended_at_utc TEXT,
+    FOREIGN KEY(started_by_user_id) REFERENCES users(user_id),
+    FOREIGN KEY(parent_session_id) REFERENCES discussion_sessions(session_id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_discussion_one_active
+ON discussion_sessions(conversation_id) WHERE status='ACTIVE';
+
+CREATE TABLE IF NOT EXISTS discussion_messages (
+    message_id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    sender_phone TEXT NOT NULL,
+    text TEXT,
+    created_at_utc TEXT NOT NULL,
+    FOREIGN KEY(session_id) REFERENCES discussion_sessions(session_id),
+    FOREIGN KEY(user_id) REFERENCES users(user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_discussion_messages_session
+ON discussion_messages(session_id,created_at_utc);
+
+
 CREATE TABLE IF NOT EXISTS conversation_turns (
     turn_id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
