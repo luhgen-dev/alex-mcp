@@ -1640,6 +1640,23 @@ def _attachment_delivery_authorized(user_text: str, tool_name: str) -> bool:
     ))
 
 
+def _finance_read_needs_grounding(user_text: str) -> bool:
+    """Financial facts must come from a current backend read, never chat memory."""
+    low = normalize_intent_text(user_text).strip().casefold()
+    if not low:
+        return False
+    if _trusted_mutation_requested(user_text) and re.search(
+        r"\b(?:log|record|add|correct|fix|change|update|spent|paid|bought|contribute|allocate)\b",
+        low,
+    ):
+        return False
+    return bool(re.search(
+        r"\b(?:expenses?|transactions?|spending|spent|paid|payments?|receipts?|"
+        r"bills?|commitments?|obligations?|how much|did i pay|what did i spend)\b",
+        low,
+    ))
+
+
 def _is_contextual_followup(user_text: str) -> bool:
     """Whether a turn is unsafe to route without the preceding user intent."""
     text = (user_text or "").strip()
@@ -4281,13 +4298,14 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
     active_route: dict | None = None
     provider_failures: list[dict] = []
     capability_retry_used = False
+    grounding_retry_used = False
     language_retry_used = False
     mutation_ledger: list[dict] = []
     tool_evidence: list[dict] = []
     selection = state.get("latest_list") or {}
     selection_bindings = {selection["id"]: selection} if selection.get("id") else {}
     default_selection = selection
-    list_producers = {"find_receipts", "search_saved_items", "find_media", "list_pending_items"}
+    list_producers = {"find_receipts", "search_saved_items", "find_media", "list_pending_items", "query_finances"}
 
     for call_index in range(MAX_MODEL_CALLS):
         final_answer_call = call_index == MAX_MODEL_CALLS - 1
@@ -4371,6 +4389,37 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
         )
 
         if not calls:
+            successful_tools = {
+                str(name).split(":", 1)[0]
+                for name in (trace.get("tools_called") or [])
+                if not str(name).endswith(":error")
+                and not str(name).endswith(":not_offered")
+            }
+            if (
+                not final_answer_call
+                and not grounding_retry_used
+                and _finance_read_needs_grounding(user_text)
+                and not successful_tools.intersection({
+                    "query_finances", "finance_report", "bills_list",
+                    "find_receipts", "get_receipt", "get_transaction_receipt",
+                })
+            ):
+                grounding_retry_used = True
+                messages.append({
+                    "role": "system",
+                    "content": (
+                        "This request asks for financial/bookkeeping facts. Do not answer from "
+                        "conversation memory. Use the relevant finance/bill/receipt read tool now, "
+                        "within the current authenticated privacy scope. If nothing is recorded, "
+                        "say so from the tool result."
+                    ),
+                })
+                messages.append({
+                    "role": "user",
+                    "content": current_content if vision_parts else current,
+                })
+                trace["routes"].append("self_repair:finance_grounding")
+                continue
             raw_candidate = _content_text(msg.content).strip()
             if raw_candidate:
                 candidate = raw_candidate
