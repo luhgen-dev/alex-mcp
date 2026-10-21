@@ -582,44 +582,72 @@ def leave_balance(leave_id, sender_phone, conversation_type="DIRECT_DM",
     payload = rec["payload"]
     snapshot_date = _parse_date(payload["as_of_date"])
     end = _parse_date(as_of_date) if as_of_date else runtime_clock.today()
-    event_type = (
-        "ANNUAL_LEAVE" if leave_id in ("annual", "annual_leave", "al")
-        else "MEDICAL_LEAVE" if leave_id in ("medical", "medical_leave", "mc")
-        else None
-    )
-    if not event_type:
-        raise ValueError("Leave id must identify annual leave or medical leave")
+    normalized_id = str(leave_id or "").strip().casefold().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "annual": "annual_leave", "al": "annual_leave",
+        "medical": "medical_leave", "mc": "medical_leave",
+        "childcare": "childcare_leave", "child_care": "childcare_leave",
+        "wellness": "wellness_leave",
+        "hospitalisation": "hospitalisation_leave",
+        "hospitalization": "hospitalisation_leave",
+        "hospitalisation_leave": "hospitalisation_leave",
+        "hospitalization_leave": "hospitalisation_leave",
+        "doil": "doil_leave", "doil_leave": "doil_leave",
+    }
+    normalized_id = aliases.get(normalized_id, normalized_id)
+    payload_id = str(payload.get("id") or "").strip().casefold().replace("-", "_").replace(" ", "_")
+    payload_id = aliases.get(payload_id, payload_id)
+    if payload_id != normalized_id:
+        raise ValueError("Leave balance profile not found or ambiguous")
 
-    ensure_schema()
-    conn = tools.get_db()
-    try:
-        user_id, private_space, shared = _ctx(conn, sender_phone, conversation_type)
-        spaces = [private_space]
-        if shared:
-            spaces.append("FAMILY_SHARED")
-        placeholders = ",".join("?" for _ in spaces)
-        row = conn.execute(f"""
-            SELECT COALESCE(SUM(COALESCE(units_days,1)),0) AS used
-            FROM alex_phase2_work_events
-            WHERE owner_user_id=? AND space_id IN ({placeholders}) AND event_type=?
-              AND event_date>? AND event_date<=?
-        """, (
-            user_id, *spaces, event_type,
-            snapshot_date.isoformat(), end.isoformat(),
-        )).fetchone()
-        used = float(row["used"] or 0)
-        remaining = max(0.0, float(payload["remaining_days"]) - used)
-        return {
-            "id": leave_id, "name": payload["name"],
-            "entitlement_days": float(payload["entitlement_days"]),
-            "snapshot_remaining_days": float(payload["remaining_days"]),
-            "snapshot_date": snapshot_date.isoformat(),
-            "used_since_snapshot": used,
-            "remaining_days": remaining,
-            "as_of_date": end.isoformat(),
-        }
-    finally:
-        conn.close()
+    event_type = {
+        "annual_leave": "ANNUAL_LEAVE",
+        "medical_leave": "MEDICAL_LEAVE",
+    }.get(normalized_id)
+
+    # Only Annual/Medical currently have dated event ledgers. Other leave
+    # categories remain exact snapshot balances until the owner updates them.
+    used_since_snapshot = 0.0
+    if event_type:
+        ensure_schema()
+        conn = tools.get_db()
+        try:
+            user_id, private_space, shared = _ctx(conn, sender_phone, conversation_type)
+            spaces = [private_space]
+            if shared:
+                spaces.append("FAMILY_SHARED")
+            placeholders = ",".join("?" for _ in spaces)
+            row = conn.execute(f"""
+                SELECT COALESCE(SUM(COALESCE(units_days,1)),0) AS used
+                FROM alex_phase2_work_events
+                WHERE owner_user_id=? AND space_id IN ({placeholders}) AND event_type=?
+                  AND event_date>? AND event_date<=?
+            """, (
+                user_id, *spaces, event_type,
+                snapshot_date.isoformat(), end.isoformat(),
+            )).fetchone()
+            used_since_snapshot = float(row["used"] or 0)
+        finally:
+            conn.close()
+
+    snapshot_used = float(
+        payload.get("used_days")
+        if payload.get("used_days") is not None
+        else float(payload["entitlement_days"]) - float(payload["remaining_days"])
+    )
+    total_used = snapshot_used + used_since_snapshot
+    remaining = float(payload["entitlement_days"]) - total_used
+    return {
+        "id": normalized_id, "name": payload["name"],
+        "entitlement_days": float(payload["entitlement_days"]),
+        "snapshot_used_days": snapshot_used,
+        "snapshot_remaining_days": float(payload["remaining_days"]),
+        "snapshot_date": snapshot_date.isoformat(),
+        "used_since_snapshot": used_since_snapshot,
+        "used_days": total_used,
+        "remaining_days": remaining,
+        "as_of_date": end.isoformat(),
+    }
 
 
 def _human_date(d):
