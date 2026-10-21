@@ -365,6 +365,75 @@ def _dm_conversation_for_actor(actor) -> str:
     return actor.phone.replace("+", "") + "@s.whatsapp.net"
 
 
+_MENU_SECTIONS = {
+    1: ("Today", "Daily Brief, agenda, work shift, leave and what is due today."),
+    2: ("Money", "Expenses, receipts, bills, commitments, reports and payment proof."),
+    3: ("Reminders & Tasks", "Create, change, complete, snooze, reopen and review tasks/reminders."),
+    4: ("Diary & Plans", "Appointments, availability, planning discussions and plan handoff."),
+    5: ("Shopping", "Add, update and complete household shopping items."),
+    6: ("Saved Things", "Save and retrieve notes, pictures, documents, voice notes and videos."),
+    7: ("Home", "Check and control permitted Home Assistant devices."),
+    8: ("Goals & Savings", "Goals, contributions, stash/cash pools and allocations."),
+    9: ("Alex Listening", "Start/stop a Family Shared discussion-listening session."),
+    10: ("Ledgers & Trackers", "Create or use private/shared specialist or custom trackers."),
+}
+
+
+def _menu_command(text: str) -> bool:
+    value = normalize_intent_text(str(text or "")).strip().casefold()
+    return value in {"/menu", "menu", "alex menu", "what can you do", "what can u do", "help menu"}
+
+
+def _menu_text(section: int | None = None) -> str:
+    if section is None:
+        lines = ["*ALEX MENU*"]
+        for number, (title, summary) in _MENU_SECTIONS.items():
+            lines.append(f"{number}. *{title}* — {summary}")
+        lines.append("")
+        lines.append("Reply with a number to see natural examples.")
+        return "\n".join(lines)
+    title, _summary = _MENU_SECTIONS[section]
+    examples = {
+        1: ["What’s in for me today?", "What’s my agenda tomorrow?", "Am I working today?"],
+        2: ["I spent RM25 on lunch.", "Show my expenses for October.", "Show 4.", "Send that as PDF."],
+        3: ["Remind me to print at 11 PM.", "Add a task for tomorrow.", "Mark task 2 done."],
+        4: ["Add dinner tomorrow at 8 PM.", "Start a Greece holiday plan.", "What are we still deciding?"],
+        5: ["We need detergent.", "Change detergent to 2 bottles.", "I bought the detergent."],
+        6: ["Save this as warranty photo.", "Show my saved pictures.", "Show 1."],
+        7: ["What’s the Hall AC status?", "Turn the Hall AC off."],
+        8: ["Create a goal for RM5,000.", "I put RM200 toward my goal.", "Show my stash 😍"],
+        9: ["@Alex (bare mention starts/stops listening)", "@Alex start listening", "@Alex resume our Greece discussion"],
+        10: ["Create a private car-service tracker.", "Show my ledgers.", "Add this transfer to my drone tracker."],
+    }
+    lines = [f"*{title}*"]
+    lines.extend(f"• {item}" for item in examples.get(section, []))
+    lines.extend(["", "Reply 0 to return to the main menu."])
+    return "\n".join(lines)
+
+
+def _latest_menu_context(actor) -> str | None:
+    conn = db.connect()
+    try:
+        row = conn.execute(
+            """SELECT context_id FROM outbound_messages
+               WHERE conversation_id=? AND context_kind='MENU'
+                 AND datetime(created_at_utc)>=datetime('now','-10 minutes')
+               ORDER BY created_at_utc DESC,rowid DESC LIMIT 1""",
+            (actor.conversation_id,),
+        ).fetchone()
+        latest = conn.execute(
+            """SELECT context_kind,context_id FROM outbound_messages
+               WHERE conversation_id=?
+               ORDER BY created_at_utc DESC,rowid DESC LIMIT 1""",
+            (actor.conversation_id,),
+        ).fetchone()
+        if not row or not latest or latest["context_kind"] != "MENU":
+            return None
+        return str(row["context_id"] or "")
+    finally:
+        conn.close()
+
+
 def _error_report_command(text: str) -> tuple[bool, str]:
     """Recognize a small deterministic vocabulary for quote-bound bug reports."""
     raw = re.sub(r"\s+", " ", str(text or "").strip())
@@ -1733,6 +1802,38 @@ def process(payload: dict) -> dict:
                 and turn["read_scope"] == "private"
             ),
         )
+        menu_section = None
+        if _menu_command(turn["trusted_text"]):
+            reply = _menu_text()
+            db.queue_outbound(
+                actor.conversation_id, "TEXT", text=reply,
+                source_message_id=actor.source_message_id,
+                context_kind="MENU", context_id="MAIN",
+            )
+            _record_deterministic_turn(actor, reply)
+            db.finish_inbound(actor.source_message_id, reply)
+            return {"ok": True, "menu": True}
+        bare_menu_number = re.fullmatch(r"\s*(\d{1,2})\s*", turn["trusted_text"])
+        if bare_menu_number and _latest_menu_context(actor):
+            choice = int(bare_menu_number.group(1))
+            if choice == 0:
+                reply = _menu_text()
+                context_id = "MAIN"
+            elif choice in _MENU_SECTIONS:
+                reply = _menu_text(choice)
+                context_id = str(choice)
+            else:
+                reply = "Choose a menu number from 1 to 10, or 0 to go back."
+                context_id = _latest_menu_context(actor) or "MAIN"
+            db.queue_outbound(
+                actor.conversation_id, "TEXT", text=reply,
+                source_message_id=actor.source_message_id,
+                context_kind="MENU", context_id=context_id,
+            )
+            _record_deterministic_turn(actor, reply)
+            db.finish_inbound(actor.source_message_id, reply)
+            return {"ok": True, "menu": True}
+
         if payload.get("audio_data"):
             audio_id = next(
                 (
