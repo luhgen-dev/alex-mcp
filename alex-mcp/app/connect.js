@@ -22,6 +22,7 @@ const OPTIONS_FILE = path.join(DATA_DIR, 'options.json');
 const SELFTEST_FILE = path.join(DATA_DIR, 'selftest.json');
 const GROUP_FILE = path.join(DATA_DIR, 'family_group.json');
 const RUNTIME_STATUS_FILE = path.join(DATA_DIR, 'runtime_status.json');
+const LISTENING_FILE = path.join(DATA_DIR, 'listening_sessions.json');
 const INGRESS_URL = 'http://127.0.0.1:5001/ingress';
 const PROVIDER_PROBE_URL = 'http://127.0.0.1:5001/provider-probe';
 const USAGE_URL = 'http://127.0.0.1:5001/usage-summary';
@@ -121,6 +122,18 @@ function allowedNumbers() {
 function isWhitelisted(phone) {
   const clean = cleanNumber(phone);
   return clean.length > 0 && allowedNumbers().includes(clean);
+}
+
+function listeningEntry(groupJid) {
+  try {
+    const data = JSON.parse(fs.readFileSync(LISTENING_FILE, 'utf8'));
+    const entry = data && data[groupJid];
+    if (!entry) return null;
+    const expires = Number(entry.expires_at_ms || 0);
+    return expires > Date.now() ? entry : null;
+  } catch (_err) {
+    return null;
+  }
 }
 
 function getFamilyGroupJid() {
@@ -411,15 +424,18 @@ async function handleIncoming(message) {
     return;
   }
 
+  let listeningActive = false;
+  let listeningCaptureOnly = false;
   if (isGroup) {
     const familyGroup = getFamilyGroupJid();
     if (!familyGroup || familyGroup !== remoteJid) return;
-    // Family Shared is intentionally opt-in per message: Alex responds only
-    // when explicitly @mentioned or when someone swipe-replies to Alex.
+    listeningActive = Boolean(listeningEntry(remoteJid));
+    // Outside Listening Mode, Family Shared remains strictly opt-in per message.
     alexMentioned = await isAlexMentioned(message);
     replyToAlex = await isReplyToAlex(message);
-    if (!alexMentioned && !replyToAlex) return;
-    rawText = await stripAlexMentionText(message, rawText);
+    if (!alexMentioned && !replyToAlex && !listeningActive) return;
+    listeningCaptureOnly = listeningActive && !alexMentioned && !replyToAlex;
+    if (alexMentioned) rawText = await stripAlexMentionText(message, rawText);
   }
 
   const media = detectMedia(message);
@@ -451,7 +467,10 @@ async function handleIncoming(message) {
   const mentionOnlyQuotedContext = Boolean(
     isGroup && alexMentioned && quotedMessageId
   );
-  if (!rawText && !media.type && !mentionOnlyQuotedContext) return;
+  const bareAlexMention = Boolean(
+    isGroup && alexMentioned && !replyToAlex && !quotedMessageId && !rawText && !media.type
+  );
+  if (!rawText && !media.type && !mentionOnlyQuotedContext && !bareAlexMention) return;
 
   // Keep the exact inbound WAMessage briefly so the durable final response can
   // render as a real WhatsApp reply to the user's original message. If Alex is
@@ -489,6 +508,9 @@ async function handleIncoming(message) {
     participant_alt: message.key.participantAlt || null,
     alex_mentioned: alexMentioned,
     reply_to_alex: replyToAlex,
+    listening_active: listeningActive,
+    listening_capture_only: listeningCaptureOnly,
+    bare_alex_mention: bareAlexMention,
     sent_at_ms: messageTimestampMs(message),
     image_data: media.type === 'image' && mediaData ? mediaData.data : null,
     image_mime_type: media.type === 'image' && mediaData ? mediaData.mimeType : null,
@@ -522,6 +544,17 @@ async function handleIncoming(message) {
 
   try {
     await forwardToPython(payload);
+    if (isGroup && (listeningCaptureOnly || (listeningActive && (alexMentioned || replyToAlex) && !bareAlexMention))) {
+      try {
+        if (currentSock) {
+          await currentSock.sendMessage(remoteJid, {
+            react: { text: '👂', key: message.key }
+          });
+        }
+      } catch (err) {
+        console.error('[Alex MCP] Listening reaction failed:', err.message);
+      }
+    }
   } catch (err) {
     console.error('[Alex MCP] Ingress forwarding failed:', err.message);
     try {
