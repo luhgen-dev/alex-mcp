@@ -305,14 +305,17 @@ def build_turn(payload: dict, media_lines: list[str]) -> dict:
     intent_text = normalize_intent_text(semantic_text)
     has_audio = bool(payload.get("audio_data"))
     has_image = bool(payload.get("image_data"))
+    has_video = bool(payload.get("video_data"))
     has_pdf = bool(payload.get("pdf_data"))
-    if has_audio and not (has_image or has_pdf):
+    if has_audio and not (has_image or has_video or has_pdf):
         source = "voice"
-    elif has_image and not (has_audio or has_pdf):
+    elif has_image and not (has_audio or has_video or has_pdf):
         source = "image"
-    elif has_pdf and not (has_audio or has_image):
+    elif has_video and not (has_audio or has_image or has_pdf):
+        source = "video"
+    elif has_pdf and not (has_audio or has_image or has_video):
         source = "document"
-    elif has_audio or has_image or has_pdf:
+    elif has_audio or has_image or has_video or has_pdf:
         source = "mixed"
     else:
         source = "text"
@@ -323,7 +326,7 @@ def build_turn(payload: dict, media_lines: list[str]) -> dict:
         "read_scope": scope_policy.resolve_read_scope(trusted_text),
         "document_lines": document_lines,
         "source": source,
-        "has_document_media": has_image or has_pdf,
+        "has_document_media": has_image or has_video or has_pdf,
         "received_at_utc": _received_at_utc(payload),
     }
 
@@ -700,7 +703,7 @@ def _fulfill_private_search_offer(actor, pending: dict) -> dict:
         kind = item.get("kind", "DOCUMENT")
         db.queue_outbound(
             dm_conversation,
-            "IMAGE" if kind == "IMAGE" else "DOCUMENT",
+            _attachment_outbound_kind(item),
             text=reply if first else None,
             local_path=path,
             mime_type=item.get("mime_type"),
@@ -1404,6 +1407,18 @@ def _finance_detail_reply(result: dict, choice: int) -> str:
     return "\n".join(lines)
 
 
+def _attachment_outbound_kind(item: dict) -> str:
+    kind = str((item or {}).get("kind") or "DOCUMENT").upper()
+    mime = str((item or {}).get("mime_type") or "").lower()
+    if kind == "IMAGE" or mime.startswith("image/"):
+        return "IMAGE"
+    if kind == "AUDIO" or mime.startswith("audio/"):
+        return "AUDIO"
+    if kind == "VIDEO" or mime.startswith("video/"):
+        return "VIDEO"
+    return "DOCUMENT"
+
+
 def _deliver_numbered_selection(actor, choice: int,
                                 context: dict | None = None) -> dict:
     parts = _selection_set_context_parts(context)
@@ -1454,7 +1469,7 @@ def _deliver_numbered_selection(actor, choice: int,
         kind = item.get("kind", "DOCUMENT")
         db.queue_outbound(
             actor.conversation_id,
-            "IMAGE" if kind == "IMAGE" else "DOCUMENT",
+            _attachment_outbound_kind(item),
             local_path=local_path,
             mime_type=item.get("mime_type"),
             source_message_id=actor.source_message_id,
@@ -1487,7 +1502,7 @@ def _deliver_selection_followup(actor, context: dict) -> dict:
         kind = item.get("kind", "DOCUMENT")
         db.queue_outbound(
             actor.conversation_id,
-            "IMAGE" if kind == "IMAGE" else "DOCUMENT",
+            _attachment_outbound_kind(item),
             local_path=local_path,
             mime_type=item.get("mime_type"),
             source_message_id=actor.source_message_id,
@@ -2351,7 +2366,7 @@ def process(payload: dict) -> dict:
                     sent_paths.add(path)
                     db.queue_outbound(
                         dm_conversation,
-                        "IMAGE" if kind == "IMAGE" else "DOCUMENT",
+                        _attachment_outbound_kind(item),
                         text=private_reply if first_private_attachment else None,
                         local_path=path,
                         mime_type=item.get("mime_type"),
@@ -2491,7 +2506,7 @@ def process(payload: dict) -> dict:
                 sent_paths.add(path)
                 db.queue_outbound(
                     actor.conversation_id,
-                    "IMAGE" if kind == "IMAGE" else "DOCUMENT",
+                    _attachment_outbound_kind(item),
                     text=reply if first_attachment else None,
                     local_path=path,
                     mime_type=item.get("mime_type"),
