@@ -1624,6 +1624,88 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         ),
     ),
     PromptContract(
+        "p3.daily.brief", "phase3", "daily_brief",
+        "Owners can ask for one deterministic daily brief without mutating underlying records.",
+        (
+            "What's in for me today?",
+            "Give me my daily brief.",
+        ),
+        _fs("daily.brief"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p3.discussion.recall", "phase3", "discussion",
+        "Captured Family Listening discussions can be recalled without turning them into actions.",
+        (
+            "Recall our Greece discussion.",
+            "What did we discuss about the holiday?",
+        ),
+        _fs("discussion.recall"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p3.ledger.create", "phase3", "ledger",
+        "A genuinely custom tracker can be created when no specialist engine fits.",
+        (
+            "Create a private car service ledger.",
+            "Set up a family tracker for things we lend people.",
+        ),
+        _fs("ledger.create"), seed="empty", live=False,
+    ),
+    PromptContract(
+        "p3.ledger.list", "phase3", "ledger",
+        "Custom ledgers can be listed in the current privacy scope.",
+        (
+            "Show my ledgers.",
+            "What trackers do I have?",
+        ),
+        _fs("ledger.list"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p3.ledger.entry.add", "phase3", "ledger",
+        "Explicitly typed custom-ledger entries expose the entry writer while ambiguous money semantics still clarify in the backend.",
+        (
+            "Add this note to my car service ledger.",
+            "Record this in my household maintenance tracker.",
+        ),
+        _fs("ledger.entry.add"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p3.ledger.query", "phase3", "ledger",
+        "Custom ledger history can be queried and numbered.",
+        (
+            "Show my car service ledger history.",
+            "What is in my household maintenance tracker?",
+        ),
+        _fs("ledger.query"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p3.ledger.close", "phase3", "ledger",
+        "Closing a custom ledger preserves history instead of deleting it.",
+        (
+            "Close my old car service ledger.",
+            "Stop tracking that custom maintenance ledger.",
+        ),
+        _fs("ledger.close"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p3.task.details", "phase3", "tasks",
+        "A task detail request exposes provenance/history rather than only a list.",
+        (
+            "Show me the details of Alex smoke task.",
+            "What did I originally say for that task?",
+        ),
+        _fs("task.details"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p3.task.reminder.link", "phase3", "tasks",
+        "A reminder requested for an existing task uses the linked task-reminder capability.",
+        (
+            "For Alex smoke task remind me in 20 minutes.",
+            "Give me a heads-up reminder for that task.",
+        ),
+        _fs("task.reminder.link"), seed="core", live=False,
+    ),
+
+    PromptContract(
         "p3.read.only", "phase3", "safety",
         "Read-only questions must not expose unrelated mutations when fallback is used.",
         (
