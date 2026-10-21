@@ -729,6 +729,21 @@ def _fulfill_private_search_offer(actor, pending: dict) -> dict:
     return {"ok": True, "private_search": True}
 
 
+def _finance_review_for_turn(actor) -> dict | None:
+    conn = db.connect()
+    try:
+        row = conn.execute(
+            """SELECT * FROM pending_items
+               WHERE owner_id=? AND conversation_id=? AND source_message_id=?
+                 AND kind='FINANCE_REVIEW' AND status='PENDING'
+               ORDER BY created_at_utc DESC LIMIT 1""",
+            (actor.user_id, actor.conversation_id, actor.source_message_id),
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
 def _selection_context_for_offer(actor, reply: str, attachments: list[dict]) -> dict | None:
     if attachments:
         return None
@@ -2455,6 +2470,7 @@ def process(payload: dict) -> dict:
             )
             reminder_draft = retained_draft or _maybe_create_reminder_draft(actor, reply)
         report_context = _report_context_for_turn(actor)
+        finance_review = _finance_review_for_turn(actor)
 
         if reminder_created:
             for pending_id in _completed_reminder_drafts_for_turn(actor):
@@ -2467,6 +2483,7 @@ def process(payload: dict) -> dict:
             context_kind = (
                 "PENDING_ITEM" if private_search_offer
                 else "PENDING_ITEM" if reminder_draft
+                else "PENDING_ITEM" if finance_review
                 else "SELECTION_SET" if selection_set_context
                 else "SELECTION" if selection_context
                 else "REMINDER_SETUP" if reminder_setup_id
@@ -2477,6 +2494,7 @@ def process(payload: dict) -> dict:
             context_id = (
                 private_search_offer["item_id"] if private_search_offer
                 else reminder_draft["item_id"] if reminder_draft
+                else finance_review["item_id"] if finance_review
                 else f"{selection_set_context['kind']}:{selection_set_context['id']}"
                 if selection_set_context
                 else (
