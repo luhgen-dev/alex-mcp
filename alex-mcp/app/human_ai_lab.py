@@ -82,7 +82,7 @@ def _runtime_policy() -> dict[str, str]:
     """Export actual, generally applicable runtime policy, never scorer labels."""
     prefixes = {
         "household_records": "Personal facts are never guessed.",
-        "financial_currency": "For every money write, never guess MYR versus SGD.",
+        "financial_currency": "For money writes, MYR is the household default",
         "empty_cash_pool": "Creating a named stash without an amount",
         "private_scope": "Ordinary DM reads are Family Shared by default;",
         "tentative_shopping": "For tentative shopping language",
