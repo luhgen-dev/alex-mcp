@@ -316,11 +316,22 @@ def _overtime_rule(raw):
 def _leave_balance(raw):
     rec = _base_record("leave_balance", raw)
     total = _optional_float(raw.get("entitlement_days"))
+    used = _optional_float(raw.get("used_days"))
     remaining = _optional_float(raw.get("remaining_days"))
-    if total is None or remaining is None:
-        raise ValueError("Leave entitlement and remaining days are required")
-    if remaining > total:
-        raise ValueError("Leave remaining days cannot exceed entitlement")
+    if total is None or (used is None and remaining is None):
+        raise ValueError(
+            "Leave entitlement plus either used_days or remaining_days are required"
+        )
+    if used is None:
+        used = max(0.0, float(total) - float(remaining))
+    if remaining is None:
+        # Negative remaining is valid when leave has been over-used. Preserve
+        # the real state instead of clamping or rejecting it.
+        remaining = float(total) - float(used)
+    if raw.get("used_days") not in (None, "") and raw.get("remaining_days") not in (None, ""):
+        expected = float(total) - float(used)
+        if abs(expected - float(remaining)) > 1e-6:
+            raise ValueError("Leave used_days and remaining_days do not reconcile")
     as_of_date = str(raw.get("as_of_date") or "").strip()
     if as_of_date:
         from datetime import date as _date
@@ -329,7 +340,8 @@ def _leave_balance(raw):
         "id": _record_id(raw.get("id")),
         "name": str(raw.get("name") or "").strip(),
         "entitlement_days": total,
-        "remaining_days": remaining,
+        "used_days": float(used),
+        "remaining_days": float(remaining),
         "as_of_date": as_of_date,
         "active": _bool(raw.get("active"), True),
     }
