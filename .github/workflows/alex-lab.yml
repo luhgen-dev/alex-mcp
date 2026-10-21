@@ -59,6 +59,7 @@ jobs:
             /tmp/alex-human-ai-report.json
             /tmp/alex-real-ai-reasoning-review.json
             /tmp/alex-chatgpt-reasoning-review.json
+            alex-mcp/app/real_ai_snapshot.json
           if-no-files-found: error
           retention-days: 14
 
