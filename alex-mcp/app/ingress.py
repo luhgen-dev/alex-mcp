@@ -1456,15 +1456,34 @@ def _reopen_existing_reminder_command(text: str) -> bool:
     )
 
 
+_CLAIMED_REMINDER_QUOTE_KINDS = {
+    "REMINDER_CLAIM_CONFIRMED",
+    "REMINDER_INITIAL",
+    "REMINDER_FOLLOWUP",
+    "REMINDER_CLAIMANT_FOLLOWUP",
+    "REMINDER_CREATED",
+    "REMINDER_ASSIGNED",
+}
+
+
+def _quoted_reminder_id_for_claim_release(quoted_context: dict | None) -> str:
+    """Use an exact quoted reminder id only from a durable reminder outbound.
+
+    Ownership/claim state is still revalidated by release_reminder_claim; the
+    quote supplies identity only and cannot authorize a release by itself.
+    """
+    if not quoted_context:
+        return ""
+    if str(quoted_context.get("context_kind") or "") not in _CLAIMED_REMINDER_QUOTE_KINDS:
+        return ""
+    return str(quoted_context.get("context_id") or "").strip()
+
+
 def _return_claimed_reminder_to_family_command(
     text: str, quoted_context: dict | None = None
 ) -> bool:
     low = normalize_intent_text(text).casefold()
-    object_bound = bool(
-        quoted_context
-        and quoted_context.get("context_kind") == "REMINDER_CLAIM_CONFIRMED"
-        and quoted_context.get("context_id")
-    )
+    object_bound = bool(_quoted_reminder_id_for_claim_release(quoted_context))
     if object_bound and re.search(
         r"\b(?:release|unclaim)\b"
         r"|\b(?:push|send|put|return|give)\b.{0,50}\b(?:back|group|mcp home|family)\b"
@@ -2067,11 +2086,8 @@ def process(payload: dict) -> dict:
         if _return_claimed_reminder_to_family_command(
             turn["intent_text"], quoted_context
         ):
-            quoted_claim_reminder_id = (
-                str(quoted_context.get("context_id") or "")
-                if quoted_context
-                and quoted_context.get("context_kind") == "REMINDER_CLAIM_CONFIRMED"
-                else ""
+            quoted_claim_reminder_id = _quoted_reminder_id_for_claim_release(
+                quoted_context
             )
             try:
                 released = services.release_reminder_claim(
