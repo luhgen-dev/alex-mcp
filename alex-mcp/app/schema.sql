@@ -574,6 +574,22 @@ CREATE TABLE IF NOT EXISTS cashflow_baselines (
     FOREIGN KEY(user_id) REFERENCES users(user_id)
 );
 
+CREATE TABLE IF NOT EXISTS daily_briefs (
+    brief_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    brief_date TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('PENDING','ACKNOWLEDGED')) DEFAULT 'PENDING',
+    payload_json TEXT NOT NULL,
+    created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    acknowledged_at_utc TEXT,
+    UNIQUE(user_id,brief_date),
+    FOREIGN KEY(user_id) REFERENCES users(user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_daily_brief_status
+ON daily_briefs(user_id,status,brief_date);
+
+
 CREATE TABLE IF NOT EXISTS conversation_turns (
     turn_id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
