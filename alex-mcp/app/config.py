@@ -50,6 +50,8 @@ class Settings:
     # the ChatGPT plan model picks which tools the brain sees, keyword routing
     # stays as the automatic fallback. Needs chatgpt_plan_mode != off.
     ai_routing: str = "off"
+    daily_brief_enabled: bool = True
+    daily_brief_time: str = "04:30"
     ha_notify_devices: list[dict] = field(default_factory=list)
 
     def model_for(self, provider: str, *, lite: bool = False) -> str:
@@ -141,6 +143,11 @@ def get_settings() -> Settings:
     if routing == "on":
         routing = "live"
     clean["ai_routing"] = routing if routing in {"off", "shadow", "live"} else "off"
+    brief_time = str(clean.get("daily_brief_time", "04:30") or "04:30").strip()
+    if not __import__("re").fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", brief_time):
+        brief_time = "04:30"
+    clean["daily_brief_time"] = brief_time
+    clean["daily_brief_enabled"] = bool(clean.get("daily_brief_enabled", True))
     devices = clean.get("ha_notify_devices", [])
     if not isinstance(devices, list):
         devices = []
