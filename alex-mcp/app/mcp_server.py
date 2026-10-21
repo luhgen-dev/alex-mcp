@@ -918,6 +918,18 @@ def planning_reopen_goal(actor: Actor, goal_id: str | None = None,
 
 
 @alex_tool()
+def planning_cancel_goal(actor: Actor, goal_id: str | None = None,
+                         goal_name: str | None = None) -> dict:
+    """Cancel one goal while preserving target, funding and contribution history. Use the natural goal name when supplied; never ask the user to create a replacement goal."""
+    resolved = phase2_finance.resolve_goal_reference(
+        goal_id, goal_name, actor.phone, actor.conversation_type
+    )
+    return phase2_finance.cancel_goal(
+        resolved, actor.phone, actor.conversation_type
+    )
+
+
+@alex_tool()
 def planning_set_period_target(amount: float, actor: Actor,
                                goal_id: str | None = None,
                                goal_name: str | None = None,
@@ -1459,7 +1471,7 @@ def work_ot_status(on_date: str, actor: Actor) -> dict:
 
 @alex_tool()
 def work_leave_balance(leave_id: str, actor: Actor, as_of_date: str | None = None) -> dict:
-    """Read annual/medical leave from configured snapshot plus later TAKEN/recorded events."""
+    """Read a configured leave balance. Annual/medical reconcile later recorded leave events; childcare, wellness, hospitalisation and DOIL use the authoritative snapshot until updated."""
     return phase2_work.leave_balance(leave_id, actor.phone, actor.conversation_type, as_of_date)
 
 
