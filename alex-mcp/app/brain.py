@@ -90,6 +90,8 @@ For recurring bills, keep expected/due/partial/paid/deferred/explicitly-unpaid s
 
 For cash-flow planning, use only guaranteed income, explicit fixed commitments, locked allocations and explicit reserves as the baseline. OT, variable income and unexpected cash stay unallocated/stash until the user instructs otherwise. Brainstorm and recalculate when the user is actively planning, but never raise an allowance or redirect money on your own. When a material withdrawal/change alters a locked plan, clarify and relock rather than silently rewriting history.
 
+"Ledger" and "tracker" are user-facing umbrella terms. Prefer Alex's specialist engines when the subject clearly fits one: Goals for savings objectives, cash pools/stash for earmarked cash, Bills for recurring commitments, Tasks for work to do, and Finance for actual expenses. Use custom Ledgers & Trackers only when none of those fits well (for example car-service history or items lent to people). A custom ledger money entry is not automatically a household expense or goal contribution. If it could mean spending, savings, transfer or reference-only tracking, ask which meaning before writing.
+
 For Home Assistant, never invent an entity_id. Find the entity first when needed. Only call a control tool when the user clearly asked for that device action; do not turn a discussion or suggestion into a device action. The backend will reject sensitive domains and unsafe services.
 Home Assistant automation requests produce a reviewable draft through ha_draft_automation. Explain that the draft is not deployed; Alex has no automatic automation-deployment capability. Do not operate a device merely because an automation mentions it.
 If a tool returns previous_attempt_uncertain, never repeat that mutation automatically. Explain that the prior attempt may already have happened and verify the relevant state first or ask the user before a fresh retry.
@@ -262,6 +264,7 @@ ASSET_TOOLS = {"asset_create","asset_update","asset_link_document","asset_list",
 DIAGNOSTIC_TOOLS = {"system_health","recent_failures"}
 MONITOR_TOOLS = {"monitor_delegate","monitor_home_state","monitor_list","monitor_cancel"}
 REPORT_TOOLS = {"finance_report","report_snapshot","report_export","report_payload"}
+CUSTOM_LEDGER_TOOLS = {"create_custom_ledger","list_custom_ledgers","add_custom_ledger_entry","query_custom_ledger","close_custom_ledger"}
 LEGACY_SIMPLE_PLANNING = {
     "set_goal","list_goals","set_cashflow_baseline","get_cashflow_baseline",
     "set_money_bucket","list_money_buckets","get_leave_balance","set_leave_balance",
@@ -405,6 +408,11 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
         "report_payload": (r"google sheets|sheet|tv|dashboard|handoff", 115),
         "get_daily_brief": (r"daily brief|brief me|what(?:'s| is) in for me today|what do i have today|today at a glance", 155),
         "recall_discussion": (r"recall.*discussion|remember.*discussion|what did we discuss|resume.*discussion|greece.*discussion", 152),
+        "create_custom_ledger": (r"(?:create|start|make|set up).*?(?:ledger|tracker)", 146),
+        "list_custom_ledgers": (r"(?:show|list|what).*?(?:ledgers|trackers)|(?:ledgers|trackers).*?(?:have|exist)", 140),
+        "add_custom_ledger_entry": (r"(?:add|put|record|log).*?(?:ledger|tracker)", 145),
+        "query_custom_ledger": (r"(?:show|what|how much|history).*?(?:ledger|tracker)", 142),
+        "close_custom_ledger": (r"(?:close|archive|stop tracking).*?(?:ledger|tracker)", 145),
         "calculate": (r"calculate|how much|total|difference|remaining", 70),
     }
     pattern, weight = direct.get(name, ("", 0))
@@ -1174,6 +1182,18 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         if re.search(r"(?:சேமித்த|சேமிக்க|சேமி)", text or "") and "காட்டு" in (text or ""):
             force.add("search_saved_items")
 
+    if re.search(r"\b(?:ledger|ledgers|tracker|trackers)\b", low):
+        if re.search(r"\b(?:goal|savings? goal|stash|cash pool|bill|commitment|task|expense|expenses)\b", low):
+            block |= CUSTOM_LEDGER_TOOLS
+        elif re.search(r"\b(?:create|start|make|set up|setup)\b", low):
+            force.add("create_custom_ledger")
+        elif re.search(r"\b(?:close|archive|stop tracking)\b", low):
+            force.add("close_custom_ledger")
+        elif re.search(r"\b(?:add|put|record|log)\b", low):
+            force.add("add_custom_ledger_entry")
+        elif re.search(r"\b(?:show|history|how much|what)\b", low):
+            force |= {"list_custom_ledgers", "query_custom_ledger"}
+
     return force, block
 
 
@@ -1314,6 +1334,13 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
         selected |= MONITOR_TOOLS
     if re.search(r"\b(?:report|snapshot|export|csv|pdf|google sheets|dashboard|tv payload)\b", low):
         selected |= REPORT_TOOLS
+    if re.search(r"\b(?:ledger|ledgers|tracker|trackers)\b", low):
+        specialist = bool(re.search(
+            r"\b(?:goal|savings? goal|stash|cash pool|bill|commitment|task|expense|expenses|shopping)\b",
+            low,
+        ))
+        if not specialist or re.search(r"\bcustom\b", low):
+            selected |= CUSTOM_LEDGER_TOOLS
     if re.search(r"\b(?:finance|financial|expense|spending)\s+report\b|\breport\b.*\b(?:finance|financial|expenses?|spending)\b", low):
         selected.add("finance_report")
         if re.search(r"\b(?:pdf|csv|json|export|send)\b", low):
@@ -2626,7 +2653,8 @@ READ_ONLY_TOOLS = {
     "planning_compare_salary","planning_match_goal_alias","bills_list",
     "bills_match_payment","work_schedule","work_day","work_ot_status",
     "work_leave_balance","work_departure_plan","asset_list","warranty_expiring",
-    "monitor_list","report_snapshot","report_export","report_payload","get_daily_brief","recall_discussion","calculate",
+    "monitor_list","report_snapshot","report_export","report_payload","get_daily_brief","recall_discussion",
+    "list_custom_ledgers","query_custom_ledger","calculate",
     "list_goals","get_leave_balance","list_money_buckets",
 }
 
