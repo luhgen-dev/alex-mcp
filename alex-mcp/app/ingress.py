@@ -1349,6 +1349,47 @@ def _record_deterministic_turn(actor, reply: str) -> None:
     db.add_turn(actor.user_id, actor.conversation_id, "assistant", reply)
 
 
+def _human_local_timestamp(value: str | None) -> str | None:
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        hour = dt.strftime("%I").lstrip("0") or "12"
+        return f"{dt.day} {dt.strftime('%B %Y')}, {hour}:{dt.strftime('%M')} {dt.strftime('%p')}"
+    except Exception:
+        return str(value)
+
+
+def _finance_detail_reply(result: dict, choice: int) -> str:
+    amount = result.get("amount")
+    currency = str(result.get("currency") or "MYR")
+    money = f"{currency} {float(amount):.2f}" if amount is not None else "Amount unknown"
+    lines = [
+        f"*Transaction {choice}*",
+        f"• *Description:* {result.get('description') or '—'}",
+        f"• *Amount:* {money}",
+    ]
+    event_time = _human_local_timestamp(result.get("event_date_local"))
+    logged_time = _human_local_timestamp(result.get("logged_at_local"))
+    if event_time:
+        lines.append(f"• *Transaction date:* {event_time}")
+    if logged_time:
+        lines.append(f"• *Logged with Alex:* {logged_time}")
+    if result.get("category"):
+        lines.append(f"• *Category:* {result.get('category')}")
+    if result.get("reference"):
+        lines.append(f"• *Reference:* {result.get('reference')}")
+    lines.append(
+        f"• *Scope:* {'Family Shared' if result.get('scope') == 'family' else 'Private'}"
+    )
+    if result.get("source_text"):
+        lines.append(f"• *Original instruction:* {result.get('source_text')}")
+    if result.get("receipt_available"):
+        lines.append("")
+        lines.append("I have the original receipt for this transaction. Ask me to show it if you want it.")
+    return "\n".join(lines)
+
+
 def _deliver_numbered_selection(actor, choice: int,
                                 context: dict | None = None) -> dict:
     parts = _selection_set_context_parts(context)
@@ -1362,15 +1403,28 @@ def _deliver_numbered_selection(actor, choice: int,
         set_context = services.latest_selection_set_context(actor)
 
     attachments = list(result.get("_attachments") or [])
+    finance_detail = bool(set_context and set_context.get("kind") == "FINANCE")
     reply = (
-        "Here it is."
-        if attachments
-        else str(result.get("content") or result.get("title") or result.get("note") or "Here it is.")
+        _finance_detail_reply(result, choice)
+        if finance_detail
+        else (
+            "Here it is."
+            if attachments
+            else str(result.get("content") or result.get("title") or result.get("note") or "Here it is.")
+        )
     )
-    context_kind = "SELECTION_SET" if set_context else None
+    context_kind = (
+        "FINANCIAL_EVENT"
+        if finance_detail and result.get("event_id")
+        else ("SELECTION_SET" if set_context else None)
+    )
     context_id = (
-        f"{set_context['kind']}:{set_context['id']}"
-        if set_context else None
+        str(result.get("event_id"))
+        if context_kind == "FINANCIAL_EVENT"
+        else (
+            f"{set_context['kind']}:{set_context['id']}"
+            if set_context else None
+        )
     )
     db.queue_outbound(
         actor.conversation_id, "TEXT", text=reply,
