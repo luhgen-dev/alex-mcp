@@ -505,7 +505,7 @@ def sync_options(options, conn=None):
             ))
 
         for key, old in active.items():
-            if key not in incoming:
+            if key not in incoming and str(old["source"] or "") == "HA_OPTIONS":
                 conn.execute("""
                     UPDATE alex_profile_config_versions
                     SET valid_to_utc=CURRENT_TIMESTAMP
@@ -523,6 +523,92 @@ def sync_options(options, conn=None):
     finally:
         if own:
             conn.close()
+
+
+def import_user_work_profile(actor, profile_json: str) -> dict:
+    """Import one owner's explicit permanent roster/OT/leave profile.
+
+    The JSON is user-authored data. It is validated by the same profile builders
+    as HA options, stored versioned as USER_DIRECT, and never written to source.
+    """
+    try:
+        payload = json.loads(str(profile_json or ""))
+    except json.JSONDecodeError as exc:
+        raise ValueError("work profile must be valid JSON") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("work profile must be a JSON object")
+    role = "husband" if actor.user_id == "USR_HUSBAND" else "wife" if actor.user_id == "USR_WIFE" else None
+    if not role:
+        raise PermissionError("work profile owner is not a configured household user")
+
+    raw_records = []
+    roster = payload.get("roster")
+    if isinstance(roster, dict):
+        item = {**roster, "owner": role, "visibility": "private"}
+        raw_records.append(_roster(item))
+    overtime = payload.get("overtime")
+    if isinstance(overtime, dict):
+        item = {**overtime, "owner": role, "visibility": "private"}
+        raw_records.append(_overtime_rule(item))
+    leave = payload.get("leave") or []
+    if not isinstance(leave, list):
+        raise ValueError("leave must be a list")
+    for value in leave:
+        if not isinstance(value, dict):
+            raise ValueError("leave entries must be objects")
+        item = {**value, "owner": role, "visibility": "private"}
+        raw_records.append(_leave_balance(item))
+    if not raw_records:
+        raise ValueError("profile must include roster, overtime, or leave")
+
+    ensure_schema()
+    conn = tools.get_db()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        changed = []
+        for record in raw_records:
+            key = (record["kind"], record["record_key"])
+            payload_json_value, payload_hash = _canonical_payload(record)
+            old = conn.execute(
+                """SELECT * FROM alex_profile_config_versions
+                   WHERE kind=? AND record_key=? AND valid_to_utc IS NULL LIMIT 1""",
+                key,
+            ).fetchone()
+            if old and old["payload_hash"] == payload_hash:
+                changed.append({"kind": record["kind"], "record_key": record["record_key"], "status": "unchanged"})
+                continue
+            if old:
+                conn.execute(
+                    """UPDATE alex_profile_config_versions
+                       SET valid_to_utc=CURRENT_TIMESTAMP
+                       WHERE version_id=? AND valid_to_utc IS NULL""",
+                    (old["version_id"],),
+                )
+            conn.execute(
+                """INSERT INTO alex_profile_config_versions(
+                       version_id,kind,record_key,owner_role,owner_user_id,space_id,
+                       visibility,payload_json,payload_hash,source
+                   ) VALUES(?,?,?,?,?,?,?,?,?,'USER_DIRECT')""",
+                (
+                    str(uuid.uuid4()), record["kind"], record["record_key"],
+                    record["owner_role"], record["owner_user_id"], record["space_id"],
+                    record["visibility"], payload_json_value, payload_hash,
+                ),
+            )
+            changed.append({"kind": record["kind"], "record_key": record["record_key"], "status": "updated"})
+        conn.commit()
+        return {
+            "status": "imported",
+            "records": changed,
+            "source": "USER_DIRECT",
+            "privacy": "private",
+            "note": "This work profile remains active until the owner explicitly updates it.",
+        }
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def load_ha_options(path=None):
