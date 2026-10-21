@@ -765,10 +765,10 @@ def update_plan(actor: Actor, plan_id: str | None = None,
 
 @alex_tool()
 def confirm_plan(actor: Actor, plan_id: str | None = None,
-                 plan_name: str | None = None, add_to_diary: bool = True,
+                 plan_name: str | None = None, add_to_diary: bool = False,
                  reminder_minutes_before: int | None = None,
                  reminder_recipient: str = "me") -> dict:
-    """Confirm a plan by exact id or natural plan_name. A dated plan materializes a linked Diary event."""
+    """Confirm/finalise a plan by exact id or natural plan_name. Finalising alone keeps it in Plans; set add_to_diary=true only when the user explicitly asks to put it in the diary."""
     resolved = phase2.resolve_plan_reference(actor, plan_id, plan_name)
     return phase2.confirm_plan(
         actor, resolved, add_to_diary, reminder_minutes_before, reminder_recipient
