@@ -145,7 +145,8 @@ schema:
       visibility: "list(private|family)"
       name: str
       entitlement_days: float
-      remaining_days: float
+      used_days: "float?"
+      remaining_days: "float?"
       as_of_date: str
       active: bool
   recurring_payments:
