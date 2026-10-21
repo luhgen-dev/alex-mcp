@@ -765,14 +765,24 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
     ),
     PromptContract(
         "p2.leave.write", "phase2", "work",
-        "Future/taken leave lifecycle updates must use the leave-record path.",
+        "Grounded future/taken leave updates must use the leave-record path.",
+        (
+            "Record annual leave for 10 October 2026.",
+            "I took MC on 10 October 2026; record it.",
+            "I'm on annual leave tomorrow, save that.",
+        ),
+        _fs("set_leave_record", "work_record_event"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p2.leave.write.ambiguous", "phase2", "work",
+        "A bare calendar day with no year must clarify when the year is materially ambiguous rather than guessing.",
         (
             "Record annual leave for 10 October.",
             "Mark 10 October as planned annual leave.",
             "I took MC on 10 October; record it.",
-            "I'm on annual leave tomorrow, save that.",
         ),
         _fs("set_leave_record", "work_record_event"), seed="core", live=False,
+        expect_clarification=True,
     ),
     PromptContract(
         "p2.leave.records", "phase2", "work",
@@ -1497,12 +1507,21 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
     ),
     PromptContract(
         "p3.home.control.synonym", "phase3", "routing",
-        "Natural verb/device ordering must still expose explicit HA control.",
+        "Natural verb/device ordering with a grounded room/device must expose explicit HA control.",
         (
-            "Switch off the AC.",
             "Turn the hall AC off.",
+            "Switch off the hall air conditioner.",
         ),
         _fs("ha_control"), seed="empty", live=False,
+    ),
+    PromptContract(
+        "p3.home.control.ambiguous", "phase3", "routing",
+        "A generic device control with no uniquely grounded AC must clarify rather than invent an entity.",
+        (
+            "Switch off the AC.",
+        ),
+        _fs("ha_control"), seed="empty", live=False,
+        expect_clarification=True,
     ),
     PromptContract(
         "p3.work.departure.compound", "phase3", "routing",
@@ -1625,12 +1644,22 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
     ),
     PromptContract(
         "p3.work.profile.import", "phase3", "work",
-        "An owner can explicitly import a permanent private roster/overtime/leave profile without source-code defaults.",
+        "An owner can explicitly import a supplied permanent private work profile without source-code defaults.",
+        (
+            "Import my work profile: {\"roster\":{\"id\":\"permanent_roster\",\"name\":\"Permanent roster\",\"cycle_start\":\"2026-10-19\",\"pattern\":\"evening,morning\",\"day_start\":\"07:45\",\"day_end\":\"16:15\",\"evening_start\":\"16:15\",\"evening_end\":\"01:00\",\"active\":true}}.",
+            "Configure my permanent roster from this profile: {\"roster\":{\"id\":\"permanent_roster\",\"name\":\"Permanent roster\",\"cycle_start\":\"2026-10-19\",\"pattern\":\"evening,morning\",\"day_start\":\"07:45\",\"day_end\":\"16:15\",\"evening_start\":\"16:15\",\"evening_end\":\"01:00\",\"active\":true}}.",
+        ),
+        _fs("work.profile.import"), seed="empty", live=False,
+    ),
+    PromptContract(
+        "p3.work.profile.import.missing", "phase3", "work",
+        "A reference to a work-profile payload that was not actually supplied must clarify rather than fabricate profile data.",
         (
             "Import my work profile with this JSON.",
             "Configure my permanent roster from this work profile.",
         ),
         _fs("work.profile.import"), seed="empty", live=False,
+        expect_clarification=True,
     ),
     PromptContract(
         "p3.daily.brief", "phase3", "daily_brief",
@@ -1706,12 +1735,21 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
     ),
     PromptContract(
         "p3.task.reminder.link", "phase3", "tasks",
-        "A reminder requested for an existing task uses the linked task-reminder capability.",
+        "A timed reminder requested for an existing task uses the linked task-reminder capability; the backend then resolves any date-only task-mode ambiguity safely.",
         (
             "For Alex smoke task remind me in 20 minutes.",
+            "Give me a heads-up reminder in 20 minutes for Alex smoke task.",
+        ),
+        _fs("task.reminder.link"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p3.task.reminder.link.missing_time", "phase3", "tasks",
+        "A task heads-up request with no reminder time must clarify instead of inventing a clock.",
+        (
             "Give me a heads-up reminder for that task.",
         ),
         _fs("task.reminder.link"), seed="core", live=False,
+        expect_clarification=True,
     ),
 
     PromptContract(
@@ -1955,6 +1993,7 @@ CONVERSATION_CONTRACTS: tuple[ConversationContract, ...] = (
                 conversation_type="GROUP",
                 forbid_private_fixture_leak=True,
                 forbidden_terms=("cobalt",),
+                expect_refusal=True,
             ),
         ),
     ),
