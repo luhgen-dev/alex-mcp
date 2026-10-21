@@ -114,6 +114,7 @@ CAPABILITY_TO_TOOLS: dict[str, frozenset[str]] = {
     "bills.confirm_unpaid": frozenset({"bills_confirm_unpaid"}),
 
     # Work / leave
+    "work.profile.import": frozenset({"work_import_profile"}),
     "work.schedule": frozenset({"work_schedule"}),
     "work.day": frozenset({"work_day"}),
     "work.roster.list": frozenset({"list_work_roster"}),
