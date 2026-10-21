@@ -565,37 +565,66 @@ def create_task(title: str, actor: Actor, notes: str | None = None,
 @alex_tool()
 def list_tasks(actor: Actor, status: str = "open",
                plan_id: str | None = None, limit: int = 50) -> dict:
-    """List authorized tasks. status may be open, done, cancelled, or all; plan_id optionally narrows to one accessible plan."""
-    return phase2.list_tasks(actor, status, plan_id, limit)
+    """List authorized tasks. Results are numbered and frozen for exact Show N follow-ups. status may be open, done, cancelled, or all."""
+    result = phase2.list_tasks(actor, status, plan_id, limit)
+    rows = result.get("tasks", [])
+    selection_id = services.store_task_selection(
+        actor, [str(row.get("task_id") or "") for row in rows]
+    )
+    if selection_id:
+        for index, row in enumerate(rows, 1):
+            row["choice"] = index
+        result["selection_id"] = selection_id
+    result["presentation_rule"] = (
+        "Show numbered tasks with title, due date/time when present and status. "
+        "Never expose task_id or selection_id. A numbered follow-up resolves the exact displayed task."
+    )
+    return result
 
 
 @alex_tool()
-def update_task(task_id: str, actor: Actor, title: str | None = None,
+def get_task_details(actor: Actor, task_id: str | None = None,
+                     task_name: str | None = None) -> dict:
+    """Show one exact task's provenance, original instruction, due date/time, links and history using an exact id or natural task name."""
+    resolved = phase2.resolve_task_reference(actor, task_id, task_name)
+    return phase2.task_detail(actor, resolved)
+
+
+@alex_tool()
+def update_task(actor: Actor, task_id: str | None = None,
+                task_name: str | None = None, title: str | None = None,
                 notes: str | None = None, due_local: str | None = None,
                 assignee: str | None = None, plan_id: str | None = None,
                 reminder_id: str | None = None) -> dict:
-    """Edit task fields without changing task lifecycle state. Empty due_local/plan_id/reminder_id clears that optional link/value. This never creates a reminder or rewrites the linked plan."""
+    """Edit one task by exact id or natural name without changing lifecycle state. This never creates a reminder or rewrites the linked plan."""
+    resolved = phase2.resolve_task_reference(actor, task_id, task_name)
     return phase2.update_task(
-        actor, task_id, title, notes, due_local, assignee, plan_id, reminder_id
+        actor, resolved, title, notes, due_local, assignee, plan_id, reminder_id
     )
 
 
 @alex_tool()
-def complete_task(task_id: str, actor: Actor) -> dict:
-    """Mark an OPEN task DONE while preserving its lifecycle history and linked plan/reminder state."""
-    return phase2.complete_task(actor, task_id)
+def complete_task(actor: Actor, task_id: str | None = None,
+                  task_name: str | None = None) -> dict:
+    """Mark one OPEN task DONE by exact id or natural name while preserving history and linked records."""
+    resolved = phase2.resolve_task_reference(actor, task_id, task_name, include_closed=False)
+    return phase2.complete_task(actor, resolved)
 
 
 @alex_tool()
-def reopen_task(task_id: str, actor: Actor) -> dict:
-    """Explicitly reopen a DONE task back to OPEN while preserving lifecycle history."""
-    return phase2.reopen_task(actor, task_id)
+def reopen_task(actor: Actor, task_id: str | None = None,
+                task_name: str | None = None) -> dict:
+    """Explicitly reopen one DONE task by exact id or natural name."""
+    resolved = phase2.resolve_task_reference(actor, task_id, task_name)
+    return phase2.reopen_task(actor, resolved)
 
 
 @alex_tool()
-def cancel_task(task_id: str, actor: Actor) -> dict:
-    """Cancel a task without deleting or changing any linked plan or reminder."""
-    return phase2.cancel_task(actor, task_id)
+def cancel_task(actor: Actor, task_id: str | None = None,
+                task_name: str | None = None) -> dict:
+    """Cancel one task by exact id or natural name without deleting linked plan/reminder records."""
+    resolved = phase2.resolve_task_reference(actor, task_id, task_name)
+    return phase2.cancel_task(actor, resolved)
 
 
 @alex_tool()
