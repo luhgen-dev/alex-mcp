@@ -114,8 +114,10 @@ def _payload(row) -> dict:
         "image/jpeg" if kind == "IMAGE" else "application/octet-stream"
     )
     outbound_kind = (
-        "image" if kind == "IMAGE"
-        else ("audio" if str(mime).lower().startswith("audio/") else "document")
+        "image" if kind == "IMAGE" or str(mime).lower().startswith("image/")
+        else "audio" if kind == "AUDIO" or str(mime).lower().startswith("audio/")
+        else "video" if kind == "VIDEO" or str(mime).lower().startswith("video/")
+        else "document"
     )
     return {
         **common,
