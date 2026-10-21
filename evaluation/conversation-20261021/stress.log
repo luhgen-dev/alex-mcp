@@ -1,0 +1,29 @@
+{
+  "status": "PASS",
+  "checks": [
+    "100 repeated writes idempotent",
+    "40 concurrent WAL writes unique",
+    "DM/group privacy boundary held",
+    "40 recurring receipts remained independently retrievable",
+    "stable numbered memory retrieval",
+    "80 durable reminders with spouse routing",
+    "work conflict required explicit choice before planned leave",
+    "variable cash and obligation states stayed conservative",
+    "advanced roster/OT eligibility preserved observed facts",
+    "period goal exception and stash allocation stayed owner-controlled",
+    "diary conflicts, linked reminders and family-plan privacy held",
+    "asset/manual/warranty privacy boundary held",
+    "proactive monitors stayed silent until explicit delegation",
+    "reminder history and quiet/time-critical policy held",
+    "six-tool token cap and typo discovery valve held",
+    "latest-record semantics and privacy-safe reports held",
+    "SQLite quick_check and foreign keys clean after extended stress"
+  ],
+  "totals": {
+    "financial_events": 183,
+    "media_objects": 40,
+    "reminders": 82,
+    "saved_items": 20
+  },
+  "note": "Offline deterministic Phase-3-style stress only; provider/WhatsApp/HA live behavior is MCP Check."
+}

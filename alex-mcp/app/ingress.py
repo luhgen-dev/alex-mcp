@@ -1152,6 +1152,43 @@ def _maybe_create_reminder_draft(actor, reply: str) -> dict | None:
     )
 
 
+def _retained_reminder_draft_after_clarification(actor, reply: str) -> dict | None:
+    """Keep a grounded draft when an unbound time answer fails validation.
+
+    The brain may see a pending task even when ingress's narrow continuation
+    interpreter was uncertain. Its rejected create must not let a generic
+    time question replace that task with the current time fragment. This only
+    retains the exact pending record; it grants no continuation or write intent.
+    """
+    if not _reply_is_reminder_clarification(reply):
+        return None
+    current = normalize_intent_text(str(getattr(actor, "trusted_text", "") or ""))
+    if (
+        _REMINDER_CREATE_WORDS_RE.search(current)
+        or phase2_intent.reminder_write_signal(current)
+    ):
+        # A separately requested reminder may open its own missing-time draft.
+        return None
+    trace = brain.recent_trace(actor.source_message_id) or {}
+    if "create_reminder:clarification" not in (trace.get("tools_called") or []):
+        return None
+    state = trace.get("conversation_state") or {}
+    active = state.get("active") or {}
+    if active.get("kind") != "REMINDER_DRAFT" or not active.get("id"):
+        return None
+    conn = db.connect()
+    try:
+        row = conn.execute(
+            """SELECT * FROM pending_items
+               WHERE item_id=? AND owner_id=? AND conversation_id=?
+                 AND kind='REMINDER_DRAFT' AND status='PENDING' LIMIT 1""",
+            (str(active["id"]), actor.user_id, actor.conversation_id),
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
 def _created_claimable_reminder_id(actor) -> str | None:
     """Bind a group reminder setup reply to the reminder created by this turn."""
     if actor.conversation_type != "GROUP":
@@ -2226,7 +2263,12 @@ def process(payload: dict) -> dict:
             # new pinned prompt.
             reminder_draft = continuing_reminder_draft
         else:
-            reminder_draft = _maybe_create_reminder_draft(actor, reply)
+            retained_draft = (
+                _retained_reminder_draft_after_clarification(actor, reply)
+                if not continuing_reminder_draft and not reminder_created
+                else None
+            )
+            reminder_draft = retained_draft or _maybe_create_reminder_draft(actor, reply)
         report_context = _report_context_for_turn(actor)
 
         if reminder_created:

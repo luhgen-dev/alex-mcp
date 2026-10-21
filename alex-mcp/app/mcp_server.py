@@ -354,9 +354,13 @@ def remove_saved_item(item_id: str, actor: Actor) -> dict:
 
 
 @alex_tool()
-def resolve_numbered_choice(choice: int, actor: Actor) -> dict:
-    """Resolve the newest unexpired numbered receipt, saved-memory, or original-media list to the exact original item."""
-    return services.resolve_numbered_choice(actor, choice)
+def resolve_numbered_choice(choice: int, actor: Actor,
+                            selection_kind: str | None = None,
+                            selection_id: str | None = None) -> dict:
+    """Resolve a numbered list to its exact original item. Use a supplied conversation-state selection_id and selection_kind when available; otherwise use the newest unexpired list."""
+    return services.resolve_numbered_choice(
+        actor, choice, selection_kind=selection_kind, selection_id=selection_id
+    )
 
 
 @alex_tool()

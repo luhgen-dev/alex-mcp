@@ -33,7 +33,12 @@ import human_ai_lab
 # 2026-10-05 v0.5.20 reminder-lifecycle recertification: 61 existing public
 # packets changed only through the reviewed reminder tool surface; the
 # deterministic oracle still scores all 388 decisions correctly.
-REVIEWED_CORPUS_FINGERPRINT = "f58aed2b9cec3a9789c76bfe4bbc1c778b17200c451bcc58499e31d39003ac1b"
+# 2026-10-21 conversation candidate: full public comparison found 59 packets
+# changed only in available_tools: exact optional numbered-list binding, and
+# removal of an unrelated shopping mutation from one negative memory request.
+# Expected capability choices remain unchanged. Fresh blind model disagreements
+# are separately preserved in the v4 snapshot; this oracle is not that review.
+REVIEWED_CORPUS_FINGERPRINT = "4ff4e959e8b57756defb5efe93505d9234aeb04c29c240a7cdba4bbd41236256"
 
 
 def _low(value: str) -> str:

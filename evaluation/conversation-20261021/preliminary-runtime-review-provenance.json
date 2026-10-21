@@ -1,0 +1,343 @@
+{
+  "schema_version": 1,
+  "evidence_kind": "actual first direct-brain request capture; no fresh model evaluation or actions",
+  "public_file": "/tmp/alex-conversation-evidence/actual-runtime-blind-packets.json",
+  "public_file_sha256": "78e81abe564510f9edddfe84235ec2837163e262221b5f266f888852b0f62420",
+  "provenance": {
+    "baseline": {
+      "repo": "/tmp/alex-mcp-baseline-aeb3b74",
+      "revision": "aeb3b74f64510103134a4268ca3e5e98c465646d",
+      "runtime_source_sha256": "3dcb11527faeb6e9c4b567f66b90246b86d8644abefddaa5b56969267dce1e99"
+    },
+    "candidate": {
+      "repo": "/workspace/scratch/738b29e75c17/alex-mcp-candidate",
+      "revision": "aeb3b74f64510103134a4268ca3e5e98c465646d",
+      "runtime_source_sha256": "2ba13c8546d3ec5b7174fd4d48bb40a239f9de9e8cb795256182434f754307db"
+    }
+  },
+  "source_fixture": "tests/test_conversation_reliability.py: ConversationFixture.capture_request; FOLLOWUP_VARIATIONS",
+  "capture_conditions": "Separate processes and disposable DB; existing fixture seeding; provider response scripted only after first request capture; live router disabled by fixture; ingress bypassed.",
+  "blind_integrity": "No revision labels, test names, expected answers or filesystem paths. Each untouched system prompt uses the ordinary financial word baseline once, identically across all20 packets.",
+  "packets": [
+    {
+      "packet_id": "pkt_11ff53d52545885dd653a43d",
+      "revision_label": "candidate",
+      "variation_index": 7,
+      "input_phrase": "Tomorrow around 7ish would be convenient",
+      "packet_sha256": "2173b2ba9110e1ab78240e61c36534b55ab2945c062127c80359421a58247006",
+      "provider_parameters": {
+        "model": "offline-fixture",
+        "reasoning_effort": "low",
+        "tool_choice": "auto",
+        "extra_headers": {
+          "x-grok-conv-id": "b8d57f95d719bc424ae2c709b178111e"
+        }
+      },
+      "public_position": 1
+    },
+    {
+      "packet_id": "pkt_3992533ce5d9031153798d80",
+      "revision_label": "baseline",
+      "variation_index": 9,
+      "input_phrase": "At about seven o'clock tomorrow evening",
+      "packet_sha256": "a95a482090890ebaac3516e44d732970199c841adfdd4e935f6e35e48ec6aa67",
+      "provider_parameters": {
+        "model": "offline-fixture",
+        "reasoning_effort": "low",
+        "tool_choice": "auto",
+        "extra_headers": {
+          "x-grok-conv-id": "b8d57f95d719bc424ae2c709b178111e"
+        }
+      },
+      "public_position": 2
+    },
+    {
+      "packet_id": "pkt_9b25e30ce1f3ac61e766f0bb",
+      "revision_label": "candidate",
+      "variation_index": 1,
+      "input_phrase": "Around seven tomorrow evening would work for me",
+      "packet_sha256": "998d0b9cf19e0bb84e590009dd0f157051563e2e2cd6beba795eb417adad61bb",
+      "provider_parameters": {
+        "model": "offline-fixture",
+        "reasoning_effort": "low",
+        "tool_choice": "auto",
+        "extra_headers": {
+          "x-grok-conv-id": "b8d57f95d719bc424ae2c709b178111e"
+        }
+      },
+      "public_position": 3
+    },
+    {
+      "packet_id": "pkt_b967ebe36cd24f33462d9f84",
+      "revision_label": "candidate",
+      "variation_index": 8,
+      "input_phrase": "Later at 11.30 in the evening please",
+      "packet_sha256": "d58737639872ffc6d587384a1ebe043c6e8dd3325213bf827ab31094accd6639",
+      "provider_parameters": {
+        "model": "offline-fixture",
+        "reasoning_effort": "low",
+        "tool_choice": "auto",
+        "extra_headers": {
+          "x-grok-conv-id": "b8d57f95d719bc424ae2c709b178111e"
+        }
+      },
+      "public_position": 4
+    },
+    {
+      "packet_id": "pkt_4279f40aa944407c73630421",
+      "revision_label": "candidate",
+      "variation_index": 3,
+      "input_phrase": "Tomorrow after dinner at eight would be best",
+      "packet_sha256": "96bf19e870d812b2da479c91f012aa6ff519021ebf70d856fefde55a0ba3f02b",
+      "provider_parameters": {
+        "model": "offline-fixture",
+        "reasoning_effort": "low",
+        "tool_choice": "auto",
+        "extra_headers": {
+          "x-grok-conv-id": "b8d57f95d719bc424ae2c709b178111e"
+        }
+      },
+      "public_position": 5
+    },
+    {
+      "packet_id": "pkt_c342b28960277563fefefb31",
+      "revision_label": "candidate",
+      "variation_index": 10,
+      "input_phrase": "Forty minutes later would be alright",
+      "packet_sha256": "7b2ff38489baf862247d911080bead4b3bdc90a56f6547be7d8e25ce593af6d5",
+      "provider_parameters": {
+        "model": "offline-fixture",
+        "reasoning_effort": "low",
+        "tool_choice": "auto",
+        "extra_headers": {
+          "x-grok-conv-id": "b8d57f95d719bc424ae2c709b178111e"
+        }
+      },
+      "public_position": 6
+    },
+    {
+      "packet_id": "pkt_bcf3a90c148fa44a00d759a0",
+      "revision_label": "candidate",
+      "variation_index": 5,
+      "input_phrase": "Roughly half an hour from the current time please",
+      "packet_sha256": "0028b6c3114f1c86008e70b821f95e8fa5e3a42599887eb523628af8216478ef",
+      "provider_parameters": {
+        "model": "offline-fixture",
+        "reasoning_effort": "low",
+        "tool_choice": "auto",
+        "extra_headers": {
+          "x-grok-conv-id": "b8d57f95d719bc424ae2c709b178111e"
+        }
+      },
+      "public_position": 7
+    },
+    {
+      "packet_id": "pkt_ef7dafe8a87f3622cf04ae2b",
+      "revision_label": "baseline",
+      "variation_index": 8,
+      "input_phrase": "Later at 11.30 in the evening please",
+      "packet_sha256": "f2058d20e6b4ce2ccc253db42c26f97678d67e3f8c1097f78790067b6e935c44",
+      "provider_parameters": {
+        "model": "offline-fixture",
+        "reasoning_effort": "low",
+        "tool_choice": "auto",
+        "extra_headers": {
+          "x-grok-conv-id": "b8d57f95d719bc424ae2c709b178111e"
+        }
+      },
+      "public_position": 8
+    },
+    {
+      "packet_id": "pkt_92cd4fe5c59f6396f982997b",
+      "revision_label": "baseline",
+      "variation_index": 4,
+      "input_phrase": "The time should be tomorrow evening at seven",
+      "packet_sha256": "ffac248b9c43ac9f07158a4fb7e7746b309dcea6f3db01796cad0ee55fca0aa9",
+      "provider_parameters": {
+        "model": "offline-fixture",
+        "reasoning_effort": "low",
+        "tool_choice": "auto",
+        "extra_headers": {
+          "x-grok-conv-id": "b8d57f95d719bc424ae2c709b178111e"
+        }
+      },
+      "public_position": 9
+    },
+    {
+      "packet_id": "pkt_c31664cb4aef5a9d0189e27f",
+      "revision_label": "candidate",
+      "variation_index": 2,
+      "input_phrase": "Forty minutes from the message I just sent please",
+      "packet_sha256": "d169ff5b5ac68d196a59e1ff3aa53c8b5f27fb627b527b727d636a8b9aae2729",
+      "provider_parameters": {
+        "model": "offline-fixture",
+        "reasoning_effort": "low",
+        "tool_choice": "auto",
+        "extra_headers": {
+          "x-grok-conv-id": "b8d57f95d719bc424ae2c709b178111e"
+        }
+      },
+      "public_position": 10
+    },
+    {
+      "packet_id": "pkt_6b5fac8a19d85535c77d95ba",
+      "revision_label": "baseline",
+      "variation_index": 10,
+      "input_phrase": "Forty minutes later would be alright",
+      "packet_sha256": "8ab3f07469ec05060db56d12a09aed4f5dfd18e937aef716a00695feae7137eb",
+      "provider_parameters": {
+        "model": "offline-fixture",
+        "reasoning_effort": "low",
+        "tool_choice": "auto",
+        "extra_headers": {
+          "x-grok-conv-id": "b8d57f95d719bc424ae2c709b178111e"
+        }
+      },
+      "public_position": 11
+    },
+    {
+      "packet_id": "pkt_6cb82266beee48c552712cc8",
+      "revision_label": "baseline",
+      "variation_index": 7,
+      "input_phrase": "Tomorrow around 7ish would be convenient",
+      "packet_sha256": "08772ce88b30c9c9a602f7750cb0c447158bcc8469d8214ac2b6c0e6a2adf236",
+      "provider_parameters": {
+        "model": "offline-fixture",
+        "reasoning_effort": "low",
+        "tool_choice": "auto",
+        "extra_headers": {
+          "x-grok-conv-id": "b8d57f95d719bc424ae2c709b178111e"
+        }
+      },
+      "public_position": 12
+    },
+    {
+      "packet_id": "pkt_877f639894ce597cb502d555",
+      "revision_label": "candidate",
+      "variation_index": 9,
+      "input_phrase": "At about seven o'clock tomorrow evening",
+      "packet_sha256": "3b494d5a31fd25019a1a239e77d9627399a64b600a6163387915101757eab879",
+      "provider_parameters": {
+        "model": "offline-fixture",
+        "reasoning_effort": "low",
+        "tool_choice": "auto",
+        "extra_headers": {
+          "x-grok-conv-id": "b8d57f95d719bc424ae2c709b178111e"
+        }
+      },
+      "public_position": 13
+    },
+    {
+      "packet_id": "pkt_03d1c63d066395d61b82fa67",
+      "revision_label": "baseline",
+      "variation_index": 6,
+      "input_phrase": "Tonight, sometime after eight in the evening",
+      "packet_sha256": "f3c62e17cdbabec7234db56b4f8a4c59894ed867008ea7fcbc85e8292462f16a",
+      "provider_parameters": {
+        "model": "offline-fixture",
+        "reasoning_effort": "low",
+        "tool_choice": "auto",
+        "extra_headers": {
+          "x-grok-conv-id": "b8d57f95d719bc424ae2c709b178111e"
+        }
+      },
+      "public_position": 14
+    },
+    {
+      "packet_id": "pkt_1e0e9454e94c57e3076c46f7",
+      "revision_label": "baseline",
+      "variation_index": 3,
+      "input_phrase": "Tomorrow after dinner at eight would be best",
+      "packet_sha256": "52f76b6a81c7d68080dd29f277393c64da15d74a5b83a1f81afe7b499a426161",
+      "provider_parameters": {
+        "model": "offline-fixture",
+        "reasoning_effort": "low",
+        "tool_choice": "auto",
+        "extra_headers": {
+          "x-grok-conv-id": "b8d57f95d719bc424ae2c709b178111e"
+        }
+      },
+      "public_position": 15
+    },
+    {
+      "packet_id": "pkt_de574104c0efd677d5c7ce8b",
+      "revision_label": "baseline",
+      "variation_index": 5,
+      "input_phrase": "Roughly half an hour from the current time please",
+      "packet_sha256": "04078647236e11ed053579fbc4f5d1bd88d2a90ec689b2c37f40cbf4a38abe27",
+      "provider_parameters": {
+        "model": "offline-fixture",
+        "reasoning_effort": "low",
+        "tool_choice": "auto",
+        "extra_headers": {
+          "x-grok-conv-id": "b8d57f95d719bc424ae2c709b178111e"
+        }
+      },
+      "public_position": 16
+    },
+    {
+      "packet_id": "pkt_df7b923b266ee3ba2dad63b2",
+      "revision_label": "candidate",
+      "variation_index": 4,
+      "input_phrase": "The time should be tomorrow evening at seven",
+      "packet_sha256": "9c6340337e3f0231d6857eb063248138ea356acdc1589451082eb586478f7e9f",
+      "provider_parameters": {
+        "model": "offline-fixture",
+        "reasoning_effort": "low",
+        "tool_choice": "auto",
+        "extra_headers": {
+          "x-grok-conv-id": "b8d57f95d719bc424ae2c709b178111e"
+        }
+      },
+      "public_position": 17
+    },
+    {
+      "packet_id": "pkt_265192e70bef9bbda6ed2bdf",
+      "revision_label": "baseline",
+      "variation_index": 1,
+      "input_phrase": "Around seven tomorrow evening would work for me",
+      "packet_sha256": "48fc8829defa06a5201100429e571786d8524163e36bb3f629aadcc21a67d738",
+      "provider_parameters": {
+        "model": "offline-fixture",
+        "reasoning_effort": "low",
+        "tool_choice": "auto",
+        "extra_headers": {
+          "x-grok-conv-id": "b8d57f95d719bc424ae2c709b178111e"
+        }
+      },
+      "public_position": 18
+    },
+    {
+      "packet_id": "pkt_9986a1f800ea0e7454e620e0",
+      "revision_label": "candidate",
+      "variation_index": 6,
+      "input_phrase": "Tonight, sometime after eight in the evening",
+      "packet_sha256": "7b44e8657be79d07a20c46ab83f41f97ad77276d041f3d02d93912d9e3418390",
+      "provider_parameters": {
+        "model": "offline-fixture",
+        "reasoning_effort": "low",
+        "tool_choice": "auto",
+        "extra_headers": {
+          "x-grok-conv-id": "b8d57f95d719bc424ae2c709b178111e"
+        }
+      },
+      "public_position": 19
+    },
+    {
+      "packet_id": "pkt_672c4bd0a1d14ab563408721",
+      "revision_label": "baseline",
+      "variation_index": 2,
+      "input_phrase": "Forty minutes from the message I just sent please",
+      "packet_sha256": "f2e4fd0a743cfdc86d15a437c6c6e957eea1a00b53d3e2811a15db00e47f98c5",
+      "provider_parameters": {
+        "model": "offline-fixture",
+        "reasoning_effort": "low",
+        "tool_choice": "auto",
+        "extra_headers": {
+          "x-grok-conv-id": "b8d57f95d719bc424ae2c709b178111e"
+        }
+      },
+      "public_position": 20
+    }
+  ]
+}

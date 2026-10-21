@@ -1,0 +1,4913 @@
+{
+  "mode": "human_ai",
+  "status": "FAIL",
+  "summary": {
+    "packets": 388,
+    "corpus_fingerprint": "4ff4e959e8b57756defb5efe93505d9234aeb04c29c240a7cdba4bbd41236256",
+    "reviewed_corpus_fingerprint": "4ff4e959e8b57756defb5efe93505d9234aeb04c29c240a7cdba4bbd41236256",
+    "corpus_match": true,
+    "decisions_received": 388,
+    "passed": 378,
+    "failed": 10,
+    "domains": [
+      "agenda",
+      "assets",
+      "bills",
+      "cash_planning",
+      "diagnostics",
+      "diary",
+      "finance",
+      "goals",
+      "home_assistant",
+      "language",
+      "media",
+      "memory",
+      "monitoring",
+      "plans",
+      "privacy",
+      "receipts",
+      "reminders",
+      "reports",
+      "routing",
+      "safety",
+      "shopping",
+      "tasks",
+      "work"
+    ],
+    "sources": [
+      "image",
+      "pdf",
+      "text",
+      "voice"
+    ]
+  },
+  "meta_failures": [],
+  "failures": [
+    {
+      "packet_id": "hai-2e024a0333594b5c24",
+      "contract_id": "p1.receipt.ingest.image",
+      "domain": "receipts",
+      "source": "image",
+      "status": "FAIL",
+      "decision": "clarify",
+      "tools": [],
+      "problems": [
+        "required capability not selected: finance.write"
+      ]
+    },
+    {
+      "packet_id": "hai-2c50b93718fb4e3ad4",
+      "contract_id": "p1.receipt.ingest.image",
+      "domain": "receipts",
+      "source": "image",
+      "status": "FAIL",
+      "decision": "clarify",
+      "tools": [],
+      "problems": [
+        "required capability not selected: finance.write"
+      ]
+    },
+    {
+      "packet_id": "hai-de6782d2f5a42eda80",
+      "contract_id": "p1.receipt.ingest.pdf",
+      "domain": "receipts",
+      "source": "pdf",
+      "status": "FAIL",
+      "decision": "clarify",
+      "tools": [],
+      "problems": [
+        "required capability not selected: finance.write"
+      ]
+    },
+    {
+      "packet_id": "hai-b1ace0d6a124a644aa",
+      "contract_id": "p1.media.voice.pending.retrieve",
+      "domain": "media",
+      "source": "text",
+      "status": "FAIL",
+      "decision": "tools",
+      "tools": [
+        "discover_alex_tools",
+        "resolve_numbered_choice"
+      ],
+      "problems": [
+        "discovery selected despite the required capability already being exposed"
+      ]
+    },
+    {
+      "packet_id": "hai-dd9f40a6bdf7a22730",
+      "contract_id": "p1.media.voice.pending.retrieve",
+      "domain": "media",
+      "source": "text",
+      "status": "FAIL",
+      "decision": "tools",
+      "tools": [
+        "discover_alex_tools",
+        "resolve_numbered_choice"
+      ],
+      "problems": [
+        "discovery selected despite the required capability already being exposed"
+      ]
+    },
+    {
+      "packet_id": "hai-49133f866c9d2cf56a",
+      "contract_id": "p2.diary.conflict.resolve",
+      "domain": "diary",
+      "source": "text",
+      "status": "FAIL",
+      "decision": "clarify",
+      "tools": [],
+      "problems": [
+        "required capability not selected: diary.conflict.resolve / selection.resolve"
+      ]
+    },
+    {
+      "packet_id": "hai-ee3b36aadc83c94440",
+      "contract_id": "p2.diary.conflict.resolve",
+      "domain": "diary",
+      "source": "text",
+      "status": "FAIL",
+      "decision": "clarify",
+      "tools": [],
+      "problems": [
+        "required capability not selected: diary.conflict.resolve / selection.resolve"
+      ]
+    },
+    {
+      "packet_id": "hai-995590989559eb0d09",
+      "contract_id": "p2.diary.conflict.resolve",
+      "domain": "diary",
+      "source": "text",
+      "status": "FAIL",
+      "decision": "clarify",
+      "tools": [],
+      "problems": [
+        "required capability not selected: diary.conflict.resolve / selection.resolve"
+      ]
+    },
+    {
+      "packet_id": "hai-f8fb1742812788d1b2",
+      "contract_id": "conv.memory.numbered",
+      "domain": "memory",
+      "source": "text",
+      "status": "FAIL",
+      "decision": "tools",
+      "tools": [
+        "discover_alex_tools",
+        "resolve_numbered_choice"
+      ],
+      "problems": [
+        "discovery selected despite the required capability already being exposed"
+      ]
+    },
+    {
+      "packet_id": "hai-1bbf863d425045876a",
+      "contract_id": "conv.memory.restart",
+      "domain": "memory",
+      "source": "text",
+      "status": "FAIL",
+      "decision": "answer",
+      "tools": [],
+      "problems": [
+        "required capability not selected: memory.search"
+      ]
+    }
+  ],
+  "results": [
+    {
+      "packet_id": "hai-67cc9abde97b9547d4",
+      "contract_id": "p1.finance.latest",
+      "domain": "finance",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-4f41a4cffdac231060",
+      "contract_id": "p1.finance.latest",
+      "domain": "finance",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-5beaa49621c6fae2c8",
+      "contract_id": "p1.finance.latest",
+      "domain": "finance",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-66725bcb9186436190",
+      "contract_id": "p1.finance.latest",
+      "domain": "finance",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-bfeafbeb735ca95ca3",
+      "contract_id": "p1.finance.latest",
+      "domain": "finance",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-413641312a5af7e5a3",
+      "contract_id": "p1.finance.latest",
+      "domain": "finance",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-c410da727c4f327dae",
+      "contract_id": "p1.finance.latest",
+      "domain": "finance",
+      "source": "voice",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-c1f9ff29f665bf2ad4",
+      "contract_id": "p1.finance.latest",
+      "domain": "finance",
+      "source": "voice",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-68205abb6105a3d389",
+      "contract_id": "p1.finance.latest",
+      "domain": "finance",
+      "source": "voice",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-8b2b4bcf465e7fa8a6",
+      "contract_id": "p1.finance.latest",
+      "domain": "finance",
+      "source": "voice",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-c0d46574b54d91b256",
+      "contract_id": "p1.finance.latest",
+      "domain": "finance",
+      "source": "voice",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-c800b489c3360d5d3b",
+      "contract_id": "p1.finance.latest",
+      "domain": "finance",
+      "source": "voice",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-23dda30b7ebc3db1da",
+      "contract_id": "p1.finance.list",
+      "domain": "finance",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-db91940f8199e9d8a2",
+      "contract_id": "p1.finance.list",
+      "domain": "finance",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-d9bb4b14d0a865274e",
+      "contract_id": "p1.finance.list",
+      "domain": "finance",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-825956a34ae53e9e9c",
+      "contract_id": "p1.finance.list",
+      "domain": "finance",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-95cb48754b56c477f3",
+      "contract_id": "p1.finance.list",
+      "domain": "finance",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-77baf1c2b3559900a2",
+      "contract_id": "p1.finance.write",
+      "domain": "finance",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "log_expense"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-068f6ff4b0ea286f7a",
+      "contract_id": "p1.finance.write",
+      "domain": "finance",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "log_expense"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-47cec5bafd96ee474e",
+      "contract_id": "p1.finance.write",
+      "domain": "finance",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "log_expense"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-7715b86564feaf97f7",
+      "contract_id": "p1.finance.write",
+      "domain": "finance",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "log_expense"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-1375f80d7af0b9291f",
+      "contract_id": "p1.receipt.find",
+      "domain": "receipts",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "find_receipts",
+        "get_receipt"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-72b7c5ac49574f6483",
+      "contract_id": "p1.receipt.find",
+      "domain": "receipts",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "find_receipts",
+        "get_receipt"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-d95d202a99cc4e073f",
+      "contract_id": "p1.receipt.find",
+      "domain": "receipts",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "find_receipts",
+        "get_receipt"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-515b0a7f466902ccd9",
+      "contract_id": "p1.receipt.find",
+      "domain": "receipts",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "find_receipts",
+        "get_receipt"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-2e024a0333594b5c24",
+      "contract_id": "p1.receipt.ingest.image",
+      "domain": "receipts",
+      "source": "image",
+      "status": "FAIL",
+      "decision": "clarify",
+      "tools": [],
+      "problems": [
+        "required capability not selected: finance.write"
+      ]
+    },
+    {
+      "packet_id": "hai-2c50b93718fb4e3ad4",
+      "contract_id": "p1.receipt.ingest.image",
+      "domain": "receipts",
+      "source": "image",
+      "status": "FAIL",
+      "decision": "clarify",
+      "tools": [],
+      "problems": [
+        "required capability not selected: finance.write"
+      ]
+    },
+    {
+      "packet_id": "hai-de6782d2f5a42eda80",
+      "contract_id": "p1.receipt.ingest.pdf",
+      "domain": "receipts",
+      "source": "pdf",
+      "status": "FAIL",
+      "decision": "clarify",
+      "tools": [],
+      "problems": [
+        "required capability not selected: finance.write"
+      ]
+    },
+    {
+      "packet_id": "hai-6b45d73b224044c2cb",
+      "contract_id": "p1.receipt.ingest.pdf",
+      "domain": "receipts",
+      "source": "pdf",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "log_expense"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-a2ba9a16fcc6b2394d",
+      "contract_id": "p1.memory.caption.image",
+      "domain": "memory",
+      "source": "image",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "save_item"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-519d8088711a7a02c0",
+      "contract_id": "p1.memory.caption.image",
+      "domain": "memory",
+      "source": "image",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "save_item"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-01dc5ea60526c48f7f",
+      "contract_id": "p1.reminder.read",
+      "domain": "reminders",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-afdcc56d9769d6c05f",
+      "contract_id": "p1.reminder.read",
+      "domain": "reminders",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_reminders",
+        "search_saved_items"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-71300323a628d49dc9",
+      "contract_id": "p1.reminder.read",
+      "domain": "reminders",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-bbb49eada66faa8445",
+      "contract_id": "p1.reminder.read",
+      "domain": "reminders",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-bbcfe0b3f2d3fb0069",
+      "contract_id": "p1.reminder.read",
+      "domain": "reminders",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-c9fb693dc08b2e3321",
+      "contract_id": "p1.reminder.read",
+      "domain": "reminders",
+      "source": "voice",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-8537f11b2cc3e51f79",
+      "contract_id": "p1.reminder.read",
+      "domain": "reminders",
+      "source": "voice",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_reminders",
+        "search_saved_items"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-baa5b89a05dff33367",
+      "contract_id": "p1.reminder.read",
+      "domain": "reminders",
+      "source": "voice",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-915b5b3c81616a372d",
+      "contract_id": "p1.reminder.read",
+      "domain": "reminders",
+      "source": "voice",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-5d6b462a37e1c1e8ff",
+      "contract_id": "p1.reminder.read",
+      "domain": "reminders",
+      "source": "voice",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-2b85619c767e746ce3",
+      "contract_id": "p1.reminder.relative",
+      "domain": "reminders",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-1a805369128ccc85b6",
+      "contract_id": "p1.reminder.relative",
+      "domain": "reminders",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-4c347ea90cd43c041c",
+      "contract_id": "p1.reminder.relative",
+      "domain": "reminders",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-222a12b77ea428a4f6",
+      "contract_id": "p1.reminder.relative",
+      "domain": "reminders",
+      "source": "voice",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-39b4c31b87510a2745",
+      "contract_id": "p1.reminder.relative",
+      "domain": "reminders",
+      "source": "voice",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-9fc0bbe70ba951e90b",
+      "contract_id": "p1.reminder.relative",
+      "domain": "reminders",
+      "source": "voice",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-532b6ed042bbbbef33",
+      "contract_id": "p1.reminder.write",
+      "domain": "reminders",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "create_reminder"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-646475a2377de6afab",
+      "contract_id": "p1.reminder.write",
+      "domain": "reminders",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "create_reminder"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-f995683065b81ebd91",
+      "contract_id": "p1.reminder.write",
+      "domain": "reminders",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "create_reminder"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-8f6f39c657135f731c",
+      "contract_id": "p1.reminder.write",
+      "domain": "reminders",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "create_reminder"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-2d92764e39a9411fae",
+      "contract_id": "p1.shopping.read",
+      "domain": "shopping",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_shopping_items"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-065d34499482cef514",
+      "contract_id": "p1.shopping.read",
+      "domain": "shopping",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_shopping_items"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-ff41ed8c1ae1892f93",
+      "contract_id": "p1.shopping.read",
+      "domain": "shopping",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_shopping_items"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-e9618918b31c54eba3",
+      "contract_id": "p1.shopping.read",
+      "domain": "shopping",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_shopping_items"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-804cad3102ea0011a2",
+      "contract_id": "p1.shopping.write",
+      "domain": "shopping",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "add_shopping_item"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-5b7f03b377bbea3aad",
+      "contract_id": "p1.shopping.write",
+      "domain": "shopping",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "add_shopping_item"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-9117b1118d4a3ee713",
+      "contract_id": "p1.shopping.write",
+      "domain": "shopping",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "add_shopping_item"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-39e0170b247dbebe6b",
+      "contract_id": "p1.shopping.write",
+      "domain": "shopping",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "add_shopping_item"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-992d78ca03cb69820e",
+      "contract_id": "p1.shopping.ambiguous",
+      "domain": "shopping",
+      "source": "text",
+      "status": "PASS",
+      "decision": "clarify",
+      "tools": [],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-e458c67cbac253ee56",
+      "contract_id": "p1.shopping.ambiguous",
+      "domain": "shopping",
+      "source": "text",
+      "status": "PASS",
+      "decision": "clarify",
+      "tools": [],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-42b7efeabb596934a4",
+      "contract_id": "p1.shopping.ambiguous",
+      "domain": "shopping",
+      "source": "text",
+      "status": "PASS",
+      "decision": "clarify",
+      "tools": [],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-7d9224e88eb777ee9b",
+      "contract_id": "p1.memory.browse",
+      "domain": "memory",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-7515e2de2adc37d1d9",
+      "contract_id": "p1.memory.browse",
+      "domain": "memory",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-ade8bd1e666be5c89a",
+      "contract_id": "p1.memory.browse",
+      "domain": "memory",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-88fa338cfcae45ebfa",
+      "contract_id": "p1.memory.browse",
+      "domain": "memory",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-65ebbaccfa693ba1e9",
+      "contract_id": "p1.memory.browse",
+      "domain": "memory",
+      "source": "voice",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-5c967f0578f52b606d",
+      "contract_id": "p1.memory.browse",
+      "domain": "memory",
+      "source": "voice",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-7726067e8951a01760",
+      "contract_id": "p1.memory.browse",
+      "domain": "memory",
+      "source": "voice",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-12cd972c2b9873c70b",
+      "contract_id": "p1.memory.browse",
+      "domain": "memory",
+      "source": "voice",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-83495dce29ef1ab112",
+      "contract_id": "p1.memory.picture",
+      "domain": "memory",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "get_saved_item",
+        "search_saved_items"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-8123b2ef112231b239",
+      "contract_id": "p1.memory.picture",
+      "domain": "memory",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "get_saved_item",
+        "search_saved_items"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-d221c01b25630182a0",
+      "contract_id": "p1.memory.picture",
+      "domain": "memory",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "get_saved_item",
+        "search_saved_items"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-cd62148557c022035a",
+      "contract_id": "p1.memory.picture",
+      "domain": "memory",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "get_saved_item",
+        "search_saved_items"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-389519a2bb9eaec13d",
+      "contract_id": "p1.media.voice.browse",
+      "domain": "media",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "find_media"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-d1d4dca51abce2a4f6",
+      "contract_id": "p1.media.voice.browse",
+      "domain": "media",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "find_media"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-0f02d502d674ce54b6",
+      "contract_id": "p1.media.voice.browse",
+      "domain": "media",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "find_media"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-fc28b3129c3a18f70b",
+      "contract_id": "p1.media.voice.browse",
+      "domain": "media",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "find_media"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-49b2c5c26787c1867d",
+      "contract_id": "p1.media.voice.get",
+      "domain": "media",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "find_media",
+        "get_media_original"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-30874a621970b535d5",
+      "contract_id": "p1.media.voice.get",
+      "domain": "media",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "find_media",
+        "get_media_original"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-9cd32304be0dbf6ea0",
+      "contract_id": "p1.media.voice.get",
+      "domain": "media",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "find_media",
+        "get_media_original"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-d196cfb9c08df22c35",
+      "contract_id": "p1.media.voice.pending",
+      "domain": "media",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_pending_items"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-939ce142fb3f6ce4e9",
+      "contract_id": "p1.media.voice.pending",
+      "domain": "media",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_pending_items"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-7ac664ae61c874046e",
+      "contract_id": "p1.media.voice.pending",
+      "domain": "media",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_pending_items"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-b1ace0d6a124a644aa",
+      "contract_id": "p1.media.voice.pending.retrieve",
+      "domain": "media",
+      "source": "text",
+      "status": "FAIL",
+      "decision": "tools",
+      "tools": [
+        "discover_alex_tools",
+        "resolve_numbered_choice"
+      ],
+      "problems": [
+        "discovery selected despite the required capability already being exposed"
+      ]
+    },
+    {
+      "packet_id": "hai-dd9f40a6bdf7a22730",
+      "contract_id": "p1.media.voice.pending.retrieve",
+      "domain": "media",
+      "source": "text",
+      "status": "FAIL",
+      "decision": "tools",
+      "tools": [
+        "discover_alex_tools",
+        "resolve_numbered_choice"
+      ],
+      "problems": [
+        "discovery selected despite the required capability already being exposed"
+      ]
+    },
+    {
+      "packet_id": "hai-09a7e7847c4317acd1",
+      "contract_id": "p1.media.voice.pending.retrieve",
+      "domain": "media",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "get_media_original",
+        "resolve_numbered_choice"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-428edb3f541a98b92f",
+      "contract_id": "p1.finance.pending",
+      "domain": "finance",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_pending_expenses"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-cd755ccde0d0354da6",
+      "contract_id": "p1.finance.pending",
+      "domain": "finance",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_pending_expenses"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-d8473ffe253c77a4d6",
+      "contract_id": "p1.finance.pending",
+      "domain": "finance",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_pending_expenses"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-00f79cab41e54e4aa7",
+      "contract_id": "p1.finance.confirm",
+      "domain": "finance",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "confirm_expense",
+        "list_pending_expenses"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-40c7f64a096772f05e",
+      "contract_id": "p1.finance.confirm",
+      "domain": "finance",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "confirm_expense",
+        "list_pending_expenses"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-18f010bcbbc11593dd",
+      "contract_id": "p1.finance.correct",
+      "domain": "finance",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "correct_expense",
+        "query_finances"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-5b0e5bf343e30e577c",
+      "contract_id": "p1.finance.correct",
+      "domain": "finance",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "correct_expense",
+        "query_finances"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-7c0dcf3b8372d9e394",
+      "contract_id": "p1.finance.correct",
+      "domain": "finance",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "correct_expense",
+        "query_finances"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-da3e878b595310e8bc",
+      "contract_id": "p1.memory.save",
+      "domain": "memory",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "save_item"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-a39bb6bfbb0b569712",
+      "contract_id": "p1.memory.save",
+      "domain": "memory",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "save_item"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-b5b6ace761258d2345",
+      "contract_id": "p1.memory.save",
+      "domain": "memory",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "save_item"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-71593f0f59499bb387",
+      "contract_id": "p1.memory.remove",
+      "domain": "memory",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "remove_saved_item",
+        "search_saved_items"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-e4915630ac4988373d",
+      "contract_id": "p1.memory.remove",
+      "domain": "memory",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "remove_saved_item",
+        "search_saved_items"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-f0a066252299f1b0ce",
+      "contract_id": "p1.reminder.update",
+      "domain": "reminders",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_reminders",
+        "update_reminder"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-2e2308e72026d9bd1e",
+      "contract_id": "p1.reminder.update",
+      "domain": "reminders",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_reminders",
+        "update_reminder"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-0dcdc53282c60dab2f",
+      "contract_id": "p1.reminder.update",
+      "domain": "reminders",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_reminders",
+        "update_reminder"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-6427578009fc2fe33b",
+      "contract_id": "p1.reminder.history",
+      "domain": "reminders",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "reminder_history"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-c46b0a80a4aa17041b",
+      "contract_id": "p1.reminder.history",
+      "domain": "reminders",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "reminder_history"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-add791cb98e82db731",
+      "contract_id": "p1.reminder.claim.release",
+      "domain": "reminders",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_reminders",
+        "release_reminder_claim"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-5181f8231a680f05f5",
+      "contract_id": "p1.reminder.claim.release",
+      "domain": "reminders",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_reminders",
+        "release_reminder_claim"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-cfee23ada9dd2830eb",
+      "contract_id": "p1.reminder.claim.handoff",
+      "domain": "reminders",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "handoff_reminder_claim"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-765c566859d8ff3c2e",
+      "contract_id": "p1.reminder.claim.handoff",
+      "domain": "reminders",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "handoff_reminder_claim"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-184d75013a3080f56e",
+      "contract_id": "p1.reminder.claim.handoff",
+      "domain": "reminders",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "handoff_reminder_claim"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-295116734f0d628ee5",
+      "contract_id": "p1.shopping.update",
+      "domain": "shopping",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_shopping_items",
+        "update_shopping_item"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-c22475e2c2f69bb82e",
+      "contract_id": "p1.shopping.update",
+      "domain": "shopping",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_shopping_items",
+        "update_shopping_item"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-d3fd99516afa37563e",
+      "contract_id": "p1.shopping.update",
+      "domain": "shopping",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_shopping_items",
+        "update_shopping_item"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-a50c4a7d1afcf85e67",
+      "contract_id": "p2.agenda.read",
+      "domain": "agenda",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-491b331f2127be9eef",
+      "contract_id": "p2.agenda.read",
+      "domain": "agenda",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-ead99321063a898111",
+      "contract_id": "p2.agenda.read",
+      "domain": "agenda",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-70140b09643699445e",
+      "contract_id": "p2.agenda.read",
+      "domain": "agenda",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-b90ae6e89212b788da",
+      "contract_id": "p2.agenda.relative",
+      "domain": "agenda",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-bb8611442a5bf087de",
+      "contract_id": "p2.agenda.relative",
+      "domain": "agenda",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-7c3a765ccc03bf5df8",
+      "contract_id": "p2.agenda.relative",
+      "domain": "agenda",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-aab469859e8092a312",
+      "contract_id": "p2.agenda.relative",
+      "domain": "agenda",
+      "source": "voice",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-5ba80c547d49c1064c",
+      "contract_id": "p2.agenda.relative",
+      "domain": "agenda",
+      "source": "voice",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-4c1e8a25abf986ccee",
+      "contract_id": "p2.agenda.relative",
+      "domain": "agenda",
+      "source": "voice",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-d5099ae65ee8a96db5",
+      "contract_id": "p2.diary.detail",
+      "domain": "diary",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-dd54f5779521111d53",
+      "contract_id": "p2.diary.detail",
+      "domain": "diary",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-c73759a4117de5af8a",
+      "contract_id": "p2.diary.detail",
+      "domain": "diary",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-ee6554d8d4b188bd37",
+      "contract_id": "p2.diary.detail",
+      "domain": "diary",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-b850206d4a270a39de",
+      "contract_id": "p2.plan.read",
+      "domain": "plans",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_plans"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-14785314aff35ed3d0",
+      "contract_id": "p2.plan.read",
+      "domain": "plans",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_plans"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-149a4c1e70f7bc0715",
+      "contract_id": "p2.plan.read",
+      "domain": "plans",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_plans"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-1b06a12419e608b9bd",
+      "contract_id": "p2.plan.read",
+      "domain": "plans",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_plans"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-d2fcdc910de19290e3",
+      "contract_id": "p2.plan.update",
+      "domain": "plans",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_plans",
+        "update_plan"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-16ca3079b99fa9b08f",
+      "contract_id": "p2.plan.update",
+      "domain": "plans",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_plans",
+        "update_plan"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-0dcf45f0f5b0e367c6",
+      "contract_id": "p2.plan.update",
+      "domain": "plans",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_plans",
+        "update_plan"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-f0fc36c4d94407ab24",
+      "contract_id": "p2.plan.update",
+      "domain": "plans",
+      "source": "voice",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_plans",
+        "update_plan"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-a84c9f02253defc7cc",
+      "contract_id": "p2.plan.update",
+      "domain": "plans",
+      "source": "voice",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_plans",
+        "update_plan"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-748fd39ac3a6f126df",
+      "contract_id": "p2.plan.update",
+      "domain": "plans",
+      "source": "voice",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_plans",
+        "update_plan"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-b353659dc585233bac",
+      "contract_id": "p2.goals.list",
+      "domain": "goals",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_list_goals"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-5b5fa6f68c7207524b",
+      "contract_id": "p2.goals.list",
+      "domain": "goals",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_list_goals"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-493083bd84e2947e7f",
+      "contract_id": "p2.goals.list",
+      "domain": "goals",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_list_goals"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-615b207688045949f1",
+      "contract_id": "p2.goals.list",
+      "domain": "goals",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_list_goals"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-3fc312a5cc63f6e71c",
+      "contract_id": "p2.goals.list",
+      "domain": "goals",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_goal_progress"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-d61ca2d952bc858183",
+      "contract_id": "p2.goals.create",
+      "domain": "goals",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_create_goal"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-f3f84ad412b76d77df",
+      "contract_id": "p2.goals.create",
+      "domain": "goals",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_create_goal"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-4d4d93f321fe804080",
+      "contract_id": "p2.goals.create",
+      "domain": "goals",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_create_goal"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-0475ca0c435d157048",
+      "contract_id": "p2.goals.agency",
+      "domain": "goals",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_create_goal"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-496fadd043a620205b",
+      "contract_id": "p2.goals.agency",
+      "domain": "goals",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_create_goal"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-8503799cd1ef51a7f5",
+      "contract_id": "p2.work.read",
+      "domain": "work",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "work_schedule"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-293bb16b05def223ae",
+      "contract_id": "p2.work.read",
+      "domain": "work",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "work_schedule"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-7d74ae1b8bad9b680e",
+      "contract_id": "p2.work.read",
+      "domain": "work",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "work_schedule"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-1b95502078e3692c49",
+      "contract_id": "p2.work.read",
+      "domain": "work",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "work_schedule"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-8ab0d8296df60b3cae",
+      "contract_id": "p2.bills.read",
+      "domain": "bills",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "bills_list"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-3a7427492f609c59b4",
+      "contract_id": "p2.bills.read",
+      "domain": "bills",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "bills_list"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-33b6478c3dd76605bf",
+      "contract_id": "p2.bills.read",
+      "domain": "bills",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "bills_list"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-bee52ef2eb5398c873",
+      "contract_id": "p2.bills.read",
+      "domain": "bills",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "bills_list"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-45c2bb0295b7dd43f8",
+      "contract_id": "p2.tasks.create",
+      "domain": "tasks",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "create_task"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-990d2f1dff136f5844",
+      "contract_id": "p2.tasks.create",
+      "domain": "tasks",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "create_task"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-83d00549b325a20789",
+      "contract_id": "p2.tasks.create",
+      "domain": "tasks",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "create_task"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-eda5f0b838b39fa335",
+      "contract_id": "p2.tasks.read",
+      "domain": "tasks",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_tasks"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-ee251bf8fe7ae209d9",
+      "contract_id": "p2.tasks.read",
+      "domain": "tasks",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_tasks"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-d15dbaeed1aefdb961",
+      "contract_id": "p2.tasks.read",
+      "domain": "tasks",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_tasks"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-eb96e65529b8a2c2f1",
+      "contract_id": "p2.tasks.update",
+      "domain": "tasks",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_tasks",
+        "update_task"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-ef3c5b3f2717d7c381",
+      "contract_id": "p2.tasks.update",
+      "domain": "tasks",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_tasks",
+        "update_task"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-51728261ab0e3adfde",
+      "contract_id": "p2.tasks.complete",
+      "domain": "tasks",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "complete_task",
+        "list_tasks"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-2c9dc9deba477e3550",
+      "contract_id": "p2.tasks.complete",
+      "domain": "tasks",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "complete_task",
+        "list_tasks"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-cc734d594f80f82add",
+      "contract_id": "p2.tasks.reopen",
+      "domain": "tasks",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_tasks",
+        "reopen_task"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-2f992c81334843b9be",
+      "contract_id": "p2.tasks.reopen",
+      "domain": "tasks",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_tasks",
+        "reopen_task"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-77ce71a612d3c1eb6f",
+      "contract_id": "p2.tasks.cancel",
+      "domain": "tasks",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "cancel_task",
+        "list_tasks"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-b2a0a662e49dd005f0",
+      "contract_id": "p2.tasks.cancel",
+      "domain": "tasks",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "cancel_task",
+        "list_tasks"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-001ea3e2366ac38c2e",
+      "contract_id": "p2.cash.record",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_record_cash"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-905726eec358f242b7",
+      "contract_id": "p2.cash.record",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_record_cash"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-d67521b3727125bdbb",
+      "contract_id": "p2.cash.record",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_record_cash"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-6fceaac5e051a50de5",
+      "contract_id": "p2.cash.allocate",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_allocate_cash_to_goal"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-fff961b52147355b38",
+      "contract_id": "p2.cash.allocate",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_allocate_cash_to_goal"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-f6326bd872d6d5098c",
+      "contract_id": "p2.cash.allocate",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_allocate_cash_to_goal"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-d2de5093009f02457c",
+      "contract_id": "p2.reserve.read",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_list_reserves"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-bb2f855a479f3e856f",
+      "contract_id": "p2.reserve.read",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_list_reserves"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-50103ec2e5b0f2da05",
+      "contract_id": "p2.reserve.read",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_list_reserves"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-c70ec891626599fc81",
+      "contract_id": "p2.leave.write",
+      "domain": "work",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "set_leave_record"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-8e262b7f518890fa6e",
+      "contract_id": "p2.leave.write",
+      "domain": "work",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "set_leave_record"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-38020599287cc10513",
+      "contract_id": "p2.leave.write",
+      "domain": "work",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "set_leave_record"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-de45a92c577d0be6c1",
+      "contract_id": "p2.leave.write",
+      "domain": "work",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "set_leave_record"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-9eb3c37121a2f6b5d4",
+      "contract_id": "p2.leave.records",
+      "domain": "work",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_leave_records"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-e2d0b28d787481c134",
+      "contract_id": "p2.leave.records",
+      "domain": "work",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_leave_records"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-9bf172edbe01ccb7d7",
+      "contract_id": "p2.leave.read",
+      "domain": "work",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "work_leave_balance"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-68f6bafb9598b125a7",
+      "contract_id": "p2.leave.read",
+      "domain": "work",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "work_leave_balance"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-2e2dbff7fe4c930aa7",
+      "contract_id": "p2.leave.read",
+      "domain": "work",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_leave_records"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-76cecdb340edf130a8",
+      "contract_id": "p2.ot.read",
+      "domain": "work",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "work_ot_status"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-e8a5d5bd30b9706bd0",
+      "contract_id": "p2.ot.read",
+      "domain": "work",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "work_ot_status"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-87ac618f26946e8a00",
+      "contract_id": "p2.ot.read",
+      "domain": "work",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "work_ot_status"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-cf193d7a96a50ceab6",
+      "contract_id": "p2.assets.read",
+      "domain": "assets",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "asset_list"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-56a2df0a8ac28a2f45",
+      "contract_id": "p2.assets.read",
+      "domain": "assets",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "asset_list"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-063bdd60109e54165c",
+      "contract_id": "p2.assets.read",
+      "domain": "assets",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "warranty_expiring"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-3411810c151f6888c0",
+      "contract_id": "p2.monitor.read",
+      "domain": "monitoring",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "monitor_list"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-d396009ee891ced47f",
+      "contract_id": "p2.monitor.read",
+      "domain": "monitoring",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "monitor_list"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-d63bac1097544e719d",
+      "contract_id": "p2.monitor.read",
+      "domain": "monitoring",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "monitor_list"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-fa6fcc6b184de1c822",
+      "contract_id": "p2.diagnostics.read",
+      "domain": "diagnostics",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "recent_failures"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-1132626487d11af553",
+      "contract_id": "p2.diagnostics.read",
+      "domain": "diagnostics",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "recent_failures"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-b57a289dec8dd3f028",
+      "contract_id": "p2.diagnostics.read",
+      "domain": "diagnostics",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "system_health"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-e9184355da62603e46",
+      "contract_id": "p2.privacy.group.memory",
+      "domain": "privacy",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-00c5b18f9a9e4645a3",
+      "contract_id": "p2.privacy.group.memory",
+      "domain": "privacy",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-4eb1a64365afe1b7da",
+      "contract_id": "p2.privacy.wife.memory",
+      "domain": "privacy",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-8f35203c5b9aed3f7c",
+      "contract_id": "p2.privacy.wife.memory",
+      "domain": "privacy",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-cc94ee82354304ec86",
+      "contract_id": "p2.privacy.group.shopping",
+      "domain": "privacy",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_shopping_items"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-0c7da7a7e9b751030c",
+      "contract_id": "p2.privacy.group.shopping",
+      "domain": "privacy",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_shopping_items"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-39a569a760a9628211",
+      "contract_id": "p2.privacy.wife.private_write",
+      "domain": "privacy",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "remove_saved_item",
+        "search_saved_items"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-194288046912b5ead8",
+      "contract_id": "p2.privacy.wife.private_write",
+      "domain": "privacy",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "remove_saved_item"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-aea343389307a4ef3e",
+      "contract_id": "p2.privacy.group.shopping.write",
+      "domain": "privacy",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "add_shopping_item"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-0d2d8d761cdc68c5de",
+      "contract_id": "p2.privacy.group.shopping.write",
+      "domain": "privacy",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "add_shopping_item"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-e2093bf633163341ac",
+      "contract_id": "p2.home.read",
+      "domain": "home_assistant",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "ha_find_entities",
+        "ha_get_state"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-a91e7c58d04a9ee3e7",
+      "contract_id": "p2.home.read",
+      "domain": "home_assistant",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "ha_find_entities",
+        "ha_get_state"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-8e52acad789e911d93",
+      "contract_id": "p2.home.read",
+      "domain": "home_assistant",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "ha_find_entities",
+        "ha_get_state"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-eddde468fad579dbe6",
+      "contract_id": "p2.home.read",
+      "domain": "home_assistant",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "ha_find_entities",
+        "ha_get_state"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-08cfda3e46fd46067a",
+      "contract_id": "p2.report.read",
+      "domain": "reports",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-8f0d8dff8890aa2cfc",
+      "contract_id": "p2.report.read",
+      "domain": "reports",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "report_snapshot"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-d9e8da88bb600558d9",
+      "contract_id": "p2.report.read",
+      "domain": "reports",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-759702976ce16bcc11",
+      "contract_id": "p2.diary.create",
+      "domain": "diary",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "add_diary_event"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-e7c20d5be03e258156",
+      "contract_id": "p2.diary.create",
+      "domain": "diary",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "add_diary_event"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-d204bea62d6232d086",
+      "contract_id": "p2.diary.create",
+      "domain": "diary",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "add_diary_event"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-67a2b8dce77be5c08d",
+      "contract_id": "p2.diary.update",
+      "domain": "diary",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "get_agenda",
+        "update_diary_event"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-6948db7681f59a3a66",
+      "contract_id": "p2.diary.update",
+      "domain": "diary",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "get_agenda",
+        "update_diary_event"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-c52f710cd2861e8b68",
+      "contract_id": "p2.diary.update",
+      "domain": "diary",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "get_agenda",
+        "update_diary_event"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-49133f866c9d2cf56a",
+      "contract_id": "p2.diary.conflict.resolve",
+      "domain": "diary",
+      "source": "text",
+      "status": "FAIL",
+      "decision": "clarify",
+      "tools": [],
+      "problems": [
+        "required capability not selected: diary.conflict.resolve / selection.resolve"
+      ]
+    },
+    {
+      "packet_id": "hai-ee3b36aadc83c94440",
+      "contract_id": "p2.diary.conflict.resolve",
+      "domain": "diary",
+      "source": "text",
+      "status": "FAIL",
+      "decision": "clarify",
+      "tools": [],
+      "problems": [
+        "required capability not selected: diary.conflict.resolve / selection.resolve"
+      ]
+    },
+    {
+      "packet_id": "hai-995590989559eb0d09",
+      "contract_id": "p2.diary.conflict.resolve",
+      "domain": "diary",
+      "source": "text",
+      "status": "FAIL",
+      "decision": "clarify",
+      "tools": [],
+      "problems": [
+        "required capability not selected: diary.conflict.resolve / selection.resolve"
+      ]
+    },
+    {
+      "packet_id": "hai-faa7b1f70646474099",
+      "contract_id": "p2.plan.create",
+      "domain": "plans",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "create_plan"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-91808059bc0f262314",
+      "contract_id": "p2.plan.create",
+      "domain": "plans",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "create_plan"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-699382030fc1811ac5",
+      "contract_id": "p2.plan.create",
+      "domain": "plans",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "create_plan"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-2cbc878d271a74b1f5",
+      "contract_id": "p2.plan.confirm",
+      "domain": "plans",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "confirm_plan"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-f8ce1e4f28917e6d12",
+      "contract_id": "p2.plan.confirm",
+      "domain": "plans",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "confirm_plan"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-fd0680f2fd46225ad4",
+      "contract_id": "p2.plan.confirm",
+      "domain": "plans",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "confirm_plan"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-7daaeaee1101ac14b7",
+      "contract_id": "p2.plan.share",
+      "domain": "plans",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "share_plan"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-1f29753636c5569085",
+      "contract_id": "p2.plan.share",
+      "domain": "plans",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "share_plan"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-1868fb2bd375bad072",
+      "contract_id": "p2.availability.self",
+      "domain": "privacy",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "check_my_availability"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-8bbe90967fefad216a",
+      "contract_id": "p2.availability.self",
+      "domain": "privacy",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "check_my_availability"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-676afa7a6b18105bbc",
+      "contract_id": "p2.availability.spouse",
+      "domain": "privacy",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "check_spouse_availability"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-a53da11c1777bd2f07",
+      "contract_id": "p2.availability.spouse",
+      "domain": "privacy",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "check_spouse_availability"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-4604d3cc3a95f30356",
+      "contract_id": "p2.goals.target.update",
+      "domain": "goals",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_update_goal_target"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-ce230ba69cd5dc9c5c",
+      "contract_id": "p2.goals.target.update",
+      "domain": "goals",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_update_goal_target"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-4ac81c96baa58fb66c",
+      "contract_id": "p2.goals.lock",
+      "domain": "goals",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_lock_goal"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-b5b945e6e3dd36268a",
+      "contract_id": "p2.goals.lock",
+      "domain": "goals",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_lock_goal"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-e25990319fd2bef626",
+      "contract_id": "p2.goals.reopen",
+      "domain": "goals",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_reopen_goal"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-1a6a75497923009617",
+      "contract_id": "p2.goals.reopen",
+      "domain": "goals",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_reopen_goal"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-d9a3fc1da45144d898",
+      "contract_id": "p2.goals.baseline.change",
+      "domain": "goals",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_change_goal_baseline"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-7894a4a87345ae4e9d",
+      "contract_id": "p2.goals.baseline.change",
+      "domain": "goals",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_change_goal_baseline"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-889e3893bc872094c6",
+      "contract_id": "p2.goals.period",
+      "domain": "goals",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_set_period_target"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-6c165c6be81822a6f1",
+      "contract_id": "p2.goals.period",
+      "domain": "goals",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_set_period_target"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-2f2340f4d5081aa71d",
+      "contract_id": "p2.goals.contribution",
+      "domain": "goals",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_record_goal_contribution"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-d3140eb696eeec8b63",
+      "contract_id": "p2.goals.contribution",
+      "domain": "goals",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_record_goal_contribution"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-6f36efcd75e0a48bbf",
+      "contract_id": "p2.goals.deviation",
+      "domain": "goals",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_goal_deviation"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-5a8707d14e61f9392b",
+      "contract_id": "p2.goals.deviation",
+      "domain": "goals",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_goal_deviation"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-dcda7dfd39887f88fe",
+      "contract_id": "p2.cash.pool.balance.declare",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_declare_cash_pool_balance"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-b123943efd7a7bc11f",
+      "contract_id": "p2.cash.pool.balance.declare",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_declare_cash_pool_balance"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-ec6b5db925ed4a4f3f",
+      "contract_id": "p2.cash.pool.spend",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_record_cash_pool_spend"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-14ca448f667ee22421",
+      "contract_id": "p2.cash.pool.spend",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_record_cash_pool_spend"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-053b55dcc4221286c7",
+      "contract_id": "p2.cash.outflow",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_cash_outflow"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-0fd25c3705c6a5eb96",
+      "contract_id": "p2.cash.outflow",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_cash_outflow"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-19abd2160436d1f839",
+      "contract_id": "p2.salary.compare",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_compare_salary"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-b2b48b5d49c6f14977",
+      "contract_id": "p2.salary.compare",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_compare_salary"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-8ed2daa6d2881737f4",
+      "contract_id": "p2.goal.alias",
+      "domain": "goals",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_match_goal_alias"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-47207ee4b43145a1ab",
+      "contract_id": "p2.goal.alias",
+      "domain": "goals",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_match_goal_alias"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-c146137b0e8e4e1764",
+      "contract_id": "p2.goals.projection",
+      "domain": "goals",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_goal_projection"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-c8b1201104666e78ac",
+      "contract_id": "p2.goals.projection",
+      "domain": "goals",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_goal_projection"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-47ebc23cb8383d178c",
+      "contract_id": "p2.cash.status",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_cash_status"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-60113c99504263c704",
+      "contract_id": "p2.cash.status",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_cash_status"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-6da98a13773c69bc4b",
+      "contract_id": "p2.cash.pool.create",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_create_cash_pool"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-f972e359daeebb5802",
+      "contract_id": "p2.cash.pool.create",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_create_cash_pool"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-bec55f4593a861adda",
+      "contract_id": "p2.cash.pool.create",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_create_cash_pool"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-8c4625f124552f9d95",
+      "contract_id": "p2.cash.pool.list",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_list_cash_pools"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-8204d2b3225f91a1ca",
+      "contract_id": "p2.cash.pool.list",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_list_cash_pools"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-408e5ad6eb090d9eb4",
+      "contract_id": "p2.cash.pool.balance",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_cash_pool_balance"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-e66a2dac349618a775",
+      "contract_id": "p2.cash.pool.balance",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_cash_pool_balance"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-db20b832d1c9317b47",
+      "contract_id": "p2.cash.pool.balance",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_cash_pool_balance"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-7a2acc000068abd1a1",
+      "contract_id": "p2.cash.pool.allocate",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_allocate_cash_to_pool"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-501f999fda9b76d024",
+      "contract_id": "p2.cash.pool.allocate",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_allocate_cash_to_pool"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-7c8aa39746ec703068",
+      "contract_id": "p2.reserve.add",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_add_reserve"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-48f6a07beab81ff09e",
+      "contract_id": "p2.reserve.add",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_add_reserve"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-3ccb12135b45abc57b",
+      "contract_id": "p2.reserve.update",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_update_reserve"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-8feee71d2f85a1d8f9",
+      "contract_id": "p2.reserve.update",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_update_reserve"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-d974134598fbb10bfd",
+      "contract_id": "p2.planning.baseline",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_baseline"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-22d5e99f90d4f39b00",
+      "contract_id": "p2.planning.baseline",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_baseline"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-dea79fc7d7b8d443e9",
+      "contract_id": "p2.planning.income",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_income_outlook"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-06379099fff5eaa24b",
+      "contract_id": "p2.planning.income",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_income_outlook"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-009e1c0098432bf217",
+      "contract_id": "p2.planning.cashflow",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_cashflow"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-4debc55d8c4bb33cf5",
+      "contract_id": "p2.planning.cashflow",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_cashflow"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-d7940f85500fb08ea7",
+      "contract_id": "p2.planning.brief",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_brief"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-4da453669086deadfe",
+      "contract_id": "p2.planning.brief",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_brief"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-0a142a5304231bfe63",
+      "contract_id": "p2.bills.match",
+      "domain": "bills",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "bills_match_payment"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-fd00304542de38c578",
+      "contract_id": "p2.bills.match",
+      "domain": "bills",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "bills_match_payment"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-27651dd7861565b102",
+      "contract_id": "p2.bills.record",
+      "domain": "bills",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "bills_match_payment",
+        "bills_record_payment"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-3d7a83b261f1784a8d",
+      "contract_id": "p2.bills.record",
+      "domain": "bills",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "bills_match_payment",
+        "bills_record_payment"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-6cf6ab177330b2b7a2",
+      "contract_id": "p2.bills.defer",
+      "domain": "bills",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "bills_defer"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-d2068df48478c2e39e",
+      "contract_id": "p2.bills.defer",
+      "domain": "bills",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "bills_defer"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-d876fba6e5c73e48c2",
+      "contract_id": "p2.bills.unpaid",
+      "domain": "bills",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "bills_confirm_unpaid"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-320b6d6f3c56a590ae",
+      "contract_id": "p2.bills.unpaid",
+      "domain": "bills",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "bills_confirm_unpaid"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-cfb0373537a5a39bc3",
+      "contract_id": "p2.work.record",
+      "domain": "work",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "work_record_event"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-291e075f91afa67ba7",
+      "contract_id": "p2.work.record",
+      "domain": "work",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "work_record_event"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-62461f1d2480b9018b",
+      "contract_id": "p2.work.record",
+      "domain": "work",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "work_record_event"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-e73b10724da86ed4f0",
+      "contract_id": "p2.work.departure",
+      "domain": "work",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "work_departure_plan"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-2f821538a16e6150e0",
+      "contract_id": "p2.work.departure",
+      "domain": "work",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "work_departure_plan"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-fac028c71f3ff2ae28",
+      "contract_id": "p2.asset.create",
+      "domain": "assets",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "asset_create"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-8ddb2877492ef20117",
+      "contract_id": "p2.asset.create",
+      "domain": "assets",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "asset_create"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-ce9b18306fdef204c5",
+      "contract_id": "p2.asset.update",
+      "domain": "assets",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "asset_update"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-79011a0ba4e7c60c8a",
+      "contract_id": "p2.asset.update",
+      "domain": "assets",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "asset_update"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-c74ad364d254a3fe64",
+      "contract_id": "p2.asset.document",
+      "domain": "assets",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "asset_link_document"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-808695ccfc07dfb4f6",
+      "contract_id": "p2.asset.document",
+      "domain": "assets",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "asset_link_document"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-75ba5f473edde282e1",
+      "contract_id": "p2.monitor.home.state",
+      "domain": "monitoring",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "ha_find_entities",
+        "ha_get_state",
+        "monitor_home_state"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-12648157e0796de6a2",
+      "contract_id": "p2.monitor.home.state",
+      "domain": "monitoring",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "ha_find_entities",
+        "ha_get_state",
+        "monitor_home_state"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-a81383f0057c119a5d",
+      "contract_id": "p2.monitor.delegate",
+      "domain": "monitoring",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "monitor_delegate"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-076a989534b13928b4",
+      "contract_id": "p2.monitor.delegate",
+      "domain": "monitoring",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "monitor_delegate"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-56cb2c064c5faad53d",
+      "contract_id": "p2.monitor.cancel",
+      "domain": "monitoring",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "monitor_cancel"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-f456b233cd8cc06657",
+      "contract_id": "p2.monitor.cancel",
+      "domain": "monitoring",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "monitor_cancel"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-7795f1ec87f6d6c346",
+      "contract_id": "p2.home.summary",
+      "domain": "home_assistant",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "ha_home_summary"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-37167af89af72e4576",
+      "contract_id": "p2.home.summary",
+      "domain": "home_assistant",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "ha_home_summary"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-0c7f7aa83d5f252741",
+      "contract_id": "p2.home.report",
+      "domain": "home_assistant",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "ha_home_report"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-3ef0715014e6005243",
+      "contract_id": "p2.home.report",
+      "domain": "home_assistant",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "ha_home_report"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-d8733153ef7389c192",
+      "contract_id": "p2.home.automation",
+      "domain": "home_assistant",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "ha_draft_automation"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-516675a3b47fc7d334",
+      "contract_id": "p2.home.automation",
+      "domain": "home_assistant",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "ha_draft_automation"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-4c65a8c0d151910897",
+      "contract_id": "p2.home.control",
+      "domain": "home_assistant",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "ha_control",
+        "ha_find_entities"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-3e788744860d6c9f2d",
+      "contract_id": "p2.home.control",
+      "domain": "home_assistant",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "ha_control",
+        "ha_find_entities"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-c4b13ea2074f1f5b86",
+      "contract_id": "p2.report.finance.monthly",
+      "domain": "reports",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "finance_report"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-7b56ea9d8a14de3907",
+      "contract_id": "p2.report.finance.monthly",
+      "domain": "reports",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "finance_report"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-a872edbc88f9d2b9e8",
+      "contract_id": "p2.report.finance.monthly",
+      "domain": "reports",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "finance_report"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-ff619bee0360f74e2a",
+      "contract_id": "p2.report.export",
+      "domain": "reports",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "report_export"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-af8c3b091c2b65e6b5",
+      "contract_id": "p2.report.export",
+      "domain": "reports",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "report_export"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-98faba17788a088e49",
+      "contract_id": "p2.report.payload",
+      "domain": "reports",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "report_payload"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-dd7326b6e6c54b90bf",
+      "contract_id": "p2.report.payload",
+      "domain": "reports",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "report_payload"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-c0309a3af3f4f8d852",
+      "contract_id": "p2.calculate",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "calculate"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-01a449e2f0fbb4a638",
+      "contract_id": "p2.calculate",
+      "domain": "cash_planning",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "calculate"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-54819fc757a786b0a9",
+      "contract_id": "p3.negation.ha",
+      "domain": "safety",
+      "source": "text",
+      "status": "PASS",
+      "decision": "answer",
+      "tools": [],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-d2f0a2bbc4bc004cd3",
+      "contract_id": "p3.negation.ha",
+      "domain": "safety",
+      "source": "text",
+      "status": "PASS",
+      "decision": "answer",
+      "tools": [],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-11c2ff3b830a9e3f06",
+      "contract_id": "p3.negation.ha",
+      "domain": "safety",
+      "source": "text",
+      "status": "PASS",
+      "decision": "answer",
+      "tools": [],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-6767217e4ca195b300",
+      "contract_id": "p3.negation.ha",
+      "domain": "safety",
+      "source": "text",
+      "status": "PASS",
+      "decision": "answer",
+      "tools": [],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-eabd98a5ea575ff841",
+      "contract_id": "p3.negation.memory",
+      "domain": "safety",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-e5ad31cc185681924b",
+      "contract_id": "p3.negation.memory",
+      "domain": "safety",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-f47c7e08de24cc532f",
+      "contract_id": "p3.negation.reminder",
+      "domain": "safety",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-8665ac290f17712270",
+      "contract_id": "p3.negation.reminder",
+      "domain": "safety",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-e1668ef5363fae6f8d",
+      "contract_id": "p3.negation.unrelated",
+      "domain": "routing",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "add_shopping_item"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-47e771ca5b6d2f5bd4",
+      "contract_id": "p3.negation.unrelated",
+      "domain": "routing",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "add_shopping_item"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-7a1b0de8c5bc673282",
+      "contract_id": "p3.home.automation.no.control",
+      "domain": "safety",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "ha_draft_automation"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-0993135dba7af09a6f",
+      "contract_id": "p3.home.automation.no.control",
+      "domain": "safety",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "ha_draft_automation"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-17ce24e873619d6d16",
+      "contract_id": "p3.home.control.synonym",
+      "domain": "routing",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "ha_control",
+        "ha_find_entities"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-c07d4ded221e3c31a4",
+      "contract_id": "p3.home.control.synonym",
+      "domain": "routing",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "ha_control",
+        "ha_find_entities"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-8c29e2e55f8172c15a",
+      "contract_id": "p3.work.departure.compound",
+      "domain": "routing",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "work_departure_plan",
+        "work_schedule"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-ebdff19df4ccd622fa",
+      "contract_id": "p3.work.departure.compound",
+      "domain": "routing",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "work_departure_plan",
+        "work_schedule"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-cdffb2c96602c20858",
+      "contract_id": "p3.typo.reminder",
+      "domain": "routing",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "create_reminder"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-c7bfff03c58707676b",
+      "contract_id": "p3.typo.reminder",
+      "domain": "routing",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "create_reminder"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-9710d7eec629b15eab",
+      "contract_id": "p3.typo.reminder",
+      "domain": "routing",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "create_reminder"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-d6eeeff50f4294fe8c",
+      "contract_id": "p3.language.tamil.reminder",
+      "domain": "language",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "create_reminder"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-0c65fb13f0e9e0b4b6",
+      "contract_id": "p3.language.tamil.reminder",
+      "domain": "language",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "create_reminder"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-d8639db70facd66031",
+      "contract_id": "p3.language.tamil.memory",
+      "domain": "language",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-5a73cd5e66a4cb1e86",
+      "contract_id": "p3.language.tamil.memory",
+      "domain": "language",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-929a99ba23242e5374",
+      "contract_id": "p3.multi.finance.reminder",
+      "domain": "routing",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "create_reminder",
+        "log_expense"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-d8446d203b505d7b97",
+      "contract_id": "p3.multi.finance.reminder",
+      "domain": "routing",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "create_reminder",
+        "log_expense"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-f058bc766821e3fa4c",
+      "contract_id": "p3.read.only",
+      "domain": "safety",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-722154b1d5f4a44ce1",
+      "contract_id": "p3.read.only",
+      "domain": "safety",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-5ea1a54d25eda02935",
+      "contract_id": "p3.read.only",
+      "domain": "safety",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-3b137b7d95937db409",
+      "contract_id": "conv.receipt.followup",
+      "domain": "receipts",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "find_receipts"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-e1e67d71050270a783",
+      "contract_id": "conv.receipt.followup",
+      "domain": "receipts",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "find_receipts",
+        "get_receipt"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-bec8ceb4296bf82755",
+      "contract_id": "conv.receipt.followup",
+      "domain": "receipts",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "get_receipt"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-dcaef2a42fb7e990bf",
+      "contract_id": "conv.memory.numbered",
+      "domain": "memory",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-f8fb1742812788d1b2",
+      "contract_id": "conv.memory.numbered",
+      "domain": "memory",
+      "source": "text",
+      "status": "FAIL",
+      "decision": "tools",
+      "tools": [
+        "discover_alex_tools",
+        "resolve_numbered_choice"
+      ],
+      "problems": [
+        "discovery selected despite the required capability already being exposed"
+      ]
+    },
+    {
+      "packet_id": "hai-49a14a55b78c07037d",
+      "contract_id": "conv.diary.reminder",
+      "domain": "agenda",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-9f654a737fbce8190c",
+      "contract_id": "conv.diary.reminder",
+      "domain": "agenda",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "create_reminder",
+        "get_agenda_range"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-83b6ef8cf66b0a3b13",
+      "contract_id": "conv.diary.reminder",
+      "domain": "agenda",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-8af7e02ec0f6bf3b17",
+      "contract_id": "conv.diary.reminder",
+      "domain": "agenda",
+      "source": "voice",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-61cad6a58c40596bec",
+      "contract_id": "conv.diary.reminder",
+      "domain": "agenda",
+      "source": "voice",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "create_reminder",
+        "get_agenda_range"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-bcdc99b3afbc654a18",
+      "contract_id": "conv.diary.reminder",
+      "domain": "agenda",
+      "source": "voice",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-3f705f38ea60cc3372",
+      "contract_id": "conv.home.contextual.control",
+      "domain": "home_assistant",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "ha_find_entities",
+        "ha_get_state"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-45aea85483877f2c47",
+      "contract_id": "conv.home.contextual.control",
+      "domain": "home_assistant",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "ha_control",
+        "ha_find_entities"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-367587587bdad96190",
+      "contract_id": "conv.plan.refine",
+      "domain": "plans",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "create_plan"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-430f9825cf1415c98c",
+      "contract_id": "conv.plan.refine",
+      "domain": "plans",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_plans",
+        "update_plan"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-a86cc38b5e4dd21f63",
+      "contract_id": "conv.plan.refine",
+      "domain": "plans",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_plans"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-5eaebd003d80354849",
+      "contract_id": "conv.plan.refine",
+      "domain": "plans",
+      "source": "voice",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "create_plan"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-8896c7ce6ecd60aa52",
+      "contract_id": "conv.plan.refine",
+      "domain": "plans",
+      "source": "voice",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_plans",
+        "update_plan"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-a12b4e6856934ed28c",
+      "contract_id": "conv.plan.refine",
+      "domain": "plans",
+      "source": "voice",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_plans"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-f6b83ee303f6080577",
+      "contract_id": "conv.goal.agency",
+      "domain": "goals",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_create_goal"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-60a00f15795172e4b9",
+      "contract_id": "conv.goal.agency",
+      "domain": "goals",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "planning_goal_progress"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-522ee8c720c03c1666",
+      "contract_id": "conv.finance.correction",
+      "domain": "finance",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "log_expense"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-48095b10023cca227f",
+      "contract_id": "conv.finance.correction",
+      "domain": "finance",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "correct_expense",
+        "query_finances"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-41010e0fb5b92d38f0",
+      "contract_id": "conv.finance.replay",
+      "domain": "finance",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "log_expense"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-e3dda9caad17a8037b",
+      "contract_id": "conv.finance.replay",
+      "domain": "finance",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "log_expense"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-d755f7d6f0776156ea",
+      "contract_id": "conv.memory.restart",
+      "domain": "memory",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "save_item"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-1bbf863d425045876a",
+      "contract_id": "conv.memory.restart",
+      "domain": "memory",
+      "source": "text",
+      "status": "FAIL",
+      "decision": "answer",
+      "tools": [],
+      "problems": [
+        "required capability not selected: memory.search"
+      ]
+    },
+    {
+      "packet_id": "hai-58b35a01b54ad3ec8c",
+      "contract_id": "conv.privacy.dm.group",
+      "domain": "privacy",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-f3b7634780157f7513",
+      "contract_id": "conv.privacy.dm.group",
+      "domain": "privacy",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-c1fb4a8f0c22485969",
+      "contract_id": "conv.reminder.midnight",
+      "domain": "reminders",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "create_reminder"
+      ],
+      "problems": []
+    },
+    {
+      "packet_id": "hai-a275be22c14638b7de",
+      "contract_id": "conv.reminder.midnight",
+      "domain": "reminders",
+      "source": "text",
+      "status": "PASS",
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "problems": []
+    }
+  ],
+  "external_model_review": {
+    "reviewer": "GPT-6 Astra (blind independent delta; earlier snapshot retained for identical packets)",
+    "review_date": "2026-10-21",
+    "method": "Full public packet comparison found 59 changed packets, principally the optional exact numbered-list binding schema. A fresh isolated model reviewer saw only those public packets, with no contracts, expected answers or prior decisions. Its decisions are preserved verbatim, including disagreements with legacy scoring. The other 329 byte-identical packets retain prior decisions and their original provenance. This is capability-selection review, not live-provider or end-to-end execution testing.",
+    "snapshot_version": 4,
+    "static_snapshot_not_live_api": true,
+    "fresh_full_independent_pass": false,
+    "parent_snapshot_unchanged_packets": 329,
+    "fresh_independent_delta_packets": 59,
+    "note": "Only changed public packets received a fresh blind model review. Unchanged decisions retain the parent snapshot's mixed provenance, stored per decision. This scores capability selection, not exact arguments, durable effects, unseen language or live provider latency."
+  }
+}

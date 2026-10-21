@@ -1,0 +1,739 @@
+{
+  "schema_version": 1,
+  "evidence_kind": "actual first direct-brain request capture with fixed clock; no fresh model evaluation or domain actions",
+  "public_file": "/tmp/alex-conversation-evidence/clocked-runtime-blind-packets.json",
+  "public_file_sha256": "18e4a390b92b3ce2ef0c4897a98d6af7f21e9c050d62cc3507d7c03411025186",
+  "provenance": {
+    "baseline": {
+      "repo": "/tmp/alex-mcp-baseline-aeb3b74",
+      "revision": "aeb3b74f64510103134a4268ca3e5e98c465646d",
+      "runtime_source_sha256": "3dcb11527faeb6e9c4b567f66b90246b86d8644abefddaa5b56969267dce1e99"
+    },
+    "candidate": {
+      "repo": "/workspace/scratch/738b29e75c17/alex-mcp-candidate",
+      "revision": "aeb3b74f64510103134a4268ca3e5e98c465646d",
+      "runtime_source_sha256": "2ba13c8546d3ec5b7174fd4d48bb40a239f9de9e8cb795256182434f754307db"
+    }
+  },
+  "clock_setup": {
+    "environment_variable": "ALEX_CERT_NOW",
+    "value": "2026-10-21T08:00:00+00:00",
+    "set_before_app_imports": true,
+    "retained_through_fixture_seed_and_capture": true,
+    "matches_actor_received_at_utc": true,
+    "candidate_current_local_datetime": "2026-10-21T16:00:00+08:00",
+    "verified_all20_before_after_clocks": true,
+    "verified_all10_candidate_state_pending_ids_equal_seeded_record_ids": true,
+    "sqlite_boundary": "SQLite CURRENT_TIMESTAMP retains the wall clock. Only disposable seeded rows are explicitly timestamped at the frozen instant before capture. No SQL clock override, runtime/test source change, domain action, pending cleanup or post-action timestamp rewrite occurs.",
+    "seed_columns_aligned_identically": {
+      "pending_items": "created_at_utc",
+      "conversation_turns": "created_at_utc",
+      "outbound_messages": "created_at_utc",
+      "inbound_messages": "received_at_utc"
+    }
+  },
+  "capture_conditions": "Separate processes and disposable databases; unchanged ConversationFixture.capture_request; live semantic router disabled; ingress bypassed; scripted provider response only after first-request capture.",
+  "blind_integrity": "New shuffled opaque IDs; full unmodified messages/schemas; no revision labels, expected answers, test names or paths. The original shared financial policy uses the ordinary word baseline identically in every packet.",
+  "packets": [
+    {
+      "packet_id": "pkt_fd0fa260a7be6d6ee16be94a",
+      "revision_label": "baseline",
+      "variation_index": 6,
+      "input_phrase": "Tonight, sometime after eight in the evening",
+      "packet_sha256": "6cfec8a1570a8358b7ba9a507c0687aff984a4c3c8ac4d25c78b9ecc5aa61f74",
+      "seeded_pending_record": {
+        "item_id": "53a01623-b3e6-4c71-b483-5581bbcab73e",
+        "kind": "REMINDER_DRAFT",
+        "owner_id": "USR_HUSBAND",
+        "conversation_id": "60111111111@s.whatsapp.net",
+        "source_message_id": "cr-draft",
+        "media_id": null,
+        "status": "PENDING",
+        "note": "fixture",
+        "accumulated_text": "Remind me to water the plants",
+        "routing_json": null,
+        "created_at_utc": "2026-10-21T08:00:00+00:00",
+        "resolved_at_utc": null,
+        "resolution_message_id": null
+      },
+      "actor_received_at_utc": "2026-10-21T08:00:00+00:00",
+      "runtime_clock_before_capture": "2026-10-21T08:00:00+00:00",
+      "runtime_clock_after_capture": "2026-10-21T08:00:00+00:00",
+      "sqlite_wall_clock_at_seed": "2026-10-21 10:09:22",
+      "provider_parameters": {
+        "model": "offline-fixture",
+        "reasoning_effort": "low",
+        "tool_choice": "auto",
+        "extra_headers": {
+          "x-grok-conv-id": "b8d57f95d719bc424ae2c709b178111e"
+        }
+      },
+      "public_position": 1
+    },
+    {
+      "packet_id": "pkt_3ae03ebf6ea49bf30c8fd70c",
+      "revision_label": "candidate",
+      "variation_index": 4,
+      "input_phrase": "The time should be tomorrow evening at seven",
+      "packet_sha256": "11a2e45ee986030e05b4e363d2181d0bd663e66f656b7e8d165b4f99f4da385a",
+      "seeded_pending_record": {
+        "item_id": "a685e0d6-81f9-4a96-95bb-209c3a0e0db5",
+        "kind": "REMINDER_DRAFT",
+        "owner_id": "USR_HUSBAND",
+        "conversation_id": "60111111111@s.whatsapp.net",
+        "source_message_id": "cr-draft",
+        "media_id": null,
+        "status": "PENDING",
+        "note": "fixture",
+        "accumulated_text": "Remind me to water the plants",
+        "routing_json": null,
+        "created_at_utc": "2026-10-21T08:00:00+00:00",
+        "resolved_at_utc": null,
+        "resolution_message_id": null
+      },
+      "actor_received_at_utc": "2026-10-21T08:00:00+00:00",
+      "runtime_clock_before_capture": "2026-10-21T08:00:00+00:00",
+      "runtime_clock_after_capture": "2026-10-21T08:00:00+00:00",
+      "sqlite_wall_clock_at_seed": "2026-10-21 10:09:22",
+      "provider_parameters": {
+        "model": "offline-fixture",
+        "reasoning_effort": "low",
+        "tool_choice": "auto",
+        "extra_headers": {
+          "x-grok-conv-id": "b8d57f95d719bc424ae2c709b178111e"
+        }
+      },
+      "public_position": 2
+    },
+    {
+      "packet_id": "pkt_6e80234e13813e509ee08e18",
+      "revision_label": "candidate",
+      "variation_index": 9,
+      "input_phrase": "At about seven o'clock tomorrow evening",
+      "packet_sha256": "45e327894591f14d6545b43c1d465015d559a1d18a203f8e905ba2cb2e47f4d3",
+      "seeded_pending_record": {
+        "item_id": "2ab3467f-61ab-4189-837e-49d31fb7fb49",
+        "kind": "REMINDER_DRAFT",
+        "owner_id": "USR_HUSBAND",
+        "conversation_id": "60111111111@s.whatsapp.net",
+        "source_message_id": "cr-draft",
+        "media_id": null,
+        "status": "PENDING",
+        "note": "fixture",
+        "accumulated_text": "Remind me to water the plants",
+        "routing_json": null,
+        "created_at_utc": "2026-10-21T08:00:00+00:00",
+        "resolved_at_utc": null,
+        "resolution_message_id": null
+      },
+      "actor_received_at_utc": "2026-10-21T08:00:00+00:00",
+      "runtime_clock_before_capture": "2026-10-21T08:00:00+00:00",
+      "runtime_clock_after_capture": "2026-10-21T08:00:00+00:00",
+      "sqlite_wall_clock_at_seed": "2026-10-21 10:09:22",
+      "provider_parameters": {
+        "model": "offline-fixture",
+        "reasoning_effort": "low",
+        "tool_choice": "auto",
+        "extra_headers": {
+          "x-grok-conv-id": "b8d57f95d719bc424ae2c709b178111e"
+        }
+      },
+      "public_position": 3
+    },
+    {
+      "packet_id": "pkt_d31842d52cee13d60a5414e3",
+      "revision_label": "candidate",
+      "variation_index": 7,
+      "input_phrase": "Tomorrow around 7ish would be convenient",
+      "packet_sha256": "62ab71ab1293994cf6804045b19f3dc4e1e53c0af51638a5c6df6e7e8a2d82dc",
+      "seeded_pending_record": {
+        "item_id": "030f4724-fd96-4dff-b774-897bfa99370e",
+        "kind": "REMINDER_DRAFT",
+        "owner_id": "USR_HUSBAND",
+        "conversation_id": "60111111111@s.whatsapp.net",
+        "source_message_id": "cr-draft",
+        "media_id": null,
+        "status": "PENDING",
+        "note": "fixture",
+        "accumulated_text": "Remind me to water the plants",
+        "routing_json": null,
+        "created_at_utc": "2026-10-21T08:00:00+00:00",
+        "resolved_at_utc": null,
+        "resolution_message_id": null
+      },
+      "actor_received_at_utc": "2026-10-21T08:00:00+00:00",
+      "runtime_clock_before_capture": "2026-10-21T08:00:00+00:00",
+      "runtime_clock_after_capture": "2026-10-21T08:00:00+00:00",
+      "sqlite_wall_clock_at_seed": "2026-10-21 10:09:22",
+      "provider_parameters": {
+        "model": "offline-fixture",
+        "reasoning_effort": "low",
+        "tool_choice": "auto",
+        "extra_headers": {
+          "x-grok-conv-id": "b8d57f95d719bc424ae2c709b178111e"
+        }
+      },
+      "public_position": 4
+    },
+    {
+      "packet_id": "pkt_7a95ffde71b7dffbe826dbba",
+      "revision_label": "baseline",
+      "variation_index": 7,
+      "input_phrase": "Tomorrow around 7ish would be convenient",
+      "packet_sha256": "db846f661dd891192a59a3fece88e40b3751e25c934c675b42911fee367b23a5",
+      "seeded_pending_record": {
+        "item_id": "80fd8ee9-1e56-4e23-aa3c-b87cb8c303fd",
+        "kind": "REMINDER_DRAFT",
+        "owner_id": "USR_HUSBAND",
+        "conversation_id": "60111111111@s.whatsapp.net",
+        "source_message_id": "cr-draft",
+        "media_id": null,
+        "status": "PENDING",
+        "note": "fixture",
+        "accumulated_text": "Remind me to water the plants",
+        "routing_json": null,
+        "created_at_utc": "2026-10-21T08:00:00+00:00",
+        "resolved_at_utc": null,
+        "resolution_message_id": null
+      },
+      "actor_received_at_utc": "2026-10-21T08:00:00+00:00",
+      "runtime_clock_before_capture": "2026-10-21T08:00:00+00:00",
+      "runtime_clock_after_capture": "2026-10-21T08:00:00+00:00",
+      "sqlite_wall_clock_at_seed": "2026-10-21 10:09:22",
+      "provider_parameters": {
+        "model": "offline-fixture",
+        "reasoning_effort": "low",
+        "tool_choice": "auto",
+        "extra_headers": {
+          "x-grok-conv-id": "b8d57f95d719bc424ae2c709b178111e"
+        }
+      },
+      "public_position": 5
+    },
+    {
+      "packet_id": "pkt_c656053a9c6e5af706bb6ec4",
+      "revision_label": "baseline",
+      "variation_index": 10,
+      "input_phrase": "Forty minutes later would be alright",
+      "packet_sha256": "18d2bf90cc58a18150dcd66f0fd34e96dc0265e7863bd92a2728a3749bdbb189",
+      "seeded_pending_record": {
+        "item_id": "6c615490-8a1c-4497-be81-b9ff52f1ad5f",
+        "kind": "REMINDER_DRAFT",
+        "owner_id": "USR_HUSBAND",
+        "conversation_id": "60111111111@s.whatsapp.net",
+        "source_message_id": "cr-draft",
+        "media_id": null,
+        "status": "PENDING",
+        "note": "fixture",
+        "accumulated_text": "Remind me to water the plants",
+        "routing_json": null,
+        "created_at_utc": "2026-10-21T08:00:00+00:00",
+        "resolved_at_utc": null,
+        "resolution_message_id": null
+      },
+      "actor_received_at_utc": "2026-10-21T08:00:00+00:00",
+      "runtime_clock_before_capture": "2026-10-21T08:00:00+00:00",
+      "runtime_clock_after_capture": "2026-10-21T08:00:00+00:00",
+      "sqlite_wall_clock_at_seed": "2026-10-21 10:09:22",
+      "provider_parameters": {
+        "model": "offline-fixture",
+        "reasoning_effort": "low",
+        "tool_choice": "auto",
+        "extra_headers": {
+          "x-grok-conv-id": "b8d57f95d719bc424ae2c709b178111e"
+        }
+      },
+      "public_position": 6
+    },
+    {
+      "packet_id": "pkt_ac7597e1bf78e944499d2d4e",
+      "revision_label": "baseline",
+      "variation_index": 4,
+      "input_phrase": "The time should be tomorrow evening at seven",
+      "packet_sha256": "4ab138c9e9734087ae775c94c88c44e8018c164da6cfc386f3630052b1bc7575",
+      "seeded_pending_record": {
+        "item_id": "2ffb68a6-7607-44eb-abf0-e9016c94e911",
+        "kind": "REMINDER_DRAFT",
+        "owner_id": "USR_HUSBAND",
+        "conversation_id": "60111111111@s.whatsapp.net",
+        "source_message_id": "cr-draft",
+        "media_id": null,
+        "status": "PENDING",
+        "note": "fixture",
+        "accumulated_text": "Remind me to water the plants",
+        "routing_json": null,
+        "created_at_utc": "2026-10-21T08:00:00+00:00",
+        "resolved_at_utc": null,
+        "resolution_message_id": null
+      },
+      "actor_received_at_utc": "2026-10-21T08:00:00+00:00",
+      "runtime_clock_before_capture": "2026-10-21T08:00:00+00:00",
+      "runtime_clock_after_capture": "2026-10-21T08:00:00+00:00",
+      "sqlite_wall_clock_at_seed": "2026-10-21 10:09:22",
+      "provider_parameters": {
+        "model": "offline-fixture",
+        "reasoning_effort": "low",
+        "tool_choice": "auto",
+        "extra_headers": {
+          "x-grok-conv-id": "b8d57f95d719bc424ae2c709b178111e"
+        }
+      },
+      "public_position": 7
+    },
+    {
+      "packet_id": "pkt_12e579208154ff1dd825d9de",
+      "revision_label": "baseline",
+      "variation_index": 8,
+      "input_phrase": "Later at 11.30 in the evening please",
+      "packet_sha256": "4f8ec983b0508f0e5fbca531cb19817d25199a5a6c5d534780965843500a76b1",
+      "seeded_pending_record": {
+        "item_id": "5766fed2-58af-4742-a2dc-8a88e03c70ab",
+        "kind": "REMINDER_DRAFT",
+        "owner_id": "USR_HUSBAND",
+        "conversation_id": "60111111111@s.whatsapp.net",
+        "source_message_id": "cr-draft",
+        "media_id": null,
+        "status": "PENDING",
+        "note": "fixture",
+        "accumulated_text": "Remind me to water the plants",
+        "routing_json": null,
+        "created_at_utc": "2026-10-21T08:00:00+00:00",
+        "resolved_at_utc": null,
+        "resolution_message_id": null
+      },
+      "actor_received_at_utc": "2026-10-21T08:00:00+00:00",
+      "runtime_clock_before_capture": "2026-10-21T08:00:00+00:00",
+      "runtime_clock_after_capture": "2026-10-21T08:00:00+00:00",
+      "sqlite_wall_clock_at_seed": "2026-10-21 10:09:22",
+      "provider_parameters": {
+        "model": "offline-fixture",
+        "reasoning_effort": "low",
+        "tool_choice": "auto",
+        "extra_headers": {
+          "x-grok-conv-id": "b8d57f95d719bc424ae2c709b178111e"
+        }
+      },
+      "public_position": 8
+    },
+    {
+      "packet_id": "pkt_ffcd16a6cdff5dd427ac1bbe",
+      "revision_label": "baseline",
+      "variation_index": 5,
+      "input_phrase": "Roughly half an hour from the current time please",
+      "packet_sha256": "494d305ede28c60661c2e4b43ea8b996f4e97e44a1a9ddc09cf5157b58a0bbe6",
+      "seeded_pending_record": {
+        "item_id": "f79fb55a-b68f-4290-bf25-efc14424d676",
+        "kind": "REMINDER_DRAFT",
+        "owner_id": "USR_HUSBAND",
+        "conversation_id": "60111111111@s.whatsapp.net",
+        "source_message_id": "cr-draft",
+        "media_id": null,
+        "status": "PENDING",
+        "note": "fixture",
+        "accumulated_text": "Remind me to water the plants",
+        "routing_json": null,
+        "created_at_utc": "2026-10-21T08:00:00+00:00",
+        "resolved_at_utc": null,
+        "resolution_message_id": null
+      },
+      "actor_received_at_utc": "2026-10-21T08:00:00+00:00",
+      "runtime_clock_before_capture": "2026-10-21T08:00:00+00:00",
+      "runtime_clock_after_capture": "2026-10-21T08:00:00+00:00",
+      "sqlite_wall_clock_at_seed": "2026-10-21 10:09:22",
+      "provider_parameters": {
+        "model": "offline-fixture",
+        "reasoning_effort": "low",
+        "tool_choice": "auto",
+        "extra_headers": {
+          "x-grok-conv-id": "b8d57f95d719bc424ae2c709b178111e"
+        }
+      },
+      "public_position": 9
+    },
+    {
+      "packet_id": "pkt_f2d705d6641967ce0afc1e4a",
+      "revision_label": "baseline",
+      "variation_index": 2,
+      "input_phrase": "Forty minutes from the message I just sent please",
+      "packet_sha256": "17c9491a3663cb1c811fd24ec6be6e01b2bc703b599ab4b496aad62367c5afdc",
+      "seeded_pending_record": {
+        "item_id": "01af8427-40e2-4855-ab2d-5c767abe1d8a",
+        "kind": "REMINDER_DRAFT",
+        "owner_id": "USR_HUSBAND",
+        "conversation_id": "60111111111@s.whatsapp.net",
+        "source_message_id": "cr-draft",
+        "media_id": null,
+        "status": "PENDING",
+        "note": "fixture",
+        "accumulated_text": "Remind me to water the plants",
+        "routing_json": null,
+        "created_at_utc": "2026-10-21T08:00:00+00:00",
+        "resolved_at_utc": null,
+        "resolution_message_id": null
+      },
+      "actor_received_at_utc": "2026-10-21T08:00:00+00:00",
+      "runtime_clock_before_capture": "2026-10-21T08:00:00+00:00",
+      "runtime_clock_after_capture": "2026-10-21T08:00:00+00:00",
+      "sqlite_wall_clock_at_seed": "2026-10-21 10:09:21",
+      "provider_parameters": {
+        "model": "offline-fixture",
+        "reasoning_effort": "low",
+        "tool_choice": "auto",
+        "extra_headers": {
+          "x-grok-conv-id": "b8d57f95d719bc424ae2c709b178111e"
+        }
+      },
+      "public_position": 10
+    },
+    {
+      "packet_id": "pkt_1b567eaa6fbae3c758981396",
+      "revision_label": "candidate",
+      "variation_index": 1,
+      "input_phrase": "Around seven tomorrow evening would work for me",
+      "packet_sha256": "0fba775461aa574ca69d32212f1d7e53cd4da273bbcb1b604fd99622dc45b0c4",
+      "seeded_pending_record": {
+        "item_id": "2fe1fee4-2b50-4201-8118-2cb07c03c49b",
+        "kind": "REMINDER_DRAFT",
+        "owner_id": "USR_HUSBAND",
+        "conversation_id": "60111111111@s.whatsapp.net",
+        "source_message_id": "cr-draft",
+        "media_id": null,
+        "status": "PENDING",
+        "note": "fixture",
+        "accumulated_text": "Remind me to water the plants",
+        "routing_json": null,
+        "created_at_utc": "2026-10-21T08:00:00+00:00",
+        "resolved_at_utc": null,
+        "resolution_message_id": null
+      },
+      "actor_received_at_utc": "2026-10-21T08:00:00+00:00",
+      "runtime_clock_before_capture": "2026-10-21T08:00:00+00:00",
+      "runtime_clock_after_capture": "2026-10-21T08:00:00+00:00",
+      "sqlite_wall_clock_at_seed": "2026-10-21 10:09:21",
+      "provider_parameters": {
+        "model": "offline-fixture",
+        "reasoning_effort": "low",
+        "tool_choice": "auto",
+        "extra_headers": {
+          "x-grok-conv-id": "b8d57f95d719bc424ae2c709b178111e"
+        }
+      },
+      "public_position": 11
+    },
+    {
+      "packet_id": "pkt_f1bdeb04542f9b4283264842",
+      "revision_label": "candidate",
+      "variation_index": 3,
+      "input_phrase": "Tomorrow after dinner at eight would be best",
+      "packet_sha256": "2f84e86535066deb012f77eeb8a4bf0e615297f16e2a6dd7e83517edf9cfa42b",
+      "seeded_pending_record": {
+        "item_id": "b1c22d86-3315-4765-8b61-f85b05995311",
+        "kind": "REMINDER_DRAFT",
+        "owner_id": "USR_HUSBAND",
+        "conversation_id": "60111111111@s.whatsapp.net",
+        "source_message_id": "cr-draft",
+        "media_id": null,
+        "status": "PENDING",
+        "note": "fixture",
+        "accumulated_text": "Remind me to water the plants",
+        "routing_json": null,
+        "created_at_utc": "2026-10-21T08:00:00+00:00",
+        "resolved_at_utc": null,
+        "resolution_message_id": null
+      },
+      "actor_received_at_utc": "2026-10-21T08:00:00+00:00",
+      "runtime_clock_before_capture": "2026-10-21T08:00:00+00:00",
+      "runtime_clock_after_capture": "2026-10-21T08:00:00+00:00",
+      "sqlite_wall_clock_at_seed": "2026-10-21 10:09:22",
+      "provider_parameters": {
+        "model": "offline-fixture",
+        "reasoning_effort": "low",
+        "tool_choice": "auto",
+        "extra_headers": {
+          "x-grok-conv-id": "b8d57f95d719bc424ae2c709b178111e"
+        }
+      },
+      "public_position": 12
+    },
+    {
+      "packet_id": "pkt_7132c09a586bb3e7fd30d1e6",
+      "revision_label": "baseline",
+      "variation_index": 3,
+      "input_phrase": "Tomorrow after dinner at eight would be best",
+      "packet_sha256": "71ab3d3b87b3d14fc72081eb4f723c29223efbff9ff5cad6ab6e05d51135f007",
+      "seeded_pending_record": {
+        "item_id": "4e88a15a-2091-48bb-a982-f1f6fc7e19f5",
+        "kind": "REMINDER_DRAFT",
+        "owner_id": "USR_HUSBAND",
+        "conversation_id": "60111111111@s.whatsapp.net",
+        "source_message_id": "cr-draft",
+        "media_id": null,
+        "status": "PENDING",
+        "note": "fixture",
+        "accumulated_text": "Remind me to water the plants",
+        "routing_json": null,
+        "created_at_utc": "2026-10-21T08:00:00+00:00",
+        "resolved_at_utc": null,
+        "resolution_message_id": null
+      },
+      "actor_received_at_utc": "2026-10-21T08:00:00+00:00",
+      "runtime_clock_before_capture": "2026-10-21T08:00:00+00:00",
+      "runtime_clock_after_capture": "2026-10-21T08:00:00+00:00",
+      "sqlite_wall_clock_at_seed": "2026-10-21 10:09:22",
+      "provider_parameters": {
+        "model": "offline-fixture",
+        "reasoning_effort": "low",
+        "tool_choice": "auto",
+        "extra_headers": {
+          "x-grok-conv-id": "b8d57f95d719bc424ae2c709b178111e"
+        }
+      },
+      "public_position": 13
+    },
+    {
+      "packet_id": "pkt_59fd64733921eec258364294",
+      "revision_label": "baseline",
+      "variation_index": 9,
+      "input_phrase": "At about seven o'clock tomorrow evening",
+      "packet_sha256": "6c5067f0e117f248d07d041d04ec2163afa65252537518b13db39c67ec8b05a5",
+      "seeded_pending_record": {
+        "item_id": "954a43c4-1180-4a43-8897-219224fbb6a1",
+        "kind": "REMINDER_DRAFT",
+        "owner_id": "USR_HUSBAND",
+        "conversation_id": "60111111111@s.whatsapp.net",
+        "source_message_id": "cr-draft",
+        "media_id": null,
+        "status": "PENDING",
+        "note": "fixture",
+        "accumulated_text": "Remind me to water the plants",
+        "routing_json": null,
+        "created_at_utc": "2026-10-21T08:00:00+00:00",
+        "resolved_at_utc": null,
+        "resolution_message_id": null
+      },
+      "actor_received_at_utc": "2026-10-21T08:00:00+00:00",
+      "runtime_clock_before_capture": "2026-10-21T08:00:00+00:00",
+      "runtime_clock_after_capture": "2026-10-21T08:00:00+00:00",
+      "sqlite_wall_clock_at_seed": "2026-10-21 10:09:22",
+      "provider_parameters": {
+        "model": "offline-fixture",
+        "reasoning_effort": "low",
+        "tool_choice": "auto",
+        "extra_headers": {
+          "x-grok-conv-id": "b8d57f95d719bc424ae2c709b178111e"
+        }
+      },
+      "public_position": 14
+    },
+    {
+      "packet_id": "pkt_79a7a2afaf5de84df070304b",
+      "revision_label": "candidate",
+      "variation_index": 2,
+      "input_phrase": "Forty minutes from the message I just sent please",
+      "packet_sha256": "41e102f1a7a963b65fa364ddf269f9a6c982aa27a4abcbed8158a4bb6bfa1ba4",
+      "seeded_pending_record": {
+        "item_id": "19656e21-8556-4e03-92bd-6337b50cf4e7",
+        "kind": "REMINDER_DRAFT",
+        "owner_id": "USR_HUSBAND",
+        "conversation_id": "60111111111@s.whatsapp.net",
+        "source_message_id": "cr-draft",
+        "media_id": null,
+        "status": "PENDING",
+        "note": "fixture",
+        "accumulated_text": "Remind me to water the plants",
+        "routing_json": null,
+        "created_at_utc": "2026-10-21T08:00:00+00:00",
+        "resolved_at_utc": null,
+        "resolution_message_id": null
+      },
+      "actor_received_at_utc": "2026-10-21T08:00:00+00:00",
+      "runtime_clock_before_capture": "2026-10-21T08:00:00+00:00",
+      "runtime_clock_after_capture": "2026-10-21T08:00:00+00:00",
+      "sqlite_wall_clock_at_seed": "2026-10-21 10:09:22",
+      "provider_parameters": {
+        "model": "offline-fixture",
+        "reasoning_effort": "low",
+        "tool_choice": "auto",
+        "extra_headers": {
+          "x-grok-conv-id": "b8d57f95d719bc424ae2c709b178111e"
+        }
+      },
+      "public_position": 15
+    },
+    {
+      "packet_id": "pkt_0cff39be38a982e99baf9b5b",
+      "revision_label": "candidate",
+      "variation_index": 8,
+      "input_phrase": "Later at 11.30 in the evening please",
+      "packet_sha256": "72b9e05d5c6b0678a366c400f6a5f37338dcfb3bdc3507ce2f8d8f594a1d4bab",
+      "seeded_pending_record": {
+        "item_id": "46073978-b3b2-403b-8448-b205332d8092",
+        "kind": "REMINDER_DRAFT",
+        "owner_id": "USR_HUSBAND",
+        "conversation_id": "60111111111@s.whatsapp.net",
+        "source_message_id": "cr-draft",
+        "media_id": null,
+        "status": "PENDING",
+        "note": "fixture",
+        "accumulated_text": "Remind me to water the plants",
+        "routing_json": null,
+        "created_at_utc": "2026-10-21T08:00:00+00:00",
+        "resolved_at_utc": null,
+        "resolution_message_id": null
+      },
+      "actor_received_at_utc": "2026-10-21T08:00:00+00:00",
+      "runtime_clock_before_capture": "2026-10-21T08:00:00+00:00",
+      "runtime_clock_after_capture": "2026-10-21T08:00:00+00:00",
+      "sqlite_wall_clock_at_seed": "2026-10-21 10:09:22",
+      "provider_parameters": {
+        "model": "offline-fixture",
+        "reasoning_effort": "low",
+        "tool_choice": "auto",
+        "extra_headers": {
+          "x-grok-conv-id": "b8d57f95d719bc424ae2c709b178111e"
+        }
+      },
+      "public_position": 16
+    },
+    {
+      "packet_id": "pkt_129f61b613e3d0f65ea618e4",
+      "revision_label": "candidate",
+      "variation_index": 6,
+      "input_phrase": "Tonight, sometime after eight in the evening",
+      "packet_sha256": "7dde7ab4c9b7e6f60512922da8230947aeec96d84d1480a1a36d9600296bb521",
+      "seeded_pending_record": {
+        "item_id": "3823bbf7-8aca-4091-9b30-f834ce6fa925",
+        "kind": "REMINDER_DRAFT",
+        "owner_id": "USR_HUSBAND",
+        "conversation_id": "60111111111@s.whatsapp.net",
+        "source_message_id": "cr-draft",
+        "media_id": null,
+        "status": "PENDING",
+        "note": "fixture",
+        "accumulated_text": "Remind me to water the plants",
+        "routing_json": null,
+        "created_at_utc": "2026-10-21T08:00:00+00:00",
+        "resolved_at_utc": null,
+        "resolution_message_id": null
+      },
+      "actor_received_at_utc": "2026-10-21T08:00:00+00:00",
+      "runtime_clock_before_capture": "2026-10-21T08:00:00+00:00",
+      "runtime_clock_after_capture": "2026-10-21T08:00:00+00:00",
+      "sqlite_wall_clock_at_seed": "2026-10-21 10:09:22",
+      "provider_parameters": {
+        "model": "offline-fixture",
+        "reasoning_effort": "low",
+        "tool_choice": "auto",
+        "extra_headers": {
+          "x-grok-conv-id": "b8d57f95d719bc424ae2c709b178111e"
+        }
+      },
+      "public_position": 17
+    },
+    {
+      "packet_id": "pkt_4a1d903020265d9b971a5ddd",
+      "revision_label": "candidate",
+      "variation_index": 5,
+      "input_phrase": "Roughly half an hour from the current time please",
+      "packet_sha256": "e30ce15ed66a517e712533494bf50e225c7c7307e4649cd342015db4327ec490",
+      "seeded_pending_record": {
+        "item_id": "d06130ae-fa12-47a0-b3a6-decb531c847a",
+        "kind": "REMINDER_DRAFT",
+        "owner_id": "USR_HUSBAND",
+        "conversation_id": "60111111111@s.whatsapp.net",
+        "source_message_id": "cr-draft",
+        "media_id": null,
+        "status": "PENDING",
+        "note": "fixture",
+        "accumulated_text": "Remind me to water the plants",
+        "routing_json": null,
+        "created_at_utc": "2026-10-21T08:00:00+00:00",
+        "resolved_at_utc": null,
+        "resolution_message_id": null
+      },
+      "actor_received_at_utc": "2026-10-21T08:00:00+00:00",
+      "runtime_clock_before_capture": "2026-10-21T08:00:00+00:00",
+      "runtime_clock_after_capture": "2026-10-21T08:00:00+00:00",
+      "sqlite_wall_clock_at_seed": "2026-10-21 10:09:22",
+      "provider_parameters": {
+        "model": "offline-fixture",
+        "reasoning_effort": "low",
+        "tool_choice": "auto",
+        "extra_headers": {
+          "x-grok-conv-id": "b8d57f95d719bc424ae2c709b178111e"
+        }
+      },
+      "public_position": 18
+    },
+    {
+      "packet_id": "pkt_5c8a42a08c4bb99cfb3dcbee",
+      "revision_label": "baseline",
+      "variation_index": 1,
+      "input_phrase": "Around seven tomorrow evening would work for me",
+      "packet_sha256": "1bd3d5abc5421f565739e54fd5c4642f9a3c7f6f8e89ef7fbcec54dd4b3f4c5a",
+      "seeded_pending_record": {
+        "item_id": "e95696c4-15b9-4f0c-af0f-ca429d2976df",
+        "kind": "REMINDER_DRAFT",
+        "owner_id": "USR_HUSBAND",
+        "conversation_id": "60111111111@s.whatsapp.net",
+        "source_message_id": "cr-draft",
+        "media_id": null,
+        "status": "PENDING",
+        "note": "fixture",
+        "accumulated_text": "Remind me to water the plants",
+        "routing_json": null,
+        "created_at_utc": "2026-10-21T08:00:00+00:00",
+        "resolved_at_utc": null,
+        "resolution_message_id": null
+      },
+      "actor_received_at_utc": "2026-10-21T08:00:00+00:00",
+      "runtime_clock_before_capture": "2026-10-21T08:00:00+00:00",
+      "runtime_clock_after_capture": "2026-10-21T08:00:00+00:00",
+      "sqlite_wall_clock_at_seed": "2026-10-21 10:09:21",
+      "provider_parameters": {
+        "model": "offline-fixture",
+        "reasoning_effort": "low",
+        "tool_choice": "auto",
+        "extra_headers": {
+          "x-grok-conv-id": "b8d57f95d719bc424ae2c709b178111e"
+        }
+      },
+      "public_position": 19
+    },
+    {
+      "packet_id": "pkt_2dcacdd4890c2dfe12094f7a",
+      "revision_label": "candidate",
+      "variation_index": 10,
+      "input_phrase": "Forty minutes later would be alright",
+      "packet_sha256": "ac2bc25962c099ef11ee0573aabdc9072aca8bc64cb140956c27bdef2eb5e3ad",
+      "seeded_pending_record": {
+        "item_id": "a23359a5-848a-4e91-a9cb-d4e575021921",
+        "kind": "REMINDER_DRAFT",
+        "owner_id": "USR_HUSBAND",
+        "conversation_id": "60111111111@s.whatsapp.net",
+        "source_message_id": "cr-draft",
+        "media_id": null,
+        "status": "PENDING",
+        "note": "fixture",
+        "accumulated_text": "Remind me to water the plants",
+        "routing_json": null,
+        "created_at_utc": "2026-10-21T08:00:00+00:00",
+        "resolved_at_utc": null,
+        "resolution_message_id": null
+      },
+      "actor_received_at_utc": "2026-10-21T08:00:00+00:00",
+      "runtime_clock_before_capture": "2026-10-21T08:00:00+00:00",
+      "runtime_clock_after_capture": "2026-10-21T08:00:00+00:00",
+      "sqlite_wall_clock_at_seed": "2026-10-21 10:09:22",
+      "provider_parameters": {
+        "model": "offline-fixture",
+        "reasoning_effort": "low",
+        "tool_choice": "auto",
+        "extra_headers": {
+          "x-grok-conv-id": "b8d57f95d719bc424ae2c709b178111e"
+        }
+      },
+      "public_position": 20
+    }
+  ]
+}

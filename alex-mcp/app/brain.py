@@ -19,12 +19,13 @@ from openai import OpenAI
 
 from config import get_settings
 from context import ActorContext, use_actor, with_action_key
-from db import add_turn, connect, recent_turns, record_usage, current_month_ai_cost
+from db import add_turn, connect, record_usage, current_month_ai_cost
 from mcp_server import mcp
 import chatgpt_plan
 import shadow_router
 import phase2_intent
 import scope_policy
+import conversation_state
 from text_normalization import normalize_intent_text
 
 SYSTEM_PROMPT = """You are Alex, one household assistant.
@@ -488,12 +489,20 @@ def _departure_query(text: str) -> bool:
 
 
 _NEGATED_ACTION_PHRASE_RE = re.compile(
-    r"\b(?:do\s+not|don't|dont|not\s+asking(?:\s+you)?\s+to)\s+"
-    r"(?:actually\s+)?(?:add|create|record|log|save|remember|remove|delete|mark|"
+    r"\b(?:(?:do\s+not|don't|dont)(?:\s+want(?:\s+you)?\s+to)?|not\s+asking(?:\s+you)?\s+to)\s+"
+    r"(?:actually\s+)?(?:add|create|start|record|log|save|remember|remove|delete|mark|"
     r"complete|finish|reopen|cancel|update|change|edit|correct|fix|move|"
     r"reschedule|allocate|channel|lock|activate|defer|turn|switch|set|link|"
     r"share|publish|confirm|approve|forget|rename|snooze|undo|unmark|postpone|drop)\b",
     re.IGNORECASE,
+)
+_NEGATED_ACTION_CLAUSE_RE = re.compile(
+    _NEGATED_ACTION_PHRASE_RE.pattern + r"[^,;.\n]*?(?=[,;.\n]|\bbut\b|\binstead\b|$)",
+    re.IGNORECASE,
+)
+_HYPOTHETICAL_ACTION_RE = re.compile(
+    r"\b(?:hypothetical(?:ly)?|what\s+would|how\s+would|how\s+you'd|"
+    r"without\s+actually|just\s+explain)\b", re.IGNORECASE,
 )
 
 
@@ -506,6 +515,7 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
     when the wording itself is clearly a read/recall request.
     """
     low = normalize_intent_text(text).casefold()
+    low = re.sub(r"\b(do not|don't|dont)\s+want(?:\s+you)?\s+to\s+", r"\1 ", low)
     force: set[str] = set()
     block: set[str] = set()
 
@@ -995,11 +1005,11 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         block |= {"save_item", "remove_saved_item"}
     if re.search(
         r"\b(?:do not|don't|dont|not asking(?: you)? to)\s+(?:actually\s+)?"
-        r"(?:delete|remove|cancel|complete|reschedule|change|update)\b.*"
+        r"(?:create|remind|schedule|delete|remove|cancel|complete|reschedule|change|update)\b.*"
         r"\b(?:reminder|reminders|remnder|remidn|remindn|remidr)\b",
         low,
     ):
-        block |= {"create_reminder", "update_reminder"}
+        block |= {"create_reminder", "update_reminder", "cancel_pending_item"}
         if re.search(r"\b(?:show|list|tell|what)\b", low):
             force.add("list_reminders")
     if re.search(
@@ -1297,6 +1307,8 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
         forced |= {"planning_record_goal_contribution", "planning_goal_progress"}
     selected |= forced
     selected -= blocked
+    if _negated_only_request(text):
+        selected = {name for name in selected if not _is_mutating_tool(name)}
     return _cap_tool_names(selected, text, media_context, required=forced)
 
 
@@ -1358,7 +1370,7 @@ def _semantic_mutation_requested(intent: str) -> bool:
 
 
 _TRUSTED_MUTATION_RE = re.compile(
-    r"\b(?:add|create|record|log|save|remember|remove|delete|mark|complete|finish|"
+    r"\b(?:add|create|start|record|log|save|remember|remove|delete|mark|complete|finish|"
     r"reopen|resolve|cancel|update|change|edit|correct|fix|move|reschedule|allocate|channel|"
     r"lock|activate|defer|turn|switch|set|link|share|publish|confirm|approve|"
     r"forget|rename|snooze|undo|unmark|postpone|drop|"
@@ -1408,14 +1420,9 @@ def _trusted_mutation_requested(text: str) -> bool:
         return False
     if _implicit_emoji_memory_save(value):
         return True
-    if re.search(
-        r"\b(?:hypothetical(?:ly)?|what\s+would|how\s+would|how\s+you'd|"
-        r"without\s+actually|just\s+explain)\b",
-        value,
-        re.IGNORECASE,
-    ):
+    if _HYPOTHETICAL_ACTION_RE.search(value):
         return False
-    probe = _NEGATED_ACTION_PHRASE_RE.sub(" ", value)
+    probe = _NEGATED_ACTION_CLAUSE_RE.sub(" ", value)
     if re.search(r"\b(?:remind|schedule)\b", probe, re.IGNORECASE):
         return True
     if re.search(
@@ -1425,6 +1432,12 @@ def _trusted_mutation_requested(text: str) -> bool:
     ):
         return True
     return bool(_TRUSTED_MUTATION_RE.search(probe))
+
+
+def _negated_only_request(text: str) -> bool:
+    """A denied action cannot gain permission from a previous positive turn."""
+    value = normalize_intent_text(text)
+    return bool(_NEGATED_ACTION_PHRASE_RE.search(value)) and not _trusted_mutation_requested(value)
 
 
 async def _discover_tool_specs(
@@ -1448,7 +1461,10 @@ async def _discover_tool_specs(
         for part in (original_user_text or "", trusted_context_text or "")
         if str(part or "").strip()
     ).strip() or (original_user_text or ""))
-    allow_mutation = _trusted_mutation_requested(trusted_basis)
+    allow_mutation = (
+        _trusted_mutation_requested(trusted_basis)
+        and not _negated_only_request(original_user_text or "")
+    )
 
     # Re-apply the owner-authored block rules from the ORIGINAL trusted text.
     # A model-produced normalized intent must never resurrect a mutation that
@@ -1673,18 +1689,40 @@ def _contextual_tool_hints(user_text: str, prior_user_text: str | None) -> tuple
 
 async def _tool_specs(user_text: str, media_context: list[str] | None = None,
                       quoted_context: dict | None = None,
-                      prior_user_text: str | None = None) -> list[dict]:
+                      prior_user_text: str | None = None,
+                      conversation_context: dict | None = None) -> list[dict]:
     # Casual conversation stays model-only unless a trusted WhatsApp reply
     # carries a persisted object that the user is explicitly continuing.
-    if _pure_chat(user_text, media_context) and not quoted_context:
+    if (_pure_chat(user_text, media_context) and not quoted_context
+            and not conversation_state.has_reference(conversation_context)):
         return []
     wanted = _select_tool_names(user_text, media_context)
+    current_names = set(wanted)
+    current_required, current_blocked = _routing_refinements(
+        user_text, has_media=bool(media_context)
+    )
     contextual_add, contextual_block = _contextual_tool_hints(
         user_text, prior_user_text
     )
     wanted |= contextual_add
     wanted -= contextual_block
-    quoted_required: set[str] = set()
+    quoted_required = conversation_state.required_tools(conversation_context)
+    active = (conversation_context or {}).get("active") or {}
+    fresh_read = bool(current_names) and all(
+        not _is_mutating_tool(name) for name in current_names
+    ) and not _is_contextual_followup(user_text)
+    # A concrete new-domain request keeps priority over an unfinished reminder.
+    # Unclassified time fragments still reach the brain with the draft tools.
+    if (active.get("reference") == "ACTIVE" and current_required
+            and not current_required.intersection(REMINDER_TOOLS)):
+        quoted_required.discard("create_reminder")
+    if _pure_chat(user_text, media_context) and not quoted_context:
+        quoted_required = {name for name in quoted_required if not _is_mutating_tool(name)}
+    if (active.get("kind") == "REMINDER_DRAFT"
+            and re.search(r"\b(?:cancel|drop|forget|abandon)\b", normalize_intent_text(user_text), re.I)
+            and _trusted_mutation_requested(user_text)):
+        quoted_required.add("cancel_pending_item")
+    wanted |= quoted_required
     if quoted_context:
         carried_intent = (
             quoted_context.get("quoted_user_text")
@@ -1709,7 +1747,7 @@ async def _tool_specs(user_text: str, media_context: list[str] | None = None,
             # is only "Tomorrow at 9 AM". Keep the create tool through the
             # exposure cap instead of degrading into a false capability denial.
             quoted_required |= {
-                "create_reminder", "list_reminders", "cancel_pending_item"
+                "create_reminder", "list_reminders"
             }
             wanted |= quoted_required
     if _money_only_reply(user_text):
@@ -1718,11 +1756,29 @@ async def _tool_specs(user_text: str, media_context: list[str] | None = None,
         # paths available. The model still has to recover the description from
         # trusted quote/history and must not invent one.
         wanted |= {"list_pending_expenses", "confirm_expense", "log_expense", "query_finances"}
+    if conversation_context is not None and (
+        fresh_read or (current_required and not current_required.intersection(REMINDER_TOOLS))
+    ):
+        # Quoting an old draft can accompany an explicitly different request.
+        # Keep the current domain's mutators; the quote supplies context only.
+        wanted = {name for name in wanted if name in current_names or not _is_mutating_tool(name)}
+        quoted_required &= wanted
+        contextual_add &= wanted
+    # Current words remain authoritative after every context expansion.
+    # Context must not resurrect an explicitly blocked mutation.
+    blocked = contextual_block | current_blocked
+    wanted -= blocked
+    contextual_add -= blocked
+    quoted_required -= blocked
+    if _negated_only_request(user_text):
+        wanted = {name for name in wanted if not _is_mutating_tool(name)}
+        quoted_required &= wanted
+        contextual_add &= wanted
     if not wanted and not _casual_chat(user_text):
         wanted = set(CORE_READ_FALLBACK)
     wanted = _cap_tool_names(
         wanted, user_text, media_context,
-        required=contextual_add | quoted_required,
+        required=current_required | contextual_add | quoted_required,
     )
     specs = await _tool_specs_for_names(wanted)
     # The discovery tool is a tiny safety valve for typo-heavy, incomplete,
@@ -2234,11 +2290,12 @@ def _runtime_context(actor: ActorContext, user_text: str = "") -> str:
     )
 
 
-def _history_turn_limit(user_text: str, configured: int, quoted_context: dict | None = None) -> int:
+def _history_turn_limit(user_text: str, configured: int, quoted_context: dict | None = None,
+                        conversation_context: dict | None = None) -> int:
     """Use history only for genuine conversational continuation, not every request."""
     text = (user_text or "").strip()
     low = text.casefold()
-    if quoted_context:
+    if quoted_context or conversation_state.has_reference(conversation_context):
         return min(max(2, int(configured)), 4)
     if not text:
         return 0
@@ -2253,7 +2310,10 @@ def _history_turn_limit(user_text: str, configured: int, quoted_context: dict | 
         low,
     )):
         return min(max(2, int(configured)), 6)
-    return 0
+    # In the contextual path retain one bounded same-sender exchange even when
+    # a natural continuation does not contain one of the legacy cue words.
+    # This is local state assembly, not an additional classifier/model call.
+    return min(max(2, int(configured)), 2) if conversation_context is not None else 0
 
 
 def _quoted_context_message(quoted_context: dict | None) -> str | None:
@@ -2916,6 +2976,9 @@ def _remember_trace(actor: ActorContext, trace: dict) -> None:
         "routes": list(trace.get("routes") or []),
         "keyword_tools": list(trace.get("keyword_tools") or []),
         "ai_route": dict(trace["ai_route"]) if trace.get("ai_route") else None,
+        "conversation_state": shadow_router._clean_conversation_context(
+            trace.get("conversation_state")
+        ),
     }
     with _RECENT_TRACES_LOCK:
         _RECENT_TRACES[key] = snapshot
@@ -2927,7 +2990,15 @@ def _remember_trace(actor: ActorContext, trace: dict) -> None:
 def recent_trace(source_message_id: str | None) -> dict | None:
     with _RECENT_TRACES_LOCK:
         found = _RECENT_TRACES.get(str(source_message_id or ""))
-        return dict(found) if found else None
+        if not found:
+            return None
+        result = dict(found)
+        # Consumers may inspect the pre-action reference, but must not mutate
+        # the retained snapshot used by ingress and the shadow comparison.
+        result["conversation_state"] = shadow_router._clean_conversation_context(
+            found.get("conversation_state")
+        )
+        return result
 
 
 def _trace_turn(actor: ActorContext, trace: dict) -> None:
@@ -3681,7 +3752,9 @@ AI_ROUTE_MERGED_MAX = TOOL_EXPOSURE_MAX + 2
 
 async def _apply_ai_route(trace: dict, tools: list[dict], user_text: str,
                           quoted_context: dict | None, prior_turns: list,
-                          prior_user_text: str | None) -> list[dict]:
+                          prior_user_text: str | None, *,
+                          conversation_context: dict | None = None,
+                          trusted_context_text: str = "") -> list[dict]:
     """v0.5.34 AI tool routing (ai_routing=on). Never raises.
 
     The plan model picks tools from the full catalogue; its picks are shown to
@@ -3704,13 +3777,24 @@ async def _apply_ai_route(trace: dict, tools: list[dict], user_text: str,
             [{"role": str(t["role"]), "text": str(t["content"] or "")}
              for t in prior_turns],
             quoted_text,
+            conversation_context=conversation_context,
         )
         if not choice:
             return tools
         trace["ai_route"] = dict(choice)
         _, block = _contextual_tool_hints(user_text, prior_user_text)
         block = set(block) | set(_routing_refinements(user_text)[1])
-        allow_writes = _trusted_mutation_requested(user_text)
+        trusted_basis = user_text
+        active = (conversation_context or {}).get("active") or {}
+        if active.get("kind") == "REMINDER_DRAFT" and trusted_context_text:
+            # Ingress has already grounded this continuation to one owner's
+            # persisted draft. Reuse its original user-authored request; an
+            # AI-written paraphrase or an arbitrary previous turn cannot grant it.
+            trusted_basis = user_text + "\n" + trusted_context_text
+        allow_writes = (
+            _trusted_mutation_requested(trusted_basis)
+            and not _negated_only_request(user_text)
+        )
         proposed_names = [
             n for n in choice.get("tools") or []
             if n != DISCOVERY_TOOL_NAME
@@ -3734,14 +3818,33 @@ async def _apply_ai_route(trace: dict, tools: list[dict], user_text: str,
         ai_specs = await _tool_specs_for_names(set(names))
         order = {n: i for i, n in enumerate(names)}
         ai_specs.sort(key=lambda s: order.get(s["function"]["name"], 99))
-        merged = list(ai_specs)
+        # Reserve every original schema before admitting additional AI picks.
+        # The old concatenation admitted six new picks then truncated the
+        # originals at eight, silently dropping tools/dependencies already needed.
+        original_names = {s["function"]["name"] for s in tools}
+        extra_slots = max(0, AI_ROUTE_MERGED_MAX - len(original_names))
+        merged = []
+        dropped = []
+        for spec in ai_specs:
+            name = spec["function"]["name"]
+            if name in original_names:
+                merged.append(spec)
+            elif extra_slots:
+                merged.append(spec)
+                extra_slots -= 1
+            else:
+                dropped.append(name)
         have = {s["function"]["name"] for s in merged}
         for spec in tools:
             name = spec["function"]["name"]
-            if name in have or len(merged) >= AI_ROUTE_MERGED_MAX:
+            if name in have:
                 continue
             merged.append(spec)
             have.add(name)
+        if dropped:
+            trace["ai_route"]["capacity_filtered"] = dropped
+            trace["ai_route"]["applied"] = [n for n in names if n not in dropped]
+            trace["ai_route"].pop("semantic_hint", None)
         return merged
     except Exception:
         return tools
@@ -3752,7 +3855,8 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                   vision_parts: list[dict] | None = None,
                   quoted_context: dict | None = None,
                   semantic_user_text: str | None = None) -> tuple[str, list[dict]]:
-    if get_settings().ai_provider == "dot":
+    settings = get_settings()
+    if settings.ai_provider == "dot":
         # Defensive backstop: all dot turns must enter through authenticated
         # ingress, not this legacy provider/semantic path.
         return "Dot requests must use the authenticated dot bridge; no action was taken.", []
@@ -3787,6 +3891,27 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
         "quoted_context": quoted_context,
         "routes": [], "tools_called": [], "attachments_queued": 0,
     }
+    prior_turns = conversation_state.recent_turns(
+        actor, max(6, settings.context_turns)
+    )
+    state = shadow_router._clean_conversation_context(conversation_state.build(
+        actor, user_text, quoted_context=quoted_context, prior_turns=prior_turns,
+    ))
+    invalid_pending_quote = bool(
+        (quoted_context or {}).get("context_kind") == "PENDING_ITEM"
+        and not state.get("active")
+    )
+    if invalid_pending_quote:
+        # A reply to a closed/foreign draft cannot inherit write intent from
+        # that draft or nearby history. A new explicit current request remains
+        # routable normally, and the old quoted question remains readable data.
+        quoted_context = {
+            key: value for key, value in quoted_context.items()
+            if key not in {"pending_item", "quoted_user_text", "recent_user_instruction"}
+        }
+    # Freeze once before any action. The brain, live router and shadow review
+    # see the same owner/chat-bound state, never a later mutated "latest" item.
+    trace["conversation_state"] = state
 
     # A deterministic no-write gate handles the small class of phrases that
     # are genuinely ambiguous across household domains.
@@ -3798,7 +3923,8 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
         preflight.get("status") == "compound"
         or _looks_compound_request(action_basis or user_text)
     )
-    if preflight.get("requires_clarification"):
+    if (preflight.get("requires_clarification")
+            and not conversation_state.has_reference(state)):
         question = str(preflight.get("question") or "What would you like me to do with that?")
         add_turn(actor.user_id, actor.conversation_id, "user", history_user)
         add_turn(actor.user_id, actor.conversation_id, "assistant", question)
@@ -3809,7 +3935,8 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
     # Tiny social/health-check messages do not need any paid model at all.
     if not media_context and not vision_parts and not quoted_context:
         local_reply = _local_chat_reply(user_text)
-        if local_reply is not None:
+        if (local_reply is not None
+                and (not state.get("active") or local_reply != "👍")):
             add_turn(actor.user_id, actor.conversation_id, "user", history_user)
             add_turn(actor.user_id, actor.conversation_id, "assistant", local_reply)
             trace["outcome"] = "local_reply"
@@ -3832,8 +3959,6 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
         _trace_turn(actor, trace)
         return final, []
 
-    settings = get_settings()
-    prior_turns = recent_turns(actor.conversation_id, 6)
     prior_user_text = next(
         (
             str(turn["content"])
@@ -3842,9 +3967,12 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
         ),
         None,
     )
+    if invalid_pending_quote:
+        prior_user_text = None
     tools = await _tool_specs(
         user_text, media_context, quoted_context,
         prior_user_text=prior_user_text,
+        conversation_context=state,
     )
     trace["keyword_tools"] = [x["function"]["name"] for x in tools]
     if (
@@ -3853,10 +3981,15 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
         and not vision_parts
         and str(getattr(actor, "source", "text") or "text") == "text"
         and shadow_router.live_enabled(settings)
+        and not (semantic_matches_actor and (state.get("active") or {}).get("kind") == "REMINDER_DRAFT")
     ):
         tools = await _apply_ai_route(
-            trace, tools, user_text, quoted_context, prior_turns, prior_user_text
+            trace, tools, user_text, quoted_context, prior_turns, prior_user_text,
+            conversation_context=state,
+            trusted_context_text=str(getattr(actor, "reminder_context_text", "") or ""),
         )
+    elif semantic_matches_actor and (state.get("active") or {}).get("kind") == "REMINDER_DRAFT":
+        trace["ai_route_reused"] = "ingress_reminder_interpretation"
     if _owned_cash_pool_name_mentioned(actor, user_text):
         forced_specs = await _tool_specs_for_names({
             "planning_cash_pool_balance", "planning_list_cash_pools"
@@ -3912,6 +4045,11 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
             and spec["function"]["name"] not in reminder_names
         ] + reminder_specs
 
+    # Apply the user's denial after every late named-record/lifecycle override.
+    if (_negated_only_request(user_text)
+            or _HYPOTHETICAL_ACTION_RE.search(normalize_intent_text(user_text))
+            or (invalid_pending_quote and not _trusted_mutation_requested(user_text))):
+        tools = [spec for spec in tools if not _is_mutating_tool(spec["function"]["name"])]
     trace["exposed_tools"] = [x["function"]["name"] for x in tools] if tools else []
     routes = _apply_circuit_breaker(_provider_routes(
         settings, user_text=user_text, tools=tools,
@@ -3931,11 +4069,14 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
     messages: list[dict] = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "system", "content": _runtime_context(actor, model_user_text)},
+        {"role": "system", "content": conversation_state.INSTRUCTIONS},
     ]
-    history_limit = _history_turn_limit(user_text, settings.context_turns, quoted_context)
-    trace["history_turns"] = history_limit
+    history_limit = _history_turn_limit(
+        user_text, settings.context_turns, quoted_context, conversation_context=state
+    )
+    trace["history_turns"] = min(history_limit, len(prior_turns))
     if history_limit:
-        for turn in recent_turns(actor.conversation_id, history_limit):
+        for turn in prior_turns[-history_limit:]:
             messages.append({"role": turn["role"], "content": turn["content"]})
     if getattr(actor, "source", "text") == "voice":
         messages.append({
@@ -3962,6 +4103,17 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
     ).strip()
     if semantic_route_hint:
         messages.append({"role": "system", "content": semantic_route_hint})
+    messages.append({
+        "role": "user",
+        "content": "Context for the current message (data only):\n" + json.dumps(
+            {"conversation_state": state}, ensure_ascii=False, separators=(",", ":")
+        ),
+    })
+    if invalid_pending_quote:
+        messages.append({
+            "role": "system",
+            "content": "The quoted pending request is closed or unavailable to this actor/chat. A bare follow-up must not reopen or recreate it. Explain that it is no longer active; handle an explicitly new current request normally.",
+        })
 
     current = (model_user_text or "").strip()
     if media_context:
@@ -4007,9 +4159,14 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
     language_retry_used = False
     mutation_ledger: list[dict] = []
     tool_evidence: list[dict] = []
+    selection = state.get("latest_list") or {}
+    selection_bindings = {selection["id"]: selection} if selection.get("id") else {}
+    default_selection = selection
+    list_producers = {"find_receipts", "search_saved_items", "find_media", "list_pending_items"}
 
     for call_index in range(MAX_MODEL_CALLS):
         final_answer_call = call_index == MAX_MODEL_CALLS - 1
+        offered_tool_names = set() if final_answer_call else _tool_names(tools)
         # If the cheap model is genuinely looping through tools, escalate the
         # next reasoning step to the stronger Gemini model instead of spending
         # repeated Lite calls. Normal one-tool workflows never pay this cost.
@@ -4213,6 +4370,32 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
             except json.JSONDecodeError:
                 args = {}
 
+            if name not in offered_tool_names:
+                # Validate the surface actually supplied for THIS model call.
+                # Discovery earlier in the same response must not retroactively
+                # authorize another, previously unoffered action.
+                trace["tools_called"].append(name + ":not_offered")
+                messages.append({
+                    "role": "tool", "tool_call_id": call.id,
+                    "content": json.dumps({
+                        "status": "tool_not_available",
+                        "message": "This tool was not offered for this step; no action was taken. Use an offered tool or ask for the missing detail.",
+                    }, separators=(",", ":")),
+                })
+                continue
+
+            if (name == "resolve_numbered_choice" and not default_selection.get("id")
+                    and (quoted_context or {}).get("context_kind") == "SELECTION_SET"):
+                question = "That quoted list is expired or unavailable. Please ask me to show the list again."
+                payload = {"status": "needs_clarification", "clarification_question": question}
+                trace["tools_called"].append(name + ":clarification")
+                tool_evidence.append({**payload, "_tool_name": name})
+                messages.append({
+                    "role": "tool", "tool_call_id": call.id,
+                    "content": json.dumps(payload, separators=(",", ":")),
+                })
+                continue
+
             if name == DISCOVERY_TOOL_NAME:
                 trace["tools_called"].append(name)
                 normalized = str(args.get("intent") or "").strip()
@@ -4250,11 +4433,19 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                 })
                 continue
 
-            if name in {"resolve_pending_item", "cancel_pending_item"} and quoted_context:
-                pending_ref = quoted_context.get("pending_item")
-                if isinstance(pending_ref, dict) and pending_ref.get("item_id"):
-                    args["item_id"] = str(pending_ref["item_id"])
+            active = state.get("active") or {}
+            if name in {"resolve_pending_item", "cancel_pending_item"} and active.get("id"):
+                if active.get("kind") != "FINANCIAL_EVENT":
+                    args["item_id"] = active["id"]
                     args.pop("choice", None)
+
+            if name == "resolve_numbered_choice" and default_selection.get("id"):
+                # Only the initial bound list or a list actually produced in
+                # this turn can override the reference. Unrelated reads/errors
+                # and a second choice do not discard an explicit older quote.
+                bound = selection_bindings.get(str(args.get("selection_id") or ""), default_selection)
+                args["selection_id"] = bound["id"]
+                args["selection_kind"] = bound["kind"]
 
             if name == "report_export" and quoted_context:
                 quoted_report = quoted_context.get("report_context")
@@ -4288,7 +4479,18 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
             action_key = _action_key(actor, name, args, occurrence[signature])
 
             try:
+                before_list = conversation_state.latest_selection(actor) if name in list_producers else None
                 result, files = await _call_mcp(actor, name, args, action_key)
+                if name in list_producers:
+                    after_list = conversation_state.latest_selection(actor)
+                    if (after_list and after_list.get("id") != (before_list or {}).get("id")):
+                        selection_bindings[after_list["id"]] = after_list
+                        if not (state.get("quoted") or {}).get("id"):
+                            default_selection = after_list
+                        if isinstance(result, dict):
+                            result = {**result, "selection_binding": {
+                                "id": after_list["id"], "kind": after_list["kind"],
+                            }}
                 new_files = []
                 for item in files or []:
                     path = item.get("path") if isinstance(item, dict) else None
@@ -4328,7 +4530,11 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                         "already_queued_earlier": len(files) - len(new_files),
                         "note": "Alex sends these original files with your reply automatically.",
                     }
-                trace["tools_called"].append(name)
+                trace["tools_called"].append(
+                    name + ":clarification"
+                    if name == "create_reminder" and payload.get("status") == "needs_clarification"
+                    else name
+                )
                 if _is_mutating_tool(name):
                     committed, reason = _mutation_result_committed(
                         name, payload,

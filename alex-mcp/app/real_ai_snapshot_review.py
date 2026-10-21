@@ -81,15 +81,17 @@ def _decisions_from_snapshot(
             delta.get("newly_added") or 0
         ):
             raise ValueError("v3 real-AI delta provenance count is inconsistent")
+        carried_label = "parent_snapshot_unchanged" if version >= 4 else "parent_independent_model"
+        delta_label = "delta_independent_model" if version >= 4 else "delta_engineering_review"
         carried = sum(
             1 for row in by_id.values()
             if isinstance(row, dict)
-            and row.get("provenance") == "parent_independent_model"
+            and row.get("provenance") == carried_label
         )
         refreshed = sum(
             1 for row in by_id.values()
             if isinstance(row, dict)
-            and row.get("provenance") == "delta_engineering_review"
+            and row.get("provenance") == delta_label
         )
         if carried != int(parent.get("carried_forward_unchanged") or -1):
             raise ValueError("v3 carried-forward provenance count is inconsistent")
@@ -97,6 +99,14 @@ def _decisions_from_snapshot(
             raise ValueError("v3 delta-review provenance count is inconsistent")
         if not reviewed_delta <= expected_ids:
             raise ValueError("v3 delta-review contains unknown packet ids")
+        if version >= 4:
+            if carried + refreshed != len(expected_ids):
+                raise ValueError("v4 every decision needs explicit review provenance")
+            for pid, row in by_id.items():
+                if ((pid in reviewed_delta) != (row.get("provenance") == delta_label)):
+                    raise ValueError("v4 delta provenance does not match reviewed packet ids")
+                if row.get("provenance") == carried_label and not row.get("parent_provenance"):
+                    raise ValueError("v4 carried decision is missing its original provenance")
 
         for packet in packets:
             pid = str(packet["packet_id"])
@@ -164,6 +174,23 @@ async def run(snapshot_path: Path) -> dict[str, Any]:
             "The score does not prove unseen wording or real WhatsApp/audio transport."
         ),
     }
+    if int(snapshot.get("snapshot_version") or 0) >= 4:
+        report["external_model_review"] = {
+            "reviewer": snapshot.get("reviewer"),
+            "review_date": snapshot.get("review_date"),
+            "method": snapshot.get("method"),
+            "snapshot_version": snapshot.get("snapshot_version"),
+            "static_snapshot_not_live_api": True,
+            "fresh_full_independent_pass": False,
+            "parent_snapshot_unchanged_packets": parent.get("carried_forward_unchanged"),
+            "fresh_independent_delta_packets": len(delta.get("reviewed_packet_ids") or []),
+            "note": (
+                "Only changed public packets received a fresh blind model review. "
+                "Unchanged decisions retain the parent snapshot's mixed provenance, "
+                "stored per decision. This scores capability selection, not exact "
+                "arguments, durable effects, unseen language or live provider latency."
+            ),
+        }
     return report
 
 

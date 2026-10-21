@@ -1,0 +1,259 @@
+{
+  "evaluation_kind": "not_executed",
+  "provenance": {},
+  "fresh_model_accuracy_established_by_this_tool": false,
+  "summary": {
+    "total_turns": 48,
+    "not_executed": 48,
+    "review_required": 0,
+    "failed": 0,
+    "reviewed_pass": 0
+  },
+  "turns": [
+    {
+      "scenario_id": "hr_4cb88fd29b",
+      "turn": 1,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_4cb88fd29b",
+      "turn": 2,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_afbf609070",
+      "turn": 1,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_afbf609070",
+      "turn": 2,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_53fdffab1e",
+      "turn": 1,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_53fdffab1e",
+      "turn": 2,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_2f8137435d",
+      "turn": 1,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_2f8137435d",
+      "turn": 2,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_6d2b622447",
+      "turn": 1,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_6d2b622447",
+      "turn": 2,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_922b8f881b",
+      "turn": 1,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_922b8f881b",
+      "turn": 2,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_8917b62d6e",
+      "turn": 1,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_8917b62d6e",
+      "turn": 2,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_16ca74f9b8",
+      "turn": 1,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_16ca74f9b8",
+      "turn": 2,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_0681afcbca",
+      "turn": 1,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_0681afcbca",
+      "turn": 2,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_47ffaf749c",
+      "turn": 1,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_47ffaf749c",
+      "turn": 2,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_cd960a96c8",
+      "turn": 1,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_cd960a96c8",
+      "turn": 2,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_1f698ff2be",
+      "turn": 1,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_1f698ff2be",
+      "turn": 2,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_8a67b37365",
+      "turn": 1,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_8a67b37365",
+      "turn": 2,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_e0f9d5d495",
+      "turn": 1,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_e0f9d5d495",
+      "turn": 2,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_1131fc87ea",
+      "turn": 1,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_1131fc87ea",
+      "turn": 2,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_8816f16504",
+      "turn": 1,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_8816f16504",
+      "turn": 2,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_07ab4e95bf",
+      "turn": 1,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_07ab4e95bf",
+      "turn": 2,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_60de6832bc",
+      "turn": 1,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_60de6832bc",
+      "turn": 2,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_4110b1f7a2",
+      "turn": 1,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_4110b1f7a2",
+      "turn": 2,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_c00ebc514a",
+      "turn": 1,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_c00ebc514a",
+      "turn": 2,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_63df189592",
+      "turn": 1,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_63df189592",
+      "turn": 2,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_3cc6ee3c36",
+      "turn": 1,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_3cc6ee3c36",
+      "turn": 2,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_8ef9473260",
+      "turn": 1,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_8ef9473260",
+      "turn": 2,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_55fe661c56",
+      "turn": 1,
+      "status": "not_executed"
+    },
+    {
+      "scenario_id": "hr_55fe661c56",
+      "turn": 2,
+      "status": "not_executed"
+    }
+  ],
+  "limitations": [
+    "This command compares supplied observations; it neither calls a provider nor verifies their provenance.",
+    "Actual backend changes, unchanged records, forbidden actions and reply semantics need independent review.",
+    "Interpretation-only packet review is separate from Alex integration and end-to-end execution."
+  ]
+}

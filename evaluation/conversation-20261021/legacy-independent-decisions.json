@@ -1,0 +1,533 @@
+[
+  {
+    "packet_id": "hai-2e024a0333594b5c24",
+    "decision": "clarify",
+    "tools": [],
+    "reply_language": "en",
+    "rationale": "The packet supplies no receipt contents or explicit MYR/SGD currency, so expense logging needs clarification."
+  },
+  {
+    "packet_id": "hai-2c50b93718fb4e3ad4",
+    "decision": "clarify",
+    "tools": [],
+    "reply_language": "en",
+    "rationale": "The payment receipt is not visible and its currency is not explicitly known, which blocks the offered logging tool."
+  },
+  {
+    "packet_id": "hai-de6782d2f5a42eda80",
+    "decision": "clarify",
+    "tools": [],
+    "reply_language": "en",
+    "rationale": "No PDF contents or explicit supported currency are present, so the receipt details must be supplied before logging."
+  },
+  {
+    "packet_id": "hai-a2ba9a16fcc6b2394d",
+    "decision": "tools",
+    "tools": [
+      "save_item"
+    ],
+    "reply_language": "en",
+    "rationale": "The user explicitly asks to save the current picture under a supplied title."
+  },
+  {
+    "packet_id": "hai-519d8088711a7a02c0",
+    "decision": "tools",
+    "tools": [
+      "save_item"
+    ],
+    "reply_language": "en",
+    "rationale": "Remembering the current image under its given name requires explicit saved-item creation."
+  },
+  {
+    "packet_id": "hai-afdcc56d9769d6c05f",
+    "decision": "tools",
+    "tools": [
+      "list_reminders",
+      "search_saved_items"
+    ],
+    "reply_language": "en",
+    "rationale": "This open-ended recall request can cover upcoming reminders and saved notes, so read both without creating anything."
+  },
+  {
+    "packet_id": "hai-8537f11b2cc3e51f79",
+    "decision": "tools",
+    "tools": [
+      "list_reminders",
+      "search_saved_items"
+    ],
+    "reply_language": "en",
+    "rationale": "This open-ended spoken recall request can cover upcoming reminders and saved notes, so read both."
+  },
+  {
+    "packet_id": "hai-7d9224e88eb777ee9b",
+    "decision": "tools",
+    "tools": [
+      "search_saved_items"
+    ],
+    "reply_language": "en",
+    "rationale": "Browse the items the user explicitly asked Alex to save."
+  },
+  {
+    "packet_id": "hai-7515e2de2adc37d1d9",
+    "decision": "tools",
+    "tools": [
+      "search_saved_items"
+    ],
+    "reply_language": "en",
+    "rationale": "The user requests a list of explicitly remembered items."
+  },
+  {
+    "packet_id": "hai-ade8bd1e666be5c89a",
+    "decision": "tools",
+    "tools": [
+      "search_saved_items"
+    ],
+    "reply_language": "en",
+    "rationale": "Browse saved items because no particular original or item identifier is requested."
+  },
+  {
+    "packet_id": "hai-65ebbaccfa693ba1e9",
+    "decision": "tools",
+    "tools": [
+      "search_saved_items"
+    ],
+    "reply_language": "en",
+    "rationale": "The spoken request asks to browse explicitly saved memories."
+  },
+  {
+    "packet_id": "hai-5c967f0578f52b606d",
+    "decision": "tools",
+    "tools": [
+      "search_saved_items"
+    ],
+    "reply_language": "en",
+    "rationale": "The spoken request asks for the things the user told Alex to remember."
+  },
+  {
+    "packet_id": "hai-7726067e8951a01760",
+    "decision": "tools",
+    "tools": [
+      "search_saved_items"
+    ],
+    "reply_language": "en",
+    "rationale": "The user asks what has been saved, which requires a saved-item listing."
+  },
+  {
+    "packet_id": "hai-83495dce29ef1ab112",
+    "decision": "tools",
+    "tools": [
+      "search_saved_items",
+      "get_saved_item"
+    ],
+    "reply_language": "en",
+    "rationale": "Find the saved vinyl picture and retrieve its original once the matching item is identified."
+  },
+  {
+    "packet_id": "hai-d221c01b25630182a0",
+    "decision": "tools",
+    "tools": [
+      "search_saved_items",
+      "get_saved_item"
+    ],
+    "reply_language": "en",
+    "rationale": "Search for the saved turntable picture and retrieve the matching original."
+  },
+  {
+    "packet_id": "hai-389519a2bb9eaec13d",
+    "decision": "tools",
+    "tools": [
+      "find_media"
+    ],
+    "reply_language": "en",
+    "rationale": "Browse preserved voice-note media rather than unresolved pending items."
+  },
+  {
+    "packet_id": "hai-d1d4dca51abce2a4f6",
+    "decision": "tools",
+    "tools": [
+      "find_media"
+    ],
+    "reply_language": "en",
+    "rationale": "List the original voice notes the user has sent."
+  },
+  {
+    "packet_id": "hai-0f02d502d674ce54b6",
+    "decision": "tools",
+    "tools": [
+      "find_media"
+    ],
+    "reply_language": "en",
+    "rationale": "Search preserved audio notes without assuming they are unresolved."
+  },
+  {
+    "packet_id": "hai-fc28b3129c3a18f70b",
+    "decision": "tools",
+    "tools": [
+      "find_media"
+    ],
+    "reply_language": "en",
+    "rationale": "The request asks for an inventory of original recordings."
+  },
+  {
+    "packet_id": "hai-49b2c5c26787c1867d",
+    "decision": "tools",
+    "tools": [
+      "find_media",
+      "get_media_original"
+    ],
+    "reply_language": "en",
+    "rationale": "Find candidate voice notes first and retrieve only a recording that the results identify unambiguously."
+  },
+  {
+    "packet_id": "hai-30874a621970b535d5",
+    "decision": "tools",
+    "tools": [
+      "find_media",
+      "get_media_original"
+    ],
+    "reply_language": "en",
+    "rationale": "Discover the original audio reference first; ambiguous matches would require a selection before retrieval."
+  },
+  {
+    "packet_id": "hai-9cd32304be0dbf6ea0",
+    "decision": "tools",
+    "tools": [
+      "find_media",
+      "get_media_original"
+    ],
+    "reply_language": "en",
+    "rationale": "Search preserved recordings first because the public history does not identify which recording that refers to."
+  },
+  {
+    "packet_id": "hai-d196cfb9c08df22c35",
+    "decision": "tools",
+    "tools": [
+      "list_pending_items"
+    ],
+    "reply_language": "en",
+    "rationale": "List unresolved items of kind VOICE rather than all preserved recordings."
+  },
+  {
+    "packet_id": "hai-939ce142fb3f6ce4e9",
+    "decision": "tools",
+    "tools": [
+      "list_pending_items"
+    ],
+    "reply_language": "en",
+    "rationale": "The user asks specifically for voice notes still pending."
+  },
+  {
+    "packet_id": "hai-7ac664ae61c874046e",
+    "decision": "tools",
+    "tools": [
+      "list_pending_items"
+    ],
+    "reply_language": "en",
+    "rationale": "Audio awaiting clarification belongs to the unresolved pending-item list."
+  },
+  {
+    "packet_id": "hai-b1ace0d6a124a644aa",
+    "decision": "tools",
+    "tools": [
+      "resolve_numbered_choice",
+      "discover_alex_tools"
+    ],
+    "reply_language": "en",
+    "rationale": "Resolve the numbered audio choice first, then discover original-audio retrieval because no retrieval tool is currently offered."
+  },
+  {
+    "packet_id": "hai-dd9f40a6bdf7a22730",
+    "decision": "tools",
+    "tools": [
+      "resolve_numbered_choice",
+      "discover_alex_tools"
+    ],
+    "reply_language": "en",
+    "rationale": "Resolve choice 1 and load the missing audio-retrieval capability rather than inventing a media identifier."
+  },
+  {
+    "packet_id": "hai-09a7e7847c4317acd1",
+    "decision": "tools",
+    "tools": [
+      "resolve_numbered_choice",
+      "get_media_original"
+    ],
+    "reply_language": "en",
+    "rationale": "Resolve the numbered pending voice-note selection to its original media reference before retrieving the audio."
+  },
+  {
+    "packet_id": "hai-da3e878b595310e8bc",
+    "decision": "tools",
+    "tools": [
+      "save_item"
+    ],
+    "reply_language": "en",
+    "rationale": "The user explicitly asks Alex to remember the supplied locker code word."
+  },
+  {
+    "packet_id": "hai-a39bb6bfbb0b569712",
+    "decision": "tools",
+    "tools": [
+      "save_item"
+    ],
+    "reply_language": "en",
+    "rationale": "Save the explicitly supplied locker code-word note."
+  },
+  {
+    "packet_id": "hai-71593f0f59499bb387",
+    "decision": "tools",
+    "tools": [
+      "search_saved_items",
+      "remove_saved_item"
+    ],
+    "reply_language": "en",
+    "rationale": "Find the saved cobalt note and soft-remove it only after an unambiguous accessible item is identified."
+  },
+  {
+    "packet_id": "hai-e4915630ac4988373d",
+    "decision": "tools",
+    "tools": [
+      "search_saved_items",
+      "remove_saved_item"
+    ],
+    "reply_language": "en",
+    "rationale": "Search for the remembered code-word note before removing its exact saved-item record."
+  },
+  {
+    "packet_id": "hai-cf193d7a96a50ceab6",
+    "decision": "tools",
+    "tools": [
+      "asset_list"
+    ],
+    "reply_language": "en",
+    "rationale": "The requested inventory concerns appliance and asset records."
+  },
+  {
+    "packet_id": "hai-063bdd60109e54165c",
+    "decision": "tools",
+    "tools": [
+      "warranty_expiring"
+    ],
+    "reply_language": "en",
+    "rationale": "The warranty tool explicitly defines a 90-day default for this vague upcoming-warranty request."
+  },
+  {
+    "packet_id": "hai-e9184355da62603e46",
+    "decision": "tools",
+    "tools": [
+      "search_saved_items"
+    ],
+    "reply_language": "en",
+    "rationale": "Search the requesting user's saved items while respecting the group context when reporting results."
+  },
+  {
+    "packet_id": "hai-00c5b18f9a9e4645a3",
+    "decision": "tools",
+    "tools": [
+      "search_saved_items"
+    ],
+    "reply_language": "en",
+    "rationale": "Browse saved items for the requesting user without assuming private contents are appropriate for group disclosure."
+  },
+  {
+    "packet_id": "hai-4eb1a64365afe1b7da",
+    "decision": "tools",
+    "tools": [
+      "search_saved_items"
+    ],
+    "reply_language": "en",
+    "rationale": "Check the requesting wife's accessible saved memories without presuming access to someone else's private records."
+  },
+  {
+    "packet_id": "hai-8f35203c5b9aed3f7c",
+    "decision": "tools",
+    "tools": [
+      "search_saved_items"
+    ],
+    "reply_language": "en",
+    "rationale": "Browse the saved memories available to the authenticated requesting user."
+  },
+  {
+    "packet_id": "hai-39a569a760a9628211",
+    "decision": "tools",
+    "tools": [
+      "search_saved_items",
+      "remove_saved_item"
+    ],
+    "reply_language": "en",
+    "rationale": "Find the wife's accessible cobalt note and remove it only if an authorized, unambiguous match exists."
+  },
+  {
+    "packet_id": "hai-49133f866c9d2cf56a",
+    "decision": "clarify",
+    "tools": [],
+    "reply_language": "en",
+    "rationale": "A bare number could select a list item or a diary-conflict option, and no public history distinguishes them."
+  },
+  {
+    "packet_id": "hai-ee3b36aadc83c94440",
+    "decision": "clarify",
+    "tools": [],
+    "reply_language": "en",
+    "rationale": "No visible list or diary-conflict context establishes what option 2 would select."
+  },
+  {
+    "packet_id": "hai-995590989559eb0d09",
+    "decision": "clarify",
+    "tools": [],
+    "reply_language": "en",
+    "rationale": "The packet offers multiple numbered-selection interpretations without context establishing the intended one."
+  },
+  {
+    "packet_id": "hai-fac028c71f3ff2ae28",
+    "decision": "tools",
+    "tools": [
+      "asset_create"
+    ],
+    "reply_language": "en",
+    "rationale": "Create an asset using the supplied water-dispenser name without inventing optional metadata."
+  },
+  {
+    "packet_id": "hai-8ddb2877492ef20117",
+    "decision": "tools",
+    "tools": [
+      "asset_create"
+    ],
+    "reply_language": "en",
+    "rationale": "The user explicitly asks to add a water dispenser to appliance records."
+  },
+  {
+    "packet_id": "hai-ce9b18306fdef204c5",
+    "decision": "tools",
+    "tools": [
+      "asset_update"
+    ],
+    "reply_language": "en",
+    "rationale": "The asset-update tool accepts the supplied asset name and explicit replacement warranty date."
+  },
+  {
+    "packet_id": "hai-79011a0ba4e7c60c8a",
+    "decision": "tools",
+    "tools": [
+      "asset_update"
+    ],
+    "reply_language": "en",
+    "rationale": "Update the named asset's warranty end date directly without inventing an asset identifier."
+  },
+  {
+    "packet_id": "hai-c74ad364d254a3fe64",
+    "decision": "tools",
+    "tools": [
+      "asset_link_document"
+    ],
+    "reply_language": "en",
+    "rationale": "Link the referenced manual by asset name using the documented current-message media binding instead of inventing evidence identifiers."
+  },
+  {
+    "packet_id": "hai-808695ccfc07dfb4f6",
+    "decision": "tools",
+    "tools": [
+      "asset_link_document"
+    ],
+    "reply_language": "en",
+    "rationale": "Link the referenced warranty document to the named asset using automatic current-message attachment binding."
+  },
+  {
+    "packet_id": "hai-eabd98a5ea575ff841",
+    "decision": "tools",
+    "tools": [
+      "search_saved_items"
+    ],
+    "reply_language": "en",
+    "rationale": "The user explicitly rejects saving and instead requests existing saved items."
+  },
+  {
+    "packet_id": "hai-e5ad31cc185681924b",
+    "decision": "tools",
+    "tools": [
+      "search_saved_items"
+    ],
+    "reply_language": "en",
+    "rationale": "List existing saved items while honoring the instruction not to create a memory."
+  },
+  {
+    "packet_id": "hai-d8639db70facd66031",
+    "decision": "tools",
+    "tools": [
+      "search_saved_items"
+    ],
+    "reply_language": "en",
+    "rationale": "The Tamil prompt asks to show saved things and does not explicitly request a non-English reply."
+  },
+  {
+    "packet_id": "hai-5a73cd5e66a4cb1e86",
+    "decision": "tools",
+    "tools": [
+      "search_saved_items"
+    ],
+    "reply_language": "en",
+    "rationale": "The Tamil prompt asks to show what the user requested be saved."
+  },
+  {
+    "packet_id": "hai-3b137b7d95937db409",
+    "decision": "tools",
+    "tools": [
+      "find_receipts"
+    ],
+    "reply_language": "en",
+    "rationale": "Browse recent original receipts using the dedicated receipt search."
+  },
+  {
+    "packet_id": "hai-dcaef2a42fb7e990bf",
+    "decision": "tools",
+    "tools": [
+      "search_saved_items"
+    ],
+    "reply_language": "en",
+    "rationale": "Browse explicitly saved pictures with the picture-kind filter."
+  },
+  {
+    "packet_id": "hai-f8fb1742812788d1b2",
+    "decision": "tools",
+    "tools": [
+      "resolve_numbered_choice",
+      "discover_alex_tools"
+    ],
+    "reply_language": "en",
+    "rationale": "The user history identifies a saved-picture list; resolve item 1 and discover the missing original saved-item retrieval capability."
+  },
+  {
+    "packet_id": "hai-d755f7d6f0776156ea",
+    "decision": "tools",
+    "tools": [
+      "save_item"
+    ],
+    "reply_language": "en",
+    "rationale": "The user explicitly asks to remember the supplied restart-test code word."
+  },
+  {
+    "packet_id": "hai-1bbf863d425045876a",
+    "decision": "answer",
+    "tools": [],
+    "reply_language": "en",
+    "rationale": "The visible user history explicitly states the restart-test code word is cobalt, so the question can be answered directly."
+  },
+  {
+    "packet_id": "hai-58b35a01b54ad3ec8c",
+    "decision": "tools",
+    "tools": [
+      "search_saved_items"
+    ],
+    "reply_language": "en",
+    "rationale": "Look up the saved code-word note because no code-word value is present in this packet."
+  },
+  {
+    "packet_id": "hai-f3b7634780157f7513",
+    "decision": "tools",
+    "tools": [
+      "search_saved_items"
+    ],
+    "reply_language": "en",
+    "rationale": "Look up code-word information accessible in this group context because the visible history contains no actual code word."
+  }
+]

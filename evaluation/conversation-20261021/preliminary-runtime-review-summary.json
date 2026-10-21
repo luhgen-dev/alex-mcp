@@ -1,0 +1,973 @@
+{
+  "schema_version": 1,
+  "evaluation_kind": "paired unblinding of independent reviewer reasoning over actual captured first brain requests",
+  "deployed_model_execution": false,
+  "ingress_execution": false,
+  "backend_actions_executed": 0,
+  "accuracy_score": null,
+  "scope": "One blinded reviewer, ten paired phrasings of one seeded watering reminder in a private DM. The existing fixture captured real messages/schemas while stubbing provider completion; a separate reviewer then reasoned over those public packets. The live semantic router was disabled.",
+  "source_files": {
+    "public_packets": "/tmp/alex-conversation-evidence/actual-runtime-blind-packets.json",
+    "public_packets_sha256": "78e81abe564510f9edddfe84235ec2837163e262221b5f266f888852b0f62420",
+    "private_mapping": "/tmp/alex-conversation-evidence/actual-runtime-blind-mapping-private.json",
+    "private_mapping_sha256": "58cf07e41cfa5d69918165887aba3ba2a01553acd77f445493901298f8e6b794",
+    "raw_decisions": "/tmp/alex-conversation-evidence/actual-runtime-independent-decisions.json",
+    "raw_decisions_sha256": "736d428a5ac10ecd089d8e3d6105d318dca145ad36c79c7c927a58ee0dd59bab"
+  },
+  "capture_provenance": {
+    "baseline": {
+      "repo": "/tmp/alex-mcp-baseline-aeb3b74",
+      "revision": "aeb3b74f64510103134a4268ca3e5e98c465646d",
+      "runtime_source_sha256": "3dcb11527faeb6e9c4b567f66b90246b86d8644abefddaa5b56969267dce1e99"
+    },
+    "candidate": {
+      "repo": "/workspace/scratch/738b29e75c17/alex-mcp-candidate",
+      "revision": "aeb3b74f64510103134a4268ca3e5e98c465646d",
+      "runtime_source_sha256": "2ba13c8546d3ec5b7174fd4d48bb40a239f9de9e8cb795256182434f754307db"
+    }
+  },
+  "counts": {
+    "paired_variations": 10,
+    "baseline_packets": 10,
+    "candidate_packets": 10,
+    "baseline": {
+      "clarification_decisions": 10,
+      "scheduling_proposals": 0,
+      "packets_missing_prior_task_question_and_pending_reference": 10,
+      "clarifications_justified_by_visible_packet_missing_task": 10,
+      "create_reminder_offered": 8
+    },
+    "candidate": {
+      "clarification_decisions": 2,
+      "scheduling_proposals": 8,
+      "packets_with_prior_task_question_and_pending_reference": 10,
+      "decisions_preserving_grounded_task": 10,
+      "clarifications_for_genuine_missing_time_detail": 2,
+      "absolute_time_proposals_consistent_with_visible_date_and_wording": 5,
+      "relative_time_proposals_consistent_with_receipt_anchor_instruction": 3,
+      "relative_time_proposals_already_past_at_captured_processing_clock": 3,
+      "exact_pending_id_execution_verified": 0,
+      "create_reminder_offered": 10
+    }
+  },
+  "interpretation": [
+    "The observed difference is better task/context continuity in this direct-brain sample, not a before/after NLU accuracy score.",
+    "The baseline reviewer avoids inventing an action absent from its packet; its clarification is sensible given the supplied information.",
+    "The candidate reviewer uses the watering task in all ten cases, with eight scheduling proposals and two focused, appropriate time questions.",
+    "The two genuine time ambiguities are an unspecified point after 20:00 tonight and an unspecified AM/PM for seven tomorrow.",
+    "Exact pending IDs are supplied in candidate context but are not emitted/consumed by these create_reminder proposals; draft-ID execution is unmeasured here.",
+    "Three relative-time proposals follow the explicit receipt-time policy but fall before the separate processing clock in this fixture. They must not be reported as verified successful scheduling."
+  ],
+  "verified_separate_test_gates": {
+    "comparison_report": "/tmp/alex-conversation-evidence/conversation-comparison.json",
+    "baseline": {
+      "tests": 50,
+      "passed": 15,
+      "failed": 35,
+      "errors": 0,
+      "skipped": 0,
+      "local_suite_seconds": 2.257,
+      "provider_packet_cases": 23,
+      "scripted_model_calls": 30,
+      "median_message_characters": 15414
+    },
+    "candidate": {
+      "tests": 50,
+      "passed": 50,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "local_suite_seconds": 2.246,
+      "provider_packet_cases": 26,
+      "scripted_model_calls": 38,
+      "median_message_characters": 16846.0
+    },
+    "unit_log": "/tmp/alex-conversation-evidence/candidate-unit-final.log",
+    "unit_tests_run": 590,
+    "unit_tests_skipped": 2,
+    "unit_tests_passed": 588,
+    "unit_failures": 0,
+    "unit_errors": 0,
+    "qualification": "These are separate deterministic/scripted test results, not additional independent language-model observations."
+  },
+  "limitations": [
+    "This reviewer is not the configured deployed Alex provider and no proposal was sent to MCP or WhatsApp.",
+    "Ingress was bypassed; missing baseline direct-brain context does not establish an ingress/WhatsApp failure.",
+    "The ten phrasings share one task, actor, conversation type and pending-state pattern and were selected for this regression area, not representative random or held-out usage.",
+    "History, structured state and in two pairs offered tools change together; the review cannot isolate their individual causal contributions.",
+    "There is one reviewer pass with no repeated sampling, model-to-model comparison, latency measurement or cost measurement.",
+    "The independent 24-scenario/48-turn holdout fixture is a different artifact and is not executed by this review."
+  ],
+  "pairs": [
+    {
+      "variation_index": 1,
+      "input_phrase": "Around seven tomorrow evening would work for me",
+      "fixture_task": "water the plants",
+      "fixture_scope": "one authenticated owner, private DM, one seeded unresolved reminder draft",
+      "baseline": {
+        "packet_id": "pkt_265192e70bef9bbda6ed2bdf",
+        "packet_facts": {
+          "prior_task_turn_present": false,
+          "prior_question_turn_present": false,
+          "active_pending_reference": null,
+          "current_time": null,
+          "offered_tools": [
+            "create_reminder",
+            "list_reminders",
+            "reminder_history",
+            "discover_alex_tools"
+          ]
+        },
+        "reviewer_decision_verbatim": {
+          "packet_id": "pkt_265192e70bef9bbda6ed2bdf",
+          "decision": "clarify",
+          "tool_calls": [],
+          "reply": "What would you like me to do around 7 PM tomorrow?",
+          "rationale": "The time expression is clear, but no task, prior question, or target record is present in this individual packet."
+        },
+        "assessment": "Clarification is justified by this packet's missing task/question/record context; it does not demonstrate inability to understand the time phrase."
+      },
+      "candidate": {
+        "packet_id": "pkt_9b25e30ce1f3ac61e766f0bb",
+        "packet_facts": {
+          "prior_task_turn_present": true,
+          "prior_question_turn_present": true,
+          "active_pending_reference": {
+            "kind": "REMINDER_DRAFT",
+            "id": "36e078ce-20f7-45e4-8a63-e54aef4a34dc",
+            "reference": "ACTIVE",
+            "question": "What time should I remind you to water the plants?",
+            "summary": "Remind me to water the plants",
+            "status": "PENDING"
+          },
+          "current_time": {
+            "timezone": "Asia/Kuala_Lumpur",
+            "local_datetime": "2026-10-21T17:55:20.419747+08:00",
+            "received_at_utc": "2026-10-21T08:00:00+00:00"
+          },
+          "offered_tools": [
+            "create_reminder",
+            "list_reminders",
+            "reminder_history",
+            "discover_alex_tools"
+          ]
+        },
+        "reviewer_decision_verbatim": {
+          "packet_id": "pkt_9b25e30ce1f3ac61e766f0bb",
+          "decision": "tools",
+          "tool_calls": [
+            {
+              "name": "create_reminder",
+              "arguments": {
+                "task": "water the plants",
+                "due_local": "2026-10-22T19:00:00",
+                "recipient": "me"
+              }
+            }
+          ],
+          "reply": "",
+          "rationale": "The current reply completes the active reminder draft with approximately 7 PM tomorrow, which is 22 October 2026 in the supplied local context."
+        },
+        "assessment": "The reviewer uses the supplied watering task and proposes the offered create_reminder tool with schema-compatible arguments and recipient='me'. This is a proposal, not an executed reminder."
+      },
+      "pending_id_assessment": {
+        "candidate_supplied_pending_id": "36e078ce-20f7-45e4-8a63-e54aef4a34dc",
+        "candidate_kind": "REMINDER_DRAFT",
+        "candidate_status": "PENDING",
+        "baseline_pending_id_available": false,
+        "exact_id_execution_verified": false,
+        "reason": "The candidate packet supplies an exact active draft reference. The reviewer either asks a question or proposes create_reminder, whose offered schema has no pending-item-ID argument. No draft resolution or backend call is executed here, so correct exact-ID consumption is not measured."
+      },
+      "time_assessment": {
+        "category": "absolute_local_time",
+        "proposed_due_local": "2026-10-22T19:00:00+08:00",
+        "consistent_with_visible_date_and_wording": true,
+        "assessment": "The proposed local date/time is consistent with the supplied date and ordinary interpretation of the user's wording."
+      }
+    },
+    {
+      "variation_index": 2,
+      "input_phrase": "Forty minutes from the message I just sent please",
+      "fixture_task": "water the plants",
+      "fixture_scope": "one authenticated owner, private DM, one seeded unresolved reminder draft",
+      "baseline": {
+        "packet_id": "pkt_672c4bd0a1d14ab563408721",
+        "packet_facts": {
+          "prior_task_turn_present": false,
+          "prior_question_turn_present": false,
+          "active_pending_reference": null,
+          "current_time": null,
+          "offered_tools": [
+            "query_finances",
+            "search_saved_items",
+            "list_reminders",
+            "list_shopping_items",
+            "get_agenda_range",
+            "discover_alex_tools"
+          ]
+        },
+        "reviewer_decision_verbatim": {
+          "packet_id": "pkt_672c4bd0a1d14ab563408721",
+          "decision": "clarify",
+          "tool_calls": [],
+          "reply": "What would you like me to do 40 minutes after your message?",
+          "rationale": "The message supplies an offset but no intended action or task, and no message timestamp is present to compute an exact due time."
+        },
+        "assessment": "Clarification is justified by this packet's missing task/question/record context; it does not demonstrate inability to understand the time phrase."
+      },
+      "candidate": {
+        "packet_id": "pkt_c31664cb4aef5a9d0189e27f",
+        "packet_facts": {
+          "prior_task_turn_present": true,
+          "prior_question_turn_present": true,
+          "active_pending_reference": {
+            "kind": "REMINDER_DRAFT",
+            "id": "31aa39a4-27b7-4170-83cb-75982beb2e8c",
+            "reference": "ACTIVE",
+            "question": "What time should I remind you to water the plants?",
+            "summary": "Remind me to water the plants",
+            "status": "PENDING"
+          },
+          "current_time": {
+            "timezone": "Asia/Kuala_Lumpur",
+            "local_datetime": "2026-10-21T17:55:20.505436+08:00",
+            "received_at_utc": "2026-10-21T08:00:00+00:00"
+          },
+          "offered_tools": [
+            "create_reminder",
+            "list_reminders",
+            "discover_alex_tools"
+          ]
+        },
+        "reviewer_decision_verbatim": {
+          "packet_id": "pkt_c31664cb4aef5a9d0189e27f",
+          "decision": "tools",
+          "tool_calls": [
+            {
+              "name": "create_reminder",
+              "arguments": {
+                "task": "water the plants",
+                "due_local": "2026-10-21T16:40:00",
+                "recipient": "me"
+              }
+            }
+          ],
+          "reply": "",
+          "rationale": "The active draft supplies the watering task and the current reply explicitly anchors forty minutes to the supplied message timestamp, yielding 4:40 PM locally."
+        },
+        "assessment": "The reviewer uses the supplied watering task and proposes the offered create_reminder tool with schema-compatible arguments and recipient='me'. This is a proposal, not an executed reminder."
+      },
+      "pending_id_assessment": {
+        "candidate_supplied_pending_id": "31aa39a4-27b7-4170-83cb-75982beb2e8c",
+        "candidate_kind": "REMINDER_DRAFT",
+        "candidate_status": "PENDING",
+        "baseline_pending_id_available": false,
+        "exact_id_execution_verified": false,
+        "reason": "The candidate packet supplies an exact active draft reference. The reviewer either asks a question or proposes create_reminder, whose offered schema has no pending-item-ID argument. No draft resolution or backend call is executed here, so correct exact-ID consumption is not measured."
+      },
+      "time_assessment": {
+        "category": "relative_time_receipt_anchor",
+        "offset_minutes": 40,
+        "received_at_local": "2026-10-21T16:00:00+08:00",
+        "captured_local_datetime": "2026-10-21T17:55:20.505436+08:00",
+        "received_to_capture_gap_seconds": 6920.505,
+        "proposed_due_local": "2026-10-21T16:40:00+08:00",
+        "matches_explicit_received_at_anchor_instruction": true,
+        "alternative_due_if_processing_clock_used": "2026-10-21T18:35:20.505436+08:00",
+        "proposed_due_is_before_captured_local_datetime": true,
+        "minutes_before_capture": 75.342,
+        "assessment": "The proposed arithmetic follows the packet instruction to anchor relative time to received_at_utc. The fixture uses a 16:00 receipt timestamp while the runtime clock is about 17:55, so this proposal is already in the past at capture time. Backend acceptance, overdue handling, or a user-facing clarification was not exercised."
+      }
+    },
+    {
+      "variation_index": 3,
+      "input_phrase": "Tomorrow after dinner at eight would be best",
+      "fixture_task": "water the plants",
+      "fixture_scope": "one authenticated owner, private DM, one seeded unresolved reminder draft",
+      "baseline": {
+        "packet_id": "pkt_1e0e9454e94c57e3076c46f7",
+        "packet_facts": {
+          "prior_task_turn_present": false,
+          "prior_question_turn_present": false,
+          "active_pending_reference": null,
+          "current_time": null,
+          "offered_tools": [
+            "create_reminder",
+            "list_reminders",
+            "reminder_history",
+            "discover_alex_tools"
+          ]
+        },
+        "reviewer_decision_verbatim": {
+          "packet_id": "pkt_1e0e9454e94c57e3076c46f7",
+          "decision": "clarify",
+          "tool_calls": [],
+          "reply": "What would you like me to do at 8 PM tomorrow?",
+          "rationale": "The dinner context makes eight naturally an evening time, but there is no task or existing record to act on."
+        },
+        "assessment": "Clarification is justified by this packet's missing task/question/record context; it does not demonstrate inability to understand the time phrase."
+      },
+      "candidate": {
+        "packet_id": "pkt_4279f40aa944407c73630421",
+        "packet_facts": {
+          "prior_task_turn_present": true,
+          "prior_question_turn_present": true,
+          "active_pending_reference": {
+            "kind": "REMINDER_DRAFT",
+            "id": "2fca97ab-4662-4b45-8b81-b59fcfba4216",
+            "reference": "ACTIVE",
+            "question": "What time should I remind you to water the plants?",
+            "summary": "Remind me to water the plants",
+            "status": "PENDING"
+          },
+          "current_time": {
+            "timezone": "Asia/Kuala_Lumpur",
+            "local_datetime": "2026-10-21T17:55:20.556094+08:00",
+            "received_at_utc": "2026-10-21T08:00:00+00:00"
+          },
+          "offered_tools": [
+            "create_reminder",
+            "list_reminders",
+            "reminder_history",
+            "discover_alex_tools"
+          ]
+        },
+        "reviewer_decision_verbatim": {
+          "packet_id": "pkt_4279f40aa944407c73630421",
+          "decision": "tools",
+          "tool_calls": [
+            {
+              "name": "create_reminder",
+              "arguments": {
+                "task": "water the plants",
+                "due_local": "2026-10-22T20:00:00",
+                "recipient": "me"
+              }
+            }
+          ],
+          "reply": "",
+          "rationale": "The user completes the active watering reminder with eight after dinner tomorrow, naturally specifying 8 PM on 22 October 2026."
+        },
+        "assessment": "The reviewer uses the supplied watering task and proposes the offered create_reminder tool with schema-compatible arguments and recipient='me'. This is a proposal, not an executed reminder."
+      },
+      "pending_id_assessment": {
+        "candidate_supplied_pending_id": "2fca97ab-4662-4b45-8b81-b59fcfba4216",
+        "candidate_kind": "REMINDER_DRAFT",
+        "candidate_status": "PENDING",
+        "baseline_pending_id_available": false,
+        "exact_id_execution_verified": false,
+        "reason": "The candidate packet supplies an exact active draft reference. The reviewer either asks a question or proposes create_reminder, whose offered schema has no pending-item-ID argument. No draft resolution or backend call is executed here, so correct exact-ID consumption is not measured."
+      },
+      "time_assessment": {
+        "category": "absolute_local_time",
+        "proposed_due_local": "2026-10-22T20:00:00+08:00",
+        "consistent_with_visible_date_and_wording": true,
+        "assessment": "The proposed local date/time is consistent with the supplied date and ordinary interpretation of the user's wording."
+      }
+    },
+    {
+      "variation_index": 4,
+      "input_phrase": "The time should be tomorrow evening at seven",
+      "fixture_task": "water the plants",
+      "fixture_scope": "one authenticated owner, private DM, one seeded unresolved reminder draft",
+      "baseline": {
+        "packet_id": "pkt_92cd4fe5c59f6396f982997b",
+        "packet_facts": {
+          "prior_task_turn_present": false,
+          "prior_question_turn_present": false,
+          "active_pending_reference": null,
+          "current_time": null,
+          "offered_tools": [
+            "create_reminder",
+            "list_reminders",
+            "reminder_history",
+            "discover_alex_tools"
+          ]
+        },
+        "reviewer_decision_verbatim": {
+          "packet_id": "pkt_92cd4fe5c59f6396f982997b",
+          "decision": "clarify",
+          "tool_calls": [],
+          "reply": "What would you like me to schedule for 7 PM tomorrow?",
+          "rationale": "The stated time has no task or record binding within this packet, so choosing a reminder or other action would invent missing context."
+        },
+        "assessment": "Clarification is justified by this packet's missing task/question/record context; it does not demonstrate inability to understand the time phrase."
+      },
+      "candidate": {
+        "packet_id": "pkt_df7b923b266ee3ba2dad63b2",
+        "packet_facts": {
+          "prior_task_turn_present": true,
+          "prior_question_turn_present": true,
+          "active_pending_reference": {
+            "kind": "REMINDER_DRAFT",
+            "id": "7b777c73-cd62-476d-abb9-6fedfd1bf8cd",
+            "reference": "ACTIVE",
+            "question": "What time should I remind you to water the plants?",
+            "summary": "Remind me to water the plants",
+            "status": "PENDING"
+          },
+          "current_time": {
+            "timezone": "Asia/Kuala_Lumpur",
+            "local_datetime": "2026-10-21T17:55:20.611183+08:00",
+            "received_at_utc": "2026-10-21T08:00:00+00:00"
+          },
+          "offered_tools": [
+            "create_reminder",
+            "list_reminders",
+            "reminder_history",
+            "discover_alex_tools"
+          ]
+        },
+        "reviewer_decision_verbatim": {
+          "packet_id": "pkt_df7b923b266ee3ba2dad63b2",
+          "decision": "tools",
+          "tool_calls": [
+            {
+              "name": "create_reminder",
+              "arguments": {
+                "task": "water the plants",
+                "due_local": "2026-10-22T19:00:00",
+                "recipient": "me"
+              }
+            }
+          ],
+          "reply": "",
+          "rationale": "The active draft supplies the watering task, and tomorrow evening at seven completes it with a due time of 7 PM on 22 October 2026."
+        },
+        "assessment": "The reviewer uses the supplied watering task and proposes the offered create_reminder tool with schema-compatible arguments and recipient='me'. This is a proposal, not an executed reminder."
+      },
+      "pending_id_assessment": {
+        "candidate_supplied_pending_id": "7b777c73-cd62-476d-abb9-6fedfd1bf8cd",
+        "candidate_kind": "REMINDER_DRAFT",
+        "candidate_status": "PENDING",
+        "baseline_pending_id_available": false,
+        "exact_id_execution_verified": false,
+        "reason": "The candidate packet supplies an exact active draft reference. The reviewer either asks a question or proposes create_reminder, whose offered schema has no pending-item-ID argument. No draft resolution or backend call is executed here, so correct exact-ID consumption is not measured."
+      },
+      "time_assessment": {
+        "category": "absolute_local_time",
+        "proposed_due_local": "2026-10-22T19:00:00+08:00",
+        "consistent_with_visible_date_and_wording": true,
+        "assessment": "The proposed local date/time is consistent with the supplied date and ordinary interpretation of the user's wording."
+      }
+    },
+    {
+      "variation_index": 5,
+      "input_phrase": "Roughly half an hour from the current time please",
+      "fixture_task": "water the plants",
+      "fixture_scope": "one authenticated owner, private DM, one seeded unresolved reminder draft",
+      "baseline": {
+        "packet_id": "pkt_de574104c0efd677d5c7ce8b",
+        "packet_facts": {
+          "prior_task_turn_present": false,
+          "prior_question_turn_present": false,
+          "active_pending_reference": null,
+          "current_time": null,
+          "offered_tools": [
+            "query_finances",
+            "search_saved_items",
+            "list_reminders",
+            "list_shopping_items",
+            "get_agenda_range",
+            "discover_alex_tools"
+          ]
+        },
+        "reviewer_decision_verbatim": {
+          "packet_id": "pkt_de574104c0efd677d5c7ce8b",
+          "decision": "clarify",
+          "tool_calls": [],
+          "reply": "What would you like me to do in about half an hour?",
+          "rationale": "A relative time alone identifies no household action or reminder task, and this packet also lacks a clock timestamp for calculating an exact due time."
+        },
+        "assessment": "Clarification is justified by this packet's missing task/question/record context; it does not demonstrate inability to understand the time phrase."
+      },
+      "candidate": {
+        "packet_id": "pkt_bcf3a90c148fa44a00d759a0",
+        "packet_facts": {
+          "prior_task_turn_present": true,
+          "prior_question_turn_present": true,
+          "active_pending_reference": {
+            "kind": "REMINDER_DRAFT",
+            "id": "0e58fa95-0947-4305-b5ac-128118f15500",
+            "reference": "ACTIVE",
+            "question": "What time should I remind you to water the plants?",
+            "summary": "Remind me to water the plants",
+            "status": "PENDING"
+          },
+          "current_time": {
+            "timezone": "Asia/Kuala_Lumpur",
+            "local_datetime": "2026-10-21T17:55:20.660761+08:00",
+            "received_at_utc": "2026-10-21T08:00:00+00:00"
+          },
+          "offered_tools": [
+            "create_reminder",
+            "list_reminders",
+            "discover_alex_tools"
+          ]
+        },
+        "reviewer_decision_verbatim": {
+          "packet_id": "pkt_bcf3a90c148fa44a00d759a0",
+          "decision": "tools",
+          "tool_calls": [
+            {
+              "name": "create_reminder",
+              "arguments": {
+                "task": "water the plants",
+                "due_local": "2026-10-21T16:30:00",
+                "recipient": "me"
+              }
+            }
+          ],
+          "reply": "",
+          "rationale": "The half-hour reply completes the active reminder, and the packet instructs relative timing to use the supplied received_at_utc timestamp corresponding to 4 PM locally."
+        },
+        "assessment": "The reviewer uses the supplied watering task and proposes the offered create_reminder tool with schema-compatible arguments and recipient='me'. This is a proposal, not an executed reminder."
+      },
+      "pending_id_assessment": {
+        "candidate_supplied_pending_id": "0e58fa95-0947-4305-b5ac-128118f15500",
+        "candidate_kind": "REMINDER_DRAFT",
+        "candidate_status": "PENDING",
+        "baseline_pending_id_available": false,
+        "exact_id_execution_verified": false,
+        "reason": "The candidate packet supplies an exact active draft reference. The reviewer either asks a question or proposes create_reminder, whose offered schema has no pending-item-ID argument. No draft resolution or backend call is executed here, so correct exact-ID consumption is not measured."
+      },
+      "time_assessment": {
+        "category": "relative_time_receipt_anchor",
+        "offset_minutes": 30,
+        "received_at_local": "2026-10-21T16:00:00+08:00",
+        "captured_local_datetime": "2026-10-21T17:55:20.660761+08:00",
+        "received_to_capture_gap_seconds": 6920.661,
+        "proposed_due_local": "2026-10-21T16:30:00+08:00",
+        "matches_explicit_received_at_anchor_instruction": true,
+        "alternative_due_if_processing_clock_used": "2026-10-21T18:25:20.660761+08:00",
+        "proposed_due_is_before_captured_local_datetime": true,
+        "minutes_before_capture": 85.344,
+        "assessment": "The proposed arithmetic follows the packet instruction to anchor relative time to received_at_utc. The fixture uses a 16:00 receipt timestamp while the runtime clock is about 17:55, so this proposal is already in the past at capture time. Backend acceptance, overdue handling, or a user-facing clarification was not exercised.",
+        "wording_caveat": "'Current time' is interpreted using the explicit receipt-time policy. This review does not settle the operational policy when receipt and processing clocks differ greatly."
+      }
+    },
+    {
+      "variation_index": 6,
+      "input_phrase": "Tonight, sometime after eight in the evening",
+      "fixture_task": "water the plants",
+      "fixture_scope": "one authenticated owner, private DM, one seeded unresolved reminder draft",
+      "baseline": {
+        "packet_id": "pkt_03d1c63d066395d61b82fa67",
+        "packet_facts": {
+          "prior_task_turn_present": false,
+          "prior_question_turn_present": false,
+          "active_pending_reference": null,
+          "current_time": null,
+          "offered_tools": [
+            "create_reminder",
+            "list_reminders",
+            "reminder_history",
+            "discover_alex_tools"
+          ]
+        },
+        "reviewer_decision_verbatim": {
+          "packet_id": "pkt_03d1c63d066395d61b82fa67",
+          "decision": "clarify",
+          "tool_calls": [],
+          "reply": "What would you like me to do tonight, and at what time after 8 PM?",
+          "rationale": "Neither an intended action nor a definite time within the open-ended after-eight window is supplied in this packet."
+        },
+        "assessment": "Clarification is justified by this packet's missing task/question/record context; it does not demonstrate inability to understand the time phrase. The reply additionally asks for a genuinely missing time detail."
+      },
+      "candidate": {
+        "packet_id": "pkt_9986a1f800ea0e7454e620e0",
+        "packet_facts": {
+          "prior_task_turn_present": true,
+          "prior_question_turn_present": true,
+          "active_pending_reference": {
+            "kind": "REMINDER_DRAFT",
+            "id": "34710787-a2ce-4ac3-b030-33909694b046",
+            "reference": "ACTIVE",
+            "question": "What time should I remind you to water the plants?",
+            "summary": "Remind me to water the plants",
+            "status": "PENDING"
+          },
+          "current_time": {
+            "timezone": "Asia/Kuala_Lumpur",
+            "local_datetime": "2026-10-21T17:55:20.711185+08:00",
+            "received_at_utc": "2026-10-21T08:00:00+00:00"
+          },
+          "offered_tools": [
+            "create_reminder",
+            "list_reminders",
+            "reminder_history",
+            "discover_alex_tools"
+          ]
+        },
+        "reviewer_decision_verbatim": {
+          "packet_id": "pkt_9986a1f800ea0e7454e620e0",
+          "decision": "clarify",
+          "tool_calls": [],
+          "reply": "What time after 8 PM tonight should I remind you to water the plants?",
+          "rationale": "The task and date are grounded by the active draft, but sometime after eight leaves the actual reminder time unspecified."
+        },
+        "assessment": "Task continuity is preserved; the reviewer asks only the materially missing time detail and proposes no mutation. This is an appropriate clarification, not a failure to complete the draft."
+      },
+      "pending_id_assessment": {
+        "candidate_supplied_pending_id": "34710787-a2ce-4ac3-b030-33909694b046",
+        "candidate_kind": "REMINDER_DRAFT",
+        "candidate_status": "PENDING",
+        "baseline_pending_id_available": false,
+        "exact_id_execution_verified": false,
+        "reason": "The candidate packet supplies an exact active draft reference. The reviewer either asks a question or proposes create_reminder, whose offered schema has no pending-item-ID argument. No draft resolution or backend call is executed here, so correct exact-ID consumption is not measured."
+      },
+      "time_assessment": {
+        "category": "genuine_time_ambiguity",
+        "missing_detail": "specific time after 20:00 tonight",
+        "reason": "Sometime after eight gives an open-ended window, not a definite reminder time."
+      }
+    },
+    {
+      "variation_index": 7,
+      "input_phrase": "Tomorrow around 7ish would be convenient",
+      "fixture_task": "water the plants",
+      "fixture_scope": "one authenticated owner, private DM, one seeded unresolved reminder draft",
+      "baseline": {
+        "packet_id": "pkt_6cb82266beee48c552712cc8",
+        "packet_facts": {
+          "prior_task_turn_present": false,
+          "prior_question_turn_present": false,
+          "active_pending_reference": null,
+          "current_time": null,
+          "offered_tools": [
+            "create_reminder",
+            "list_reminders",
+            "reminder_history",
+            "discover_alex_tools"
+          ]
+        },
+        "reviewer_decision_verbatim": {
+          "packet_id": "pkt_6cb82266beee48c552712cc8",
+          "decision": "clarify",
+          "tool_calls": [],
+          "reply": "What is this timing for, and do you mean around 7 AM or 7 PM tomorrow?",
+          "rationale": "This packet lacks both the intended action and the morning-or-evening distinction needed to ground a scheduled time."
+        },
+        "assessment": "Clarification is justified by this packet's missing task/question/record context; it does not demonstrate inability to understand the time phrase. The reply additionally asks for a genuinely missing time detail."
+      },
+      "candidate": {
+        "packet_id": "pkt_11ff53d52545885dd653a43d",
+        "packet_facts": {
+          "prior_task_turn_present": true,
+          "prior_question_turn_present": true,
+          "active_pending_reference": {
+            "kind": "REMINDER_DRAFT",
+            "id": "e37333ef-0f4f-40e0-9f3c-902130669776",
+            "reference": "ACTIVE",
+            "question": "What time should I remind you to water the plants?",
+            "summary": "Remind me to water the plants",
+            "status": "PENDING"
+          },
+          "current_time": {
+            "timezone": "Asia/Kuala_Lumpur",
+            "local_datetime": "2026-10-21T17:55:20.771207+08:00",
+            "received_at_utc": "2026-10-21T08:00:00+00:00"
+          },
+          "offered_tools": [
+            "create_reminder",
+            "list_reminders",
+            "reminder_history",
+            "discover_alex_tools"
+          ]
+        },
+        "reviewer_decision_verbatim": {
+          "packet_id": "pkt_11ff53d52545885dd653a43d",
+          "decision": "clarify",
+          "tool_calls": [],
+          "reply": "Do you mean around 7 AM or 7 PM tomorrow for watering the plants?",
+          "rationale": "The active draft supplies the task, but seven tomorrow could mean morning or evening and materially changes the reminder time."
+        },
+        "assessment": "Task continuity is preserved; the reviewer asks only the materially missing time detail and proposes no mutation. This is an appropriate clarification, not a failure to complete the draft."
+      },
+      "pending_id_assessment": {
+        "candidate_supplied_pending_id": "e37333ef-0f4f-40e0-9f3c-902130669776",
+        "candidate_kind": "REMINDER_DRAFT",
+        "candidate_status": "PENDING",
+        "baseline_pending_id_available": false,
+        "exact_id_execution_verified": false,
+        "reason": "The candidate packet supplies an exact active draft reference. The reviewer either asks a question or proposes create_reminder, whose offered schema has no pending-item-ID argument. No draft resolution or backend call is executed here, so correct exact-ID consumption is not measured."
+      },
+      "time_assessment": {
+        "category": "genuine_time_ambiguity",
+        "missing_detail": "AM or PM for approximately seven tomorrow",
+        "reason": "Around 7ish has no morning/evening qualifier in the supplied active draft or reply."
+      }
+    },
+    {
+      "variation_index": 8,
+      "input_phrase": "Later at 11.30 in the evening please",
+      "fixture_task": "water the plants",
+      "fixture_scope": "one authenticated owner, private DM, one seeded unresolved reminder draft",
+      "baseline": {
+        "packet_id": "pkt_ef7dafe8a87f3622cf04ae2b",
+        "packet_facts": {
+          "prior_task_turn_present": false,
+          "prior_question_turn_present": false,
+          "active_pending_reference": null,
+          "current_time": null,
+          "offered_tools": [
+            "create_reminder",
+            "list_reminders",
+            "update_reminder",
+            "reminder_history",
+            "discover_alex_tools"
+          ]
+        },
+        "reviewer_decision_verbatim": {
+          "packet_id": "pkt_ef7dafe8a87f3622cf04ae2b",
+          "decision": "clarify",
+          "tool_calls": [],
+          "reply": "What would you like me to do at 11:30 PM tonight?",
+          "rationale": "Although the time is understandable, this packet contains no action, reminder task, or grounded existing reminder to create or change."
+        },
+        "assessment": "Clarification is justified by this packet's missing task/question/record context; it does not demonstrate inability to understand the time phrase."
+      },
+      "candidate": {
+        "packet_id": "pkt_b967ebe36cd24f33462d9f84",
+        "packet_facts": {
+          "prior_task_turn_present": true,
+          "prior_question_turn_present": true,
+          "active_pending_reference": {
+            "kind": "REMINDER_DRAFT",
+            "id": "ee374ed3-470d-487a-8c21-11206ae2c273",
+            "reference": "ACTIVE",
+            "question": "What time should I remind you to water the plants?",
+            "summary": "Remind me to water the plants",
+            "status": "PENDING"
+          },
+          "current_time": {
+            "timezone": "Asia/Kuala_Lumpur",
+            "local_datetime": "2026-10-21T17:55:20.825424+08:00",
+            "received_at_utc": "2026-10-21T08:00:00+00:00"
+          },
+          "offered_tools": [
+            "create_reminder",
+            "list_reminders",
+            "update_reminder",
+            "reminder_history",
+            "discover_alex_tools"
+          ]
+        },
+        "reviewer_decision_verbatim": {
+          "packet_id": "pkt_b967ebe36cd24f33462d9f84",
+          "decision": "tools",
+          "tool_calls": [
+            {
+              "name": "create_reminder",
+              "arguments": {
+                "task": "water the plants",
+                "due_local": "2026-10-21T23:30:00",
+                "recipient": "me"
+              }
+            }
+          ],
+          "reply": "",
+          "rationale": "The active reminder draft is awaiting a time, and later at 11:30 in the evening specifies 11:30 PM on the supplied local date."
+        },
+        "assessment": "The reviewer uses the supplied watering task and proposes the offered create_reminder tool with schema-compatible arguments and recipient='me'. This is a proposal, not an executed reminder."
+      },
+      "pending_id_assessment": {
+        "candidate_supplied_pending_id": "ee374ed3-470d-487a-8c21-11206ae2c273",
+        "candidate_kind": "REMINDER_DRAFT",
+        "candidate_status": "PENDING",
+        "baseline_pending_id_available": false,
+        "exact_id_execution_verified": false,
+        "reason": "The candidate packet supplies an exact active draft reference. The reviewer either asks a question or proposes create_reminder, whose offered schema has no pending-item-ID argument. No draft resolution or backend call is executed here, so correct exact-ID consumption is not measured."
+      },
+      "time_assessment": {
+        "category": "absolute_local_time",
+        "proposed_due_local": "2026-10-21T23:30:00+08:00",
+        "consistent_with_visible_date_and_wording": true,
+        "assessment": "The proposed local date/time is consistent with the supplied date and ordinary interpretation of the user's wording."
+      }
+    },
+    {
+      "variation_index": 9,
+      "input_phrase": "At about seven o'clock tomorrow evening",
+      "fixture_task": "water the plants",
+      "fixture_scope": "one authenticated owner, private DM, one seeded unresolved reminder draft",
+      "baseline": {
+        "packet_id": "pkt_3992533ce5d9031153798d80",
+        "packet_facts": {
+          "prior_task_turn_present": false,
+          "prior_question_turn_present": false,
+          "active_pending_reference": null,
+          "current_time": null,
+          "offered_tools": [
+            "create_reminder",
+            "list_reminders",
+            "reminder_history",
+            "discover_alex_tools"
+          ]
+        },
+        "reviewer_decision_verbatim": {
+          "packet_id": "pkt_3992533ce5d9031153798d80",
+          "decision": "clarify",
+          "tool_calls": [],
+          "reply": "What would you like me to do at about 7 PM tomorrow?",
+          "rationale": "This packet supplies a time but no requested action, reminder task, or existing record to which it can be bound."
+        },
+        "assessment": "Clarification is justified by this packet's missing task/question/record context; it does not demonstrate inability to understand the time phrase."
+      },
+      "candidate": {
+        "packet_id": "pkt_877f639894ce597cb502d555",
+        "packet_facts": {
+          "prior_task_turn_present": true,
+          "prior_question_turn_present": true,
+          "active_pending_reference": {
+            "kind": "REMINDER_DRAFT",
+            "id": "b8265312-d28f-4273-bc1a-e9dd865b6a7a",
+            "reference": "ACTIVE",
+            "question": "What time should I remind you to water the plants?",
+            "summary": "Remind me to water the plants",
+            "status": "PENDING"
+          },
+          "current_time": {
+            "timezone": "Asia/Kuala_Lumpur",
+            "local_datetime": "2026-10-21T17:55:20.883553+08:00",
+            "received_at_utc": "2026-10-21T08:00:00+00:00"
+          },
+          "offered_tools": [
+            "create_reminder",
+            "list_reminders",
+            "reminder_history",
+            "discover_alex_tools"
+          ]
+        },
+        "reviewer_decision_verbatim": {
+          "packet_id": "pkt_877f639894ce597cb502d555",
+          "decision": "tools",
+          "tool_calls": [
+            {
+              "name": "create_reminder",
+              "arguments": {
+                "task": "water the plants",
+                "due_local": "2026-10-22T19:00:00",
+                "recipient": "me"
+              }
+            }
+          ],
+          "reply": "",
+          "rationale": "The current message answers the active watering reminder question with about 7 PM tomorrow, making the task, recipient, and local date and time sufficiently clear."
+        },
+        "assessment": "The reviewer uses the supplied watering task and proposes the offered create_reminder tool with schema-compatible arguments and recipient='me'. This is a proposal, not an executed reminder."
+      },
+      "pending_id_assessment": {
+        "candidate_supplied_pending_id": "b8265312-d28f-4273-bc1a-e9dd865b6a7a",
+        "candidate_kind": "REMINDER_DRAFT",
+        "candidate_status": "PENDING",
+        "baseline_pending_id_available": false,
+        "exact_id_execution_verified": false,
+        "reason": "The candidate packet supplies an exact active draft reference. The reviewer either asks a question or proposes create_reminder, whose offered schema has no pending-item-ID argument. No draft resolution or backend call is executed here, so correct exact-ID consumption is not measured."
+      },
+      "time_assessment": {
+        "category": "absolute_local_time",
+        "proposed_due_local": "2026-10-22T19:00:00+08:00",
+        "consistent_with_visible_date_and_wording": true,
+        "assessment": "The proposed local date/time is consistent with the supplied date and ordinary interpretation of the user's wording."
+      }
+    },
+    {
+      "variation_index": 10,
+      "input_phrase": "Forty minutes later would be alright",
+      "fixture_task": "water the plants",
+      "fixture_scope": "one authenticated owner, private DM, one seeded unresolved reminder draft",
+      "baseline": {
+        "packet_id": "pkt_6b5fac8a19d85535c77d95ba",
+        "packet_facts": {
+          "prior_task_turn_present": false,
+          "prior_question_turn_present": false,
+          "active_pending_reference": null,
+          "current_time": null,
+          "offered_tools": [
+            "create_reminder",
+            "list_reminders",
+            "update_reminder",
+            "reminder_history",
+            "discover_alex_tools"
+          ]
+        },
+        "reviewer_decision_verbatim": {
+          "packet_id": "pkt_6b5fac8a19d85535c77d95ba",
+          "decision": "clarify",
+          "tool_calls": [],
+          "reply": "What would you like me to do, and should “forty minutes later” mean 40 minutes from now?",
+          "rationale": "The isolated fragment supplies neither the intended action nor a clear reference point for later."
+        },
+        "assessment": "Clarification is justified by this packet's missing task/question/record context; it does not demonstrate inability to understand the time phrase. It also asks what 'later' is anchored to, with no active task or message clock supplied."
+      },
+      "candidate": {
+        "packet_id": "pkt_c342b28960277563fefefb31",
+        "packet_facts": {
+          "prior_task_turn_present": true,
+          "prior_question_turn_present": true,
+          "active_pending_reference": {
+            "kind": "REMINDER_DRAFT",
+            "id": "2b562384-2b75-4043-94f1-404590f822d8",
+            "reference": "ACTIVE",
+            "question": "What time should I remind you to water the plants?",
+            "summary": "Remind me to water the plants",
+            "status": "PENDING"
+          },
+          "current_time": {
+            "timezone": "Asia/Kuala_Lumpur",
+            "local_datetime": "2026-10-21T17:55:20.934726+08:00",
+            "received_at_utc": "2026-10-21T08:00:00+00:00"
+          },
+          "offered_tools": [
+            "create_reminder",
+            "list_reminders",
+            "update_reminder",
+            "reminder_history",
+            "discover_alex_tools"
+          ]
+        },
+        "reviewer_decision_verbatim": {
+          "packet_id": "pkt_c342b28960277563fefefb31",
+          "decision": "tools",
+          "tool_calls": [
+            {
+              "name": "create_reminder",
+              "arguments": {
+                "task": "water the plants",
+                "due_local": "2026-10-21T16:40:00",
+                "recipient": "me"
+              }
+            }
+          ],
+          "reply": "",
+          "rationale": "The reply supplies a forty-minute delay for the active draft, anchored by the explicit instruction to use received_at_utc, which corresponds to 4 PM locally."
+        },
+        "assessment": "The reviewer uses the supplied watering task and proposes the offered create_reminder tool with schema-compatible arguments and recipient='me'. This is a proposal, not an executed reminder."
+      },
+      "pending_id_assessment": {
+        "candidate_supplied_pending_id": "2b562384-2b75-4043-94f1-404590f822d8",
+        "candidate_kind": "REMINDER_DRAFT",
+        "candidate_status": "PENDING",
+        "baseline_pending_id_available": false,
+        "exact_id_execution_verified": false,
+        "reason": "The candidate packet supplies an exact active draft reference. The reviewer either asks a question or proposes create_reminder, whose offered schema has no pending-item-ID argument. No draft resolution or backend call is executed here, so correct exact-ID consumption is not measured."
+      },
+      "time_assessment": {
+        "category": "relative_time_receipt_anchor",
+        "offset_minutes": 40,
+        "received_at_local": "2026-10-21T16:00:00+08:00",
+        "captured_local_datetime": "2026-10-21T17:55:20.934726+08:00",
+        "received_to_capture_gap_seconds": 6920.935,
+        "proposed_due_local": "2026-10-21T16:40:00+08:00",
+        "matches_explicit_received_at_anchor_instruction": true,
+        "alternative_due_if_processing_clock_used": "2026-10-21T18:35:20.934726+08:00",
+        "proposed_due_is_before_captured_local_datetime": true,
+        "minutes_before_capture": 75.349,
+        "assessment": "The proposed arithmetic follows the packet instruction to anchor relative time to received_at_utc. The fixture uses a 16:00 receipt timestamp while the runtime clock is about 17:55, so this proposal is already in the past at capture time. Backend acceptance, overdue handling, or a user-facing clarification was not exercised.",
+        "wording_caveat": "'Later' is reasonably anchored to receipt under this active-draft context and explicit instruction; this is not evidence that all uses of 'later' have that meaning."
+      }
+    }
+  ],
+  "raw_decisions_verbatim": "[\n  {\n    \"packet_id\": \"pkt_11ff53d52545885dd653a43d\",\n    \"decision\": \"clarify\",\n    \"tool_calls\": [],\n    \"reply\": \"Do you mean around 7 AM or 7 PM tomorrow for watering the plants?\",\n    \"rationale\": \"The active draft supplies the task, but seven tomorrow could mean morning or evening and materially changes the reminder time.\"\n  },\n  {\n    \"packet_id\": \"pkt_3992533ce5d9031153798d80\",\n    \"decision\": \"clarify\",\n    \"tool_calls\": [],\n    \"reply\": \"What would you like me to do at about 7 PM tomorrow?\",\n    \"rationale\": \"This packet supplies a time but no requested action, reminder task, or existing record to which it can be bound.\"\n  },\n  {\n    \"packet_id\": \"pkt_9b25e30ce1f3ac61e766f0bb\",\n    \"decision\": \"tools\",\n    \"tool_calls\": [\n      {\n        \"name\": \"create_reminder\",\n        \"arguments\": {\n          \"task\": \"water the plants\",\n          \"due_local\": \"2026-10-22T19:00:00\",\n          \"recipient\": \"me\"\n        }\n      }\n    ],\n    \"reply\": \"\",\n    \"rationale\": \"The current reply completes the active reminder draft with approximately 7 PM tomorrow, which is 22 October 2026 in the supplied local context.\"\n  },\n  {\n    \"packet_id\": \"pkt_b967ebe36cd24f33462d9f84\",\n    \"decision\": \"tools\",\n    \"tool_calls\": [\n      {\n        \"name\": \"create_reminder\",\n        \"arguments\": {\n          \"task\": \"water the plants\",\n          \"due_local\": \"2026-10-21T23:30:00\",\n          \"recipient\": \"me\"\n        }\n      }\n    ],\n    \"reply\": \"\",\n    \"rationale\": \"The active reminder draft is awaiting a time, and later at 11:30 in the evening specifies 11:30 PM on the supplied local date.\"\n  },\n  {\n    \"packet_id\": \"pkt_4279f40aa944407c73630421\",\n    \"decision\": \"tools\",\n    \"tool_calls\": [\n      {\n        \"name\": \"create_reminder\",\n        \"arguments\": {\n          \"task\": \"water the plants\",\n          \"due_local\": \"2026-10-22T20:00:00\",\n          \"recipient\": \"me\"\n        }\n      }\n    ],\n    \"reply\": \"\",\n    \"rationale\": \"The user completes the active watering reminder with eight after dinner tomorrow, naturally specifying 8 PM on 22 October 2026.\"\n  },\n  {\n    \"packet_id\": \"pkt_c342b28960277563fefefb31\",\n    \"decision\": \"tools\",\n    \"tool_calls\": [\n      {\n        \"name\": \"create_reminder\",\n        \"arguments\": {\n          \"task\": \"water the plants\",\n          \"due_local\": \"2026-10-21T16:40:00\",\n          \"recipient\": \"me\"\n        }\n      }\n    ],\n    \"reply\": \"\",\n    \"rationale\": \"The reply supplies a forty-minute delay for the active draft, anchored by the explicit instruction to use received_at_utc, which corresponds to 4 PM locally.\"\n  },\n  {\n    \"packet_id\": \"pkt_bcf3a90c148fa44a00d759a0\",\n    \"decision\": \"tools\",\n    \"tool_calls\": [\n      {\n        \"name\": \"create_reminder\",\n        \"arguments\": {\n          \"task\": \"water the plants\",\n          \"due_local\": \"2026-10-21T16:30:00\",\n          \"recipient\": \"me\"\n        }\n      }\n    ],\n    \"reply\": \"\",\n    \"rationale\": \"The half-hour reply completes the active reminder, and the packet instructs relative timing to use the supplied received_at_utc timestamp corresponding to 4 PM locally.\"\n  },\n  {\n    \"packet_id\": \"pkt_ef7dafe8a87f3622cf04ae2b\",\n    \"decision\": \"clarify\",\n    \"tool_calls\": [],\n    \"reply\": \"What would you like me to do at 11:30 PM tonight?\",\n    \"rationale\": \"Although the time is understandable, this packet contains no action, reminder task, or grounded existing reminder to create or change.\"\n  },\n  {\n    \"packet_id\": \"pkt_92cd4fe5c59f6396f982997b\",\n    \"decision\": \"clarify\",\n    \"tool_calls\": [],\n    \"reply\": \"What would you like me to schedule for 7 PM tomorrow?\",\n    \"rationale\": \"The stated time has no task or record binding within this packet, so choosing a reminder or other action would invent missing context.\"\n  },\n  {\n    \"packet_id\": \"pkt_c31664cb4aef5a9d0189e27f\",\n    \"decision\": \"tools\",\n    \"tool_calls\": [\n      {\n        \"name\": \"create_reminder\",\n        \"arguments\": {\n          \"task\": \"water the plants\",\n          \"due_local\": \"2026-10-21T16:40:00\",\n          \"recipient\": \"me\"\n        }\n      }\n    ],\n    \"reply\": \"\",\n    \"rationale\": \"The active draft supplies the watering task and the current reply explicitly anchors forty minutes to the supplied message timestamp, yielding 4:40 PM locally.\"\n  },\n  {\n    \"packet_id\": \"pkt_6b5fac8a19d85535c77d95ba\",\n    \"decision\": \"clarify\",\n    \"tool_calls\": [],\n    \"reply\": \"What would you like me to do, and should “forty minutes later” mean 40 minutes from now?\",\n    \"rationale\": \"The isolated fragment supplies neither the intended action nor a clear reference point for later.\"\n  },\n  {\n    \"packet_id\": \"pkt_6cb82266beee48c552712cc8\",\n    \"decision\": \"clarify\",\n    \"tool_calls\": [],\n    \"reply\": \"What is this timing for, and do you mean around 7 AM or 7 PM tomorrow?\",\n    \"rationale\": \"This packet lacks both the intended action and the morning-or-evening distinction needed to ground a scheduled time.\"\n  },\n  {\n    \"packet_id\": \"pkt_877f639894ce597cb502d555\",\n    \"decision\": \"tools\",\n    \"tool_calls\": [\n      {\n        \"name\": \"create_reminder\",\n        \"arguments\": {\n          \"task\": \"water the plants\",\n          \"due_local\": \"2026-10-22T19:00:00\",\n          \"recipient\": \"me\"\n        }\n      }\n    ],\n    \"reply\": \"\",\n    \"rationale\": \"The current message answers the active watering reminder question with about 7 PM tomorrow, making the task, recipient, and local date and time sufficiently clear.\"\n  },\n  {\n    \"packet_id\": \"pkt_03d1c63d066395d61b82fa67\",\n    \"decision\": \"clarify\",\n    \"tool_calls\": [],\n    \"reply\": \"What would you like me to do tonight, and at what time after 8 PM?\",\n    \"rationale\": \"Neither an intended action nor a definite time within the open-ended after-eight window is supplied in this packet.\"\n  },\n  {\n    \"packet_id\": \"pkt_1e0e9454e94c57e3076c46f7\",\n    \"decision\": \"clarify\",\n    \"tool_calls\": [],\n    \"reply\": \"What would you like me to do at 8 PM tomorrow?\",\n    \"rationale\": \"The dinner context makes eight naturally an evening time, but there is no task or existing record to act on.\"\n  },\n  {\n    \"packet_id\": \"pkt_de574104c0efd677d5c7ce8b\",\n    \"decision\": \"clarify\",\n    \"tool_calls\": [],\n    \"reply\": \"What would you like me to do in about half an hour?\",\n    \"rationale\": \"A relative time alone identifies no household action or reminder task, and this packet also lacks a clock timestamp for calculating an exact due time.\"\n  },\n  {\n    \"packet_id\": \"pkt_df7b923b266ee3ba2dad63b2\",\n    \"decision\": \"tools\",\n    \"tool_calls\": [\n      {\n        \"name\": \"create_reminder\",\n        \"arguments\": {\n          \"task\": \"water the plants\",\n          \"due_local\": \"2026-10-22T19:00:00\",\n          \"recipient\": \"me\"\n        }\n      }\n    ],\n    \"reply\": \"\",\n    \"rationale\": \"The active draft supplies the watering task, and tomorrow evening at seven completes it with a due time of 7 PM on 22 October 2026.\"\n  },\n  {\n    \"packet_id\": \"pkt_265192e70bef9bbda6ed2bdf\",\n    \"decision\": \"clarify\",\n    \"tool_calls\": [],\n    \"reply\": \"What would you like me to do around 7 PM tomorrow?\",\n    \"rationale\": \"The time expression is clear, but no task, prior question, or target record is present in this individual packet.\"\n  },\n  {\n    \"packet_id\": \"pkt_9986a1f800ea0e7454e620e0\",\n    \"decision\": \"clarify\",\n    \"tool_calls\": [],\n    \"reply\": \"What time after 8 PM tonight should I remind you to water the plants?\",\n    \"rationale\": \"The task and date are grounded by the active draft, but sometime after eight leaves the actual reminder time unspecified.\"\n  },\n  {\n    \"packet_id\": \"pkt_672c4bd0a1d14ab563408721\",\n    \"decision\": \"clarify\",\n    \"tool_calls\": [],\n    \"reply\": \"What would you like me to do 40 minutes after your message?\",\n    \"rationale\": \"The message supplies an offset but no intended action or task, and no message timestamp is present to compute an exact due time.\"\n  }\n]\n"
+}
