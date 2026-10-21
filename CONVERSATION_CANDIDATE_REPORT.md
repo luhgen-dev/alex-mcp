@@ -1,5 +1,10 @@
 # Alex conversation reliability candidate
 
+> **Historical candidate report.** The decision and failed replay below describe
+> the experiment before the interpretation-to-execution repair. They are retained
+> as original evidence. See [the v0.5.44 handoff repair report](HANDOFF_REPAIR_REPORT.md)
+> for the subsequent implementation, final verification and live-test scope.
+
 ## Decision
 
 **Keep the reliability fixes for review; hold the installed upgrade.** The

@@ -68,6 +68,25 @@ CERT_FIXTURES: dict[str, Any] = {}
 _FAKE_HA_STATES: dict[str, dict[str, Any]] = {}
 
 
+def media_fixture_text(fixture: str | None) -> str:
+    """Public extracted text shared by ingress and reasoning certification.
+
+    These are synthetic input documents, not expected answers. Keeping the
+    extraction in one place prevents a reasoning packet from claiming that a
+    receipt is attached while withholding the evidence used by ingress.
+    """
+    return {
+        "management_receipt": (
+            "Payment Receipt\nManagement Fee\nAmount RM593.62\n"
+            "Reference CERT-MGMT-IMG\nDate 28/09/2026\nPayment successful"
+        ),
+        "payment_pdf": (
+            "Payment Receipt\nAmount RM441.79\nReference CERT-PDF-44179\n"
+            "Date 28/09/2026\nPayment successful"
+        ),
+    }.get(str(fixture or ""), "")
+
+
 _SECRET_PATTERNS = (
     re.compile(r"(?i)bearer\\s+[A-Za-z0-9._-]+"),
     re.compile(r"(?i)\\b(?:xai-|sk-)[A-Za-z0-9._-]{8,}"),
@@ -1628,11 +1647,7 @@ def _run_ingress_turn(
             ),
             "image_mime_type": "image/png",
         })
-        ocr = (
-            "Payment Receipt\nManagement Fee\nAmount RM593.62\n"
-            "Reference CERT-MGMT-IMG\nDate 28/09/2026\nPayment successful"
-            if media_fixture == "management_receipt" else ""
-        )
+        ocr = media_fixture_text(media_fixture) if media_fixture == "management_receipt" else ""
         with patch.object(media, "extract_text", return_value=ocr):
             return ingress.process(payload)
 
@@ -1642,11 +1657,7 @@ def _run_ingress_turn(
                 b"%PDF-1.4\n% CERTIFICATION RECEIPT\n%%EOF"
             ).decode("ascii"),
         })
-        extracted = (
-            "Payment Receipt\nAmount RM441.79\nReference CERT-PDF-44179\n"
-            "Date 28/09/2026\nPayment successful"
-            if media_fixture == "payment_pdf" else ""
-        )
+        extracted = media_fixture_text(media_fixture) if media_fixture == "payment_pdf" else ""
         with patch.object(media, "extract_text", return_value=extracted):
             return ingress.process(payload)
 

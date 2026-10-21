@@ -1,0 +1,24 @@
+alex-mcp/app/brain.py:11:1: 'datetime.datetime' imported but unused
+alex-mcp/app/brain.py:12:1: 'zoneinfo.ZoneInfo' imported but unused
+alex-mcp/app/brain.py:1628:5: local variable 'previous' is assigned to but never used
+alex-mcp/app/selftest.py:5:1: 'sqlite3' imported but unused
+alex-mcp/app/phase2_reports.py:131:39: f-string is missing placeholders
+alex-mcp/app/behavior_cert.py:32:1: 'sys' imported but unused
+alex-mcp/app/behavior_cert.py:36:1: 'datetime.date' imported but unused
+alex-mcp/app/behavior_cert.py:36:1: 'datetime.datetime' imported but unused
+alex-mcp/app/behavior_cert.py:36:1: 'datetime.timezone' imported but unused
+alex-mcp/app/behavior_cert.py:42:1: 'behavior_capabilities.CAPABILITY_TO_TOOLS' imported but unused
+alex-mcp/app/behavior_cert.py:42:1: 'behavior_capabilities.tools_for_capabilities' imported but unused
+alex-mcp/app/behavior_cert.py:1068:5: 'db' imported but unused
+alex-mcp/app/phase2_finance.py:12:1: 'json' imported but unused
+alex-mcp/app/phase2_finance.py:13:1: 'sqlite3' imported but unused
+alex-mcp/app/phase2_finance.py:16:1: 'datetime.datetime' imported but unused
+alex-mcp/app/phase2_finance.py:16:1: 'datetime.timezone' imported but unused
+alex-mcp/app/mcp_server.py:23:1: 'phase2_monitor' imported but unused
+alex-mcp/app/human_ai_lab.py:30:1: 'behavior_contracts.PromptContract' imported but unused
+alex-mcp/app/media.py:813:9: local variable 'caption' is assigned to but never used
+alex-mcp/app/scheduler.py:13:1: 'db.utc_now' imported but unused
+alex-mcp/app/services.py:19:1: 'db' imported but unused
+alex-mcp/app/services.py:22:1: 'dateutil.rrule.rrulestr' imported but unused
+alex-mcp/app/services.py:643:17: local variable 'explicit_date' is assigned to but never used
+alex-mcp/app/services.py:3587:9: local variable 'dm_forms' is assigned to but never used

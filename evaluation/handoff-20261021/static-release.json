@@ -1,0 +1,49 @@
+{
+  "python_compile": true,
+  "undefined_python_names": false,
+  "pyflakes_exit": 1,
+  "node_checks": [
+    {
+      "command": [
+        "node",
+        "--check",
+        "alex-mcp/app/connect.js"
+      ],
+      "exit_code": 0,
+      "output": ""
+    },
+    {
+      "command": [
+        "node",
+        "alex-mcp/app/control_payload.test.js"
+      ],
+      "exit_code": 0,
+      "output": "WhatsApp control payload contract OK\n"
+    },
+    {
+      "command": [
+        "node",
+        "alex-mcp/app/reaction_payload.test.js"
+      ],
+      "exit_code": 0,
+      "output": "WhatsApp reaction identity contract OK\n"
+    },
+    {
+      "command": [
+        "node",
+        "alex-mcp/app/quoted_payload.test.js"
+      ],
+      "exit_code": 0,
+      "output": "WhatsApp quoted-context payload contract OK\n"
+    },
+    {
+      "command": [
+        "node",
+        "alex-mcp/app/conversation_queue.test.js"
+      ],
+      "exit_code": 0,
+      "output": "conversation queue contract OK\n"
+    }
+  ],
+  "status": "PASS"
+}

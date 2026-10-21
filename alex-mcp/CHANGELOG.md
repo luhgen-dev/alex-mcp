@@ -1,3 +1,27 @@
+## 0.5.44 — grounded conversation and reminder execution repair
+
+- Give the Python brain and semantic router the same bounded, owner/chat-bound
+  pending question, quoted record, numbered list and authenticated message time.
+  Preserve exact list selections across unrelated reads and repeated choices.
+- Carry a bounded reminder time interpretation into creation/rescheduling.
+  Validate it against original user wording and the exact pending draft;
+  model timestamps or confidence cannot supply a missing day, AM/PM or audience.
+- Complete the exact reminder draft after a verified write. Preserve the task
+  when clarification is still needed, and keep a separate new request separate.
+- Anchor relative delays to the message timestamp. A delay that has already
+  elapsed asks for a new time instead of silently restarting its countdown.
+- Reuse an existing ingress time hint through the same validation. Keep original
+  privacy, recipient and delivery routing separate from interpreted time text.
+- Give named saved-item deletion its required lookup, and clarify original
+  attachment retrieval, tentative shopping, empty stashes and automation drafts.
+- Repair synthetic review inputs to include runtime policies, receipt OCR and
+  visible pending selections; preserve old failed evidence and import fresh
+  independent judgments with exact coverage and original-source hashes.
+- Offline tests cover the previously rejected wording, ambiguous proposals,
+  competing/foreign/closed drafts, recipient/scope preservation and duplicate
+  delivery. Live provider, WhatsApp delivery and HA acceptance follow installation.
+  See `HANDOFF_REPAIR_REPORT.md` for evidence, limits and the targeted live checks.
+
 ## 0.5.43 — repair dot/WhatsApp listener coexistence
 
 - Fix the confirmed port collision: existing WhatsApp egress retains loopback

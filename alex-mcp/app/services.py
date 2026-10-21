@@ -14,6 +14,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import runtime_clock
+import reminder_time
 import scope_policy
 import db
 from text_normalization import normalize_intent_text
@@ -229,18 +230,19 @@ def relative_reminder_delta(text: str | None) -> timedelta | None:
     if not value.strip():
         return None
     unit_capture = r"(" + _RELATIVE_UNIT + r")"
-    lead = re.search(
-        r"(?i)\b(?:in|after|within)\s+" + _RELATIVE_QUALIFIER
-        + _RELATIVE_AMOUNT + r"\s*" + unit_capture + r"\b",
-        value,
-    ) or re.search(
-        r"(?i)\b" + _RELATIVE_QUALIFIER + _RELATIVE_AMOUNT + r"\s*"
-        + unit_capture + r"\s+(?:from\s+now|later)\b",
-        value,
-    )
-    if lead:
-        return _relative_delta_from_match(lead.group(1), lead.group(2))
     for line in reversed(value.splitlines()):
+        # The newest time-bearing fragment wins. In particular an old "in
+        # 40 minutes" must not overrule a later "tomorrow at 7 PM" correction.
+        line = re.split(r"(?i)\b(?:actually|instead|make\s+it)\b", line)[-1]
+        lead = re.search(
+            r"(?i)\b(?:in|after|within)\s+" + _RELATIVE_QUALIFIER
+            + _RELATIVE_AMOUNT + r"\s*" + unit_capture + r"\b", line,
+        ) or re.search(
+            r"(?i)\b" + _RELATIVE_QUALIFIER + _RELATIVE_AMOUNT + r"\s*"
+            + unit_capture + r"\s+(?:from\s+now|later)\b", line,
+        )
+        if lead:
+            return _relative_delta_from_match(lead.group(1), lead.group(2))
         bare = re.match(
             r"(?i)^\s*(?:in\s+|after\s+|within\s+)?" + _RELATIVE_QUALIFIER
             + _RELATIVE_AMOUNT + r"\s*" + unit_capture
@@ -249,6 +251,12 @@ def relative_reminder_delta(text: str | None) -> timedelta | None:
         )
         if bare:
             return _relative_delta_from_match(bare.group(1), bare.group(2))
+        if (
+            _user_stated_time(line) or _WEEKDAY_RE.search(line)
+            or _CALENDAR_DATE_RE.search(line) or _ISO_USER_DATE_RE.search(line)
+            or re.search(r"(?i)\b(?:today|tomorrow|tonight|morning|afternoon|evening|night)\b", line)
+        ):
+            return None
     return None
 _WEEKDAY_NAMES = {
     "mon": 0, "monday": 0, "tue": 1, "tues": 1, "tuesday": 1,
@@ -447,16 +455,87 @@ def reminder_time_text_is_deterministic(text: str | None) -> bool:
         return False
     if _user_stated_time(value) or relative_reminder_delta(value) is not None:
         return True
-    if _WEEKDAY_RE.search(value) or _CALENDAR_DATE_RE.search(value):
-        return True
-    if _ISO_USER_DATE_RE.search(value) or _DAY_ONLY_RE.search(value):
-        return True
-    return bool(re.search(
-        r"(?i)\b(?:today|tomorrow|tonight|later|night|morning|afternoon|"
-        r"evening|noon|midnight|after\s+(?:work|dinner|lunch)|"
-        r"before\s+(?:work|bed|dinner)|half\s+past|quarter\s+(?:past|to))\b",
-        value,
-    ))
+    # A clean partial date/daypart is already understood and should not spend
+    # a model call. Merely containing "tomorrow" does not mean that an
+    # additional natural-language clock ("at seven") was parsed, however.
+    remaining = normalize_intent_text(value).casefold()
+    for pattern in (_WEEKDAY_RE, _CALENDAR_DATE_RE, _ISO_USER_DATE_RE, _DAY_ONLY_RE):
+        remaining = pattern.sub(" ", remaining)
+    remaining = re.sub(
+        r"\b(?:today|tomorrow|tonight|later|night|morning|afternoon|evening|"
+        r"this|next|coming|the|in|at|on|please|pls)\b|[\s,.!?]+", "", remaining,
+    )
+    return not remaining
+
+
+def _validated_reminder_pending(actor: ActorContext) -> dict | None:
+    """Revalidate a locally selected draft; model arguments never select it."""
+    item_id = str(getattr(actor, "reminder_pending_id", "") or "").strip()
+    if not item_id:
+        return None
+    conn = connect()
+    try:
+        row = conn.execute(
+            """SELECT * FROM pending_items WHERE item_id=? AND owner_id=?
+               AND conversation_id=? AND kind='REMINDER_DRAFT' AND status='PENDING'""",
+            (item_id, actor.user_id, actor.conversation_id),
+        ).fetchone()
+        if not row:
+            raise ValueError("REMINDER_NEEDS_TIME: the selected reminder draft is no longer available")
+        return dict(row)
+    finally:
+        conn.close()
+
+
+def _reminder_received_origin(actor: ActorContext) -> datetime:
+    """Relative delays start at authenticated receipt, not provider completion."""
+    now = runtime_clock.now_utc().astimezone(timezone.utc)
+    raw = str(getattr(actor, "received_at_utc", "") or "").strip()
+    if not raw:
+        # Legacy/internal callers predate normalized transport metadata.
+        return now
+    try:
+        received = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        if received.tzinfo is None:
+            raise ValueError("timestamp has no timezone")
+        received = received.astimezone(timezone.utc)
+    except (ValueError, TypeError) as exc:
+        raise ValueError("REMINDER_NEEDS_TIME: invalid authenticated message timestamp") from exc
+    if received > now + timedelta(seconds=60):
+        raise ValueError("REMINDER_NEEDS_TIME: authenticated message timestamp is in the future")
+    return min(received, now)
+
+
+def reminder_time_interpretation_from_hint(actor: ActorContext) -> dict | None:
+    """Adapt an existing ingress hint; the write boundary still checks its source."""
+    hint = str(getattr(actor, "reminder_semantic_text", "") or "").strip()
+    current = str(getattr(actor, "trusted_text", "") or "").strip()
+    if not hint or len(hint) > 240 or not current:
+        return None
+    pending = _validated_reminder_pending(actor)
+    spec = {
+        "source_text": current[-240:],
+        "reference": "ACTIVE_DRAFT" if pending else "CURRENT_MESSAGE",
+        "needs_clarification": False,
+    }
+    relative = relative_reminder_delta(hint)
+    if relative is not None:
+        return {**spec, "kind": "RELATIVE", "relative_minutes": int(relative.total_seconds() // 60)}
+    try:
+        clock = reminder_time.clock_in(hint)
+        dates = reminder_time.dates_in(hint)
+        if not dates:
+            dates = reminder_time._latest_dates(current) or reminder_time._latest_dates(
+                str((pending or {}).get("accumulated_text") or "")
+            )
+    except ValueError:
+        return None
+    if clock is None or len(dates) != 1:
+        return None
+    return {
+        **spec, "kind": "LOCAL_CLOCK", "date_text": dates[0],
+        "time_text": f"{clock[0]:02d}:{clock[1]:02d}",
+    }
 
 
 def _explicit_calendar_date(text: str, now_local: datetime,
@@ -519,7 +598,7 @@ def _deterministic_reminder_due_from_text(actor: ActorContext) -> str | None:
 
     relative_delta = relative_reminder_delta(trusted)
     if relative_delta is not None:
-        return (now + relative_delta).isoformat()
+        return (_reminder_received_origin(actor) + relative_delta).isoformat()
 
     clock = _stated_clock(trusted)
     if clock is None:
@@ -608,14 +687,51 @@ def _canonicalize_relative_reminder_due(actor: ActorContext, due_utc: str) -> st
     return resolved or due_utc
 
 
-def _resolve_reminder_due(actor: ActorContext, due_local: str | None) -> str:
+def _resolve_reminder_due(actor: ActorContext, due_local: str | None,
+                          time_interpretation: dict | None = None) -> str:
     """Resolve a creation/reschedule due value without trusting model date math."""
-    deterministic = _deterministic_reminder_due_from_text(actor)
+    pending = _validated_reminder_pending(actor)
+    current = str(getattr(actor, "trusted_text", "") or "").strip()
+    pending_text = str((pending or {}).get("accumulated_text") or "").strip()
+    spec = time_interpretation
+    if spec is None:
+        spec = reminder_time_interpretation_from_hint(actor)
+    if spec is not None:
+        meaning = reminder_time.validate(
+            spec, current_text=current, pending_text=pending_text,
+            pending_bound=pending is not None,
+        )
+        time_text = meaning["canonical_text"]
+    else:
+        # Existing local ingress also supplies authenticated raw quote context
+        # without a draft (for example, an owner's group mention of a quoted
+        # request). Preserve that established path; model normalization never
+        # authorizes earlier context and ACTIVE_DRAFT always requires the row.
+        raw_context = pending_text if pending else str(
+            getattr(actor, "reminder_context_text", "") or ""
+        ).strip()
+        fragments = raw_context.splitlines()
+        if current and (not fragments or reminder_time.normalized(fragments[-1]) != reminder_time.normalized(current)):
+            fragments.append(current)
+        time_text = "\n".join(fragments)
+        if (
+            raw_context and relative_reminder_delta(time_text) is not None
+            and relative_reminder_delta(current) is None
+        ):
+            # Old drafts do not persist the transport timestamp per fragment.
+            # Restarting their duration at a later "yes" would silently change
+            # the user's requested time; require a fresh duration instead.
+            raise ValueError("REMINDER_NEEDS_TIME: restate the relative duration in the current message")
+    time_actor = replace(
+        actor, trusted_text=time_text, reminder_context_text="",
+        reminder_semantic_text="",
+    )
+    deterministic = _deterministic_reminder_due_from_text(time_actor)
     if deterministic:
         due_utc = deterministic
     else:
         due_utc = _parse_event_time(due_local, actor.timezone)
-    _validate_reminder_time_intent(actor, due_utc)
+    _validate_reminder_time_intent(time_actor, due_utc)
     return due_utc
 
 
@@ -2419,10 +2535,13 @@ def create_reminder(actor: ActorContext, task: str, due_local: str,
                     claimable: bool = False,
                     presence_aware: bool = False,
                     delivery_class: str = "routine",
-                    follow_up_after_hours: int = 24) -> dict:
+                    follow_up_after_hours: int = 24,
+                    time_interpretation: dict | None = None) -> dict:
     if not actor.action_key:
         raise RuntimeError("missing deterministic action key")
-    due_utc = _resolve_reminder_due(actor, due_local)
+    due_utc = _resolve_reminder_due(actor, due_local, time_interpretation)
+    pending = _validated_reminder_pending(actor)
+    pending_receipt = {"pending_item_id": pending["item_id"]} if pending else {}
     delivery_class = (delivery_class or "routine").strip().lower()
     if delivery_class not in {"routine", "time_critical"}:
         raise ValueError("delivery_class must be routine or time_critical")
@@ -2504,7 +2623,7 @@ def create_reminder(actor: ActorContext, task: str, due_local: str,
                 (action_key,),
             ).fetchone()
             if existing:
-                created.append({"status": "already_created", **dict(existing)})
+                created.append({"status": "already_created", **dict(existing), **pending_receipt})
                 continue
 
             if destination == "group":
@@ -2603,9 +2722,12 @@ def create_reminder(actor: ActorContext, task: str, due_local: str,
                 "claimable": bool(claimable),
                 "presence_aware": bool(presence_aware), "delivery_class": delivery_class,
                 "follow_up_after_hours": follow_up_after_hours,
+                **pending_receipt,
             })
         conn.commit()
-        return created[0] if len(created) == 1 else {"status": "created", "reminders": created}
+        return created[0] if len(created) == 1 else {
+            "status": "created", "reminders": created, **pending_receipt,
+        }
     finally:
         conn.close()
 
@@ -2704,7 +2826,8 @@ def update_reminder(actor: ActorContext, reminder_id: str | None, status: str = 
                     new_due_local: str | None = None,
                     snooze_minutes: int | None = None,
                     snooze_until_local: str | None = None,
-                    reminder_reference: str | None = None) -> dict:
+                    reminder_reference: str | None = None,
+                    time_interpretation: dict | None = None) -> dict:
     status_map = {
         "ack": "ACK", "acknowledged": "ACK", "complete": "COMP", "completed": "COMP",
         "cancel": "CANC", "cancelled": "CANC", "defer": "DEFERRED", "deferred": "DEFERRED",
@@ -2716,6 +2839,8 @@ def update_reminder(actor: ActorContext, reminder_id: str | None, status: str = 
     }
     if snooze_minutes is not None and snooze_until_local:
         raise ValueError("provide either snooze_minutes or snooze_until_local, not both")
+    if snooze_minutes is not None and time_interpretation is not None:
+        raise ValueError("REMINDER_NEEDS_TIME: provide either a duration snooze or a time interpretation")
     resolved = status_map.get((status or "open").lower(), (status or "open").upper())
     if resolved == "DUE":
         raise ValueError("DUE is scheduler-owned; use snooze/reschedule/open instead")
@@ -2736,6 +2861,7 @@ def update_reminder(actor: ActorContext, reminder_id: str | None, status: str = 
         and snooze_minutes is None
         and not snooze_until_local
         and not new_due_local
+        and time_interpretation is None
     )
 
     def _resolve_with(reference):
@@ -2792,6 +2918,7 @@ def update_reminder(actor: ActorContext, reminder_id: str | None, status: str = 
             and new_due_local is None
             and snooze_minutes is None
             and snooze_until_local is None
+            and time_interpretation is None
         ):
             conn.rollback()
             return {
@@ -2808,11 +2935,14 @@ def update_reminder(actor: ActorContext, reminder_id: str | None, status: str = 
             resolved = "OPEN"
             snooze_note = f"snoozed_from_now={minutes}m"
         elif snooze_until_local:
-            new_due = _resolve_reminder_due(actor, snooze_until_local)
+            new_due = _resolve_reminder_due(actor, snooze_until_local, time_interpretation)
             resolved = "OPEN"
             snooze_note = "snoozed_until_local"
         else:
-            new_due = _resolve_reminder_due(actor, new_due_local) if new_due_local else previous_due
+            new_due = (
+                _resolve_reminder_due(actor, new_due_local, time_interpretation)
+                if new_due_local or time_interpretation is not None else previous_due
+            )
         acknowledged = utc_now() if resolved == "ACK" else None
         claim_clear_event = None
         if resolved == "COMP" and row["claimed_by_user_id"]:

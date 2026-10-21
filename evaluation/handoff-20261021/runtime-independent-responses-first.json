@@ -1,0 +1,156 @@
+{
+  "responses": [
+    {
+      "opaque_id": "968c978e22ab8211e95454d8",
+      "assistant": {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "call_968c978e22ab",
+            "type": "function",
+            "function": {
+              "name": "create_reminder",
+              "arguments": "{\"task\":\"water the plants\",\"due_local\":\"2026-10-22T19:00:00\",\"recipient\":\"me\",\"destination\":\"dm\",\"shared\":false,\"time_interpretation\":{\"source_text\":\"The time should be tomorrow evening at seven\",\"kind\":\"LOCAL_CLOCK\",\"reference\":\"ACTIVE_DRAFT\",\"date_text\":\"tomorrow\",\"time_text\":\"19:00\",\"needs_clarification\":false}}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "opaque_id": "19ac84ddf8d9001df0a93ef5",
+      "assistant": {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "call_19ac84ddf8d9",
+            "type": "function",
+            "function": {
+              "name": "create_reminder",
+              "arguments": "{\"task\":\"water the plants\",\"due_local\":\"2026-10-22T20:00:00\",\"recipient\":\"me\",\"destination\":\"dm\",\"shared\":false,\"time_interpretation\":{\"source_text\":\"Tomorrow after dinner at eight would be best\",\"kind\":\"LOCAL_CLOCK\",\"reference\":\"ACTIVE_DRAFT\",\"date_text\":\"tomorrow\",\"time_text\":\"20:00\",\"needs_clarification\":false}}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "opaque_id": "e5f0560fe6ff9ce67fbada3d",
+      "assistant": {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "call_e5f0560fe6ff",
+            "type": "function",
+            "function": {
+              "name": "create_reminder",
+              "arguments": "{\"task\":\"water the plants\",\"due_local\":\"2026-10-21T23:30:00\",\"recipient\":\"me\",\"destination\":\"dm\",\"shared\":false,\"time_interpretation\":{\"source_text\":\"Later at 11.30 in the evening please\",\"kind\":\"LOCAL_CLOCK\",\"reference\":\"ACTIVE_DRAFT\",\"date_text\":\"today\",\"time_text\":\"23:30\",\"needs_clarification\":false}}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "opaque_id": "1bd5a5e2452f74ae593d308d",
+      "assistant": {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "call_1bd5a5e2452f",
+            "type": "function",
+            "function": {
+              "name": "create_reminder",
+              "arguments": "{\"task\":\"water the plants\",\"due_local\":\"2026-10-21T19:57:32\",\"recipient\":\"me\",\"destination\":\"dm\",\"shared\":false,\"time_interpretation\":{\"source_text\":\"Roughly half an hour from the current time please\",\"kind\":\"RELATIVE\",\"reference\":\"ACTIVE_DRAFT\",\"relative_minutes\":30,\"needs_clarification\":false}}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "opaque_id": "25f9784f6861b9769ee7f3f3",
+      "assistant": {
+        "role": "assistant",
+        "content": "What exact time after 8 PM tonight should I remind you to water the plants?",
+        "tool_calls": []
+      }
+    },
+    {
+      "opaque_id": "e632db69a30e7196a5bd857f",
+      "assistant": {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "call_e632db69a30e",
+            "type": "function",
+            "function": {
+              "name": "create_reminder",
+              "arguments": "{\"task\":\"water the plants\",\"due_local\":\"2026-10-22T19:00:00\",\"recipient\":\"me\",\"destination\":\"dm\",\"shared\":false,\"time_interpretation\":{\"source_text\":\"Around seven tomorrow evening would work for me\",\"kind\":\"LOCAL_CLOCK\",\"reference\":\"ACTIVE_DRAFT\",\"date_text\":\"tomorrow\",\"time_text\":\"19:00\",\"needs_clarification\":false}}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "opaque_id": "a8e29bc7cd600314d98b8d1e",
+      "assistant": {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "call_a8e29bc7cd60",
+            "type": "function",
+            "function": {
+              "name": "create_reminder",
+              "arguments": "{\"task\":\"water the plants\",\"due_local\":\"2026-10-21T20:07:32\",\"recipient\":\"me\",\"destination\":\"dm\",\"shared\":false,\"time_interpretation\":{\"source_text\":\"Forty minutes later would be alright\",\"kind\":\"RELATIVE\",\"reference\":\"ACTIVE_DRAFT\",\"relative_minutes\":40,\"needs_clarification\":false}}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "opaque_id": "1fe0fa36e32bb31337f91a3c",
+      "assistant": {
+        "role": "assistant",
+        "content": "Do you mean 7 AM or 7 PM tomorrow for the plant-watering reminder?",
+        "tool_calls": []
+      }
+    },
+    {
+      "opaque_id": "f5221f5e232320b8c7803008",
+      "assistant": {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "call_f5221f5e2323",
+            "type": "function",
+            "function": {
+              "name": "create_reminder",
+              "arguments": "{\"task\":\"water the plants\",\"due_local\":\"2026-10-22T19:00:00\",\"recipient\":\"me\",\"destination\":\"dm\",\"shared\":false,\"time_interpretation\":{\"source_text\":\"At about seven o'clock tomorrow evening\",\"kind\":\"LOCAL_CLOCK\",\"reference\":\"ACTIVE_DRAFT\",\"date_text\":\"tomorrow\",\"time_text\":\"19:00\",\"needs_clarification\":false}}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "opaque_id": "bf95c466293ea344a045f5fb",
+      "assistant": {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "call_bf95c466293e",
+            "type": "function",
+            "function": {
+              "name": "create_reminder",
+              "arguments": "{\"task\":\"water the plants\",\"due_local\":\"2026-10-21T20:07:31\",\"recipient\":\"me\",\"destination\":\"dm\",\"shared\":false,\"time_interpretation\":{\"source_text\":\"Forty minutes from the message I just sent please\",\"kind\":\"RELATIVE\",\"reference\":\"ACTIVE_DRAFT\",\"relative_minutes\":40,\"needs_clarification\":false}}"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

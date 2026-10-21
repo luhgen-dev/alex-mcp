@@ -1,0 +1,1213 @@
+{
+  "format": "alex-independent-review-v1",
+  "corpus_fingerprint": "a7a16a842e6010ca00d0e4e475a66351789ce53a66574b6dd5511292d3cab98f",
+  "reviewer": "GPT-6 Astra Pro, isolated public-packet reviewer B",
+  "review_date": "2026-10-21",
+  "review_scope": "public_packets_only",
+  "expected_answers_visible": false,
+  "decisions": [
+    {
+      "packet_id": "hai-0475ca0c435d157048",
+      "decision": "tools",
+      "tools": [
+        "planning_create_goal"
+      ],
+      "reply_language": "en",
+      "rationale": "The user specifies an unlocked MYR goal and explicitly declines a monthly contribution; the goal creator supports a zero baseline."
+    },
+    {
+      "packet_id": "hai-16ca3079b99fa9b08f",
+      "decision": "tools",
+      "tools": [
+        "update_plan"
+      ],
+      "reply_language": "en",
+      "rationale": "The named existing Malacca plan can be updated by natural name with the supplied preferences while leaving the date open."
+    },
+    {
+      "packet_id": "hai-8c4625f124552f9d95",
+      "decision": "tools",
+      "tools": [
+        "planning_list_cash_pools"
+      ],
+      "reply_language": "en",
+      "rationale": "Current stash names are household records; list the pools within the ordinary shared read scope."
+    },
+    {
+      "packet_id": "hai-428edb3f541a98b92f",
+      "decision": "tools",
+      "tools": [
+        "list_pending_expenses"
+      ],
+      "reply_language": "en",
+      "rationale": "The user asks for unresolved money records requiring clarification, which the pending-expense reader supplies."
+    },
+    {
+      "packet_id": "hai-0dcf45f0f5b0e367c6",
+      "decision": "tools",
+      "tools": [
+        "update_plan"
+      ],
+      "reply_language": "en",
+      "rationale": "The requested notes edit identifies the existing Malacca draft by natural name and does not authorize confirmation."
+    },
+    {
+      "packet_id": "hai-2f2340f4d5081aa71d",
+      "decision": "tools",
+      "tools": [
+        "planning_record_goal_contribution"
+      ],
+      "reply_language": "en",
+      "rationale": "The user reports an actual RM200 contribution today to a named goal; the contribution capability accepts that name and date meaning."
+    },
+    {
+      "packet_id": "hai-eddde468fad579dbe6",
+      "decision": "tools",
+      "tools": [
+        "ha_find_entities",
+        "ha_get_state"
+      ],
+      "reply_language": "en",
+      "rationale": "Resolve the actual hall AC entity and read its current state; the user requests no device action."
+    },
+    {
+      "packet_id": "hai-eb96e65529b8a2c2f1",
+      "decision": "tools",
+      "tools": [
+        "list_tasks",
+        "update_task"
+      ],
+      "reply_language": "en",
+      "rationale": "Find the authorized passport-check task, then change its title only if the lookup identifies it uniquely."
+    },
+    {
+      "packet_id": "hai-77ce71a612d3c1eb6f",
+      "decision": "tools",
+      "tools": [
+        "list_tasks",
+        "cancel_task"
+      ],
+      "reply_language": "en",
+      "rationale": "Look up the named task to obtain its exact record and cancel the unique authorized match."
+    },
+    {
+      "packet_id": "hai-bfeafbeb735ca95ca3",
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "reply_language": "en",
+      "rationale": "The amount of the latest management-fee payment must come from actual ledger records."
+    },
+    {
+      "packet_id": "hai-68205abb6105a3d389",
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "reply_language": "en",
+      "rationale": "Checking the latest management-fee payment is a ledger lookup; no original attachment is requested."
+    },
+    {
+      "packet_id": "hai-515b0a7f466902ccd9",
+      "decision": "tools",
+      "tools": [
+        "find_receipts",
+        "get_receipt"
+      ],
+      "reply_language": "en",
+      "rationale": "Find the management-payment receipt and retrieve the original if one authorized match is identified."
+    },
+    {
+      "packet_id": "hai-2cbc878d271a74b1f5",
+      "decision": "tools",
+      "tools": [
+        "confirm_plan"
+      ],
+      "reply_language": "en",
+      "rationale": "The user explicitly approves locking the named Malacca plan, and confirmation supports a natural plan name."
+    },
+    {
+      "packet_id": "hai-759702976ce16bcc11",
+      "decision": "tools",
+      "tools": [
+        "add_diary_event"
+      ],
+      "reply_language": "en",
+      "rationale": "The user gives an appointment title, calendar date and 4pm time for a real diary commitment; the diary tool handles any detected conflict."
+    },
+    {
+      "packet_id": "hai-95cb48754b56c477f3",
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "reply_language": "en",
+      "rationale": "Today's spending requires a ledger query bounded to the runtime local date."
+    },
+    {
+      "packet_id": "hai-7b56ea9d8a14de3907",
+      "decision": "tools",
+      "tools": [
+        "finance_report"
+      ],
+      "reply_language": "en",
+      "rationale": "The request explicitly specifies a financial report for September 2026, which is actual monthly ledger reporting."
+    },
+    {
+      "packet_id": "hai-39a569a760a9628211",
+      "decision": "tools",
+      "tools": [
+        "search_saved_items",
+        "remove_saved_item"
+      ],
+      "reply_language": "en",
+      "rationale": "Search the authorized saved notes, then soft-remove the unique cobalt-note match using its returned identifier."
+    },
+    {
+      "packet_id": "hai-bcdc99b3afbc654a18",
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "reply_language": "en",
+      "rationale": "The current request asks which reminders fall on a stated date; prior synthetic replies supply no new reminder authority or facts."
+    },
+    {
+      "packet_id": "hai-b57a289dec8dd3f028",
+      "decision": "tools",
+      "tools": [
+        "system_health"
+      ],
+      "reply_language": "en",
+      "rationale": "Present health requires the sanitized diagnostic reader rather than an unsupported assurance."
+    },
+    {
+      "packet_id": "hai-5b0e5bf343e30e577c",
+      "decision": "tools",
+      "tools": [
+        "query_finances",
+        "correct_expense"
+      ],
+      "reply_language": "en",
+      "rationale": "Look up the latest parking transaction and apply the explicitly stated RM8.50 correction to a unique match."
+    },
+    {
+      "packet_id": "hai-f3f84ad412b76d77df",
+      "decision": "tools",
+      "tools": [
+        "planning_create_goal"
+      ],
+      "reply_language": "en",
+      "rationale": "The user supplies a MYR target and goal purpose; the goal tool can create a draft without inventing a monthly contribution."
+    },
+    {
+      "packet_id": "hai-af8c3b091c2b65e6b5",
+      "decision": "tools",
+      "tools": [
+        "report_export"
+      ],
+      "reply_language": "en",
+      "rationale": "The export tool supports an explicitly named finance report and PDF format with the default monthly context."
+    },
+    {
+      "packet_id": "hai-8f35203c5b9aed3f7c",
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "reply_language": "en",
+      "rationale": "Browsing saved memories requires the saved-item search with no query, confined to authorized shared scope."
+    },
+    {
+      "packet_id": "hai-2e2dbff7fe4c930aa7",
+      "decision": "tools",
+      "tools": [
+        "list_leave_records"
+      ],
+      "reply_language": "en",
+      "rationale": "The question concerns recorded leave entries, so the leave-record reader supplies the facts."
+    },
+    {
+      "packet_id": "hai-7ac664ae61c874046e",
+      "decision": "tools",
+      "tools": [
+        "list_pending_items"
+      ],
+      "reply_language": "en",
+      "rationale": "Audio notes awaiting clarification are unresolved VOICE pending items rather than all archived media."
+    },
+    {
+      "packet_id": "hai-c1fb4a8f0c22485969",
+      "decision": "tools",
+      "tools": [
+        "create_reminder"
+      ],
+      "reply_language": "en",
+      "rationale": "The reminder task, tomorrow date and 9am time are explicit, so a grounded reminder can be created."
+    },
+    {
+      "packet_id": "hai-c07d4ded221e3c31a4",
+      "decision": "tools",
+      "tools": [
+        "ha_find_entities",
+        "ha_control"
+      ],
+      "reply_language": "en",
+      "rationale": "Resolve the named hall AC and perform the explicitly requested off action; the control tool includes state verification."
+    },
+    {
+      "packet_id": "hai-9cd32304be0dbf6ea0",
+      "decision": "tools",
+      "tools": [
+        "find_media",
+        "get_media_original"
+      ],
+      "reply_language": "en",
+      "rationale": "Search authorized preserved voice recordings and retrieve the original only if the intended recording is uniquely identifiable; otherwise ask from the returned choices."
+    },
+    {
+      "packet_id": "hai-bee52ef2eb5398c873",
+      "decision": "tools",
+      "tools": [
+        "bills_list"
+      ],
+      "reply_language": "en",
+      "rationale": "The TNB amount or obligation due must be read from recurring bills, with the tool covering current and upcoming instances."
+    },
+    {
+      "packet_id": "hai-5ea1a54d25eda02935",
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "reply_language": "en",
+      "rationale": "The natural upcoming-period request is covered by the deterministic combined agenda-range reader."
+    },
+    {
+      "packet_id": "hai-053b55dcc4221286c7",
+      "decision": "tools",
+      "tools": [
+        "planning_cash_outflow"
+      ],
+      "reply_language": "en",
+      "rationale": "The requested current-month cash outflow has a dedicated reader that separates expenses, savings and internal movements."
+    },
+    {
+      "packet_id": "hai-3ccb12135b45abc57b",
+      "decision": "tools",
+      "tools": [
+        "planning_update_reserve"
+      ],
+      "reply_language": "en",
+      "rationale": "The user explicitly changes a naturally named reserve to a specified MYR monthly amount."
+    },
+    {
+      "packet_id": "hai-6767217e4ca195b300",
+      "decision": "answer",
+      "tools": [],
+      "reply_language": "en",
+      "rationale": "The user expressly disclaims a device-control request and makes no separate request requiring household data or action."
+    },
+    {
+      "packet_id": "hai-2b85619c767e746ce3",
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "reply_language": "en",
+      "rationale": "Read reminders and use their returned local dates to identify the requested Thursday entries without creating or changing anything."
+    },
+    {
+      "packet_id": "hai-8af7e02ec0f6bf3b17",
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "reply_language": "en",
+      "rationale": "The combined agenda reader can resolve the explicitly stated date and return the actual commitments."
+    },
+    {
+      "packet_id": "hai-75ba5f473edde282e1",
+      "decision": "tools",
+      "tools": [
+        "ha_find_entities",
+        "monitor_home_state"
+      ],
+      "reply_language": "en",
+      "rationale": "The user explicitly authorizes a one-shot on-state notification; resolve the hall AC entity before creating that monitor."
+    },
+    {
+      "packet_id": "hai-389519a2bb9eaec13d",
+      "decision": "tools",
+      "tools": [
+        "find_media"
+      ],
+      "reply_language": "en",
+      "rationale": "Listing recent voice notes is a media browse, with no specific original requested yet."
+    },
+    {
+      "packet_id": "hai-8503799cd1ef51a7f5",
+      "decision": "tools",
+      "tools": [
+        "work_schedule"
+      ],
+      "reply_language": "en",
+      "rationale": "The dated shift question requires the actual repeating roster and applicable shift exceptions."
+    },
+    {
+      "packet_id": "hai-3fc312a5cc63f6e71c",
+      "decision": "tools",
+      "tools": [
+        "planning_goal_progress"
+      ],
+      "reply_language": "en",
+      "rationale": "The named savings goal can be read directly by natural goal name within the authorized scope."
+    },
+    {
+      "packet_id": "hai-da3e878b595310e8bc",
+      "decision": "tools",
+      "tools": [
+        "save_item"
+      ],
+      "reply_language": "en",
+      "rationale": "The user explicitly asks to remember the supplied code word, authorizing a saved note without any lookup or invented content."
+    },
+    {
+      "packet_id": "hai-50103ec2e5b0f2da05",
+      "decision": "tools",
+      "tools": [
+        "planning_list_reserves"
+      ],
+      "reply_language": "en",
+      "rationale": "The user asks for explicitly configured monthly set-asides, which are the planning reserves."
+    },
+    {
+      "packet_id": "hai-222a12b77ea428a4f6",
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "reply_language": "en",
+      "rationale": "The interpreted voice request asks to read reminders for Thursday; source provenance does not change the capability needed."
+    },
+    {
+      "packet_id": "hai-49a14a55b78c07037d",
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "reply_language": "en",
+      "rationale": "Use the combined agenda for the exact stated calendar date rather than guessing upcoming commitments."
+    },
+    {
+      "packet_id": "hai-076a989534b13928b4",
+      "decision": "tools",
+      "tools": [
+        "monitor_delegate"
+      ],
+      "reply_language": "en",
+      "rationale": "Track the holiday goal is an explicit monitoring instruction, and the supplied delegation tool accepts a natural subject."
+    },
+    {
+      "packet_id": "hai-ff41ed8c1ae1892f93",
+      "decision": "tools",
+      "tools": [
+        "list_shopping_items"
+      ],
+      "reply_language": "en",
+      "rationale": "The shared shopping list must be retrieved from the household records."
+    },
+    {
+      "packet_id": "hai-e2d0b28d787481c134",
+      "decision": "tools",
+      "tools": [
+        "list_leave_records"
+      ],
+      "reply_language": "en",
+      "rationale": "The leave-record reader includes planned and taken entries and directly answers the request."
+    },
+    {
+      "packet_id": "hai-1b95502078e3692c49",
+      "decision": "tools",
+      "tools": [
+        "work_schedule"
+      ],
+      "reply_language": "en",
+      "rationale": "The requested work schedule requires roster and exception records for the named date."
+    },
+    {
+      "packet_id": "hai-8c29e2e55f8172c15a",
+      "decision": "tools",
+      "tools": [
+        "work_schedule",
+        "work_departure_plan"
+      ],
+      "reply_language": "en",
+      "rationale": "Read tomorrow's shift and invoke departure planning, which explicitly requests a missing travel estimate without inventing route time."
+    },
+    {
+      "packet_id": "hai-62461f1d2480b9018b",
+      "decision": "tools",
+      "tools": [
+        "work_record_event"
+      ],
+      "reply_language": "en",
+      "rationale": "The user supplies a dated shift-swap fact and the evening shift, allowing the work-event record without guessed hours."
+    },
+    {
+      "packet_id": "hai-ef3c5b3f2717d7c381",
+      "decision": "tools",
+      "tools": [
+        "list_tasks",
+        "update_task"
+      ],
+      "reply_language": "en",
+      "rationale": "Locate the authorized Malacca passport task and append the supplied note to the unique match."
+    },
+    {
+      "packet_id": "hai-3b137b7d95937db409",
+      "decision": "tools",
+      "tools": [
+        "find_receipts"
+      ],
+      "reply_language": "en",
+      "rationale": "The user asks to browse recent receipts; finding them supplies the list without retrieving every attachment."
+    },
+    {
+      "packet_id": "hai-1375f80d7af0b9291f",
+      "decision": "tools",
+      "tools": [
+        "find_receipts",
+        "get_receipt"
+      ],
+      "reply_language": "en",
+      "rationale": "Search for the management-fee receipt and retrieve its original attachment when the authorized match is unique."
+    },
+    {
+      "packet_id": "hai-6da98a13773c69bc4b",
+      "decision": "tools",
+      "tools": [
+        "planning_create_cash_pool"
+      ],
+      "reply_language": "en",
+      "rationale": "Creating the named stash without funding makes an empty container; the explicit policy permits its built-in MYR default."
+    },
+    {
+      "packet_id": "hai-a91e7c58d04a9ee3e7",
+      "decision": "tools",
+      "tools": [
+        "ha_find_entities",
+        "ha_get_state"
+      ],
+      "reply_language": "en",
+      "rationale": "Find the actual hall air-conditioner entity and read its state without operating it."
+    },
+    {
+      "packet_id": "hai-91808059bc0f262314",
+      "decision": "tools",
+      "tools": [
+        "create_plan"
+      ],
+      "reply_language": "en",
+      "rationale": "The user asks for a new family day-trip draft and explicitly says not to lock it; no date is required for that draft."
+    },
+    {
+      "packet_id": "hai-6cf6ab177330b2b7a2",
+      "decision": "tools",
+      "tools": [
+        "bills_list",
+        "bills_defer"
+      ],
+      "reply_language": "en",
+      "rationale": "Identify the unique authorized TNB obligation, then defer that exact instance to the supplied date."
+    },
+    {
+      "packet_id": "hai-dd9f40a6bdf7a22730",
+      "decision": "tools",
+      "tools": [
+        "resolve_numbered_choice"
+      ],
+      "reply_language": "en",
+      "rationale": "The user selects pending voice-note item 1 for listening; numbered resolution retrieves the original audio without resolving the pending item."
+    },
+    {
+      "packet_id": "hai-8feee71d2f85a1d8f9",
+      "decision": "tools",
+      "tools": [
+        "planning_update_reserve"
+      ],
+      "reply_language": "en",
+      "rationale": "The owner explicitly asks to disable the naturally named school reserve, which the update capability supports."
+    },
+    {
+      "packet_id": "hai-8ddb2877492ef20117",
+      "decision": "tools",
+      "tools": [
+        "asset_create"
+      ],
+      "reply_language": "en",
+      "rationale": "The user authorizes a new appliance metadata record and provides its required name; unknown model or warranty facts can remain unset."
+    },
+    {
+      "packet_id": "hai-40c7f64a096772f05e",
+      "decision": "tools",
+      "tools": [
+        "list_pending_expenses",
+        "confirm_expense"
+      ],
+      "reply_language": "en",
+      "rationale": "Read pending expenses to identify the referenced record, then confirm it as food only if the intended match and required money facts are unambiguous."
+    },
+    {
+      "packet_id": "hai-aab469859e8092a312",
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "reply_language": "en",
+      "rationale": "The natural-date appointment request is covered by the combined agenda-range lookup."
+    },
+    {
+      "packet_id": "hai-12648157e0796de6a2",
+      "decision": "tools",
+      "tools": [
+        "ha_find_entities",
+        "monitor_home_state"
+      ],
+      "reply_language": "en",
+      "rationale": "Resolve the actual hall AC and create the explicitly requested one-shot notification for its on state."
+    },
+    {
+      "packet_id": "hai-6427578009fc2fe33b",
+      "decision": "tools",
+      "tools": [
+        "reminder_history"
+      ],
+      "reply_language": "en",
+      "rationale": "The user asks about what happened to an existing reminder; the history reader provides its observed lifecycle events."
+    },
+    {
+      "packet_id": "hai-51728261ab0e3adfde",
+      "decision": "tools",
+      "tools": [
+        "list_tasks",
+        "complete_task"
+      ],
+      "reply_language": "en",
+      "rationale": "Find the unique authorized passport-check task and mark that open task done using its returned identifier."
+    },
+    {
+      "packet_id": "hai-7726067e8951a01760",
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "reply_language": "en",
+      "rationale": "The interpreted voice request is a broad browse of explicitly saved items, not a request for a particular attachment."
+    },
+    {
+      "packet_id": "hai-1132626487d11af553",
+      "decision": "tools",
+      "tools": [
+        "recent_failures"
+      ],
+      "reply_language": "en",
+      "rationale": "Recent Alex errors require observed failure records from the dedicated failure reader."
+    },
+    {
+      "packet_id": "hai-c74ad364d254a3fe64",
+      "decision": "tools",
+      "tools": [
+        "asset_link_document"
+      ],
+      "reply_language": "en",
+      "rationale": "The linking capability accepts the natural asset name and can bind the single preserved current-message manual without an invented evidence identifier."
+    },
+    {
+      "packet_id": "hai-3411810c151f6888c0",
+      "decision": "tools",
+      "tools": [
+        "monitor_list"
+      ],
+      "reply_language": "en",
+      "rationale": "The active authorized monitoring delegations must be read from the monitoring list."
+    },
+    {
+      "packet_id": "hai-0af58c3ea357acc542",
+      "decision": "tools",
+      "tools": [
+        "create_reminder"
+      ],
+      "reply_language": "en",
+      "rationale": "The Tamil wording specifies tomorrow morning at 9 for paying electricity; create the grounded reminder and retain the default English reply language."
+    },
+    {
+      "packet_id": "hai-995590989559eb0d09",
+      "decision": "tools",
+      "tools": [
+        "resolve_latest_diary_conflict"
+      ],
+      "reply_language": "en",
+      "rationale": "Choice 3 answers a displayed diary-conflict menu; the dedicated latest-conflict handler safely cancels that request."
+    },
+    {
+      "packet_id": "hai-66725bcb9186436190",
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "reply_language": "en",
+      "rationale": "The forgotten management-payment amount must be recovered from ledger records, not guessed."
+    },
+    {
+      "packet_id": "hai-ebdff19df4ccd622fa",
+      "decision": "tools",
+      "tools": [
+        "work_schedule",
+        "work_departure_plan"
+      ],
+      "reply_language": "en",
+      "rationale": "Answer the shift question from the schedule and use departure planning to obtain the required travel estimate before calculating a departure time."
+    },
+    {
+      "packet_id": "hai-992d78ca03cb69820e",
+      "decision": "clarify",
+      "tools": [],
+      "reply_language": "en",
+      "rationale": "Might buy is tentative shopping language; the policy requires asking whether to add coffee before any shopping write."
+    },
+    {
+      "packet_id": "hai-2e2308e72026d9bd1e",
+      "decision": "tools",
+      "tools": [
+        "update_reminder"
+      ],
+      "reply_language": "en",
+      "rationale": "The user explicitly cancels a naturally named reminder; the reminder updater accepts that reference without an invented identifier."
+    },
+    {
+      "packet_id": "hai-71300323a628d49dc9",
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "reply_language": "en",
+      "rationale": "Upcoming reminders are stored records supplied by the reminder list."
+    },
+    {
+      "packet_id": "hai-d6eeeff50f4294fe8c",
+      "decision": "tools",
+      "tools": [
+        "create_reminder"
+      ],
+      "reply_language": "en",
+      "rationale": "The colloquial Tamil request clearly specifies tomorrow at 9 in the morning and the electricity bill; English remains the reply default."
+    },
+    {
+      "packet_id": "hai-72b7c5ac49574f6483",
+      "decision": "tools",
+      "tools": [
+        "find_receipts",
+        "get_receipt"
+      ],
+      "reply_language": "en",
+      "rationale": "Find the latest matching management-payment receipt and retrieve its original once the authorized match is unique."
+    },
+    {
+      "packet_id": "hai-c7bfff03c58707676b",
+      "decision": "tools",
+      "tools": [
+        "create_reminder"
+      ],
+      "reply_language": "en",
+      "rationale": "Despite spelling errors, the task, tomorrow date and 9am time are clear enough for a grounded reminder."
+    },
+    {
+      "packet_id": "hai-d8639db70facd66031",
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "reply_language": "en",
+      "rationale": "The Tamil request asks to show saved items, so browse the authorized saved-memory index and answer in the default English."
+    },
+    {
+      "packet_id": "hai-d8733153ef7389c192",
+      "decision": "tools",
+      "tools": [
+        "ha_find_entities",
+        "ha_draft_automation"
+      ],
+      "reply_language": "en",
+      "rationale": "Resolve the hall-light entity and prepare the requested sunset-triggered automation draft; the policy permits no deployment or immediate switching."
+    },
+    {
+      "packet_id": "hai-b353659dc585233bac",
+      "decision": "tools",
+      "tools": [
+        "planning_list_goals"
+      ],
+      "reply_language": "en",
+      "rationale": "The current goals are household planning records supplied by the goal-list reader."
+    },
+    {
+      "packet_id": "hai-413641312a5af7e5a3",
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "reply_language": "en",
+      "rationale": "Search actual management-related payments to recover the amount and ask from results if more than one remains relevant."
+    },
+    {
+      "packet_id": "hai-b123943efd7a7bc11f",
+      "decision": "tools",
+      "tools": [
+        "planning_cash_pool_balance",
+        "planning_declare_cash_pool_balance"
+      ],
+      "reply_language": "en",
+      "rationale": "Use the scoped stash lookup to identify the intended pool, then declare the explicit RM300 balance only for a unique authorized result; otherwise clarify the pool."
+    },
+    {
+      "packet_id": "hai-00c5b18f9a9e4645a3",
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "reply_language": "en",
+      "rationale": "Browse saved items within the group's authorized shared scope; everything does not authorize another scope."
+    },
+    {
+      "packet_id": "hai-825956a34ae53e9e9c",
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "reply_language": "en",
+      "rationale": "The count of today's expenses must come from the date-bounded ledger rather than receipt guesses."
+    },
+    {
+      "packet_id": "hai-48f6a07beab81ff09e",
+      "decision": "tools",
+      "tools": [
+        "planning_add_reserve"
+      ],
+      "reply_language": "en",
+      "rationale": "The user explicitly requests a named monthly reserve with a known MYR amount."
+    },
+    {
+      "packet_id": "hai-18b590778f7c5ab028",
+      "decision": "tools",
+      "tools": [
+        "create_reminder"
+      ],
+      "reply_language": "en",
+      "rationale": "The shortened text clearly requests an electricity reminder tomorrow at 9am."
+    },
+    {
+      "packet_id": "hai-e1e67d71050270a783",
+      "decision": "tools",
+      "tools": [
+        "find_receipts",
+        "get_receipt"
+      ],
+      "reply_language": "en",
+      "rationale": "The current request names a receipt but the synthetic prior reply supplies no usable identifier; search and retrieve a unique authorized match."
+    },
+    {
+      "packet_id": "hai-5eaebd003d80354849",
+      "decision": "tools",
+      "tools": [
+        "create_plan"
+      ],
+      "reply_language": "en",
+      "rationale": "Create an unlocked Malacca draft and retain next month as the planning preference without choosing an unstated day or time."
+    },
+    {
+      "packet_id": "hai-98faba17788a088e49",
+      "decision": "tools",
+      "tools": [
+        "report_payload"
+      ],
+      "reply_language": "en",
+      "rationale": "The user asks to prepare finance data for Google Sheets, which the structured handoff payload supports without claiming an external upload."
+    },
+    {
+      "packet_id": "hai-af9f5946176df74635",
+      "decision": "tools",
+      "tools": [
+        "create_reminder"
+      ],
+      "reply_language": "en",
+      "rationale": "The misspellings do not obscure the electricity task, tomorrow date or 9am time."
+    },
+    {
+      "packet_id": "hai-fc28b3129c3a18f70b",
+      "decision": "tools",
+      "tools": [
+        "find_media"
+      ],
+      "reply_language": "en",
+      "rationale": "The request asks which original recordings were sent, so browse preserved voice media without retrieving an unselected item."
+    },
+    {
+      "packet_id": "hai-47207ee4b43145a1ab",
+      "decision": "tools",
+      "tools": [
+        "planning_match_goal_alias"
+      ],
+      "reply_language": "en",
+      "rationale": "The supplied alias text can be conservatively resolved to an authorized configured goal by the dedicated alias reader."
+    },
+    {
+      "packet_id": "hai-dcaef2a42fb7e990bf",
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "reply_language": "en",
+      "rationale": "Browse saved items with picture kind; no particular picture has yet been selected for retrieval."
+    },
+    {
+      "packet_id": "hai-41010e0fb5b92d38f0",
+      "decision": "tools",
+      "tools": [
+        "log_expense"
+      ],
+      "reply_language": "en",
+      "rationale": "The user reports an actual parking expense with an explicit RM6 amount, and the tool can use message time without an invented event time."
+    },
+    {
+      "packet_id": "hai-5ba80c547d49c1064c",
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "reply_language": "en",
+      "rationale": "The natural next-Thursday agenda request should be resolved and read through the combined agenda-range tool."
+    },
+    {
+      "packet_id": "hai-56a2df0a8ac28a2f45",
+      "decision": "tools",
+      "tools": [
+        "asset_list"
+      ],
+      "reply_language": "en",
+      "rationale": "Household asset metadata must be read from the authorized asset list."
+    },
+    {
+      "packet_id": "hai-b1ace0d6a124a644aa",
+      "decision": "tools",
+      "tools": [
+        "resolve_numbered_choice"
+      ],
+      "reply_language": "en",
+      "rationale": "Play 1 selects the displayed pending voice note for original-audio retrieval only, leaving its unresolved state intact."
+    },
+    {
+      "packet_id": "hai-a2ba9a16fcc6b2394d",
+      "decision": "tools",
+      "tools": [
+        "save_item"
+      ],
+      "reply_language": "en",
+      "rationale": "The user explicitly names and asks to save the current picture; select saving without inventing its visual contents or claiming actual rendering."
+    },
+    {
+      "packet_id": "hai-68f6bafb9598b125a7",
+      "decision": "tools",
+      "tools": [
+        "work_leave_balance"
+      ],
+      "reply_language": "en",
+      "rationale": "The dedicated balance capability reads configured annual or medical leave entitlement and usage rather than inferring a balance from listed events."
+    },
+    {
+      "packet_id": "hai-a84c9f02253defc7cc",
+      "decision": "tools",
+      "tools": [
+        "update_plan"
+      ],
+      "reply_language": "en",
+      "rationale": "The interpreted voice request supplies updates to the naturally named Malacca plan and explicitly keeps its date open."
+    },
+    {
+      "packet_id": "hai-0c7f7aa83d5f252741",
+      "decision": "tools",
+      "tools": [
+        "ha_home_report"
+      ],
+      "reply_language": "en",
+      "rationale": "The user requests the status card image, which the home-report tool renders and returns as an attachment."
+    },
+    {
+      "packet_id": "hai-0fd25c3705c6a5eb96",
+      "decision": "tools",
+      "tools": [
+        "planning_cash_outflow"
+      ],
+      "reply_language": "en",
+      "rationale": "The cash-outflow reader explicitly includes savings contributions while excluding double-counted internal stash allocations."
+    },
+    {
+      "packet_id": "hai-11c2ff3b830a9e3f06",
+      "decision": "answer",
+      "tools": [],
+      "reply_language": "en",
+      "rationale": "The request is for a conceptual explanation and explicitly excludes execution; no household lookup or device operation is necessary."
+    },
+    {
+      "packet_id": "hai-d3fd99516afa37563e",
+      "decision": "tools",
+      "tools": [
+        "list_shopping_items",
+        "update_shopping_item"
+      ],
+      "reply_language": "en",
+      "rationale": "The user explicitly reports purchase; find the diapers entry and mark the unique authorized item purchased."
+    },
+    {
+      "packet_id": "hai-cfee23ada9dd2830eb",
+      "decision": "tools",
+      "tools": [
+        "list_reminders",
+        "handoff_reminder_claim"
+      ],
+      "reply_language": "en",
+      "rationale": "The context identifies the claimed bins reminder but supplies no record ID; retrieve it and request Priya's acceptance through the handoff capability."
+    },
+    {
+      "packet_id": "hai-e4915630ac4988373d",
+      "decision": "tools",
+      "tools": [
+        "search_saved_items",
+        "remove_saved_item"
+      ],
+      "reply_language": "en",
+      "rationale": "Search for the authorized code-word note and soft-remove the uniquely identified saved-memory entry."
+    },
+    {
+      "packet_id": "hai-f456b233cd8cc06657",
+      "decision": "tools",
+      "tools": [
+        "monitor_list",
+        "monitor_cancel"
+      ],
+      "reply_language": "en",
+      "rationale": "List active delegations to identify the holiday-goal monitor, then cancel its exact record."
+    },
+    {
+      "packet_id": "hai-d396009ee891ced47f",
+      "decision": "tools",
+      "tools": [
+        "monitor_list"
+      ],
+      "reply_language": "en",
+      "rationale": "The request asks for existing authorized tracking delegations, not new monitoring."
+    },
+    {
+      "packet_id": "hai-939ce142fb3f6ce4e9",
+      "decision": "tools",
+      "tools": [
+        "list_pending_items"
+      ],
+      "reply_language": "en",
+      "rationale": "Unresolved voice notes are VOICE pending items and should be read without resolving or cancelling them."
+    },
+    {
+      "packet_id": "hai-d9e8da88bb600558d9",
+      "decision": "tools",
+      "tools": [
+        "query_finances"
+      ],
+      "reply_language": "en",
+      "rationale": "The supplied ledger reader can provide this month's real totals and transactions for a finance summary, so discovery is unnecessary."
+    },
+    {
+      "packet_id": "hai-194288046912b5ead8",
+      "decision": "tools",
+      "tools": [
+        "search_saved_items",
+        "remove_saved_item"
+      ],
+      "reply_language": "en",
+      "rationale": "Explicit private wording authorizes only the authenticated wife's private saved-memory lookup and conditional removal of her unique cobalt match."
+    },
+    {
+      "packet_id": "hai-42b7efeabb596934a4",
+      "decision": "clarify",
+      "tools": [],
+      "reply_language": "en",
+      "rationale": "Thinking of getting coffee is tentative shopping language, so ask whether to add it before making a list entry."
+    },
+    {
+      "packet_id": "hai-491b331f2127be9eef",
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "reply_language": "en",
+      "rationale": "The stated date can be resolved and its actual agenda returned by the combined range reader."
+    },
+    {
+      "packet_id": "hai-e3dda9caad17a8037b",
+      "decision": "tools",
+      "tools": [
+        "log_expense"
+      ],
+      "reply_language": "en",
+      "rationale": "The current statement supplies the actual expense and MYR amount; a synthetic prior reply does not establish execution or a correction identifier."
+    },
+    {
+      "packet_id": "hai-bb2f855a479f3e856f",
+      "decision": "tools",
+      "tools": [
+        "planning_list_reserves"
+      ],
+      "reply_language": "en",
+      "rationale": "The explicit planning reserves are stored configuration returned by the reserve-list reader."
+    },
+    {
+      "packet_id": "hai-ff619bee0360f74e2a",
+      "decision": "tools",
+      "tools": [
+        "report_export"
+      ],
+      "reply_language": "en",
+      "rationale": "The export request explicitly names finance and PDF, both supported by the report-export capability."
+    },
+    {
+      "packet_id": "hai-67a2b8dce77be5c08d",
+      "decision": "tools",
+      "tools": [
+        "get_agenda",
+        "update_diary_event"
+      ],
+      "reply_language": "en",
+      "rationale": "Look up the unique dentist appointment and change its existing date's time to 5pm; if linked reminders exist, obtain the required keep, shift or cancel choice before mutation."
+    },
+    {
+      "packet_id": "hai-add791cb98e82db731",
+      "decision": "tools",
+      "tools": [
+        "release_reminder_claim"
+      ],
+      "reply_language": "en",
+      "rationale": "The user expressly releases a claim; this tool can safely use the sole unambiguous current claim when no reference is supplied."
+    },
+    {
+      "packet_id": "hai-8537f11b2cc3e51f79",
+      "decision": "tools",
+      "tools": [
+        "list_reminders"
+      ],
+      "reply_language": "en",
+      "rationale": "The question about remembering something later naturally asks for upcoming reminders, which must be read from records."
+    },
+    {
+      "packet_id": "hai-dd54f5779521111d53",
+      "decision": "tools",
+      "tools": [
+        "get_agenda_range"
+      ],
+      "reply_language": "en",
+      "rationale": "Search the actual upcoming agenda for the dentist appointment and answer from returned local-time fields, clarifying if matches are ambiguous."
+    },
+    {
+      "packet_id": "hai-14785314aff35ed3d0",
+      "decision": "tools",
+      "tools": [
+        "list_plans"
+      ],
+      "reply_language": "en",
+      "rationale": "Read accessible plans to find and show the Malacca day-trip draft without modifying or confirming it."
+    },
+    {
+      "packet_id": "hai-18f010bcbbc11593dd",
+      "decision": "tools",
+      "tools": [
+        "query_finances",
+        "correct_expense"
+      ],
+      "reply_language": "en",
+      "rationale": "Look up the referenced parking expense, then apply the explicit RM8.50 amount only when its intended authorized record is unambiguous."
+    },
+    {
+      "packet_id": "hai-7d9224e88eb777ee9b",
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "reply_language": "en",
+      "rationale": "The user asks to browse explicitly saved memories, which requires the saved-item index."
+    },
+    {
+      "packet_id": "hai-56cb2c064c5faad53d",
+      "decision": "tools",
+      "tools": [
+        "monitor_list",
+        "monitor_cancel"
+      ],
+      "reply_language": "en",
+      "rationale": "Identify the authorized holiday-goal delegation and cancel that exact monitor."
+    },
+    {
+      "packet_id": "hai-f6326bd872d6d5098c",
+      "decision": "tools",
+      "tools": [
+        "planning_cash_status",
+        "planning_allocate_cash_to_goal"
+      ],
+      "reply_language": "en",
+      "rationale": "Resolve the available extra-cash event, then allocate the stated RM200 to the naturally named holiday goal only if the source is unique and sufficiently funded."
+    },
+    {
+      "packet_id": "hai-e73b10724da86ed4f0",
+      "decision": "tools",
+      "tools": [
+        "work_departure_plan"
+      ],
+      "reply_language": "en",
+      "rationale": "The departure planner explicitly handles a missing travel estimate by requesting it before reading the roster; no travel duration or alarm should be invented."
+    },
+    {
+      "packet_id": "hai-e9184355da62603e46",
+      "decision": "tools",
+      "tools": [
+        "search_saved_items"
+      ],
+      "reply_language": "en",
+      "rationale": "Browse the saved items authorized in the group's shared scope without broadening to private memories."
+    },
+    {
+      "packet_id": "hai-47ebc23cb8383d178c",
+      "decision": "tools",
+      "tools": [
+        "planning_cash_status"
+      ],
+      "reply_language": "en",
+      "rationale": "The cash-status reader provides the actual unallocated amount and can surface ambiguity instead of guessing which cash event is meant."
+    },
+    {
+      "packet_id": "hai-fd0680f2fd46225ad4",
+      "decision": "tools",
+      "tools": [
+        "confirm_plan"
+      ],
+      "reply_language": "en",
+      "rationale": "The user explicitly confirms the naturally named Malacca plan and requests its linked diary event; the confirmation tool materializes that event when dated."
+    },
+    {
+      "packet_id": "hai-3f705f38ea60cc3372",
+      "decision": "tools",
+      "tools": [
+        "ha_find_entities",
+        "ha_get_state"
+      ],
+      "reply_language": "en",
+      "rationale": "Resolve the hall AC entity and read its current state to answer the direct status question."
+    }
+  ]
+}

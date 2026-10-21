@@ -48,6 +48,10 @@ class ActorContext:
     # destination or object identity. Reminder services may use it only as a
     # date/time parsing hint after ingress has grounded the pending object.
     reminder_semantic_text: str = ""
+    # Exact reminder draft selected and revalidated locally for this turn.
+    # A model-provided ID must never be copied here. Services recheck owner,
+    # conversation, kind and PENDING status before using earlier time evidence.
+    reminder_pending_id: str = ""
 
 
 _current_actor: ContextVar[ActorContext | None] = ContextVar("alex_actor", default=None)

@@ -137,6 +137,23 @@ def reminder_write_signal(text) -> bool:
     return any(re.search(pattern, low) for pattern in natural_patterns)
 
 
+def reminder_continuation_reference(text) -> bool:
+    """Recognize an explicit reference, without choosing or authorizing a row.
+
+    A pending-object resolver must still establish identity. This only prevents
+    the word "reminder" in "set that reminder for tomorrow" from being treated
+    as proof of a new task. Explicit new-task wording always wins.
+    """
+    low = normalize_intent_text(text).strip().casefold()
+    if re.search(r"\b(?:new|another|separate|different)\s+reminder\b", low):
+        return False
+    if re.search(r"\bremind\s+(?:me|us|my\s+wife|my\s+husband)\s+to\b", low):
+        return False
+    return bool(re.search(
+        r"\b(?:that|this|the(?:\s+(?:same|pending|existing))?)\s+reminder\b", low,
+    ))
+
+
 def classify_read_intent(text):
     """Resolve casual schedule language to Agenda unless work is explicit."""
     raw = normalize_intent_text(text).strip()

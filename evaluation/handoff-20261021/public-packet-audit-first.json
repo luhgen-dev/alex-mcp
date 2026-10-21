@@ -1,0 +1,45 @@
+{
+  "mode": "human_ai_packet_audit",
+  "status": "PASS",
+  "summary": {
+    "packets": 388,
+    "corpus_fingerprint": "1eac6670ca922148870a3576662ca687c1313869eca4d8183ce1b60df2e64df0",
+    "domains": [
+      "agenda",
+      "assets",
+      "bills",
+      "cash_planning",
+      "diagnostics",
+      "diary",
+      "finance",
+      "goals",
+      "home_assistant",
+      "language",
+      "media",
+      "memory",
+      "monitoring",
+      "plans",
+      "privacy",
+      "receipts",
+      "reminders",
+      "reports",
+      "routing",
+      "safety",
+      "shopping",
+      "tasks",
+      "work"
+    ],
+    "sources": [
+      "image",
+      "pdf",
+      "text",
+      "voice"
+    ],
+    "duplicate_packet_ids": [],
+    "packets_without_tools": [],
+    "routing_gaps": 0,
+    "forbidden_exposure": 0
+  },
+  "routing_gaps": [],
+  "forbidden_exposure": []
+}

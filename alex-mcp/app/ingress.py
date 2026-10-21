@@ -756,6 +756,66 @@ def _reminder_created_by_turn(actor) -> bool:
         conn.close()
 
 
+def _completed_reminder_drafts_for_turn(actor) -> list[str]:
+    """Recover exact draft completion from durable, successful tool receipts.
+
+    A nearby time phrase, the newest pending item or a model-written success
+    sentence cannot resolve a draft. Normal ingress has already bound its exact
+    ID; a later brain rescue must supply a locally bound successful receipt.
+    Both paths require an actual reminder row from this authenticated turn.
+    The durable audit survives eviction of the in-memory turn trace.
+    """
+    conn = db.connect()
+    try:
+        completed = set()
+        bound_id = str(getattr(actor, "reminder_pending_id", "") or "")
+        if bound_id:
+            prebound = conn.execute(
+                """SELECT 1 FROM pending_items p
+                   WHERE p.item_id=? AND p.owner_id=? AND p.conversation_id=?
+                     AND p.kind='REMINDER_DRAFT' AND p.status='PENDING'
+                     AND EXISTS (SELECT 1 FROM reminders r WHERE r.source_message_id=?)""",
+                (bound_id, actor.user_id, actor.conversation_id, actor.source_message_id),
+            ).fetchone()
+            if prebound:
+                completed.add(bound_id)
+        rows = conn.execute(
+            """SELECT result_json FROM tool_audit
+               WHERE source_message_id=? AND user_id=?
+                 AND tool_name='create_reminder' AND status='OK'""",
+            (actor.source_message_id, actor.user_id),
+        ).fetchall()
+        for row in rows:
+            try:
+                receipt = json.loads(row["result_json"] or "{}")
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(receipt, dict):
+                continue
+            children = receipt.get("reminders")
+            items = children if isinstance(children, list) else [receipt]
+            for item in items:
+                if not isinstance(item, dict) or item.get("status") not in {"created", "already_created"}:
+                    continue
+                pending_id = str(item.get("pending_item_id") or receipt.get("pending_item_id") or "")
+                reminder_id = str(item.get("reminder_id") or "")
+                if not pending_id or not reminder_id:
+                    continue
+                actual = conn.execute(
+                    """SELECT 1 FROM reminders r JOIN pending_items p ON p.item_id=?
+                       WHERE r.reminder_id=? AND r.source_message_id=?
+                         AND p.owner_id=? AND p.conversation_id=?
+                         AND p.kind='REMINDER_DRAFT' AND p.status='PENDING'""",
+                    (pending_id, reminder_id, actor.source_message_id,
+                     actor.user_id, actor.conversation_id),
+                ).fetchone()
+                if actual:
+                    completed.add(pending_id)
+        return sorted(completed)
+    finally:
+        conn.close()
+
+
 def _is_reminder_request(text: str) -> bool:
     value = str(text or "")
     if re.search(
@@ -974,7 +1034,7 @@ def _reminder_draft_continuation(
 
     # A fresh reminder request starts/replaces a reminder conversation; it must
     # never be swallowed as a date/time answer to an older draft.
-    if _is_reminder_request(value):
+    if _is_reminder_request(value) and not phase2_intent.reminder_continuation_reference(value):
         return False, latest_question, ""
 
     domain_switch = bool(re.search(
@@ -1164,8 +1224,9 @@ def _retained_reminder_draft_after_clarification(actor, reply: str) -> dict | No
         return None
     current = normalize_intent_text(str(getattr(actor, "trusted_text", "") or ""))
     if (
-        _REMINDER_CREATE_WORDS_RE.search(current)
-        or phase2_intent.reminder_write_signal(current)
+        (_REMINDER_CREATE_WORDS_RE.search(current)
+         or phase2_intent.reminder_write_signal(current))
+        and not phase2_intent.reminder_continuation_reference(current)
     ):
         # A separately requested reminder may open its own missing-time draft.
         return None
@@ -1799,6 +1860,7 @@ def process(payload: dict) -> dict:
                 ).strip()
                 actor = replace(
                     actor,
+                    reminder_pending_id=str(pending_item["item_id"]),
                     reminder_context_text=accumulated,
                     reminder_routing_json=str(
                         pending_item.get("routing_json") or ""
@@ -2272,22 +2334,9 @@ def process(payload: dict) -> dict:
         report_context = _report_context_for_turn(actor)
 
         if reminder_created:
-            draft_to_resolve = continuing_reminder_draft
-            if (
-                not draft_to_resolve
-                and _looks_like_reminder_clarification_reply(
-                    turn["trusted_text"]
-                )
-            ):
-                # A pure date/time answer that successfully creates a reminder
-                # is completion of the newest active reminder draft, even if a
-                # provider quote ID was unavailable on this turn.
-                draft_to_resolve = db.latest_pending_item(
-                    actor, "REMINDER_DRAFT", max_age_seconds=1800
-                )
-            if draft_to_resolve:
+            for pending_id in _completed_reminder_drafts_for_turn(actor):
                 db.resolve_pending_item(
-                    draft_to_resolve["item_id"],
+                    pending_id,
                     actor.user_id,
                     actor.source_message_id,
                 )

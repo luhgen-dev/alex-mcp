@@ -1,0 +1,1 @@
+{"passed": 5, "failed": 0, "checks": [{"name": "schema", "ok": true, "detail": "all required tables present"}, {"name": "wal", "ok": true, "detail": "wal"}, {"name": "foreign_keys", "ok": true, "detail": 0}, {"name": "calculator", "ok": true, "detail": {"expression": "2 + 3 * 4", "result": 14}}, {"name": "configuration_loader", "ok": true, "detail": "auto"}]}
