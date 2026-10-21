@@ -123,7 +123,7 @@ async def prepare(
         return metadata
 
     compact = _compact_delta(delta)
-    reviewer = "GitHub Copilot gpt-4.1 isolated public-packet reviewer"
+    reviewer = "GitHub Copilot auto-selected isolated public-packet reviewer"
     prompt = f"""You are an isolated independent reviewer for Alex, a household assistant.
 
 You are given ONLY public reasoning packets. Hidden certification contracts,
