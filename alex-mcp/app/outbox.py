@@ -370,6 +370,26 @@ def _reconcile_pending_item_markers(conn) -> None:
             _cleanup_resolved_markers(conn, row)
 
 
+def _reconcile_daily_brief_markers(conn) -> None:
+    rows = conn.execute(
+        """SELECT o.*,b.status AS brief_status
+           FROM outbound_messages o
+           JOIN daily_briefs b ON b.brief_id=o.context_id
+           WHERE o.context_kind='DAILY_BRIEF' AND o.delivery_status='SENT'
+             AND (
+               b.status='PENDING'
+               OR (o.job_reacted_at_utc IS NOT NULL AND o.job_reaction_cleared_at_utc IS NULL)
+               OR (o.job_pinned_at_utc IS NOT NULL AND o.job_unpinned_at_utc IS NULL)
+             )
+           ORDER BY o.rowid DESC"""
+    ).fetchall()
+    for row in rows:
+        if row["brief_status"] == "PENDING":
+            _ensure_claim_setup_markers(conn, row)
+        else:
+            _cleanup_claim_setup_markers(conn, row)
+
+
 def _reconcile_error_report_markers(conn) -> None:
     """Keep the one unresolved error-description prompt visibly active.
 
@@ -911,6 +931,7 @@ def sweep():
         _reconcile_pending_item_markers(conn)
         _reconcile_claim_setup_markers(conn)
         _reconcile_reminder_pins(conn)
+        _reconcile_daily_brief_markers(conn)
         _reconcile_error_report_markers(conn)
         _retry_delivered_document_cleanup(conn)
 
