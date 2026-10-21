@@ -474,7 +474,7 @@ def update_plan(actor: ActorContext, plan_id: str, status: str | None = None,
 
 
 def confirm_plan(actor: ActorContext, plan_id: str,
-                 add_to_diary: bool = True,
+                 add_to_diary: bool = False,
                  reminder_minutes_before: int | None = None,
                  reminder_recipient: str = "me") -> dict:
     """Confirm a plan; dated confirmations materialize a linked Diary event."""
