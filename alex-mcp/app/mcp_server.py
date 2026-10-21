@@ -27,6 +27,7 @@ import phase2_home
 import phase2_reports
 import daily_brief
 import listening
+import custom_ledgers
 import scope_policy
 
 mcp = MCPServer(
@@ -2170,6 +2171,60 @@ def report_payload(target: str, actor: Actor, period: str | None = None) -> dict
     if target_name in {"tv", "dashboard"}:
         return {"target": "tv", "payload": phase2_reports.tv_payload(snapshot)}
     raise ValueError("target must be google_sheets or tv")
+
+
+@alex_tool()
+def create_custom_ledger(name: str, actor: Actor, purpose: str | None = None,
+                         fields: list[str] | None = None,
+                         shared: bool = False) -> dict:
+    """Create a custom private/shared tracker only when no specialist Alex engine (goal, stash, bill, task, etc.) fits better."""
+    return custom_ledgers.create_ledger(actor, name, purpose, fields, shared)
+
+
+@alex_tool()
+def list_custom_ledgers(actor: Actor, include_closed: bool = False) -> dict:
+    """List custom trackers in the current privacy scope."""
+    return custom_ledgers.list_ledgers(actor, include_closed)
+
+
+@alex_tool()
+def add_custom_ledger_entry(actor: Actor, description: str,
+                            ledger_id: str | None = None,
+                            ledger_name: str | None = None,
+                            entry_date: str | None = None,
+                            entry_kind: str | None = None,
+                            amount: float | None = None,
+                            currency: str | None = None,
+                            data: dict | None = None) -> dict:
+    """Add a custom-ledger entry. Money entries require explicit semantic kind: SPENDING, SAVINGS, TRANSFER or REFERENCE_ONLY; ambiguity returns a clarification and writes nothing."""
+    resolved = custom_ledgers.resolve_ledger(actor, ledger_id, ledger_name)
+    return custom_ledgers.add_entry(
+        actor, resolved, description, entry_date, entry_kind, amount, currency, data
+    )
+
+
+@alex_tool()
+def query_custom_ledger(actor: Actor, ledger_id: str | None = None,
+                        ledger_name: str | None = None,
+                        start_date: str | None = None,
+                        end_date: str | None = None,
+                        entry_kind: str | None = None,
+                        limit: int = 100) -> dict:
+    """Read one custom ledger. Results are numbered and frozen for exact Show N follow-ups."""
+    resolved = custom_ledgers.resolve_ledger(actor, ledger_id, ledger_name)
+    return custom_ledgers.query_entries(
+        actor, resolved, start_date, end_date, entry_kind, limit
+    )
+
+
+@alex_tool()
+def close_custom_ledger(actor: Actor, ledger_id: str | None = None,
+                        ledger_name: str | None = None) -> dict:
+    """Close one custom ledger while preserving all history."""
+    resolved = custom_ledgers.resolve_ledger(
+        actor, ledger_id, ledger_name, include_closed=True
+    )
+    return custom_ledgers.close_ledger(actor, resolved)
 
 
 @alex_tool()
