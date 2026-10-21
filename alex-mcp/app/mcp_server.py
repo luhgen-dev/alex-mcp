@@ -24,6 +24,7 @@ import phase2_monitor
 import phase2_home
 import phase2_reports
 import daily_brief
+import listening
 import scope_policy
 
 mcp = MCPServer(
@@ -2049,6 +2050,12 @@ def report_payload(target: str, actor: Actor, period: str | None = None) -> dict
     if target_name in {"tv", "dashboard"}:
         return {"target": "tv", "payload": phase2_reports.tv_payload(snapshot)}
     raise ValueError("target must be google_sheets or tv")
+
+
+@alex_tool()
+def recall_discussion(query: str, actor: Actor) -> dict:
+    """Recall a previously captured Family Shared Listening Mode discussion by natural topic words. Read-only; never turns discussion into a plan, task, reminder, diary entry or saved item automatically."""
+    return listening.recall(actor, query)
 
 
 @alex_tool()
