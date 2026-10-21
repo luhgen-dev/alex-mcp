@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Annotated
 from functools import wraps
+from datetime import datetime
+from zoneinfo import ZoneInfo
 import inspect
 import sqlite3
 import re
@@ -560,6 +562,95 @@ def create_task(title: str, actor: Actor, notes: str | None = None,
     return phase2.create_task(
         actor, title, notes, assignee, shared, due_local, plan_id, reminder_id
     )
+
+
+@alex_tool()
+def create_task_reminder(actor: Actor, due_local: str,
+                         task_id: str | None = None,
+                         task_name: str | None = None,
+                         reminder_mode: str | None = None,
+                         time_interpretation: ReminderTimeInterpretation | None = None) -> dict:
+    """Create a reminder linked to one existing task. For a date-only task, reminder_mode must be heads_up or task_time; omit it to get a clarification instead of guessing. heads_up leaves the task due date unchanged; task_time also gives the task that exact due time."""
+    resolved = phase2.resolve_task_reference(
+        actor, task_id, task_name, include_closed=False
+    )
+    conn = db.connect()
+    try:
+        task = conn.execute(
+            """SELECT task_id,title,space_id,due_at_utc,due_date_local
+               FROM tasks WHERE task_id=? LIMIT 1""",
+            (resolved,),
+        ).fetchone()
+        if not task:
+            raise ValueError("task not found")
+    finally:
+        conn.close()
+
+    mode = str(reminder_mode or "").strip().casefold().replace("-", "_")
+    if task["due_date_local"] and not task["due_at_utc"] and mode not in {"heads_up", "task_time"}:
+        return {
+            "status": "needs_clarification",
+            "clarification_question": (
+                "Do you want this as a heads-up reminder while keeping the task due "
+                f"anytime on {task['due_date_local']}, or should I set the task itself "
+                "to the reminder time?"
+            ),
+            "choices": ["heads_up", "task_time"],
+            "task": task["title"],
+        }
+    if mode and mode not in {"heads_up", "task_time"}:
+        raise ValueError("reminder_mode must be heads_up or task_time")
+
+    result = services.create_reminder(
+        actor,
+        str(task["title"]),
+        due_local,
+        recurrence_rule=None,
+        shared=(task["space_id"] == "FAMILY_SHARED"),
+        recipient="me",
+        destination="dm",
+        claimable=False,
+        presence_aware=False,
+        delivery_class="routine",
+        follow_up_after_hours=24,
+        time_interpretation=time_interpretation,
+    )
+    reminder_id = str(result.get("reminder_id") or "")
+    due_utc = result.get("due_at_utc")
+    if not reminder_id:
+        return result
+
+    conn = db.connect()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("DELETE FROM task_reminder_links WHERE task_id=?", (resolved,))
+        conn.execute(
+            "INSERT INTO task_reminder_links(task_id,reminder_id) VALUES(?,?)",
+            (resolved, reminder_id),
+        )
+        if mode == "task_time" and due_utc:
+            local = datetime.fromisoformat(
+                str(due_utc).replace("Z", "+00:00")
+            ).astimezone(ZoneInfo(actor.timezone))
+            conn.execute(
+                """UPDATE tasks
+                   SET due_at_utc=?,due_date_local=?,updated_at_utc=CURRENT_TIMESTAMP
+                   WHERE task_id=?""",
+                (str(due_utc), local.date().isoformat(), resolved),
+            )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    return {
+        **result,
+        "task_linked": True,
+        "task": task["title"],
+        "reminder_mode": mode or "heads_up",
+        "task_time_changed": bool(mode == "task_time"),
+    }
 
 
 @alex_tool()
