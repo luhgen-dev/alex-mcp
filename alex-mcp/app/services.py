@@ -22,7 +22,7 @@ from text_normalization import normalize_intent_text
 from dateutil.rrule import rrulestr
 
 from context import ActorContext
-from config import DATA_DIR, get_settings
+from config import DATA_DIR, get_settings, normalize_phone
 from db import connect, utc_now
 
 
