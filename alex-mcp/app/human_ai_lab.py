@@ -165,7 +165,9 @@ def _packet_base(packet_id: str, contract_id: str, phase: str, domain: str,
             "Selecting that later capability does not claim its arguments are already "
             "known or that it has executed. Never invent household facts, record ids, "
             "amounts, currencies or timing. If a required user decision is missing, "
-            "clarify. Never assume a capability that is not supplied."
+            "clarify. Never assume a capability that is not supplied. If a supplied "
+            "tool explicitly accepts a natural name/reference and resolves it internally, "
+            "use that tool directly instead of inventing a separate lookup tool."
         ),
         "runtime_policy": _runtime_policy(),
         "evaluation_scope": (
