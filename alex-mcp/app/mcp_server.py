@@ -25,6 +25,7 @@ import phase2_delegation
 import phase2_monitor
 import phase2_home
 import phase2_reports
+import profile_config
 import daily_brief
 import listening
 import custom_ledgers
@@ -1593,6 +1594,12 @@ def bills_confirm_unpaid(instance_id: str, actor: Actor, note: str | None = None
     return phase2_finance.confirm_obligation_unpaid(
         instance_id, actor.phone, actor.conversation_type, note,
     )
+
+
+@alex_tool()
+def work_import_profile(profile_json: str, actor: Actor) -> dict:
+    """Import this owner's explicit permanent private roster/overtime/leave profile from user-authored JSON. Values are validated and versioned locally; nothing is published to source control."""
+    return profile_config.import_user_work_profile(actor, profile_json)
 
 
 @alex_tool()
