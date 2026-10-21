@@ -59,6 +59,8 @@ CAPABILITY_TO_TOOLS: dict[str, frozenset[str]] = {
     # First-class task lifecycle. Legacy aliases remain classified for migration safety.
     "task.create": frozenset({"create_task", "add_task", "task_create"}),
     "task.read": frozenset({"list_tasks", "task_list"}),
+    "task.details": frozenset({"get_task_details"}),
+    "task.reminder.link": frozenset({"create_task_reminder"}),
     "task.update": frozenset({"update_task", "task_update", "task_change"}),
     "task.complete": frozenset({"complete_task", "task_complete", "task_change"}),
     "task.reopen": frozenset({"reopen_task", "task_reopen", "task_change"}),
@@ -96,6 +98,13 @@ CAPABILITY_TO_TOOLS: dict[str, frozenset[str]] = {
     "planning.cashflow": frozenset({"planning_cashflow"}),
     "planning.cash.outflow": frozenset({"planning_cash_outflow"}),
     "planning.brief": frozenset({"planning_brief"}),
+
+    # Custom Ledgers / trackers
+    "ledger.create": frozenset({"create_custom_ledger"}),
+    "ledger.list": frozenset({"list_custom_ledgers"}),
+    "ledger.entry.add": frozenset({"add_custom_ledger_entry"}),
+    "ledger.query": frozenset({"query_custom_ledger"}),
+    "ledger.close": frozenset({"close_custom_ledger"}),
 
     # Bills
     "bills.list": frozenset({"bills_list"}),
@@ -139,6 +148,8 @@ CAPABILITY_TO_TOOLS: dict[str, frozenset[str]] = {
     "report.snapshot": frozenset({"report_snapshot"}),
     "report.export": frozenset({"report_export"}),
     "report.payload": frozenset({"report_payload"}),
+    "daily.brief": frozenset({"get_daily_brief"}),
+    "discussion.recall": frozenset({"recall_discussion"}),
     "diagnostics.health": frozenset({"system_health"}),
     "diagnostics.failures": frozenset({"recent_failures"}),
     "calculate": frozenset({"calculate"}),
