@@ -401,6 +401,7 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
         "report_snapshot": (r"report|summary|snapshot|overview", 105),
         "report_export": (r"pdf|csv|json|export|send.*report|report.*file", 122),
         "report_payload": (r"google sheets|sheet|tv|dashboard|handoff", 115),
+        "get_daily_brief": (r"daily brief|brief me|what(?:'s| is) in for me today|what do i have today|today at a glance", 155),
         "calculate": (r"calculate|how much|total|difference|remaining", 70),
     }
     pattern, weight = direct.get(name, ("", 0))
@@ -1300,6 +1301,11 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
         selected.add("finance_report")
         if re.search(r"\b(?:pdf|csv|json|export|send)\b", low):
             selected.add("report_export")
+    if re.search(
+        r"\b(?:daily brief|brief me|what(?:'s| is) in for me today|what do i have today|today at a glance)\b",
+        low,
+    ):
+        selected.add("get_daily_brief")
     if re.search(r"\b(?:calculate|calculator|minus|plus|subtract|add up|times|multiplied|divided)\b", low):
         selected.add("calculate")
 
@@ -2572,7 +2578,7 @@ READ_ONLY_TOOLS = {
     "planning_compare_salary","planning_match_goal_alias","bills_list",
     "bills_match_payment","work_schedule","work_day","work_ot_status",
     "work_leave_balance","work_departure_plan","asset_list","warranty_expiring",
-    "monitor_list","report_snapshot","report_export","report_payload","calculate",
+    "monitor_list","report_snapshot","report_export","report_payload","get_daily_brief","calculate",
     "list_goals","get_leave_balance","list_money_buckets",
 }
 
