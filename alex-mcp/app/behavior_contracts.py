@@ -1031,6 +1031,15 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         _fs("planning_reopen_goal"), seed="core", live=False,
     ),
     PromptContract(
+        "p2.goals.cancel", "phase2", "goals",
+        "Explicit owner cancellation must close the goal without deleting its contribution history.",
+        (
+            "Cancel the Family Holiday Savings goal.",
+            "Stop tracking my Family Holiday Savings goal.",
+        ),
+        _fs("planning_cancel_goal"), seed="core", live=False,
+    ),
+    PromptContract(
         "p2.goals.baseline.change", "phase2", "goals",
         "Recurring baseline changes must happen only when the owner explicitly asks.",
         (
