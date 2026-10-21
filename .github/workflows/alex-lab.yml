@@ -19,7 +19,10 @@ on:
 jobs:
   lab:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      copilot-requests: write
     steps:
       - uses: actions/checkout@v4
 
@@ -30,6 +33,41 @@ jobs:
 
       - name: Install Python dependencies
         run: pip install -r alex-mcp/app/requirements.txt
+
+      - name: Prepare independent reasoning delta
+        id: prepare_review
+        run: |
+          python alex-mcp/app/github_models_delta_review.py prepare \
+            --snapshot alex-mcp/app/real_ai_snapshot.json \
+            --prompt-out /tmp/alex-independent-review-prompt.txt \
+            --metadata-out /tmp/alex-independent-review-meta.json
+          python - <<'PY'
+          import json, os
+          meta = json.load(open("/tmp/alex-independent-review-meta.json", encoding="utf-8"))
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+              out.write("needs_review=" + ("true" if meta.get("delta_packets") else "false") + "\n")
+          PY
+
+      - name: Install Copilot CLI for independent review
+        if: steps.prepare_review.outputs.needs_review == 'true'
+        run: npm install -g @github/copilot
+
+      - name: Run isolated independent reasoning review
+        if: steps.prepare_review.outputs.needs_review == 'true'
+        id: independent_review
+        uses: actions/ai-inference@v3
+        with:
+          prompt-file: /tmp/alex-independent-review-prompt.txt
+          model: gpt-4.1
+          system-prompt: Return only the exact JSON requested by the prompt. Do not use markdown or tools.
+
+      - name: Import and verify independent reasoning delta
+        if: steps.prepare_review.outputs.needs_review == 'true'
+        run: |
+          python alex-mcp/app/github_models_delta_review.py import \
+            --snapshot alex-mcp/app/real_ai_snapshot.json \
+            --response "${{ steps.independent_review.outputs.response-file }}" \
+            --report /tmp/alex-copilot-independent-review.json
 
       - name: Run external Alex Lab
         shell: bash
@@ -59,6 +97,8 @@ jobs:
             /tmp/alex-human-ai-report.json
             /tmp/alex-real-ai-reasoning-review.json
             /tmp/alex-chatgpt-reasoning-review.json
+            /tmp/alex-copilot-independent-review.json
+            /tmp/alex-independent-review-meta.json
             alex-mcp/app/real_ai_snapshot.json
           if-no-files-found: error
           retention-days: 14
