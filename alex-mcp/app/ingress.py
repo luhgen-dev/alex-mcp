@@ -391,6 +391,20 @@ def _error_report_cancel_command(text: str) -> bool:
     ))
 
 
+def _save_pending_voice_title(text: str) -> str | None:
+    """Recognize an explicit typed request to save the one recent voice note."""
+    value = normalize_intent_text(str(text or "")).strip()
+    match = re.fullmatch(
+        r"(?is)(?:please\s+)?(?:save|keep|remember)\s+(?:this\s+)?"
+        r"(?:voice\s*note|voicenote|audio(?:\s*note)?)?\s*(?:as|called|named)\s+(.+?)\s*[.!]?",
+        value,
+    )
+    if not match:
+        return None
+    title = str(match.group(1) or "").strip().strip('"“”')
+    return title[:200] if title else None
+
+
 def _diagnostic_export_command(text: str) -> str | None:
     match = re.fullmatch(
         r"(?is)\s*(?:export|send|give\s+me)\s+"
@@ -1706,6 +1720,30 @@ def process(payload: dict) -> dict:
             _record_deterministic_turn(actor, reply)
             db.finish_inbound(actor.source_message_id, reply)
             return {"ok": True, "voice_pending": True, "pending_item_id": pending["item_id"]}
+
+        pending_voice_title = _save_pending_voice_title(turn["trusted_text"])
+        if pending_voice_title and actor.conversation_type != "GROUP":
+            voice_pending = db.single_pending_item(
+                actor, "VOICE", max_age_seconds=1800
+            )
+            if voice_pending and voice_pending.get("media_id"):
+                saved = services.save_existing_media_item(
+                    actor,
+                    pending_voice_title,
+                    pending_voice_title,
+                    str(voice_pending["media_id"]),
+                    shared=(turn["read_scope"] != "private"),
+                    tags="voice-note",
+                )
+                db.resolve_pending_item(
+                    voice_pending["item_id"], actor.user_id, actor.source_message_id
+                )
+                return _finish_simple_turn(
+                    actor,
+                    f'Saved “{pending_voice_title}” with the original voice note.',
+                    voice_note_saved=True,
+                    saved_item_id=saved.get("item_id"),
+                )
 
         # Existing authentication, group gating, privacy derivation and voice
         # pending policy above remain authoritative. Dot bypasses all semantic
