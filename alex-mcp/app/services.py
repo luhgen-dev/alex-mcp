@@ -1243,6 +1243,87 @@ def _store_selection(conn, actor: ActorContext, kind: str, ids: list[str]) -> st
     return selection_id
 
 
+def store_finance_selection(actor: ActorContext, event_ids: list[str]) -> str | None:
+    """Freeze the exact transaction order just shown in this conversation."""
+    ids = [str(value) for value in event_ids if str(value or "").strip()]
+    if not ids:
+        return None
+    selection_id = str(uuid.uuid4())
+    expires = (runtime_clock.now_utc() + timedelta(hours=48)).isoformat()
+    bound_scope = str(getattr(actor, "read_scope", None) or "all").strip().casefold()
+    if bound_scope not in {"family", "private", "all"}:
+        bound_scope = "all"
+    conn = connect()
+    try:
+        conn.execute(
+            """INSERT INTO finance_selection_sets(
+                   selection_id,user_id,conversation_id,items_json,
+                   read_scope,created_at_utc,expires_at_utc
+               ) VALUES(?,?,?,?,?,?,?)""",
+            (
+                selection_id, actor.user_id, actor.conversation_id,
+                json.dumps(ids, ensure_ascii=False), bound_scope, utc_now(), expires,
+            ),
+        )
+        conn.commit()
+        return selection_id
+    finally:
+        conn.close()
+
+
+def get_financial_event_detail(actor: ActorContext, event_id: str) -> dict:
+    """Return one exact transaction with provenance; never send its receipt automatically."""
+    marks, spaces = _spaces_sql(actor)
+    conn = connect()
+    try:
+        row = conn.execute(
+            f"""SELECT f.*,i.raw_text AS source_text,i.received_at_utc AS source_received_at
+                FROM financial_events f
+                LEFT JOIN inbound_messages i ON i.message_id=f.source_message_id
+                WHERE f.event_id=? AND f.space_id IN ({marks})
+                  AND f.status='ACTIVE' LIMIT 1""",
+            [event_id] + spaces,
+        ).fetchone()
+        if not row:
+            raise PermissionError("financial event not found in your accessible data")
+        tz = ZoneInfo(actor.timezone)
+        def localize(value):
+            if not value:
+                return None
+            try:
+                return datetime.fromisoformat(str(value).replace("Z", "+00:00")).astimezone(tz).isoformat()
+            except Exception:
+                return str(value)
+        receipt = conn.execute(
+            """SELECT 1 FROM event_media_links l
+               JOIN media_objects m ON m.media_id=l.media_id
+               WHERE l.event_id=? AND m.media_type IN ('IMAGE','PDF','DOCUMENT')
+               LIMIT 1""",
+            (event_id,),
+        ).fetchone()
+        return {
+            "status": "found",
+            "event_id": row["event_id"],
+            "type": row["event_type"],
+            "description": row["description"],
+            "amount": (row["amount_minor"] / 100 if row["amount_minor"] is not None else None),
+            "currency": row["currency"],
+            "category": _clean_category(row["category"]),
+            "event_date_local": localize(row["event_date_utc"]),
+            "logged_at_local": localize(row["source_received_at"] or row["created_at_utc"]),
+            "reference": row["reference_text"],
+            "scope": "family" if row["space_id"] == "FAMILY_SHARED" else "private",
+            "source_text": str(row["source_text"] or "")[:500] or None,
+            "receipt_available": bool(receipt),
+            "presentation_rule": (
+                "Show human transaction details and local logged time. Never display event_id. "
+                "Offer to show the original receipt only when receipt_available is true; do not attach it automatically."
+            ),
+        }
+    finally:
+        conn.close()
+
+
 def find_receipts(actor: ActorContext, query: str | None = None, amount: float | None = None,
                   start_date: str | None = None, end_date: str | None = None, limit: int = 10,
                   scope: str | None = None) -> dict:
@@ -1972,6 +2053,9 @@ def latest_single_selection_context(actor: ActorContext,
         if created_after_utc:
             args_a.append(created_after_utc)
             args_b.append(created_after_utc)
+        args_c = [actor.user_id, actor.conversation_id, utc_now()]
+        if created_after_utc:
+            args_c.append(created_after_utc)
         rows = conn.execute(
             f"""SELECT selection_kind,items_json,created_at_utc,
                        COALESCE(read_scope,'') AS read_scope
@@ -1984,8 +2068,14 @@ def latest_single_selection_context(actor: ActorContext,
                   FROM media_selection_sets
                  WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
                        {where_after}
+                UNION ALL
+                SELECT 'FINANCE' AS selection_kind,items_json,created_at_utc,
+                       COALESCE(read_scope,'') AS read_scope
+                  FROM finance_selection_sets
+                 WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
+                       {where_after}
                 ORDER BY created_at_utc DESC LIMIT 1""",
-            args_a + args_b,
+            args_a + args_b + args_c,
         ).fetchall()
         if not rows:
             return None
@@ -2031,10 +2121,12 @@ def latest_selection_set_context(actor: ActorContext,
     args_a = [actor.user_id, actor.conversation_id, now]
     args_b = [actor.user_id, actor.conversation_id, now]
     args_c = [actor.user_id, actor.conversation_id, now]
+    args_d = [actor.user_id, actor.conversation_id, now]
     if created_after_utc:
         args_a.append(created_after_utc)
         args_b.append(created_after_utc)
         args_c.append(created_after_utc)
+        args_d.append(created_after_utc)
     conn = connect()
     try:
         row = conn.execute(
@@ -2055,8 +2147,14 @@ def latest_selection_set_context(actor: ActorContext,
                    FROM pending_selection_sets
                   WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
                         {after_sql}
+                  UNION ALL
+                 SELECT selection_id,'FINANCE' AS selection_kind,items_json,created_at_utc,
+                        COALESCE(read_scope,'') AS read_scope
+                   FROM finance_selection_sets
+                  WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
+                        {after_sql}
                   ORDER BY created_at_utc DESC LIMIT 1""",
-            args_a + args_b + args_c,
+            args_a + args_b + args_c + args_d,
         ).fetchone()
         if not row:
             return None
@@ -2110,6 +2208,15 @@ def resolve_numbered_choice(actor: ActorContext, choice: int,
                          AND expires_at_utc>? LIMIT 1""",
                     (selection_id, actor.user_id, actor.conversation_id, now),
                 ).fetchone()
+            elif kind == "FINANCE":
+                latest = conn.execute(
+                    """SELECT 'FINANCE' AS selection_kind,items_json,
+                              COALESCE(read_scope,'') AS read_scope
+                       FROM finance_selection_sets
+                       WHERE selection_id=? AND user_id=? AND conversation_id=?
+                         AND expires_at_utc>? LIMIT 1""",
+                    (selection_id, actor.user_id, actor.conversation_id, now),
+                ).fetchone()
             else:
                 raise ValueError("unsupported numbered selection context")
         else:
@@ -2128,8 +2235,14 @@ def resolve_numbered_choice(actor: ActorContext, choice: int,
                           '' AS read_scope
                      FROM pending_selection_sets
                     WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
+                   UNION ALL
+                   SELECT selection_id,'FINANCE' AS selection_kind,items_json,created_at_utc,
+                          COALESCE(read_scope,'') AS read_scope
+                     FROM finance_selection_sets
+                    WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
                    ORDER BY created_at_utc DESC LIMIT 1""",
                 (
+                    actor.user_id, actor.conversation_id, now,
                     actor.user_id, actor.conversation_id, now,
                     actor.user_id, actor.conversation_id, now,
                     actor.user_id, actor.conversation_id, now,
@@ -2168,6 +2281,8 @@ def resolve_numbered_choice(actor: ActorContext, choice: int,
         return get_saved_item(effective_actor, target)
     if kind == "MEDIA":
         return get_media_original(effective_actor, target)
+    if kind == "FINANCE":
+        return get_financial_event_detail(effective_actor, target)
     if kind == "PENDING_ITEM":
         media_id = str((pending or {}).get("media_id") or "")
         if media_id:
