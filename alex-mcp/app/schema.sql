@@ -603,6 +603,56 @@ CREATE INDEX IF NOT EXISTS idx_daily_brief_status
 ON daily_briefs(user_id,status,brief_date);
 
 
+CREATE TABLE IF NOT EXISTS custom_ledgers (
+    ledger_id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL,
+    space_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    purpose TEXT,
+    fields_json TEXT NOT NULL DEFAULT '[]',
+    status TEXT NOT NULL CHECK(status IN ('ACTIVE','CLOSED')) DEFAULT 'ACTIVE',
+    created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(space_id,name),
+    FOREIGN KEY(owner_id) REFERENCES users(user_id),
+    FOREIGN KEY(space_id) REFERENCES spaces(space_id)
+);
+CREATE TABLE IF NOT EXISTS custom_ledger_entries (
+    entry_id TEXT PRIMARY KEY,
+    action_key TEXT NOT NULL UNIQUE,
+    ledger_id TEXT NOT NULL,
+    source_message_id TEXT,
+    owner_id TEXT NOT NULL,
+    entry_date TEXT NOT NULL,
+    description TEXT NOT NULL,
+    entry_kind TEXT NOT NULL CHECK(entry_kind IN ('NOTE','SPENDING','SAVINGS','TRANSFER','REFERENCE_ONLY')),
+    amount_minor INTEGER,
+    currency TEXT,
+    data_json TEXT NOT NULL DEFAULT '{}',
+    media_id TEXT,
+    status TEXT NOT NULL CHECK(status IN ('ACTIVE','SUPERSEDED')) DEFAULT 'ACTIVE',
+    created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(ledger_id) REFERENCES custom_ledgers(ledger_id),
+    FOREIGN KEY(source_message_id) REFERENCES inbound_messages(message_id),
+    FOREIGN KEY(owner_id) REFERENCES users(user_id),
+    FOREIGN KEY(media_id) REFERENCES media_objects(media_id)
+);
+CREATE INDEX IF NOT EXISTS idx_custom_ledger_entries
+ON custom_ledger_entries(ledger_id,status,entry_date,created_at_utc);
+CREATE TABLE IF NOT EXISTS custom_ledger_selection_sets (
+    selection_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    items_json TEXT NOT NULL,
+    read_scope TEXT,
+    created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at_utc TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_custom_ledger_selection
+ON custom_ledger_selection_sets(user_id,conversation_id,created_at_utc);
+
+
 CREATE TABLE IF NOT EXISTS discussion_sessions (
     session_id TEXT PRIMARY KEY,
     conversation_id TEXT NOT NULL,
