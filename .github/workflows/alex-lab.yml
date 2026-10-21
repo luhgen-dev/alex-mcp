@@ -37,15 +37,19 @@ jobs:
       - name: Prepare independent reasoning delta
         id: prepare_review
         run: |
-          python alex-mcp/app/github_models_delta_review.py prepare \
+          rm -rf /tmp/alex-independent-review-prompts /tmp/alex-independent-review-responses
+          mkdir -p /tmp/alex-independent-review-prompts /tmp/alex-independent-review-responses
+          python alex-mcp/app/sharded_reasoning_review.py prepare \
             --snapshot alex-mcp/app/real_ai_snapshot.json \
-            --prompt-out /tmp/alex-independent-review-prompt.txt \
-            --metadata-out /tmp/alex-independent-review-meta.json
+            --prompt-dir /tmp/alex-independent-review-prompts \
+            --metadata-out /tmp/alex-independent-review-meta.json \
+            --shard-size 48
           python - <<'PY'
           import json, os
           meta = json.load(open("/tmp/alex-independent-review-meta.json", encoding="utf-8"))
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
               out.write("needs_review=" + ("true" if meta.get("delta_packets") else "false") + "\n")
+              out.write("shard_count=" + str(meta.get("shard_count", 0)) + "\n")
           PY
 
       - name: Install Copilot CLI for independent review
@@ -56,29 +60,32 @@ jobs:
         if: steps.prepare_review.outputs.needs_review == 'true'
         run: |
           tar -C "$GITHUB_WORKSPACE" -czf /tmp/alex-repo-before-review.tgz .
-          cp /tmp/alex-independent-review-prompt.txt /tmp/alex-review-public.txt
           find "$GITHUB_WORKSPACE" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
-          cp /tmp/alex-review-public.txt "$GITHUB_WORKSPACE/review.txt"
 
       - name: Run isolated independent reasoning review
         if: steps.prepare_review.outputs.needs_review == 'true'
         env:
           COPILOT_GITHUB_TOKEN: ${{ github.token }}
         run: |
-          set +e
-          copilot -p "Read review.txt from the current workspace and follow its instructions exactly. Return only the requested JSON, with no markdown." \
-            -s --no-ask-user --model auto --allow-tool='read(review.txt)' \
-            --log-level=debug \
-            > /tmp/alex-independent-review-response.txt \
-            2> /tmp/alex-independent-review-stderr.txt
-          STATUS=$?
-          set -e
-          if [ "$STATUS" -ne 0 ]; then
-            echo "Copilot reviewer failed with exit code $STATUS"
-            cat /tmp/alex-independent-review-stderr.txt
-            exit "$STATUS"
-          fi
-          test -s /tmp/alex-independent-review-response.txt
+          for PROMPT_FILE in /tmp/alex-independent-review-prompts/shard-*.txt; do
+            NAME="$(basename "$PROMPT_FILE" .txt)"
+            cp "$PROMPT_FILE" "$GITHUB_WORKSPACE/review.txt"
+            echo "Reviewing $NAME"
+            set +e
+            copilot -p "Read review.txt from the current workspace and follow its instructions exactly. Return only the requested JSON, with no markdown." \
+              -s --no-ask-user --model auto --allow-tool='read(review.txt)' \
+              > "/tmp/alex-independent-review-responses/$NAME.json" \
+              2> "/tmp/$NAME.stderr"
+            STATUS=$?
+            set -e
+            if [ "$STATUS" -ne 0 ]; then
+              echo "Copilot reviewer failed for $NAME with exit code $STATUS"
+              cat "/tmp/$NAME.stderr"
+              exit "$STATUS"
+            fi
+            test -s "/tmp/alex-independent-review-responses/$NAME.json"
+            rm -f "$GITHUB_WORKSPACE/review.txt"
+          done
 
       - name: Restore repository after isolated review
         if: always() && steps.prepare_review.outputs.needs_review == 'true'
@@ -89,9 +96,9 @@ jobs:
       - name: Import and verify independent reasoning delta
         if: steps.prepare_review.outputs.needs_review == 'true'
         run: |
-          python alex-mcp/app/github_models_delta_review.py import \
+          python alex-mcp/app/sharded_reasoning_review.py import \
             --snapshot alex-mcp/app/real_ai_snapshot.json \
-            --response /tmp/alex-independent-review-response.txt \
+            --response-dir /tmp/alex-independent-review-responses \
             --report /tmp/alex-copilot-independent-review.json
 
       - name: Run external Alex Lab
@@ -124,6 +131,7 @@ jobs:
             /tmp/alex-chatgpt-reasoning-review.json
             /tmp/alex-copilot-independent-review.json
             /tmp/alex-independent-review-meta.json
+            /tmp/alex-independent-review-responses/
             alex-mcp/app/real_ai_snapshot.json
           if-no-files-found: error
           retention-days: 14
