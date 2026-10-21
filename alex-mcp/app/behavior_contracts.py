@@ -1624,6 +1624,15 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         ),
     ),
     PromptContract(
+        "p3.work.profile.import", "phase3", "work",
+        "An owner can explicitly import a permanent private roster/overtime/leave profile without source-code defaults.",
+        (
+            "Import my work profile with this JSON.",
+            "Configure my permanent roster from this work profile.",
+        ),
+        _fs("work.profile.import"), seed="empty", live=False,
+    ),
+    PromptContract(
         "p3.daily.brief", "phase3", "daily_brief",
         "Owners can ask for one deterministic daily brief without mutating underlying records.",
         (
