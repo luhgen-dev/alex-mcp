@@ -67,7 +67,7 @@ jobs:
         run: |
           set +e
           copilot -p "Read review.txt from the current workspace and follow its instructions exactly. Return only the requested JSON, with no markdown." \
-            -s --no-ask-user --model gpt-4.1 --allow-tool='read(review.txt)' \
+            -s --no-ask-user --model auto --allow-tool='read(review.txt)' \
             --log-level=debug \
             > /tmp/alex-independent-review-response.txt \
             2> /tmp/alex-independent-review-stderr.txt
