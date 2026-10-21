@@ -1339,9 +1339,27 @@ def planning_record_cash_pool_spend(amount: float, actor: Actor,
                                     note: str | None = None) -> dict:
     """Record spending from a stash/cash pool with optional category and funding-source note. This reduces the pool balance and does not create a second income record."""
     import runtime_clock
-    resolved = phase2_finance.resolve_cash_pool_reference(
-        pool_id, pool_name, actor.phone, actor.conversation_type
-    )
+    try:
+        resolved = phase2_finance.resolve_cash_pool_reference(
+            pool_id, pool_name, actor.phone, actor.conversation_type
+        )
+    except ValueError as exc:
+        message = str(exc)
+        if (
+            "No matching cash pool was found" in message
+            or "Cash pool not found in the records available to the current scope" in message
+        ):
+            miss = _structured_scoped_miss(actor, "cash_pool")
+            return {
+                **miss,
+                "operation": "spend",
+                "nothing_written": True,
+                "message": (
+                    "The named stash is not in the current authorized scope. "
+                    "Do not create an ordinary expense or partially apply this request."
+                ),
+            }
+        raise
     effective_date = event_date or runtime_clock.today(actor.timezone).isoformat()
     return phase2_finance.record_cash_pool_spend(
         resolved, amount, effective_date, actor.phone, actor.conversation_type,
