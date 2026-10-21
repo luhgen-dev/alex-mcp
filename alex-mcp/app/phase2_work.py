@@ -572,16 +572,6 @@ def leave_balance(leave_id, sender_phone, conversation_type="DIRECT_DM",
     records = profile_config.authorized_records(
         sender_phone, conversation_type, kind="leave_balance",
         requested_scope="private")
-    wanted = [
-        r for r in records
-        if r["payload"].get("id") == leave_id and r["payload"].get("active", True)
-    ]
-    if len(wanted) != 1:
-        raise ValueError("Leave balance profile not found or ambiguous")
-    rec = wanted[0]
-    payload = rec["payload"]
-    snapshot_date = _parse_date(payload["as_of_date"])
-    end = _parse_date(as_of_date) if as_of_date else runtime_clock.today()
     normalized_id = str(leave_id or "").strip().casefold().replace("-", "_").replace(" ", "_")
     aliases = {
         "annual": "annual_leave", "al": "annual_leave",
@@ -595,8 +585,21 @@ def leave_balance(leave_id, sender_phone, conversation_type="DIRECT_DM",
         "doil": "doil_leave", "doil_leave": "doil_leave",
     }
     normalized_id = aliases.get(normalized_id, normalized_id)
-    payload_id = str(payload.get("id") or "").strip().casefold().replace("-", "_").replace(" ", "_")
-    payload_id = aliases.get(payload_id, payload_id)
+    def normalize_profile_id(value):
+        token = str(value or "").strip().casefold().replace("-", "_").replace(" ", "_")
+        return aliases.get(token, token)
+    wanted = [
+        r for r in records
+        if normalize_profile_id(r["payload"].get("id")) == normalized_id
+        and r["payload"].get("active", True)
+    ]
+    if len(wanted) != 1:
+        raise ValueError("Leave balance profile not found or ambiguous")
+    rec = wanted[0]
+    payload = rec["payload"]
+    snapshot_date = _parse_date(payload["as_of_date"])
+    end = _parse_date(as_of_date) if as_of_date else runtime_clock.today()
+    payload_id = normalize_profile_id(payload.get("id"))
     if payload_id != normalized_id:
         raise ValueError("Leave balance profile not found or ambiguous")
 
