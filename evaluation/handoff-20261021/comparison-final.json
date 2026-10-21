@@ -1,0 +1,1304 @@
+{
+  "evidence_kind": "offline contract comparison; not a language-model benchmark",
+  "test_file": "/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py",
+  "baseline": {
+    "repository": "/tmp/alex-mcp-baseline-aeb3b74",
+    "revision": "aeb3b74f64510103134a4268ca3e5e98c465646d",
+    "runtime_source_sha256": "3dcb11527faeb6e9c4b567f66b90246b86d8644abefddaa5b56969267dce1e99",
+    "shared_test_file_sha256": "03d7f4dd02c5e70dd25dc315f1426e4c6b5c67ccb408eb7ff1efbfba37fd5d89",
+    "evidence_kind": "deterministic state and scripted-provider orchestration",
+    "live_model_accuracy_measured": false,
+    "live_latency_or_cost_measured": false,
+    "summary": {
+      "tests": 50,
+      "passed": 15,
+      "failed": 35,
+      "errors": 0,
+      "skipped": 0,
+      "local_suite_seconds": 2.743,
+      "provider_packet_cases": 23,
+      "scripted_model_calls": 30,
+      "median_message_characters": 15414
+    },
+    "cases": [
+      {
+        "case": "ConversationIntegrationTests.test_bound_state_reaches_existing_brain_in_one_model_call",
+        "evidence_path": "direct brain request with scripted text provider; bypasses ingress",
+        "status": "failed",
+        "local_test_ms": 76.198,
+        "detail": "Traceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 351, in test_bound_state_reaches_existing_brain_in_one_model_call\n    self.assertTrue(draft[\"item_id\"] in rendered, \"Exact pending item ID was absent from the model packet\")\nAssertionError: False is not true : Exact pending item ID was absent from the model packet\n",
+        "offline_provider_metrics": {
+          "model_calls": 1,
+          "message_characters": 15417,
+          "tool_count": 4
+        }
+      },
+      {
+        "case": "ConversationIntegrationTests.test_explicit_new_reminder_still_works_when_quoting_closed_prompt",
+        "evidence_path": "direct brain request with scripted text provider; bypasses ingress",
+        "status": "passed",
+        "local_test_ms": 60.111,
+        "detail": "",
+        "offline_provider_metrics": {
+          "model_calls": 1,
+          "message_characters": 15935,
+          "tool_count": 5
+        }
+      },
+      {
+        "case": "ConversationIntegrationTests.test_followup_variation_01",
+        "evidence_path": "direct brain request with scripted text provider; bypasses ingress",
+        "status": "failed",
+        "local_test_ms": 59.651,
+        "detail": "Traceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 672, in test\n    self.assertTrue(\"What time should I remind you to water the plants?\"\nAssertionError: False is not true : Natural follow-up reached the model without its pending question\n",
+        "offline_provider_metrics": {
+          "model_calls": 1,
+          "message_characters": 15417,
+          "tool_count": 4
+        }
+      },
+      {
+        "case": "ConversationIntegrationTests.test_followup_variation_02",
+        "evidence_path": "direct brain request with scripted text provider; bypasses ingress",
+        "status": "failed",
+        "local_test_ms": 66.075,
+        "detail": "Traceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 672, in test\n    self.assertTrue(\"What time should I remind you to water the plants?\"\nAssertionError: False is not true : Natural follow-up reached the model without its pending question\n",
+        "offline_provider_metrics": {
+          "model_calls": 1,
+          "message_characters": 15419,
+          "tool_count": 6
+        }
+      },
+      {
+        "case": "ConversationIntegrationTests.test_followup_variation_03",
+        "evidence_path": "direct brain request with scripted text provider; bypasses ingress",
+        "status": "failed",
+        "local_test_ms": 43.951,
+        "detail": "Traceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 672, in test\n    self.assertTrue(\"What time should I remind you to water the plants?\"\nAssertionError: False is not true : Natural follow-up reached the model without its pending question\n",
+        "offline_provider_metrics": {
+          "model_calls": 1,
+          "message_characters": 15414,
+          "tool_count": 4
+        }
+      },
+      {
+        "case": "ConversationIntegrationTests.test_followup_variation_04",
+        "evidence_path": "direct brain request with scripted text provider; bypasses ingress",
+        "status": "failed",
+        "local_test_ms": 40.909,
+        "detail": "Traceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 672, in test\n    self.assertTrue(\"What time should I remind you to water the plants?\"\nAssertionError: False is not true : Natural follow-up reached the model without its pending question\n",
+        "offline_provider_metrics": {
+          "model_calls": 1,
+          "message_characters": 15414,
+          "tool_count": 4
+        }
+      },
+      {
+        "case": "ConversationIntegrationTests.test_followup_variation_05",
+        "evidence_path": "direct brain request with scripted text provider; bypasses ingress",
+        "status": "failed",
+        "local_test_ms": 41.396,
+        "detail": "Traceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 672, in test\n    self.assertTrue(\"What time should I remind you to water the plants?\"\nAssertionError: False is not true : Natural follow-up reached the model without its pending question\n",
+        "offline_provider_metrics": {
+          "model_calls": 1,
+          "message_characters": 15419,
+          "tool_count": 6
+        }
+      },
+      {
+        "case": "ConversationIntegrationTests.test_followup_variation_06",
+        "evidence_path": "direct brain request with scripted text provider; bypasses ingress",
+        "status": "failed",
+        "local_test_ms": 40.717,
+        "detail": "Traceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 672, in test\n    self.assertTrue(\"What time should I remind you to water the plants?\"\nAssertionError: False is not true : Natural follow-up reached the model without its pending question\n",
+        "offline_provider_metrics": {
+          "model_calls": 1,
+          "message_characters": 15414,
+          "tool_count": 4
+        }
+      },
+      {
+        "case": "ConversationIntegrationTests.test_followup_variation_07",
+        "evidence_path": "direct brain request with scripted text provider; bypasses ingress",
+        "status": "failed",
+        "local_test_ms": 46.725,
+        "detail": "Traceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 672, in test\n    self.assertTrue(\"What time should I remind you to water the plants?\"\nAssertionError: False is not true : Natural follow-up reached the model without its pending question\n",
+        "offline_provider_metrics": {
+          "model_calls": 1,
+          "message_characters": 15410,
+          "tool_count": 4
+        }
+      },
+      {
+        "case": "ConversationIntegrationTests.test_followup_variation_08",
+        "evidence_path": "direct brain request with scripted text provider; bypasses ingress",
+        "status": "failed",
+        "local_test_ms": 53.51,
+        "detail": "Traceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 672, in test\n    self.assertTrue(\"What time should I remind you to water the plants?\"\nAssertionError: False is not true : Natural follow-up reached the model without its pending question\n",
+        "offline_provider_metrics": {
+          "model_calls": 1,
+          "message_characters": 15406,
+          "tool_count": 5
+        }
+      },
+      {
+        "case": "ConversationIntegrationTests.test_followup_variation_09",
+        "evidence_path": "direct brain request with scripted text provider; bypasses ingress",
+        "status": "failed",
+        "local_test_ms": 52.28,
+        "detail": "Traceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 672, in test\n    self.assertTrue(\"What time should I remind you to water the plants?\"\nAssertionError: False is not true : Natural follow-up reached the model without its pending question\n",
+        "offline_provider_metrics": {
+          "model_calls": 1,
+          "message_characters": 15409,
+          "tool_count": 4
+        }
+      },
+      {
+        "case": "ConversationIntegrationTests.test_followup_variation_10",
+        "evidence_path": "direct brain request with scripted text provider; bypasses ingress",
+        "status": "failed",
+        "local_test_ms": 182.594,
+        "detail": "Traceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 672, in test\n    self.assertTrue(\"What time should I remind you to water the plants?\"\nAssertionError: False is not true : Natural follow-up reached the model without its pending question\n",
+        "offline_provider_metrics": {
+          "model_calls": 1,
+          "message_characters": 15406,
+          "tool_count": 5
+        }
+      },
+      {
+        "case": "ConversationIntegrationTests.test_fresh_request_does_not_consume_or_cancel_pending_draft",
+        "evidence_path": "direct brain request with scripted text provider; bypasses ingress",
+        "status": "passed",
+        "local_test_ms": 59.573,
+        "detail": "",
+        "offline_provider_metrics": {
+          "model_calls": 1,
+          "message_characters": 15399,
+          "tool_count": 3
+        }
+      },
+      {
+        "case": "ConversationIntegrationTests.test_no_write_variation_01",
+        "evidence_path": "routing helper only; no provider or ingress",
+        "status": "passed",
+        "local_test_ms": 14.736,
+        "detail": "",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "ConversationIntegrationTests.test_no_write_variation_02",
+        "evidence_path": "routing helper only; no provider or ingress",
+        "status": "passed",
+        "local_test_ms": 13.482,
+        "detail": "",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "ConversationIntegrationTests.test_no_write_variation_03",
+        "evidence_path": "routing helper only; no provider or ingress",
+        "status": "passed",
+        "local_test_ms": 16.729,
+        "detail": "",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "ConversationIntegrationTests.test_no_write_variation_04",
+        "evidence_path": "routing helper only; no provider or ingress",
+        "status": "passed",
+        "local_test_ms": 16.663,
+        "detail": "",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "ConversationIntegrationTests.test_no_write_variation_05",
+        "evidence_path": "routing helper only; no provider or ingress",
+        "status": "passed",
+        "local_test_ms": 18.209,
+        "detail": "",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "ConversationIntegrationTests.test_no_write_variation_06",
+        "evidence_path": "routing helper only; no provider or ingress",
+        "status": "passed",
+        "local_test_ms": 17.497,
+        "detail": "",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "ConversationIntegrationTests.test_no_write_variation_07",
+        "evidence_path": "routing helper only; no provider or ingress",
+        "status": "failed",
+        "local_test_ms": 32.692,
+        "detail": "Traceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 708, in test\n    self.assertFalse(names & {\"log_expense\", \"create_reminder\", \"remove_shopping_item\"}, names)\nAssertionError: {'log_expense', 'create_reminder'} is not false : {'query_finances', 'log_expense', 'create_reminder', 'list_reminders'}\n",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "ConversationIntegrationTests.test_no_write_variation_08",
+        "evidence_path": "routing helper only; no provider or ingress",
+        "status": "passed",
+        "local_test_ms": 44.973,
+        "detail": "",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "ConversationIntegrationTests.test_no_write_variation_09",
+        "evidence_path": "routing helper only; no provider or ingress",
+        "status": "passed",
+        "local_test_ms": 14.999,
+        "detail": "",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "ConversationIntegrationTests.test_no_write_variation_10",
+        "evidence_path": "routing helper only; no provider or ingress",
+        "status": "passed",
+        "local_test_ms": 12.663,
+        "detail": "",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "ConversationIntegrationTests.test_real_closed_pending_quote_does_not_restore_write_tools",
+        "evidence_path": "direct brain request with scripted text provider; bypasses ingress",
+        "status": "failed",
+        "local_test_ms": 74.248,
+        "detail": "Traceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 418, in test_real_closed_pending_quote_does_not_restore_write_tools\n    self.assertFalse(names & {\"create_reminder\", \"resolve_pending_item\", \"cancel_pending_item\", \"update_reminder\"})\nAssertionError: {'create_reminder'} is not false\n",
+        "offline_provider_metrics": {
+          "model_calls": 1,
+          "message_characters": 15900,
+          "tool_count": 4
+        }
+      },
+      {
+        "case": "ConversationIntegrationTests.test_router_failure_preserves_exact_original_tool_objects",
+        "evidence_path": "routing helper only; no provider or ingress",
+        "status": "passed",
+        "local_test_ms": 17.873,
+        "detail": "",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "ConversationIntegrationTests.test_semantic_merge_cannot_displace_original_tools",
+        "evidence_path": "routing helper only; no provider or ingress",
+        "status": "failed",
+        "local_test_ms": 32.52,
+        "detail": "Traceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 384, in test_semantic_merge_cannot_displace_original_tools\n    self.assertTrue(originals <= names, f\"Lost original tools: {sorted(originals - names)}\")\nAssertionError: False is not true : Lost original tools: ['get_agenda', 'list_leave_records', 'list_shopping_items']\n",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "GroundedConversationStateTests.test_another_person_pending_record_is_not_in_context",
+        "evidence_path": "shared state builder with real disposable database; no provider or ingress",
+        "status": "failed",
+        "local_test_ms": 35.899,
+        "detail": "Traceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 80, in state\n    module = importlib.import_module(\"conversation_state\")\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/importlib/__init__.py\", line 90, in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<frozen importlib._bootstrap>\", line 1387, in _gcd_import\n  File \"<frozen importlib._bootstrap>\", line 1360, in _find_and_load\n  File \"<frozen importlib._bootstrap>\", line 1324, in _find_and_load_unlocked\nModuleNotFoundError: No module named 'conversation_state'\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 248, in test_another_person_pending_record_is_not_in_context\n    state = self.state(current, current.trusted_text, self.quote(foreign))\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 82, in state\n    self.fail(\"This revision has no shared grounded conversation state\")\nAssertionError: This revision has no shared grounded conversation state\n",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "GroundedConversationStateTests.test_completed_pending_record_is_not_reopened_by_context",
+        "evidence_path": "shared state builder with real disposable database; no provider or ingress",
+        "status": "failed",
+        "local_test_ms": 34.462,
+        "detail": "Traceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 80, in state\n    module = importlib.import_module(\"conversation_state\")\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/importlib/__init__.py\", line 90, in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<frozen importlib._bootstrap>\", line 1387, in _gcd_import\n  File \"<frozen importlib._bootstrap>\", line 1360, in _find_and_load\n  File \"<frozen importlib._bootstrap>\", line 1324, in _find_and_load_unlocked\nModuleNotFoundError: No module named 'conversation_state'\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 263, in test_completed_pending_record_is_not_reopened_by_context\n    state = self.state(current, current.trusted_text, self.quote(draft))\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 82, in state\n    self.fail(\"This revision has no shared grounded conversation state\")\nAssertionError: This revision has no shared grounded conversation state\n",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "GroundedConversationStateTests.test_context_builder_is_read_only_and_durable",
+        "evidence_path": "shared state builder with real disposable database; no provider or ingress",
+        "status": "failed",
+        "local_test_ms": 48.778,
+        "detail": "Traceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 80, in state\n    module = importlib.import_module(\"conversation_state\")\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/importlib/__init__.py\", line 90, in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<frozen importlib._bootstrap>\", line 1387, in _gcd_import\n  File \"<frozen importlib._bootstrap>\", line 1360, in _find_and_load\n  File \"<frozen importlib._bootstrap>\", line 1324, in _find_and_load_unlocked\nModuleNotFoundError: No module named 'conversation_state'\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 288, in test_context_builder_is_read_only_and_durable\n    first = self.state(current, current.trusted_text)\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 82, in state\n    self.fail(\"This revision has no shared grounded conversation state\")\nAssertionError: This revision has no shared grounded conversation state\n",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "GroundedConversationStateTests.test_expired_unquoted_draft_is_not_active",
+        "evidence_path": "shared state builder with real disposable database; no provider or ingress",
+        "status": "failed",
+        "local_test_ms": 43.342,
+        "detail": "Traceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 80, in state\n    module = importlib.import_module(\"conversation_state\")\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/importlib/__init__.py\", line 90, in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<frozen importlib._bootstrap>\", line 1387, in _gcd_import\n  File \"<frozen importlib._bootstrap>\", line 1360, in _find_and_load\n  File \"<frozen importlib._bootstrap>\", line 1324, in _find_and_load_unlocked\nModuleNotFoundError: No module named 'conversation_state'\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 283, in test_expired_unquoted_draft_is_not_active\n    self.assertFalse(self.state(current, current.trusted_text).get(\"active\", {}).get(\"id\"))\n                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 82, in state\n    self.fail(\"This revision has no shared grounded conversation state\")\nAssertionError: This revision has no shared grounded conversation state\n",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "GroundedConversationStateTests.test_foreign_numbered_list_cannot_be_resolved",
+        "evidence_path": "shared state builder with real disposable database; no provider or ingress",
+        "status": "failed",
+        "local_test_ms": 25.79,
+        "detail": "Traceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 80, in state\n    module = importlib.import_module(\"conversation_state\")\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/importlib/__init__.py\", line 90, in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<frozen importlib._bootstrap>\", line 1387, in _gcd_import\n  File \"<frozen importlib._bootstrap>\", line 1360, in _find_and_load\n  File \"<frozen importlib._bootstrap>\", line 1324, in _find_and_load_unlocked\nModuleNotFoundError: No module named 'conversation_state'\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 337, in test_foreign_numbered_list_cannot_be_resolved\n    state = self.state(current, current.trusted_text, quote)\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 82, in state\n    self.fail(\"This revision has no shared grounded conversation state\")\nAssertionError: This revision has no shared grounded conversation state\n",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "GroundedConversationStateTests.test_latest_list_keeps_number_to_record_mapping",
+        "evidence_path": "shared state builder with real disposable database; no provider or ingress",
+        "status": "failed",
+        "local_test_ms": 55.61,
+        "detail": "Traceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 80, in state\n    module = importlib.import_module(\"conversation_state\")\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/importlib/__init__.py\", line 90, in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<frozen importlib._bootstrap>\", line 1387, in _gcd_import\n  File \"<frozen importlib._bootstrap>\", line 1360, in _find_and_load\n  File \"<frozen importlib._bootstrap>\", line 1324, in _find_and_load_unlocked\nModuleNotFoundError: No module named 'conversation_state'\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 313, in test_latest_list_keeps_number_to_record_mapping\n    state = self.state(current, current.trusted_text)\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 82, in state\n    self.fail(\"This revision has no shared grounded conversation state\")\nAssertionError: This revision has no shared grounded conversation state\n",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "GroundedConversationStateTests.test_older_quoted_list_beats_newer_list",
+        "evidence_path": "shared state builder with real disposable database; no provider or ingress",
+        "status": "failed",
+        "local_test_ms": 30.641,
+        "detail": "Traceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 80, in state\n    module = importlib.import_module(\"conversation_state\")\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/importlib/__init__.py\", line 90, in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<frozen importlib._bootstrap>\", line 1387, in _gcd_import\n  File \"<frozen importlib._bootstrap>\", line 1360, in _find_and_load\n  File \"<frozen importlib._bootstrap>\", line 1324, in _find_and_load_unlocked\nModuleNotFoundError: No module named 'conversation_state'\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 326, in test_older_quoted_list_beats_newer_list\n    state = self.state(current, current.trusted_text, quote)\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 82, in state\n    self.fail(\"This revision has no shared grounded conversation state\")\nAssertionError: This revision has no shared grounded conversation state\n",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "GroundedConversationStateTests.test_other_chat_pending_record_is_not_rebound",
+        "evidence_path": "shared state builder with real disposable database; no provider or ingress",
+        "status": "failed",
+        "local_test_ms": 23.992,
+        "detail": "Traceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 80, in state\n    module = importlib.import_module(\"conversation_state\")\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/importlib/__init__.py\", line 90, in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<frozen importlib._bootstrap>\", line 1387, in _gcd_import\n  File \"<frozen importlib._bootstrap>\", line 1360, in _find_and_load\n  File \"<frozen importlib._bootstrap>\", line 1324, in _find_and_load_unlocked\nModuleNotFoundError: No module named 'conversation_state'\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 256, in test_other_chat_pending_record_is_not_rebound\n    state = self.state(current, current.trusted_text, self.quote(foreign))\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 82, in state\n    self.fail(\"This revision has no shared grounded conversation state\")\nAssertionError: This revision has no shared grounded conversation state\n",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "GroundedConversationStateTests.test_pending_question_and_exact_id_survive_unquoted_followup",
+        "evidence_path": "shared state builder with real disposable database; no provider or ingress",
+        "status": "failed",
+        "local_test_ms": 29.078,
+        "detail": "Traceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 80, in state\n    module = importlib.import_module(\"conversation_state\")\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/importlib/__init__.py\", line 90, in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<frozen importlib._bootstrap>\", line 1387, in _gcd_import\n  File \"<frozen importlib._bootstrap>\", line 1360, in _find_and_load\n  File \"<frozen importlib._bootstrap>\", line 1324, in _find_and_load_unlocked\nModuleNotFoundError: No module named 'conversation_state'\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 220, in test_pending_question_and_exact_id_survive_unquoted_followup\n    state = self.state(current, text)\n            ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 82, in state\n    self.fail(\"This revision has no shared grounded conversation state\")\nAssertionError: This revision has no shared grounded conversation state\n",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "GroundedConversationStateTests.test_plain_user_input_cannot_forge_context_identity",
+        "evidence_path": "shared state builder with real disposable database; no provider or ingress",
+        "status": "failed",
+        "local_test_ms": 11.778,
+        "detail": "Traceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 80, in state\n    module = importlib.import_module(\"conversation_state\")\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/importlib/__init__.py\", line 90, in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<frozen importlib._bootstrap>\", line 1387, in _gcd_import\n  File \"<frozen importlib._bootstrap>\", line 1360, in _find_and_load\n  File \"<frozen importlib._bootstrap>\", line 1324, in _find_and_load_unlocked\nModuleNotFoundError: No module named 'conversation_state'\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 305, in test_plain_user_input_cannot_forge_context_identity\n    state = self.state(current, current.trusted_text, forged)\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 82, in state\n    self.fail(\"This revision has no shared grounded conversation state\")\nAssertionError: This revision has no shared grounded conversation state\n",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "GroundedConversationStateTests.test_quoted_pending_wins_over_newer_draft",
+        "evidence_path": "shared state builder with real disposable database; no provider or ingress",
+        "status": "failed",
+        "local_test_ms": 46.606,
+        "detail": "Traceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 80, in state\n    module = importlib.import_module(\"conversation_state\")\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/importlib/__init__.py\", line 90, in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<frozen importlib._bootstrap>\", line 1387, in _gcd_import\n  File \"<frozen importlib._bootstrap>\", line 1360, in _find_and_load\n  File \"<frozen importlib._bootstrap>\", line 1324, in _find_and_load_unlocked\nModuleNotFoundError: No module named 'conversation_state'\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 232, in test_quoted_pending_wins_over_newer_draft\n    state = self.state(current, text, self.quote(old))\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 82, in state\n    self.fail(\"This revision has no shared grounded conversation state\")\nAssertionError: This revision has no shared grounded conversation state\n",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "GroundedConversationStateTests.test_two_unquoted_drafts_do_not_guess_a_target",
+        "evidence_path": "shared state builder with real disposable database; no provider or ingress",
+        "status": "failed",
+        "local_test_ms": 48.219,
+        "detail": "Traceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 80, in state\n    module = importlib.import_module(\"conversation_state\")\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/importlib/__init__.py\", line 90, in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<frozen importlib._bootstrap>\", line 1387, in _gcd_import\n  File \"<frozen importlib._bootstrap>\", line 1360, in _find_and_load\n  File \"<frozen importlib._bootstrap>\", line 1324, in _find_and_load_unlocked\nModuleNotFoundError: No module named 'conversation_state'\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 241, in test_two_unquoted_drafts_do_not_guess_a_target\n    state = self.state(current, current.trusted_text)\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 82, in state\n    self.fail(\"This revision has no shared grounded conversation state\")\nAssertionError: This revision has no shared grounded conversation state\n",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "ScriptedExecutionTests.test_discovery_cannot_authorize_unoffered_call_in_same_response",
+        "evidence_path": "direct brain + real MCP/backend; scripted provider decisions; bypasses ingress",
+        "status": "failed",
+        "local_test_ms": 75.752,
+        "detail": "Traceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 618, in test_discovery_cannot_authorize_unoffered_call_in_same_response\n    self.assertEqual(actual[\"status\"], \"OPEN\")\nAssertionError: 'REMOVED' != 'OPEN'\n- REMOVED\n+ OPEN\n\n",
+        "offline_provider_metrics": {
+          "model_calls": 2,
+          "message_characters": 15399,
+          "tool_count": 3,
+          "scripted_execution": true
+        }
+      },
+      {
+        "case": "ScriptedExecutionTests.test_expired_quoted_list_does_not_fall_back_to_unrelated_newer_list",
+        "evidence_path": "direct brain + real MCP/backend; scripted provider decisions; bypasses ingress",
+        "status": "failed",
+        "local_test_ms": 81.394,
+        "detail": "Traceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 647, in test_expired_quoted_list_does_not_fall_back_to_unrelated_newer_list\n    self.assert_invalid_quoted_list_does_not_fall_back()\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 642, in assert_invalid_quoted_list_does_not_fall_back\n    self.assertNotIn(newer_ids[1], results[0], \"An invalid quoted list silently selected a different list\")\nAssertionError: 'f13b5e91-76f2-4a6b-ba61-0890aa20f226' unexpectedly found in '{\"status\":\"found\",\"item_id\":\"f13b5e91-76f2-4a6b-ba61-0890aa20f226\",\"title\":\"New beta\",\"content\":\"content of New beta\",\"tags\":null,\"saved_on\":\"21 October 2026, 7:24 PM\"}' : An invalid quoted list silently selected a different list\n",
+        "offline_provider_metrics": {
+          "model_calls": 2,
+          "message_characters": 15704,
+          "tool_count": 2,
+          "scripted_execution": true
+        }
+      },
+      {
+        "case": "ScriptedExecutionTests.test_fresh_topic_does_not_offer_contextual_reminder_mutations",
+        "evidence_path": "direct brain request with scripted text provider; bypasses ingress",
+        "status": "failed",
+        "local_test_ms": 57.187,
+        "detail": "Traceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 554, in test_fresh_topic_does_not_offer_contextual_reminder_mutations\n    self.assertNotIn(\"create_reminder\", names)\nAssertionError: 'create_reminder' unexpectedly found in {'create_reminder', 'discover_alex_tools', 'list_shopping_items', 'add_shopping_item', 'cancel_pending_item', 'list_reminders'}\n",
+        "offline_provider_metrics": {
+          "model_calls": 1,
+          "message_characters": 16678,
+          "tool_count": 6
+        }
+      },
+      {
+        "case": "ScriptedExecutionTests.test_multiple_numbered_choices_use_same_quoted_old_list",
+        "evidence_path": "direct brain + real MCP/backend; scripted provider decisions; bypasses ingress",
+        "status": "failed",
+        "local_test_ms": 59.804,
+        "detail": "Traceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 580, in test_multiple_numbered_choices_use_same_quoted_old_list\n    _, requests = self.scripted([\n                  ^^^^^^^^^^^^^^^\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 167, in scripted\n    self.assertFalse(remaining, \"Unused scripted provider responses\")\nAssertionError: [{'tool': 'resolve_numbered_choice', 'args': {'choice': 2}}, {'content': 'The notes are Old alpha and Old beta.'}] is not false : Unused scripted provider responses\n",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "ScriptedExecutionTests.test_negation_does_not_resurrect_contextual_mutation_tools",
+        "evidence_path": "direct brain request with scripted text provider; bypasses ingress",
+        "status": "failed",
+        "local_test_ms": 55.774,
+        "detail": "Traceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 546, in test_negation_does_not_resurrect_contextual_mutation_tools\n    self.assertFalse(names & {\"create_reminder\", \"resolve_pending_item\", \"cancel_pending_item\", \"update_reminder\"})\nAssertionError: {'cancel_pending_item', 'create_reminder', 'update_reminder'} is not false\n",
+        "offline_provider_metrics": {
+          "model_calls": 1,
+          "message_characters": 16695,
+          "tool_count": 6
+        }
+      },
+      {
+        "case": "ScriptedExecutionTests.test_new_shopping_action_preserves_pending_reminder",
+        "evidence_path": "ingress + brain + real MCP/backend; scripted provider decisions",
+        "status": "passed",
+        "local_test_ms": 114.368,
+        "detail": "",
+        "offline_provider_metrics": {
+          "model_calls": 2,
+          "message_characters": 15399,
+          "tool_count": 3,
+          "scripted_execution": true
+        }
+      },
+      {
+        "case": "ScriptedExecutionTests.test_quoted_expense_corrects_exact_original_once",
+        "evidence_path": "ingress + brain + real MCP/backend; scripted provider decisions",
+        "status": "passed",
+        "local_test_ms": 121.489,
+        "detail": "",
+        "offline_provider_metrics": {
+          "model_calls": 2,
+          "message_characters": 15979,
+          "tool_count": 5,
+          "scripted_execution": true
+        }
+      },
+      {
+        "case": "ScriptedExecutionTests.test_quoted_list_stays_bound_after_unrelated_finance_read",
+        "evidence_path": "direct brain + real MCP/backend; scripted provider decisions; bypasses ingress",
+        "status": "failed",
+        "local_test_ms": 71.026,
+        "detail": "Traceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 563, in test_quoted_list_stays_bound_after_unrelated_finance_read\n    _, requests = self.scripted([\n                  ^^^^^^^^^^^^^^^\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 167, in scripted\n    self.assertFalse(remaining, \"Unused scripted provider responses\")\nAssertionError: [{'content': 'There is no spending today. The second note is Old beta.'}] is not false : Unused scripted provider responses\n",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "ScriptedExecutionTests.test_quoted_older_list_binds_real_numbered_tool_to_older_ids",
+        "evidence_path": "direct brain + real MCP/backend; scripted provider decisions; bypasses ingress",
+        "status": "failed",
+        "local_test_ms": 71.529,
+        "detail": "Traceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 531, in test_quoted_older_list_binds_real_numbered_tool_to_older_ids\n    _, requests = self.scripted([\n                  ^^^^^^^^^^^^^^^\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 167, in scripted\n    self.assertFalse(remaining, \"Unused scripted provider responses\")\nAssertionError: [{'content': 'The second note is Old beta.'}] is not false : Unused scripted provider responses\n",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "ScriptedExecutionTests.test_replayed_inbound_does_not_repeat_tool_or_domain_write",
+        "evidence_path": "ingress + brain + real MCP/backend; scripted provider decisions",
+        "status": "passed",
+        "local_test_ms": 98.373,
+        "detail": "",
+        "offline_provider_metrics": {
+          "model_calls": 2,
+          "message_characters": 15401,
+          "tool_count": 3,
+          "scripted_execution": true
+        }
+      },
+      {
+        "case": "ScriptedExecutionTests.test_unexposed_provider_mutation_cannot_remove_shopping_item",
+        "evidence_path": "direct brain + real MCP/backend; scripted provider decisions; bypasses ingress",
+        "status": "failed",
+        "local_test_ms": 67.831,
+        "detail": "Traceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 522, in test_unexposed_provider_mutation_cannot_remove_shopping_item\n    self.assertEqual(actual[\"status\"], \"OPEN\", \"An unoffered provider tool was executed\")\nAssertionError: 'REMOVED' != 'OPEN'\n- REMOVED\n+ OPEN\n : An unoffered provider tool was executed\n",
+        "offline_provider_metrics": {
+          "model_calls": 2,
+          "message_characters": 15399,
+          "tool_count": 3,
+          "scripted_execution": true
+        }
+      },
+      {
+        "case": "ScriptedExecutionTests.test_unresolvable_quoted_list_does_not_fall_back_to_unrelated_newer_list",
+        "evidence_path": "direct brain + real MCP/backend; scripted provider decisions; bypasses ingress",
+        "status": "failed",
+        "local_test_ms": 178.639,
+        "detail": "Traceback (most recent call last):\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 650, in test_unresolvable_quoted_list_does_not_fall_back_to_unrelated_newer_list\n    self.assert_invalid_quoted_list_does_not_fall_back(missing=True)\n  File \"/workspace/scratch/738b29e75c17/alex-mcp-candidate/tests/test_conversation_reliability.py\", line 642, in assert_invalid_quoted_list_does_not_fall_back\n    self.assertNotIn(newer_ids[1], results[0], \"An invalid quoted list silently selected a different list\")\nAssertionError: '331cf9d0-01ad-4a54-bc25-3e07a07698d4' unexpectedly found in '{\"status\":\"found\",\"item_id\":\"331cf9d0-01ad-4a54-bc25-3e07a07698d4\",\"title\":\"New beta\",\"content\":\"content of New beta\",\"tags\":null,\"saved_on\":\"21 October 2026, 7:24 PM\"}' : An invalid quoted list silently selected a different list\n",
+        "offline_provider_metrics": {
+          "model_calls": 2,
+          "message_characters": 15689,
+          "tool_count": 2,
+          "scripted_execution": true
+        }
+      }
+    ]
+  },
+  "candidate": {
+    "repository": "/workspace/scratch/738b29e75c17/alex-mcp-candidate",
+    "revision": "857b0389034dfaf9e96b2e67f6af543c6a4615f1",
+    "runtime_source_sha256": "708c3a8840d645eaf247f6266a35163b03301e4d9840746ae21781f68eff733d",
+    "shared_test_file_sha256": "03d7f4dd02c5e70dd25dc315f1426e4c6b5c67ccb408eb7ff1efbfba37fd5d89",
+    "evidence_kind": "deterministic state and scripted-provider orchestration",
+    "live_model_accuracy_measured": false,
+    "live_latency_or_cost_measured": false,
+    "summary": {
+      "tests": 50,
+      "passed": 50,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "local_suite_seconds": 2.245,
+      "provider_packet_cases": 26,
+      "scripted_model_calls": 38,
+      "median_message_characters": 17918.0
+    },
+    "cases": [
+      {
+        "case": "ConversationIntegrationTests.test_bound_state_reaches_existing_brain_in_one_model_call",
+        "evidence_path": "direct brain request with scripted text provider; bypasses ingress",
+        "status": "passed",
+        "local_test_ms": 71.521,
+        "detail": "",
+        "offline_provider_metrics": {
+          "model_calls": 1,
+          "message_characters": 17921,
+          "tool_count": 4
+        }
+      },
+      {
+        "case": "ConversationIntegrationTests.test_explicit_new_reminder_still_works_when_quoting_closed_prompt",
+        "evidence_path": "direct brain request with scripted text provider; bypasses ingress",
+        "status": "passed",
+        "local_test_ms": 50.034,
+        "detail": "",
+        "offline_provider_metrics": {
+          "model_calls": 1,
+          "message_characters": 18358,
+          "tool_count": 5
+        }
+      },
+      {
+        "case": "ConversationIntegrationTests.test_followup_variation_01",
+        "evidence_path": "direct brain request with scripted text provider; bypasses ingress",
+        "status": "passed",
+        "local_test_ms": 43.868,
+        "detail": "",
+        "offline_provider_metrics": {
+          "model_calls": 1,
+          "message_characters": 17921,
+          "tool_count": 4
+        }
+      },
+      {
+        "case": "ConversationIntegrationTests.test_followup_variation_02",
+        "evidence_path": "direct brain request with scripted text provider; bypasses ingress",
+        "status": "passed",
+        "local_test_ms": 42.255,
+        "detail": "",
+        "offline_provider_metrics": {
+          "model_calls": 1,
+          "message_characters": 17923,
+          "tool_count": 3
+        }
+      },
+      {
+        "case": "ConversationIntegrationTests.test_followup_variation_03",
+        "evidence_path": "direct brain request with scripted text provider; bypasses ingress",
+        "status": "passed",
+        "local_test_ms": 50.801,
+        "detail": "",
+        "offline_provider_metrics": {
+          "model_calls": 1,
+          "message_characters": 17918,
+          "tool_count": 4
+        }
+      },
+      {
+        "case": "ConversationIntegrationTests.test_followup_variation_04",
+        "evidence_path": "direct brain request with scripted text provider; bypasses ingress",
+        "status": "passed",
+        "local_test_ms": 45.773,
+        "detail": "",
+        "offline_provider_metrics": {
+          "model_calls": 1,
+          "message_characters": 17918,
+          "tool_count": 4
+        }
+      },
+      {
+        "case": "ConversationIntegrationTests.test_followup_variation_05",
+        "evidence_path": "direct brain request with scripted text provider; bypasses ingress",
+        "status": "passed",
+        "local_test_ms": 45.778,
+        "detail": "",
+        "offline_provider_metrics": {
+          "model_calls": 1,
+          "message_characters": 17923,
+          "tool_count": 3
+        }
+      },
+      {
+        "case": "ConversationIntegrationTests.test_followup_variation_06",
+        "evidence_path": "direct brain request with scripted text provider; bypasses ingress",
+        "status": "passed",
+        "local_test_ms": 48.096,
+        "detail": "",
+        "offline_provider_metrics": {
+          "model_calls": 1,
+          "message_characters": 17918,
+          "tool_count": 4
+        }
+      },
+      {
+        "case": "ConversationIntegrationTests.test_followup_variation_07",
+        "evidence_path": "direct brain request with scripted text provider; bypasses ingress",
+        "status": "passed",
+        "local_test_ms": 46.52,
+        "detail": "",
+        "offline_provider_metrics": {
+          "model_calls": 1,
+          "message_characters": 17914,
+          "tool_count": 4
+        }
+      },
+      {
+        "case": "ConversationIntegrationTests.test_followup_variation_08",
+        "evidence_path": "direct brain request with scripted text provider; bypasses ingress",
+        "status": "passed",
+        "local_test_ms": 44.988,
+        "detail": "",
+        "offline_provider_metrics": {
+          "model_calls": 1,
+          "message_characters": 17910,
+          "tool_count": 5
+        }
+      },
+      {
+        "case": "ConversationIntegrationTests.test_followup_variation_09",
+        "evidence_path": "direct brain request with scripted text provider; bypasses ingress",
+        "status": "passed",
+        "local_test_ms": 57.241,
+        "detail": "",
+        "offline_provider_metrics": {
+          "model_calls": 1,
+          "message_characters": 17913,
+          "tool_count": 4
+        }
+      },
+      {
+        "case": "ConversationIntegrationTests.test_followup_variation_10",
+        "evidence_path": "direct brain request with scripted text provider; bypasses ingress",
+        "status": "passed",
+        "local_test_ms": 148.029,
+        "detail": "",
+        "offline_provider_metrics": {
+          "model_calls": 1,
+          "message_characters": 17910,
+          "tool_count": 5
+        }
+      },
+      {
+        "case": "ConversationIntegrationTests.test_fresh_request_does_not_consume_or_cancel_pending_draft",
+        "evidence_path": "direct brain request with scripted text provider; bypasses ingress",
+        "status": "passed",
+        "local_test_ms": 51.837,
+        "detail": "",
+        "offline_provider_metrics": {
+          "model_calls": 1,
+          "message_characters": 17903,
+          "tool_count": 4
+        }
+      },
+      {
+        "case": "ConversationIntegrationTests.test_no_write_variation_01",
+        "evidence_path": "routing helper only; no provider or ingress",
+        "status": "passed",
+        "local_test_ms": 17.347,
+        "detail": "",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "ConversationIntegrationTests.test_no_write_variation_02",
+        "evidence_path": "routing helper only; no provider or ingress",
+        "status": "passed",
+        "local_test_ms": 15.973,
+        "detail": "",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "ConversationIntegrationTests.test_no_write_variation_03",
+        "evidence_path": "routing helper only; no provider or ingress",
+        "status": "passed",
+        "local_test_ms": 16.624,
+        "detail": "",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "ConversationIntegrationTests.test_no_write_variation_04",
+        "evidence_path": "routing helper only; no provider or ingress",
+        "status": "passed",
+        "local_test_ms": 16.309,
+        "detail": "",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "ConversationIntegrationTests.test_no_write_variation_05",
+        "evidence_path": "routing helper only; no provider or ingress",
+        "status": "passed",
+        "local_test_ms": 18.532,
+        "detail": "",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "ConversationIntegrationTests.test_no_write_variation_06",
+        "evidence_path": "routing helper only; no provider or ingress",
+        "status": "passed",
+        "local_test_ms": 15.394,
+        "detail": "",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "ConversationIntegrationTests.test_no_write_variation_07",
+        "evidence_path": "routing helper only; no provider or ingress",
+        "status": "passed",
+        "local_test_ms": 16.133,
+        "detail": "",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "ConversationIntegrationTests.test_no_write_variation_08",
+        "evidence_path": "routing helper only; no provider or ingress",
+        "status": "passed",
+        "local_test_ms": 15.22,
+        "detail": "",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "ConversationIntegrationTests.test_no_write_variation_09",
+        "evidence_path": "routing helper only; no provider or ingress",
+        "status": "passed",
+        "local_test_ms": 16.082,
+        "detail": "",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "ConversationIntegrationTests.test_no_write_variation_10",
+        "evidence_path": "routing helper only; no provider or ingress",
+        "status": "passed",
+        "local_test_ms": 15.745,
+        "detail": "",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "ConversationIntegrationTests.test_real_closed_pending_quote_does_not_restore_write_tools",
+        "evidence_path": "direct brain request with scripted text provider; bypasses ingress",
+        "status": "passed",
+        "local_test_ms": 57.218,
+        "detail": "",
+        "offline_provider_metrics": {
+          "model_calls": 1,
+          "message_characters": 18323,
+          "tool_count": 6
+        }
+      },
+      {
+        "case": "ConversationIntegrationTests.test_router_failure_preserves_exact_original_tool_objects",
+        "evidence_path": "routing helper only; no provider or ingress",
+        "status": "passed",
+        "local_test_ms": 17.778,
+        "detail": "",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "ConversationIntegrationTests.test_semantic_merge_cannot_displace_original_tools",
+        "evidence_path": "routing helper only; no provider or ingress",
+        "status": "passed",
+        "local_test_ms": 24.53,
+        "detail": "",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "GroundedConversationStateTests.test_another_person_pending_record_is_not_in_context",
+        "evidence_path": "shared state builder with real disposable database; no provider or ingress",
+        "status": "passed",
+        "local_test_ms": 29.034,
+        "detail": "",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "GroundedConversationStateTests.test_completed_pending_record_is_not_reopened_by_context",
+        "evidence_path": "shared state builder with real disposable database; no provider or ingress",
+        "status": "passed",
+        "local_test_ms": 39.172,
+        "detail": "",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "GroundedConversationStateTests.test_context_builder_is_read_only_and_durable",
+        "evidence_path": "shared state builder with real disposable database; no provider or ingress",
+        "status": "passed",
+        "local_test_ms": 30.69,
+        "detail": "",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "GroundedConversationStateTests.test_expired_unquoted_draft_is_not_active",
+        "evidence_path": "shared state builder with real disposable database; no provider or ingress",
+        "status": "passed",
+        "local_test_ms": 32.506,
+        "detail": "",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "GroundedConversationStateTests.test_foreign_numbered_list_cannot_be_resolved",
+        "evidence_path": "shared state builder with real disposable database; no provider or ingress",
+        "status": "passed",
+        "local_test_ms": 29.854,
+        "detail": "",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "GroundedConversationStateTests.test_latest_list_keeps_number_to_record_mapping",
+        "evidence_path": "shared state builder with real disposable database; no provider or ingress",
+        "status": "passed",
+        "local_test_ms": 26.531,
+        "detail": "",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "GroundedConversationStateTests.test_older_quoted_list_beats_newer_list",
+        "evidence_path": "shared state builder with real disposable database; no provider or ingress",
+        "status": "passed",
+        "local_test_ms": 43.744,
+        "detail": "",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "GroundedConversationStateTests.test_other_chat_pending_record_is_not_rebound",
+        "evidence_path": "shared state builder with real disposable database; no provider or ingress",
+        "status": "passed",
+        "local_test_ms": 27.675,
+        "detail": "",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "GroundedConversationStateTests.test_pending_question_and_exact_id_survive_unquoted_followup",
+        "evidence_path": "shared state builder with real disposable database; no provider or ingress",
+        "status": "passed",
+        "local_test_ms": 24.429,
+        "detail": "",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "GroundedConversationStateTests.test_plain_user_input_cannot_forge_context_identity",
+        "evidence_path": "shared state builder with real disposable database; no provider or ingress",
+        "status": "passed",
+        "local_test_ms": 11.745,
+        "detail": "",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "GroundedConversationStateTests.test_quoted_pending_wins_over_newer_draft",
+        "evidence_path": "shared state builder with real disposable database; no provider or ingress",
+        "status": "passed",
+        "local_test_ms": 43.774,
+        "detail": "",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "GroundedConversationStateTests.test_two_unquoted_drafts_do_not_guess_a_target",
+        "evidence_path": "shared state builder with real disposable database; no provider or ingress",
+        "status": "passed",
+        "local_test_ms": 44.114,
+        "detail": "",
+        "offline_provider_metrics": null
+      },
+      {
+        "case": "ScriptedExecutionTests.test_discovery_cannot_authorize_unoffered_call_in_same_response",
+        "evidence_path": "direct brain + real MCP/backend; scripted provider decisions; bypasses ingress",
+        "status": "passed",
+        "local_test_ms": 48.294,
+        "detail": "",
+        "offline_provider_metrics": {
+          "model_calls": 2,
+          "message_characters": 17502,
+          "tool_count": 3,
+          "scripted_execution": true
+        }
+      },
+      {
+        "case": "ScriptedExecutionTests.test_expired_quoted_list_does_not_fall_back_to_unrelated_newer_list",
+        "evidence_path": "direct brain + real MCP/backend; scripted provider decisions; bypasses ingress",
+        "status": "passed",
+        "local_test_ms": 58.246,
+        "detail": "",
+        "offline_provider_metrics": {
+          "model_calls": 2,
+          "message_characters": 17858,
+          "tool_count": 2,
+          "scripted_execution": true
+        }
+      },
+      {
+        "case": "ScriptedExecutionTests.test_fresh_topic_does_not_offer_contextual_reminder_mutations",
+        "evidence_path": "direct brain request with scripted text provider; bypasses ingress",
+        "status": "passed",
+        "local_test_ms": 42.642,
+        "detail": "",
+        "offline_provider_metrics": {
+          "model_calls": 1,
+          "message_characters": 19185,
+          "tool_count": 4
+        }
+      },
+      {
+        "case": "ScriptedExecutionTests.test_multiple_numbered_choices_use_same_quoted_old_list",
+        "evidence_path": "direct brain + real MCP/backend; scripted provider decisions; bypasses ingress",
+        "status": "passed",
+        "local_test_ms": 75.449,
+        "detail": "",
+        "offline_provider_metrics": {
+          "model_calls": 3,
+          "message_characters": 18200,
+          "tool_count": 2,
+          "scripted_execution": true
+        }
+      },
+      {
+        "case": "ScriptedExecutionTests.test_negation_does_not_resurrect_contextual_mutation_tools",
+        "evidence_path": "direct brain request with scripted text provider; bypasses ingress",
+        "status": "passed",
+        "local_test_ms": 44.385,
+        "detail": "",
+        "offline_provider_metrics": {
+          "model_calls": 1,
+          "message_characters": 19202,
+          "tool_count": 3
+        }
+      },
+      {
+        "case": "ScriptedExecutionTests.test_new_shopping_action_preserves_pending_reminder",
+        "evidence_path": "ingress + brain + real MCP/backend; scripted provider decisions",
+        "status": "passed",
+        "local_test_ms": 90.033,
+        "detail": "",
+        "offline_provider_metrics": {
+          "model_calls": 2,
+          "message_characters": 17910,
+          "tool_count": 4,
+          "scripted_execution": true
+        }
+      },
+      {
+        "case": "ScriptedExecutionTests.test_quoted_expense_corrects_exact_original_once",
+        "evidence_path": "ingress + brain + real MCP/backend; scripted provider decisions",
+        "status": "passed",
+        "local_test_ms": 92.18,
+        "detail": "",
+        "offline_provider_metrics": {
+          "model_calls": 2,
+          "message_characters": 18414,
+          "tool_count": 5,
+          "scripted_execution": true
+        }
+      },
+      {
+        "case": "ScriptedExecutionTests.test_quoted_list_stays_bound_after_unrelated_finance_read",
+        "evidence_path": "direct brain + real MCP/backend; scripted provider decisions; bypasses ingress",
+        "status": "passed",
+        "local_test_ms": 81.705,
+        "detail": "",
+        "offline_provider_metrics": {
+          "model_calls": 3,
+          "message_characters": 18213,
+          "tool_count": 6,
+          "scripted_execution": true
+        }
+      },
+      {
+        "case": "ScriptedExecutionTests.test_quoted_older_list_binds_real_numbered_tool_to_older_ids",
+        "evidence_path": "direct brain + real MCP/backend; scripted provider decisions; bypasses ingress",
+        "status": "passed",
+        "local_test_ms": 61.888,
+        "detail": "",
+        "offline_provider_metrics": {
+          "model_calls": 2,
+          "message_characters": 18177,
+          "tool_count": 2,
+          "scripted_execution": true
+        }
+      },
+      {
+        "case": "ScriptedExecutionTests.test_replayed_inbound_does_not_repeat_tool_or_domain_write",
+        "evidence_path": "ingress + brain + real MCP/backend; scripted provider decisions",
+        "status": "passed",
+        "local_test_ms": 81.533,
+        "detail": "",
+        "offline_provider_metrics": {
+          "model_calls": 2,
+          "message_characters": 17511,
+          "tool_count": 3,
+          "scripted_execution": true
+        }
+      },
+      {
+        "case": "ScriptedExecutionTests.test_unexposed_provider_mutation_cannot_remove_shopping_item",
+        "evidence_path": "direct brain + real MCP/backend; scripted provider decisions; bypasses ingress",
+        "status": "passed",
+        "local_test_ms": 40.302,
+        "detail": "",
+        "offline_provider_metrics": {
+          "model_calls": 2,
+          "message_characters": 17502,
+          "tool_count": 3,
+          "scripted_execution": true
+        }
+      },
+      {
+        "case": "ScriptedExecutionTests.test_unresolvable_quoted_list_does_not_fall_back_to_unrelated_newer_list",
+        "evidence_path": "direct brain + real MCP/backend; scripted provider decisions; bypasses ingress",
+        "status": "passed",
+        "local_test_ms": 49.202,
+        "detail": "",
+        "offline_provider_metrics": {
+          "model_calls": 2,
+          "message_characters": 17843,
+          "tool_count": 2,
+          "scripted_execution": true
+        }
+      }
+    ]
+  },
+  "comparison": {
+    "improved_count": 35,
+    "improved_cases": [
+      "ConversationIntegrationTests.test_bound_state_reaches_existing_brain_in_one_model_call",
+      "ConversationIntegrationTests.test_followup_variation_01",
+      "ConversationIntegrationTests.test_followup_variation_02",
+      "ConversationIntegrationTests.test_followup_variation_03",
+      "ConversationIntegrationTests.test_followup_variation_04",
+      "ConversationIntegrationTests.test_followup_variation_05",
+      "ConversationIntegrationTests.test_followup_variation_06",
+      "ConversationIntegrationTests.test_followup_variation_07",
+      "ConversationIntegrationTests.test_followup_variation_08",
+      "ConversationIntegrationTests.test_followup_variation_09",
+      "ConversationIntegrationTests.test_followup_variation_10",
+      "ConversationIntegrationTests.test_no_write_variation_07",
+      "ConversationIntegrationTests.test_real_closed_pending_quote_does_not_restore_write_tools",
+      "ConversationIntegrationTests.test_semantic_merge_cannot_displace_original_tools",
+      "GroundedConversationStateTests.test_another_person_pending_record_is_not_in_context",
+      "GroundedConversationStateTests.test_completed_pending_record_is_not_reopened_by_context",
+      "GroundedConversationStateTests.test_context_builder_is_read_only_and_durable",
+      "GroundedConversationStateTests.test_expired_unquoted_draft_is_not_active",
+      "GroundedConversationStateTests.test_foreign_numbered_list_cannot_be_resolved",
+      "GroundedConversationStateTests.test_latest_list_keeps_number_to_record_mapping",
+      "GroundedConversationStateTests.test_older_quoted_list_beats_newer_list",
+      "GroundedConversationStateTests.test_other_chat_pending_record_is_not_rebound",
+      "GroundedConversationStateTests.test_pending_question_and_exact_id_survive_unquoted_followup",
+      "GroundedConversationStateTests.test_plain_user_input_cannot_forge_context_identity",
+      "GroundedConversationStateTests.test_quoted_pending_wins_over_newer_draft",
+      "GroundedConversationStateTests.test_two_unquoted_drafts_do_not_guess_a_target",
+      "ScriptedExecutionTests.test_discovery_cannot_authorize_unoffered_call_in_same_response",
+      "ScriptedExecutionTests.test_expired_quoted_list_does_not_fall_back_to_unrelated_newer_list",
+      "ScriptedExecutionTests.test_fresh_topic_does_not_offer_contextual_reminder_mutations",
+      "ScriptedExecutionTests.test_multiple_numbered_choices_use_same_quoted_old_list",
+      "ScriptedExecutionTests.test_negation_does_not_resurrect_contextual_mutation_tools",
+      "ScriptedExecutionTests.test_quoted_list_stays_bound_after_unrelated_finance_read",
+      "ScriptedExecutionTests.test_quoted_older_list_binds_real_numbered_tool_to_older_ids",
+      "ScriptedExecutionTests.test_unexposed_provider_mutation_cannot_remove_shopping_item",
+      "ScriptedExecutionTests.test_unresolvable_quoted_list_does_not_fall_back_to_unrelated_newer_list"
+    ],
+    "regression_count": 0,
+    "regressed_cases": [],
+    "unresolved_count": 0,
+    "unresolved_cases": []
+  },
+  "paired_offline_metrics": {
+    "cases_with_both_packets": 23,
+    "baseline_calls": 30,
+    "candidate_calls": 30,
+    "median_message_character_delta": 2504,
+    "rows": [
+      {
+        "case": "ConversationIntegrationTests.test_bound_state_reaches_existing_brain_in_one_model_call",
+        "baseline_calls": 1,
+        "candidate_calls": 1,
+        "baseline_initial_message_characters": 15417,
+        "candidate_initial_message_characters": 17921,
+        "message_character_delta": 2504
+      },
+      {
+        "case": "ConversationIntegrationTests.test_explicit_new_reminder_still_works_when_quoting_closed_prompt",
+        "baseline_calls": 1,
+        "candidate_calls": 1,
+        "baseline_initial_message_characters": 15935,
+        "candidate_initial_message_characters": 18358,
+        "message_character_delta": 2423
+      },
+      {
+        "case": "ConversationIntegrationTests.test_followup_variation_01",
+        "baseline_calls": 1,
+        "candidate_calls": 1,
+        "baseline_initial_message_characters": 15417,
+        "candidate_initial_message_characters": 17921,
+        "message_character_delta": 2504
+      },
+      {
+        "case": "ConversationIntegrationTests.test_followup_variation_02",
+        "baseline_calls": 1,
+        "candidate_calls": 1,
+        "baseline_initial_message_characters": 15419,
+        "candidate_initial_message_characters": 17923,
+        "message_character_delta": 2504
+      },
+      {
+        "case": "ConversationIntegrationTests.test_followup_variation_03",
+        "baseline_calls": 1,
+        "candidate_calls": 1,
+        "baseline_initial_message_characters": 15414,
+        "candidate_initial_message_characters": 17918,
+        "message_character_delta": 2504
+      },
+      {
+        "case": "ConversationIntegrationTests.test_followup_variation_04",
+        "baseline_calls": 1,
+        "candidate_calls": 1,
+        "baseline_initial_message_characters": 15414,
+        "candidate_initial_message_characters": 17918,
+        "message_character_delta": 2504
+      },
+      {
+        "case": "ConversationIntegrationTests.test_followup_variation_05",
+        "baseline_calls": 1,
+        "candidate_calls": 1,
+        "baseline_initial_message_characters": 15419,
+        "candidate_initial_message_characters": 17923,
+        "message_character_delta": 2504
+      },
+      {
+        "case": "ConversationIntegrationTests.test_followup_variation_06",
+        "baseline_calls": 1,
+        "candidate_calls": 1,
+        "baseline_initial_message_characters": 15414,
+        "candidate_initial_message_characters": 17918,
+        "message_character_delta": 2504
+      },
+      {
+        "case": "ConversationIntegrationTests.test_followup_variation_07",
+        "baseline_calls": 1,
+        "candidate_calls": 1,
+        "baseline_initial_message_characters": 15410,
+        "candidate_initial_message_characters": 17914,
+        "message_character_delta": 2504
+      },
+      {
+        "case": "ConversationIntegrationTests.test_followup_variation_08",
+        "baseline_calls": 1,
+        "candidate_calls": 1,
+        "baseline_initial_message_characters": 15406,
+        "candidate_initial_message_characters": 17910,
+        "message_character_delta": 2504
+      },
+      {
+        "case": "ConversationIntegrationTests.test_followup_variation_09",
+        "baseline_calls": 1,
+        "candidate_calls": 1,
+        "baseline_initial_message_characters": 15409,
+        "candidate_initial_message_characters": 17913,
+        "message_character_delta": 2504
+      },
+      {
+        "case": "ConversationIntegrationTests.test_followup_variation_10",
+        "baseline_calls": 1,
+        "candidate_calls": 1,
+        "baseline_initial_message_characters": 15406,
+        "candidate_initial_message_characters": 17910,
+        "message_character_delta": 2504
+      },
+      {
+        "case": "ConversationIntegrationTests.test_fresh_request_does_not_consume_or_cancel_pending_draft",
+        "baseline_calls": 1,
+        "candidate_calls": 1,
+        "baseline_initial_message_characters": 15399,
+        "candidate_initial_message_characters": 17903,
+        "message_character_delta": 2504
+      },
+      {
+        "case": "ConversationIntegrationTests.test_real_closed_pending_quote_does_not_restore_write_tools",
+        "baseline_calls": 1,
+        "candidate_calls": 1,
+        "baseline_initial_message_characters": 15900,
+        "candidate_initial_message_characters": 18323,
+        "message_character_delta": 2423
+      },
+      {
+        "case": "ScriptedExecutionTests.test_discovery_cannot_authorize_unoffered_call_in_same_response",
+        "baseline_calls": 2,
+        "candidate_calls": 2,
+        "baseline_initial_message_characters": 15399,
+        "candidate_initial_message_characters": 17502,
+        "message_character_delta": 2103
+      },
+      {
+        "case": "ScriptedExecutionTests.test_expired_quoted_list_does_not_fall_back_to_unrelated_newer_list",
+        "baseline_calls": 2,
+        "candidate_calls": 2,
+        "baseline_initial_message_characters": 15704,
+        "candidate_initial_message_characters": 17858,
+        "message_character_delta": 2154
+      },
+      {
+        "case": "ScriptedExecutionTests.test_fresh_topic_does_not_offer_contextual_reminder_mutations",
+        "baseline_calls": 1,
+        "candidate_calls": 1,
+        "baseline_initial_message_characters": 16678,
+        "candidate_initial_message_characters": 19185,
+        "message_character_delta": 2507
+      },
+      {
+        "case": "ScriptedExecutionTests.test_negation_does_not_resurrect_contextual_mutation_tools",
+        "baseline_calls": 1,
+        "candidate_calls": 1,
+        "baseline_initial_message_characters": 16695,
+        "candidate_initial_message_characters": 19202,
+        "message_character_delta": 2507
+      },
+      {
+        "case": "ScriptedExecutionTests.test_new_shopping_action_preserves_pending_reminder",
+        "baseline_calls": 2,
+        "candidate_calls": 2,
+        "baseline_initial_message_characters": 15399,
+        "candidate_initial_message_characters": 17910,
+        "message_character_delta": 2511
+      },
+      {
+        "case": "ScriptedExecutionTests.test_quoted_expense_corrects_exact_original_once",
+        "baseline_calls": 2,
+        "candidate_calls": 2,
+        "baseline_initial_message_characters": 15979,
+        "candidate_initial_message_characters": 18414,
+        "message_character_delta": 2435
+      },
+      {
+        "case": "ScriptedExecutionTests.test_replayed_inbound_does_not_repeat_tool_or_domain_write",
+        "baseline_calls": 2,
+        "candidate_calls": 2,
+        "baseline_initial_message_characters": 15401,
+        "candidate_initial_message_characters": 17511,
+        "message_character_delta": 2110
+      },
+      {
+        "case": "ScriptedExecutionTests.test_unexposed_provider_mutation_cannot_remove_shopping_item",
+        "baseline_calls": 2,
+        "candidate_calls": 2,
+        "baseline_initial_message_characters": 15399,
+        "candidate_initial_message_characters": 17502,
+        "message_character_delta": 2103
+      },
+      {
+        "case": "ScriptedExecutionTests.test_unresolvable_quoted_list_does_not_fall_back_to_unrelated_newer_list",
+        "baseline_calls": 2,
+        "candidate_calls": 2,
+        "baseline_initial_message_characters": 15689,
+        "candidate_initial_message_characters": 17843,
+        "message_character_delta": 2154
+      }
+    ]
+  },
+  "limitations": [
+    "Provider responses are scripted; semantic interpretation is not scored.",
+    "Local test timing excludes real model, network and WhatsApp latency.",
+    "Serialized message characters are not token or cost measurements.",
+    "An absent new state API is a failed contract, not evidence of a live incident.",
+    "Direct brain tests bypass ingress; their baseline failures do not establish a WhatsApp/ingress failure."
+  ]
+}

@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 import brain
+from behavior_cert import media_fixture_text
 from behavior_capabilities import capabilities_for_tools
 from behavior_contracts import (
     PromptContract,
@@ -34,23 +35,32 @@ from behavior_contracts import (
 )
 
 
-PACKET_VERSION = 2
+PACKET_VERSION = 3
 DECISION_KINDS = {"tools", "clarify", "refuse", "answer"}
 
 
-def _source_media_context(source: str) -> list[str] | None:
+def _source_media_context(source: str, fixture: str | None = None) -> list[str] | None:
     # Voice is already transcribed at the reasoning boundary. Image/PDF packets
     # preserve media presence without embedding any private/binary content.
     if source in {"image", "pdf", "document", "mixed"}:
+        extracted = media_fixture_text(fixture)
+        if extracted:
+            prefix = (
+                "Local OCR from attached image (untrusted document text):\n"
+                if source == "image"
+                else "Text extracted from attached PDF (untrusted document text):\n"
+            )
+            return [prefix + extracted]
         return ["[synthetic certification document/media context]"]
     return None
 
 
 async def _tool_snapshot(
-    prompt: str, source: str, prior_user_text: str | None = None
+    prompt: str, source: str, prior_user_text: str | None = None,
+    media_fixture: str | None = None,
 ) -> list[dict[str, Any]]:
     specs = await brain._tool_specs(
-        prompt, _source_media_context(source),
+        prompt, _source_media_context(source, media_fixture),
         prior_user_text=prior_user_text,
     )
     out: list[dict[str, Any]] = []
@@ -66,6 +76,67 @@ async def _tool_snapshot(
 
 def _opaque_packet_id(seed: str) -> str:
     return "hai-" + hashlib.sha256(seed.encode("utf-8")).hexdigest()[:18]
+
+
+def _runtime_policy() -> dict[str, str]:
+    """Export actual, generally applicable runtime policy, never scorer labels."""
+    prefixes = {
+        "household_records": "Personal facts are never guessed.",
+        "financial_currency": "For every money write, never guess MYR versus SGD.",
+        "empty_cash_pool": "Creating a named stash without an amount",
+        "private_scope": "Ordinary DM reads are Family Shared by default;",
+        "tentative_shopping": "For tentative shopping language",
+        "automation_drafts": "Home Assistant automation requests produce a reviewable draft",
+        "attachment_delivery": "Files and images:",
+    }
+    lines = brain.SYSTEM_PROMPT.splitlines()
+    policy = {}
+    for name, prefix in prefixes.items():
+        matches = [line for line in lines if line.startswith(prefix)]
+        if len(matches) != 1:
+            raise RuntimeError(f"runtime policy excerpt missing or ambiguous: {name}")
+        policy[name] = matches[0]
+    policy["tool_discovery"] = brain.DISCOVERY_TOOL["function"]["description"]
+    return policy
+
+
+def _prompt_fixture_history(contract_id: str) -> list[dict[str, str]]:
+    """Visible scenario setup for prompts that assume a previous displayed item.
+
+    These are explicitly synthetic pre-turn fixtures, not claimed results from
+    an executed provider. They supply the same sort of user-visible choices the
+    contract assumes, without saying which tool or response the judge expects.
+    """
+    if contract_id == "p1.reminder.claim.handoff":
+        return [
+            {"role": "user", "content": "Show the family reminder I've claimed."},
+            {"role": "assistant", "content": (
+                "Take out bins — Family Shared reminder. "
+                "It is open and currently claimed by you."
+            )},
+        ]
+    if contract_id == "p1.media.voice.pending.retrieve":
+        return [
+            {"role": "user", "content": "Show my unresolved voice notes."},
+            {"role": "assistant", "content": "Pending voice notes\n1. Original voice note — waiting for typed clarification."},
+        ]
+    if contract_id == "p2.diary.conflict.resolve":
+        return [
+            {"role": "user", "content": "Add a dentist appointment during my work shift."},
+            {"role": "assistant", "content": (
+                "The dentist appointment overlaps your work shift.\n"
+                "1. Add the appointment and create PLANNED leave.\n"
+                "2. Add the appointment and keep the clash.\n"
+                "3. Cancel this request."
+            )},
+        ]
+    return []
+
+
+def _conversation_result_fixture(contract_id: str, step_index: int) -> str:
+    if contract_id == "conv.memory.numbered" and step_index == 0:
+        return "Saved pictures\n1. Vinyl — original saved picture."
+    return "[previous synthetic Alex result; use only user-turn continuity]"
 
 
 def _packet_base(packet_id: str, contract_id: str, phase: str, domain: str,
@@ -85,9 +156,21 @@ def _packet_base(packet_id: str, contract_id: str, phase: str, domain: str,
         "actor": actor,
         "prompt": prompt,
         "reasoning_instruction": (
-            "Act as Alex's reasoning layer only. Choose the supplied MCP tool(s) "
-            "needed for this turn, or choose clarify/refuse/answer. Do not invent "
-            "household facts. Never assume a capability that is not supplied."
+            "Act as Alex's reasoning layer only. Select the supplied MCP capabilities "
+            "needed to complete the whole turn, or choose clarify/refuse/answer. "
+            "A whole-turn capability plan may include a lookup followed by the "
+            "requested action, conditional on a unique authorized lookup result. "
+            "Selecting that later capability does not claim its arguments are already "
+            "known or that it has executed. Never invent household facts, record ids, "
+            "amounts, currencies or timing. If a required user decision is missing, "
+            "clarify. Never assume a capability that is not supplied."
+        ),
+        "runtime_policy": _runtime_policy(),
+        "evaluation_scope": (
+            "Capability selection for synthetic interpreted input. Source labels "
+            "describe fixture provenance; they do not certify raw audio authorization, "
+            "transcription, actual attachment rendering or live delivery. Any prior "
+            "assistant fixture text is scenario setup, not observed provider execution."
         ),
         "reply_language_policy": (
             "English unless the user explicitly requests another language."
@@ -108,8 +191,13 @@ async def build_packets(phase: str = "all") -> list[dict[str, Any]]:
                     packet_id, contract.id, contract.phase, contract.domain,
                     source, prompt, contract.conversation_type, contract.actor,
                 )
-                packet["available_tools"] = await _tool_snapshot(prompt, source)
-                packet["conversation_history"] = []
+                packet["available_tools"] = await _tool_snapshot(
+                    prompt, source, media_fixture=contract.media_fixture
+                )
+                packet["conversation_history"] = _prompt_fixture_history(contract.id)
+                media_context = _source_media_context(source, contract.media_fixture)
+                if media_context:
+                    packet["media_context"] = media_context
                 packets.append(packet)
 
     for contract in conversations_for_phase(phase):
@@ -132,17 +220,19 @@ async def build_packets(phase: str = "all") -> list[dict[str, Any]]:
                     None,
                 )
                 packet["available_tools"] = await _tool_snapshot(
-                    step.prompt, source, prior_user_text
+                    step.prompt, source, prior_user_text,
+                    media_fixture=step.media_fixture,
                 )
                 packet["conversation_history"] = list(history)
                 packet["conversation_step"] = index + 1
+                media_context = _source_media_context(source, step.media_fixture)
+                if media_context:
+                    packet["media_context"] = media_context
                 packets.append(packet)
                 history.append({"role": "user", "content": step.prompt})
                 history.append({
                     "role": "assistant",
-                    "content": (
-                        "[previous synthetic Alex result; use only user-turn continuity]"
-                    ),
+                    "content": _conversation_result_fixture(contract.id, index),
                 })
     return packets
 
@@ -389,6 +479,67 @@ def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
     )
 
 
+def public_review_bundle(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Losslessly deduplicate public policy/schemas for an isolated reviewer.
+
+    The full packet fingerprint remains authoritative. No private contracts,
+    expected decisions, previous decisions or scorer output enter this bundle.
+    """
+    public = [_public_packet(row) for row in rows]
+    shared = {}
+    for key in (
+        "packet_version", "reasoning_instruction", "runtime_policy",
+        "evaluation_scope", "reply_language_policy",
+    ):
+        if public and key in public[0] and all(row.get(key) == public[0][key] for row in public):
+            shared[key] = public[0][key]
+    catalogue = {}
+    packets = []
+    for row in public:
+        refs = []
+        for tool in row.get("available_tools", []):
+            canonical = json.dumps(tool, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+            ref = "tool-" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+            if ref in catalogue and catalogue[ref] != tool:
+                raise ValueError("tool schema hash collision")
+            catalogue[ref] = tool
+            refs.append(ref)
+        packets.append({
+            **{key: value for key, value in row.items()
+               if key not in shared and key != "available_tools"},
+            "tool_refs": refs,
+        })
+    return {
+        "format": "alex-public-reasoning-bundle-v1",
+        "corpus_fingerprint": _corpus_fingerprint(rows),
+        "packet_count": len(public),
+        "review_boundary": (
+            "Shared fields apply to every packet. Each tool_refs entry expands "
+            "to the exact tool schema in tools_by_ref, preserving order. Review "
+            "only supplied public evidence; no expected answers are included."
+        ),
+        "shared_packet_fields": shared,
+        "tools_by_ref": catalogue,
+        "packets": packets,
+    }
+
+
+def expand_review_bundle(bundle: dict[str, Any]) -> list[dict[str, Any]]:
+    """Verify that compact public review input reconstructs the original corpus."""
+    if bundle.get("format") != "alex-public-reasoning-bundle-v1":
+        raise ValueError("unsupported public review bundle")
+    rows = [{
+        **bundle["shared_packet_fields"],
+        **{key: value for key, value in row.items() if key != "tool_refs"},
+        "available_tools": [bundle["tools_by_ref"][ref] for ref in row["tool_refs"]],
+    } for row in bundle["packets"]]
+    if len(rows) != bundle.get("packet_count"):
+        raise ValueError("public review packet count mismatch")
+    if _corpus_fingerprint(rows) != bundle.get("corpus_fingerprint"):
+        raise ValueError("public review corpus fingerprint mismatch")
+    return rows
+
+
 def packet_audit(packets: list[dict[str, Any]], phase: str = "all") -> dict[str, Any]:
     ids = [row["packet_id"] for row in packets]
     domains = {row["_domain"] for row in packets}
@@ -482,9 +633,17 @@ def main() -> dict[str, Any]:
     parser.add_argument("--packets", default="alex-human-ai-packets.jsonl")
     parser.add_argument("--decisions", default="alex-human-ai-decisions.jsonl")
     parser.add_argument("--report", default="alex-human-ai-report.json")
+    parser.add_argument("--review-bundle", default=None,
+                        help="optional lossless public-only policy/schema deduplication for blind review")
     args = parser.parse_args()
 
     packets = asyncio.run(build_packets(args.phase))
+    if args.review_bundle:
+        bundle = public_review_bundle(packets)
+        expand_review_bundle(bundle)
+        target = Path(args.review_bundle)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(bundle, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     packet_path = Path(args.packets)
     if args.mode in {"export", "selftest"}:
         _write_jsonl(packet_path, packets)

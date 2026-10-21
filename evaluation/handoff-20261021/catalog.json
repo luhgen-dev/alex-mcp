@@ -1,0 +1,56 @@
+{
+  "mode": "catalog",
+  "status": "PASS",
+  "checks": [
+    "all contract ids unique",
+    "prompt contracts have multiple variants and coherent tool requirements",
+    "phase1 declared domains covered",
+    "phase2 declared domains covered",
+    "phase3 declared domains covered",
+    "current MCP surface is fully classified by capability",
+    "every implemented owner capability has behavioural coverage",
+    "non-simulatable production edges are explicit manual gates"
+  ],
+  "failures": [],
+  "coverage": {
+    "prompt_contracts": 126,
+    "prompt_source_variants": 357,
+    "conversation_contracts": 11,
+    "conversation_steps": 31,
+    "manual_gates": 8,
+    "phases": {
+      "phase1": [
+        "finance",
+        "media",
+        "memory",
+        "receipts",
+        "reminders",
+        "shopping",
+        "whatsapp"
+      ],
+      "phase2": [
+        "agenda",
+        "assets",
+        "bills",
+        "cash_planning",
+        "diagnostics",
+        "diary",
+        "goals",
+        "home_assistant",
+        "monitoring",
+        "plans",
+        "privacy",
+        "reports",
+        "tasks",
+        "work"
+      ],
+      "phase3": [
+        "home_assistant",
+        "language",
+        "routing",
+        "safety",
+        "whatsapp"
+      ]
+    }
+  }
+}

@@ -1,0 +1,521 @@
+{
+  "date": "2026-10-21",
+  "base_commit": "aeb3b74f64510103134a4268ca3e5e98c465646d",
+  "candidate_branch": "experiment/conversation-reliability-20261021",
+  "source_identity": {
+    "baseline": {
+      "revision": "aeb3b74f64510103134a4268ca3e5e98c465646d",
+      "runtime_source_sha256": "3dcb11527faeb6e9c4b567f66b90246b86d8644abefddaa5b56969267dce1e99",
+      "shared_test_file_sha256": "03d7f4dd02c5e70dd25dc315f1426e4c6b5c67ccb408eb7ff1efbfba37fd5d89"
+    },
+    "candidate": {
+      "revision": "aeb3b74f64510103134a4268ca3e5e98c465646d",
+      "runtime_source_sha256": "2ba13c8546d3ec5b7174fd4d48bb40a239f9de9e8cb795256182434f754307db",
+      "shared_test_file_sha256": "03d7f4dd02c5e70dd25dc315f1426e4c6b5c67ccb408eb7ff1efbfba37fd5d89"
+    }
+  },
+  "environment": {
+    "python": "3.12.14",
+    "fixture": "disposable SQLite and real in-process MCP",
+    "provider": "scripted; no live credentials",
+    "execution": "same unrestricted local runtime for both revisions; sandbox thread handoff hung on identical baseline"
+  },
+  "baseline_unit": {
+    "tests_run": 520,
+    "skipped": 2,
+    "seconds": 16.731,
+    "passed": true,
+    "log": "baseline-unit.log"
+  },
+  "candidate_unit": {
+    "tests_run": 590,
+    "skipped": 2,
+    "seconds": 18.446,
+    "passed": true,
+    "log": "candidate-unit.log"
+  },
+  "baseline_behavior": {
+    "status": "PASS",
+    "summary": {
+      "contracts": 137,
+      "prompt_contracts": 126,
+      "conversation_contracts": 11,
+      "conversation_step_checks": 31,
+      "variant_checks_passed": 1147,
+      "discovery_dependent_checks": 0,
+      "failures": 0,
+      "mcp_tool_count": 121,
+      "tool_exposure_cap": 6,
+      "heldout_contracts_loaded": 0
+    },
+    "failures": [],
+    "failure_signatures": [],
+    "manual_gates_not_claimed": [
+      {
+        "id": "manual.voice.transport",
+        "phase": "phase1",
+        "domain": "whatsapp",
+        "description": "Real WhatsApp voice upload/download, transcription handoff and text reply.",
+        "reason": "Requires an actual WhatsApp audio message; synthetic source='voice' only certifies post-transcription parity."
+      },
+      {
+        "id": "manual.media.delivery",
+        "phase": "phase1",
+        "domain": "whatsapp",
+        "description": "Actual image/document rendering and exactly-once delivery in WhatsApp.",
+        "reason": "Internal attachment queues cannot prove the phone client displayed the file."
+      },
+      {
+        "id": "manual.group.mention",
+        "phase": "phase1",
+        "domain": "whatsapp",
+        "description": "Family-group genuine @mention wake gate.",
+        "reason": "Requires WhatsApp mention metadata and the linked-device JID/LID path."
+      },
+      {
+        "id": "manual.group.reply",
+        "phase": "phase1",
+        "domain": "whatsapp",
+        "description": "Family-group swipe-reply wake gate and quoted-message binding.",
+        "reason": "Requires real WhatsApp quoted-message metadata."
+      },
+      {
+        "id": "manual.typing.latency",
+        "phase": "phase3",
+        "domain": "whatsapp",
+        "description": "Immediate typing indicator, delayed-work acknowledgement and phone-visible latency.",
+        "reason": "Internal timing cannot prove WhatsApp server/client rendering or pull-to-refresh behaviour."
+      },
+      {
+        "id": "manual.reminder.delivery",
+        "phase": "phase1",
+        "domain": "whatsapp",
+        "description": "Scheduled reminder actually fires into the intended DM/group.",
+        "reason": "Requires wall-clock scheduler/outbox/WhatsApp delivery."
+      },
+      {
+        "id": "manual.ha.physical",
+        "phase": "phase2",
+        "domain": "home_assistant",
+        "description": "Physical Home Assistant state/action verification.",
+        "reason": "Internal mocks cannot prove the real device changed state."
+      },
+      {
+        "id": "manual.session.qr",
+        "phase": "phase3",
+        "domain": "whatsapp",
+        "description": "QR pairing/session persistence across add-on restart.",
+        "reason": "Requires a real linked-device session and restart."
+      }
+    ]
+  },
+  "candidate_behavior": {
+    "status": "PASS",
+    "summary": {
+      "contracts": 137,
+      "prompt_contracts": 126,
+      "conversation_contracts": 11,
+      "conversation_step_checks": 31,
+      "variant_checks_passed": 1147,
+      "discovery_dependent_checks": 0,
+      "failures": 0,
+      "mcp_tool_count": 121,
+      "tool_exposure_cap": 6,
+      "heldout_contracts_loaded": 0
+    },
+    "failures": [],
+    "failure_signatures": [],
+    "manual_gates_not_claimed": [
+      {
+        "id": "manual.voice.transport",
+        "phase": "phase1",
+        "domain": "whatsapp",
+        "description": "Real WhatsApp voice upload/download, transcription handoff and text reply.",
+        "reason": "Requires an actual WhatsApp audio message; synthetic source='voice' only certifies post-transcription parity."
+      },
+      {
+        "id": "manual.media.delivery",
+        "phase": "phase1",
+        "domain": "whatsapp",
+        "description": "Actual image/document rendering and exactly-once delivery in WhatsApp.",
+        "reason": "Internal attachment queues cannot prove the phone client displayed the file."
+      },
+      {
+        "id": "manual.group.mention",
+        "phase": "phase1",
+        "domain": "whatsapp",
+        "description": "Family-group genuine @mention wake gate.",
+        "reason": "Requires WhatsApp mention metadata and the linked-device JID/LID path."
+      },
+      {
+        "id": "manual.group.reply",
+        "phase": "phase1",
+        "domain": "whatsapp",
+        "description": "Family-group swipe-reply wake gate and quoted-message binding.",
+        "reason": "Requires real WhatsApp quoted-message metadata."
+      },
+      {
+        "id": "manual.typing.latency",
+        "phase": "phase3",
+        "domain": "whatsapp",
+        "description": "Immediate typing indicator, delayed-work acknowledgement and phone-visible latency.",
+        "reason": "Internal timing cannot prove WhatsApp server/client rendering or pull-to-refresh behaviour."
+      },
+      {
+        "id": "manual.reminder.delivery",
+        "phase": "phase1",
+        "domain": "whatsapp",
+        "description": "Scheduled reminder actually fires into the intended DM/group.",
+        "reason": "Requires wall-clock scheduler/outbox/WhatsApp delivery."
+      },
+      {
+        "id": "manual.ha.physical",
+        "phase": "phase2",
+        "domain": "home_assistant",
+        "description": "Physical Home Assistant state/action verification.",
+        "reason": "Internal mocks cannot prove the real device changed state."
+      },
+      {
+        "id": "manual.session.qr",
+        "phase": "phase3",
+        "domain": "whatsapp",
+        "description": "QR pairing/session persistence across add-on restart.",
+        "reason": "Requires a real linked-device session and restart."
+      }
+    ]
+  },
+  "candidate_public_packet_audit": {
+    "status": "PASS",
+    "summary": {
+      "packets": 388,
+      "corpus_fingerprint": "4ff4e959e8b57756defb5efe93505d9234aeb04c29c240a7cdba4bbd41236256",
+      "domains": [
+        "agenda",
+        "assets",
+        "bills",
+        "cash_planning",
+        "diagnostics",
+        "diary",
+        "finance",
+        "goals",
+        "home_assistant",
+        "language",
+        "media",
+        "memory",
+        "monitoring",
+        "plans",
+        "privacy",
+        "receipts",
+        "reminders",
+        "reports",
+        "routing",
+        "safety",
+        "shopping",
+        "tasks",
+        "work"
+      ],
+      "sources": [
+        "image",
+        "pdf",
+        "text",
+        "voice"
+      ],
+      "duplicate_packet_ids": [],
+      "packets_without_tools": [],
+      "routing_gaps": 0,
+      "forbidden_exposure": 0
+    }
+  },
+  "candidate_deterministic_oracle": {
+    "status": "PASS",
+    "summary": {
+      "packets": 388,
+      "corpus_fingerprint": "4ff4e959e8b57756defb5efe93505d9234aeb04c29c240a7cdba4bbd41236256",
+      "reviewed_corpus_fingerprint": "4ff4e959e8b57756defb5efe93505d9234aeb04c29c240a7cdba4bbd41236256",
+      "corpus_match": true,
+      "decisions_received": 388,
+      "passed": 388,
+      "failed": 0,
+      "domains": [
+        "agenda",
+        "assets",
+        "bills",
+        "cash_planning",
+        "diagnostics",
+        "diary",
+        "finance",
+        "goals",
+        "home_assistant",
+        "language",
+        "media",
+        "memory",
+        "monitoring",
+        "plans",
+        "privacy",
+        "receipts",
+        "reminders",
+        "reports",
+        "routing",
+        "safety",
+        "shopping",
+        "tasks",
+        "work"
+      ],
+      "sources": [
+        "image",
+        "pdf",
+        "text",
+        "voice"
+      ]
+    },
+    "failures": [],
+    "review": {
+      "independent_public_packet_only": false,
+      "classification": "deterministic regression oracle; not an independent model test",
+      "reviewer": "deterministic regression oracle",
+      "decision_counts": {
+        "tools": 383,
+        "clarify": 3,
+        "refuse": 2,
+        "answer": 0
+      }
+    }
+  },
+  "candidate_independent_review": {
+    "status": "FAIL",
+    "summary": {
+      "packets": 388,
+      "corpus_fingerprint": "4ff4e959e8b57756defb5efe93505d9234aeb04c29c240a7cdba4bbd41236256",
+      "reviewed_corpus_fingerprint": "4ff4e959e8b57756defb5efe93505d9234aeb04c29c240a7cdba4bbd41236256",
+      "corpus_match": true,
+      "decisions_received": 388,
+      "passed": 378,
+      "failed": 10,
+      "domains": [
+        "agenda",
+        "assets",
+        "bills",
+        "cash_planning",
+        "diagnostics",
+        "diary",
+        "finance",
+        "goals",
+        "home_assistant",
+        "language",
+        "media",
+        "memory",
+        "monitoring",
+        "plans",
+        "privacy",
+        "receipts",
+        "reminders",
+        "reports",
+        "routing",
+        "safety",
+        "shopping",
+        "tasks",
+        "work"
+      ],
+      "sources": [
+        "image",
+        "pdf",
+        "text",
+        "voice"
+      ]
+    },
+    "failures": [
+      {
+        "packet_id": "hai-2e024a0333594b5c24",
+        "contract_id": "p1.receipt.ingest.image",
+        "domain": "receipts",
+        "source": "image",
+        "status": "FAIL",
+        "decision": "clarify",
+        "tools": [],
+        "problems": [
+          "required capability not selected: finance.write"
+        ]
+      },
+      {
+        "packet_id": "hai-2c50b93718fb4e3ad4",
+        "contract_id": "p1.receipt.ingest.image",
+        "domain": "receipts",
+        "source": "image",
+        "status": "FAIL",
+        "decision": "clarify",
+        "tools": [],
+        "problems": [
+          "required capability not selected: finance.write"
+        ]
+      },
+      {
+        "packet_id": "hai-de6782d2f5a42eda80",
+        "contract_id": "p1.receipt.ingest.pdf",
+        "domain": "receipts",
+        "source": "pdf",
+        "status": "FAIL",
+        "decision": "clarify",
+        "tools": [],
+        "problems": [
+          "required capability not selected: finance.write"
+        ]
+      },
+      {
+        "packet_id": "hai-b1ace0d6a124a644aa",
+        "contract_id": "p1.media.voice.pending.retrieve",
+        "domain": "media",
+        "source": "text",
+        "status": "FAIL",
+        "decision": "tools",
+        "tools": [
+          "discover_alex_tools",
+          "resolve_numbered_choice"
+        ],
+        "problems": [
+          "discovery selected despite the required capability already being exposed"
+        ]
+      },
+      {
+        "packet_id": "hai-dd9f40a6bdf7a22730",
+        "contract_id": "p1.media.voice.pending.retrieve",
+        "domain": "media",
+        "source": "text",
+        "status": "FAIL",
+        "decision": "tools",
+        "tools": [
+          "discover_alex_tools",
+          "resolve_numbered_choice"
+        ],
+        "problems": [
+          "discovery selected despite the required capability already being exposed"
+        ]
+      },
+      {
+        "packet_id": "hai-49133f866c9d2cf56a",
+        "contract_id": "p2.diary.conflict.resolve",
+        "domain": "diary",
+        "source": "text",
+        "status": "FAIL",
+        "decision": "clarify",
+        "tools": [],
+        "problems": [
+          "required capability not selected: diary.conflict.resolve / selection.resolve"
+        ]
+      },
+      {
+        "packet_id": "hai-ee3b36aadc83c94440",
+        "contract_id": "p2.diary.conflict.resolve",
+        "domain": "diary",
+        "source": "text",
+        "status": "FAIL",
+        "decision": "clarify",
+        "tools": [],
+        "problems": [
+          "required capability not selected: diary.conflict.resolve / selection.resolve"
+        ]
+      },
+      {
+        "packet_id": "hai-995590989559eb0d09",
+        "contract_id": "p2.diary.conflict.resolve",
+        "domain": "diary",
+        "source": "text",
+        "status": "FAIL",
+        "decision": "clarify",
+        "tools": [],
+        "problems": [
+          "required capability not selected: diary.conflict.resolve / selection.resolve"
+        ]
+      },
+      {
+        "packet_id": "hai-f8fb1742812788d1b2",
+        "contract_id": "conv.memory.numbered",
+        "domain": "memory",
+        "source": "text",
+        "status": "FAIL",
+        "decision": "tools",
+        "tools": [
+          "discover_alex_tools",
+          "resolve_numbered_choice"
+        ],
+        "problems": [
+          "discovery selected despite the required capability already being exposed"
+        ]
+      },
+      {
+        "packet_id": "hai-1bbf863d425045876a",
+        "contract_id": "conv.memory.restart",
+        "domain": "memory",
+        "source": "text",
+        "status": "FAIL",
+        "decision": "answer",
+        "tools": [],
+        "problems": [
+          "required capability not selected: memory.search"
+        ]
+      }
+    ]
+  },
+  "candidate_architecture_audit": {
+    "status": "PASS",
+    "passed": 106,
+    "failed": 0,
+    "failures": [],
+    "tool_count": 121,
+    "tool_exposure_max": 6,
+    "scope": "offline release architecture; live provider/WhatsApp/HA is MCP Check"
+  },
+  "structural": [
+    {
+      "check": "compile",
+      "exit_code": 0,
+      "seconds": 0.065
+    },
+    {
+      "check": "selftest",
+      "exit_code": 0,
+      "seconds": 0.165
+    },
+    {
+      "check": "stress",
+      "exit_code": 0,
+      "seconds": 4.43
+    },
+    {
+      "check": "catalog",
+      "exit_code": 0,
+      "seconds": 1.067
+    }
+  ],
+  "bridge": [
+    {
+      "check": "bridge-syntax",
+      "exit_code": 0,
+      "seconds": 0.115
+    },
+    {
+      "check": "control_payload",
+      "exit_code": 0,
+      "seconds": 0.064
+    },
+    {
+      "check": "reaction_payload",
+      "exit_code": 0,
+      "seconds": 0.064
+    },
+    {
+      "check": "quoted_payload",
+      "exit_code": 0,
+      "seconds": 0.064
+    },
+    {
+      "check": "conversation_queue",
+      "exit_code": 0,
+      "seconds": 0.115
+    }
+  ],
+  "local_container_build": "not run",
+  "live_provider": "not run",
+  "live_whatsapp_or_ha": "not run",
+  "holdout_turns_executed": 0,
+  "release_recommendation": "HOLD; independent gate has ten disagreements and live provider/ingress validation is pending"
+}

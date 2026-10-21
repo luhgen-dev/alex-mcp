@@ -1,0 +1,37 @@
+{
+  "format": "alex-independent-review-v1",
+  "corpus_fingerprint": "67e1d51a6c8e38865ce4eb47b1cad4e632f8f27c015d1d1fafbefce8d2d7a276",
+  "reviewer": "GPT-6 Astra Pro, isolated public-packet reviewer D",
+  "review_date": "2026-10-21",
+  "review_scope": "public_packets_only",
+  "expected_answers_visible": false,
+  "decisions": [
+    {
+      "packet_id": "hai-c467f68445ffbde1fa",
+      "decision": "tools",
+      "tools": [
+        "update_reminder"
+      ],
+      "reply_language": "en",
+      "rationale": "The user explicitly requests rescheduling, and update_reminder accepts the natural reference dentist reminder without an invented record ID. Tomorrow at 3pm supplies a date expression and unambiguous PM time for grounded time_interpretation; no preliminary list or missing user decision is required."
+    },
+    {
+      "packet_id": "hai-eae4cd2f87bd1528fb",
+      "decision": "tools",
+      "tools": [
+        "work_departure_plan"
+      ],
+      "reply_language": "en",
+      "rationale": "The user asks for a departure time and explicitly supplies a 30-minute commute. work_departure_plan reads the real roster and calculates departure candidates using that duration. A separate shift lookup is unnecessary because the user does not also ask which shift they have."
+    },
+    {
+      "packet_id": "hai-422f59474885e1437b",
+      "decision": "tools",
+      "tools": [
+        "work_departure_plan"
+      ],
+      "reply_language": "en",
+      "rationale": "Planning departure for tomorrow with the stated 30-minute commute is covered by work_departure_plan, which consults the real roster. The wording requests a departure calculation, not creation or confirmation of a saved life plan, and does not separately request shift details."
+    }
+  ]
+}

@@ -435,7 +435,28 @@ def main() -> dict:
             and "corpus mismatch" in real_review_text,
             "real-AI snapshot is non-empty and fails closed on corpus drift",
         )
-        if int(snapshot.get("snapshot_version") or 0) >= 3:
+        snapshot_version = int(snapshot.get("snapshot_version") or 0)
+        require(
+            snapshot_version in {2, 3, 4, 5, 6},
+            "real-AI snapshot version is explicitly supported",
+        )
+        if snapshot_version in {5, 6}:
+            # Validate full raw-source review or a verified unchanged-parent
+            # plus fresh-delta review against the exact current public corpus.
+            import human_ai_lab
+            import real_ai_snapshot_review
+            full_review_valid = False
+            try:
+                current_packets = asyncio.run(human_ai_lab.build_packets("all"))
+                real_ai_snapshot_review._decisions_from_snapshot(current_packets, snapshot)
+                full_review_valid = True
+            except (ValueError, RuntimeError, TypeError, KeyError):
+                pass
+            require(
+                full_review_valid,
+                "independent review matches current packets and verified original raw source evidence",
+            )
+        elif snapshot_version in {3, 4}:
             parent = snapshot.get("parent_review") or {}
             delta = snapshot.get("delta_review") or {}
             by_id = snapshot.get("decisions_by_packet_id") or {}

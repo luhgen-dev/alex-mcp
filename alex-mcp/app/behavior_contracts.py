@@ -499,7 +499,7 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         (
             "Mark my dentist reminder complete.",
             "Cancel the dentist reminder.",
-            "Move my dentist reminder to 3pm.",
+            "Move my dentist reminder to tomorrow at 3pm.",
         ),
         _fs("update_reminder"), seed="core", live=False,
     ),
@@ -988,7 +988,7 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         "Owner availability checks must expose the owner-safe availability read.",
         (
             "Am I free on 1 October at 6pm?",
-            "Check my availability Thursday evening.",
+            "Check my availability next Thursday from 6pm to 9pm.",
         ),
         _fs("check_my_availability"), seed="core",
     ),
@@ -997,7 +997,7 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         "Spouse availability must use the shared-only spouse path.",
         (
             "Is my wife free on 1 October at 6pm?",
-            "Check whether my spouse is available Thursday evening.",
+            "Check whether my spouse is available next Thursday from 6pm to 9pm.",
         ),
         _fs("check_spouse_availability"), seed="core",
     ),
@@ -1241,8 +1241,8 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         "p2.bills.record", "phase2", "bills",
         "Explicitly recording a bill payment must expose the bill payment writer.",
         (
-            "Record the TNB bill as paid.",
-            "I paid the electricity bill; record the payment.",
+            "Record RM120 paid toward the TNB electricity bill.",
+            "I paid RM120 toward the electricity bill; record the payment.",
         ),
         _fs("bills_record_payment"), seed="core", live=False,
     ),
@@ -1278,8 +1278,8 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         "p2.work.departure", "phase2", "work",
         "Departure/alarm planning must use the work departure engine.",
         (
-            "What time should I leave home for work tomorrow?",
-            "Plan my departure for tomorrow's shift.",
+            "What time should I leave home for work tomorrow? My commute takes 30 minutes.",
+            "Plan my departure for tomorrow's shift using a 30-minute commute.",
         ),
         _fs("work_departure_plan"), seed="core",
     ),
@@ -1361,9 +1361,24 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         "Automation requests must create a draft, never deploy silently.",
         (
             "Draft an automation to turn on the hall light at sunset.",
-            "Prepare a Home Assistant automation for the hall light; don't deploy it.",
+            "Prepare a Home Assistant automation that turns the hall light on at sunset; don't deploy it.",
         ),
         _fs("ha_draft_automation"), seed="empty", expected_terms=("draft",),
+    ),
+    PromptContract(
+        "p2.home.automation.missing_details", "phase2", "home_assistant",
+        "An automation request without a trigger or action must ask for those details instead of inventing a draft or operating a device.",
+        (
+            "Prepare a Home Assistant automation for the hall light; don't deploy it.",
+            "Draft a Home Assistant automation for the hall light.",
+        ),
+        _fs("ha_find_entities"), forbidden=_fs("ha_control"), seed="empty",
+        expect_clarification=True,
+        ha_expectations=(
+            HAExpectation("light.hall", "off", unchanged=True),
+            HAExpectation("light.living_room", "on", unchanged=True),
+            HAExpectation("climate.hall_ac", "on", unchanged=True),
+        ),
     ),
     PromptContract(
         "p2.home.control", "phase2", "home_assistant",
@@ -1496,9 +1511,9 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         "p3.typo.reminder", "phase3", "routing",
         "Typo-heavy user language must retain a safe discovery/reminder path.",
         (
-            "alx plz remidn me tmrw 9 pay elctrcity",
+            "alx plz remidn me tmrw 9am pay elctrcity",
             "rember me tomorow 9am pay bill",
-            "alex set remnder tmr 9 electricity",
+            "alex set remnder tmr 9am electricity",
         ),
         _fs("create_reminder"), seed="empty",
         state_expectations=(
@@ -1511,11 +1526,28 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         ),
     ),
     PromptContract(
+        "p3.typo.reminder.ambiguous", "phase3", "routing",
+        "Typo-heavy reminder language with no AM/PM must ask for the missing time detail without creating a reminder.",
+        (
+            "alx plz remidn me tmrw 9 pay elctrcity",
+            "alex set remnder tmr 9 electricity",
+        ),
+        _fs("create_reminder"), seed="empty",
+        expect_clarification=True,
+        unchanged_tables=("reminders",),
+        state_expectations=(
+            StateExpectation(
+                "reminders", where=(("source_message_id", "$MID"),),
+                count=0, delta=0,
+            ),
+        ),
+    ),
+    PromptContract(
         "p3.language.tamil.reminder", "phase3", "language",
         "Tamil reminder input must execute the reminder capability and reply in English.",
         (
             "நாளைக்கு காலை 9 மணிக்கு மின்சார பில் கட்ட நினைவூட்டு",
-            "நாளை 9 மணிக்கு மின்சார கட்டணம் செலுத்த நினைவூட்டு",
+            "நாளை காலை 9 மணிக்கு மின்சார கட்டணம் செலுத்த நினைவூட்டு",
         ),
         _fs("create_reminder"),
         seed="empty",
@@ -1525,6 +1557,23 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
                 where=(("source_message_id", "$MID"),),
                 fields=(("status", "OPEN"),),
                 count=1, delta=1,
+            ),
+        ),
+    ),
+    PromptContract(
+        "p3.language.tamil.reminder.ambiguous", "phase3", "language",
+        "Tamil reminder input with no morning/evening qualification must ask in English for the missing time detail without creating a reminder.",
+        (
+            "நாளை 9 மணிக்கு மின்சார கட்டணம் செலுத்த நினைவூட்டு",
+            "நாளைக்கு 9 மணிக்கு மின்சார பில் கட்ட நினைவூட்டு",
+        ),
+        _fs("create_reminder"), seed="empty",
+        expect_clarification=True,
+        unchanged_tables=("reminders",),
+        state_expectations=(
+            StateExpectation(
+                "reminders", where=(("source_message_id", "$MID"),),
+                count=0, delta=0,
             ),
         ),
     ),

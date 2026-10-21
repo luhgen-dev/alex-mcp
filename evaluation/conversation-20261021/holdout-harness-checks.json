@@ -1,0 +1,16 @@
+{
+  "evidence_kind": "export/scorer harness checks; not model evaluation",
+  "checked_at_utc": "2026-10-21T09:50:40.966110+00:00",
+  "public_first_turn_packets": 24,
+  "heldout_turns_executed": 0,
+  "status": "PASS",
+  "checks": [
+    "All exported packets exclude expected/private_review_metadata/action_ledger/steps/backend_outcomes keys",
+    "Hidden spouse-private and group-inaccessible own-private content excluded",
+    "Public packet SHA256 matches canonical packet bytes",
+    "Later turn without observed prior trace rejected",
+    "Empty observations explicitly report all 48 turns not_executed",
+    "Copied structural answers without independent backend/semantic review remain review_required",
+    "Wrong exact target produces failed score"
+  ]
+}

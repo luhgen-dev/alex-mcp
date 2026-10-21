@@ -1,0 +1,371 @@
+{
+  "summary": {
+    "cases": 10,
+    "exact_first_request_matches": 10,
+    "worker_error_cases": 0,
+    "main_brain_requests": 18,
+    "interpreter_calls": 8,
+    "actual_created_reminders": 8,
+    "original_drafts_resolved": 8
+  },
+  "cases": [
+    {
+      "case": 1,
+      "text": "Around seven tomorrow evening would work for me",
+      "clock": "2026-10-21T11:27:31+00:00",
+      "request_match": true,
+      "worker_errors": [],
+      "main_requests": 2,
+      "interpreter_calls": 1,
+      "created": [
+        {
+          "task": "water the plants",
+          "due_utc": "2026-10-22T11:00:00+00:00",
+          "due_local": "2026-10-22T19:00:00+08:00",
+          "delay_minutes": 1412.4833333333333,
+          "owner": "USR_HUSBAND",
+          "space": "FAMILY_SHARED",
+          "destination": "60111111111@s.whatsapp.net"
+        }
+      ],
+      "draft_status": "RESOLVED",
+      "draft_resolved_by_current": true,
+      "original_task_preserved": true,
+      "extra_drafts": [],
+      "outbounds": [
+        {
+          "text": "I have reviewed the result.",
+          "context_kind": "REMINDER_CREATED",
+          "context_id": "66346e9f-e03a-4d37-8987-a9e50b20f886",
+          "destination": "60111111111@s.whatsapp.net"
+        }
+      ],
+      "tool_receipts": [
+        {
+          "role": "tool",
+          "tool_call_id": "call_e632db69a30e",
+          "content": "{\"status\":\"created\",\"reminder_id\":\"66346e9f-e03a-4d37-8987-a9e50b20f886\",\"task\":\"water the plants\",\"due_at_utc\":\"2026-10-22T11:00:00+00:00\",\"timezone\":\"Asia/Kuala_Lumpur\",\"recurrence_rule\":null,\"recipient_user_id\":\"USR_HUSBAND\",\"destination\":\"dm\",\"conversation_id\":\"60111111111@s.whatsapp.net\",\"space\":\"FAMILY_SHARED\",\"claimable\":false,\"presence_aware\":false,\"delivery_class\":\"routine\",\"follow_up_after_hours\":24,\"pending_item_id\":\"51f92640-d44b-468c-bec4-b35a38763ad4\"}"
+        }
+      ]
+    },
+    {
+      "case": 2,
+      "text": "Forty minutes from the message I just sent please",
+      "clock": "2026-10-21T11:27:31+00:00",
+      "request_match": true,
+      "worker_errors": [],
+      "main_requests": 2,
+      "interpreter_calls": 1,
+      "created": [
+        {
+          "task": "water the plants",
+          "due_utc": "2026-10-21T12:07:31+00:00",
+          "due_local": "2026-10-21T20:07:31+08:00",
+          "delay_minutes": 40.0,
+          "owner": "USR_HUSBAND",
+          "space": "FAMILY_SHARED",
+          "destination": "60111111111@s.whatsapp.net"
+        }
+      ],
+      "draft_status": "RESOLVED",
+      "draft_resolved_by_current": true,
+      "original_task_preserved": true,
+      "extra_drafts": [],
+      "outbounds": [
+        {
+          "text": "I have reviewed the result.",
+          "context_kind": "REMINDER_CREATED",
+          "context_id": "581f6791-e200-476b-b586-aba7c2a94d5d",
+          "destination": "60111111111@s.whatsapp.net"
+        }
+      ],
+      "tool_receipts": [
+        {
+          "role": "tool",
+          "tool_call_id": "call_bf95c466293e",
+          "content": "{\"status\":\"created\",\"reminder_id\":\"581f6791-e200-476b-b586-aba7c2a94d5d\",\"task\":\"water the plants\",\"due_at_utc\":\"2026-10-21T12:07:31+00:00\",\"timezone\":\"Asia/Kuala_Lumpur\",\"recurrence_rule\":null,\"recipient_user_id\":\"USR_HUSBAND\",\"destination\":\"dm\",\"conversation_id\":\"60111111111@s.whatsapp.net\",\"space\":\"FAMILY_SHARED\",\"claimable\":false,\"presence_aware\":false,\"delivery_class\":\"routine\",\"follow_up_after_hours\":24,\"pending_item_id\":\"5803ba52-25a0-47b0-b460-c4219df84246\"}"
+        }
+      ]
+    },
+    {
+      "case": 3,
+      "text": "Tomorrow after dinner at eight would be best",
+      "clock": "2026-10-21T11:27:32+00:00",
+      "request_match": true,
+      "worker_errors": [],
+      "main_requests": 2,
+      "interpreter_calls": 1,
+      "created": [
+        {
+          "task": "water the plants",
+          "due_utc": "2026-10-22T12:00:00+00:00",
+          "due_local": "2026-10-22T20:00:00+08:00",
+          "delay_minutes": 1472.4666666666667,
+          "owner": "USR_HUSBAND",
+          "space": "FAMILY_SHARED",
+          "destination": "60111111111@s.whatsapp.net"
+        }
+      ],
+      "draft_status": "RESOLVED",
+      "draft_resolved_by_current": true,
+      "original_task_preserved": true,
+      "extra_drafts": [],
+      "outbounds": [
+        {
+          "text": "I have reviewed the result.",
+          "context_kind": "REMINDER_CREATED",
+          "context_id": "de121129-be21-47d5-a44b-170cf2fdd969",
+          "destination": "60111111111@s.whatsapp.net"
+        }
+      ],
+      "tool_receipts": [
+        {
+          "role": "tool",
+          "tool_call_id": "call_19ac84ddf8d9",
+          "content": "{\"status\":\"created\",\"reminder_id\":\"de121129-be21-47d5-a44b-170cf2fdd969\",\"task\":\"water the plants\",\"due_at_utc\":\"2026-10-22T12:00:00+00:00\",\"timezone\":\"Asia/Kuala_Lumpur\",\"recurrence_rule\":null,\"recipient_user_id\":\"USR_HUSBAND\",\"destination\":\"dm\",\"conversation_id\":\"60111111111@s.whatsapp.net\",\"space\":\"FAMILY_SHARED\",\"claimable\":false,\"presence_aware\":false,\"delivery_class\":\"routine\",\"follow_up_after_hours\":24,\"pending_item_id\":\"ef043905-fb17-4152-a597-4c3f5d5ad712\"}"
+        }
+      ]
+    },
+    {
+      "case": 4,
+      "text": "The time should be tomorrow evening at seven",
+      "clock": "2026-10-21T11:27:32+00:00",
+      "request_match": true,
+      "worker_errors": [],
+      "main_requests": 2,
+      "interpreter_calls": 1,
+      "created": [
+        {
+          "task": "water the plants",
+          "due_utc": "2026-10-22T11:00:00+00:00",
+          "due_local": "2026-10-22T19:00:00+08:00",
+          "delay_minutes": 1412.4666666666667,
+          "owner": "USR_HUSBAND",
+          "space": "FAMILY_SHARED",
+          "destination": "60111111111@s.whatsapp.net"
+        }
+      ],
+      "draft_status": "RESOLVED",
+      "draft_resolved_by_current": true,
+      "original_task_preserved": true,
+      "extra_drafts": [],
+      "outbounds": [
+        {
+          "text": "I have reviewed the result.",
+          "context_kind": "REMINDER_CREATED",
+          "context_id": "2c378249-8cb3-4f76-a87b-ddee16ab8d2c",
+          "destination": "60111111111@s.whatsapp.net"
+        }
+      ],
+      "tool_receipts": [
+        {
+          "role": "tool",
+          "tool_call_id": "call_968c978e22ab",
+          "content": "{\"status\":\"created\",\"reminder_id\":\"2c378249-8cb3-4f76-a87b-ddee16ab8d2c\",\"task\":\"water the plants\",\"due_at_utc\":\"2026-10-22T11:00:00+00:00\",\"timezone\":\"Asia/Kuala_Lumpur\",\"recurrence_rule\":null,\"recipient_user_id\":\"USR_HUSBAND\",\"destination\":\"dm\",\"conversation_id\":\"60111111111@s.whatsapp.net\",\"space\":\"FAMILY_SHARED\",\"claimable\":false,\"presence_aware\":false,\"delivery_class\":\"routine\",\"follow_up_after_hours\":24,\"pending_item_id\":\"676bb490-f830-4f3b-b90a-7c5d1d7f4f75\"}"
+        }
+      ]
+    },
+    {
+      "case": 5,
+      "text": "Roughly half an hour from the current time please",
+      "clock": "2026-10-21T11:27:32+00:00",
+      "request_match": true,
+      "worker_errors": [],
+      "main_requests": 2,
+      "interpreter_calls": 1,
+      "created": [
+        {
+          "task": "water the plants",
+          "due_utc": "2026-10-21T11:57:32+00:00",
+          "due_local": "2026-10-21T19:57:32+08:00",
+          "delay_minutes": 30.0,
+          "owner": "USR_HUSBAND",
+          "space": "FAMILY_SHARED",
+          "destination": "60111111111@s.whatsapp.net"
+        }
+      ],
+      "draft_status": "RESOLVED",
+      "draft_resolved_by_current": true,
+      "original_task_preserved": true,
+      "extra_drafts": [],
+      "outbounds": [
+        {
+          "text": "I have reviewed the result.",
+          "context_kind": "REMINDER_CREATED",
+          "context_id": "51522285-66a1-49f7-886b-2a583cf17cf0",
+          "destination": "60111111111@s.whatsapp.net"
+        }
+      ],
+      "tool_receipts": [
+        {
+          "role": "tool",
+          "tool_call_id": "call_1bd5a5e2452f",
+          "content": "{\"status\":\"created\",\"reminder_id\":\"51522285-66a1-49f7-886b-2a583cf17cf0\",\"task\":\"water the plants\",\"due_at_utc\":\"2026-10-21T11:57:32+00:00\",\"timezone\":\"Asia/Kuala_Lumpur\",\"recurrence_rule\":null,\"recipient_user_id\":\"USR_HUSBAND\",\"destination\":\"dm\",\"conversation_id\":\"60111111111@s.whatsapp.net\",\"space\":\"FAMILY_SHARED\",\"claimable\":false,\"presence_aware\":false,\"delivery_class\":\"routine\",\"follow_up_after_hours\":24,\"pending_item_id\":\"6bf8782d-03ec-40d6-8381-0adb48209323\"}"
+        }
+      ]
+    },
+    {
+      "case": 6,
+      "text": "Tonight, sometime after eight in the evening",
+      "clock": "2026-10-21T11:27:32+00:00",
+      "request_match": true,
+      "worker_errors": [],
+      "main_requests": 1,
+      "interpreter_calls": 1,
+      "created": [],
+      "draft_status": "PENDING",
+      "draft_resolved_by_current": false,
+      "original_task_preserved": true,
+      "extra_drafts": [],
+      "outbounds": [
+        {
+          "text": "What exact time after 8 PM tonight should I remind you to water the plants?",
+          "context_kind": "PENDING_ITEM",
+          "context_id": "50e9fe2d-08e1-4831-9149-6aa84ca77ac5",
+          "destination": "60111111111@s.whatsapp.net"
+        }
+      ],
+      "tool_receipts": []
+    },
+    {
+      "case": 7,
+      "text": "Tomorrow around 7ish would be convenient",
+      "clock": "2026-10-21T11:27:32+00:00",
+      "request_match": true,
+      "worker_errors": [],
+      "main_requests": 1,
+      "interpreter_calls": 1,
+      "created": [],
+      "draft_status": "PENDING",
+      "draft_resolved_by_current": false,
+      "original_task_preserved": true,
+      "extra_drafts": [],
+      "outbounds": [
+        {
+          "text": "Do you mean 7 AM or 7 PM tomorrow for the plant-watering reminder?",
+          "context_kind": "PENDING_ITEM",
+          "context_id": "e1c5e86e-d0ba-43d4-9393-93c0a15a0ab6",
+          "destination": "60111111111@s.whatsapp.net"
+        }
+      ],
+      "tool_receipts": []
+    },
+    {
+      "case": 8,
+      "text": "Later at 11.30 in the evening please",
+      "clock": "2026-10-21T11:27:32+00:00",
+      "request_match": true,
+      "worker_errors": [],
+      "main_requests": 2,
+      "interpreter_calls": 0,
+      "created": [
+        {
+          "task": "water the plants",
+          "due_utc": "2026-10-21T15:30:00+00:00",
+          "due_local": "2026-10-21T23:30:00+08:00",
+          "delay_minutes": 242.46666666666667,
+          "owner": "USR_HUSBAND",
+          "space": "FAMILY_SHARED",
+          "destination": "60111111111@s.whatsapp.net"
+        }
+      ],
+      "draft_status": "RESOLVED",
+      "draft_resolved_by_current": true,
+      "original_task_preserved": true,
+      "extra_drafts": [],
+      "outbounds": [
+        {
+          "text": "I have reviewed the result.",
+          "context_kind": "REMINDER_CREATED",
+          "context_id": "fb62d753-02f5-4211-baa4-4fda371fb167",
+          "destination": "60111111111@s.whatsapp.net"
+        }
+      ],
+      "tool_receipts": [
+        {
+          "role": "tool",
+          "tool_call_id": "call_e5f0560fe6ff",
+          "content": "{\"status\":\"created\",\"reminder_id\":\"fb62d753-02f5-4211-baa4-4fda371fb167\",\"task\":\"water the plants\",\"due_at_utc\":\"2026-10-21T15:30:00+00:00\",\"timezone\":\"Asia/Kuala_Lumpur\",\"recurrence_rule\":null,\"recipient_user_id\":\"USR_HUSBAND\",\"destination\":\"dm\",\"conversation_id\":\"60111111111@s.whatsapp.net\",\"space\":\"FAMILY_SHARED\",\"claimable\":false,\"presence_aware\":false,\"delivery_class\":\"routine\",\"follow_up_after_hours\":24,\"pending_item_id\":\"b3f9e443-f0e6-4e70-a086-31ef9e04506a\"}"
+        }
+      ]
+    },
+    {
+      "case": 9,
+      "text": "At about seven o'clock tomorrow evening",
+      "clock": "2026-10-21T11:27:32+00:00",
+      "request_match": true,
+      "worker_errors": [],
+      "main_requests": 2,
+      "interpreter_calls": 1,
+      "created": [
+        {
+          "task": "water the plants",
+          "due_utc": "2026-10-22T11:00:00+00:00",
+          "due_local": "2026-10-22T19:00:00+08:00",
+          "delay_minutes": 1412.4666666666667,
+          "owner": "USR_HUSBAND",
+          "space": "FAMILY_SHARED",
+          "destination": "60111111111@s.whatsapp.net"
+        }
+      ],
+      "draft_status": "RESOLVED",
+      "draft_resolved_by_current": true,
+      "original_task_preserved": true,
+      "extra_drafts": [],
+      "outbounds": [
+        {
+          "text": "I have reviewed the result.",
+          "context_kind": "REMINDER_CREATED",
+          "context_id": "3da40e93-f8cf-4e07-88ca-10ba45ddb056",
+          "destination": "60111111111@s.whatsapp.net"
+        }
+      ],
+      "tool_receipts": [
+        {
+          "role": "tool",
+          "tool_call_id": "call_f5221f5e2323",
+          "content": "{\"status\":\"created\",\"reminder_id\":\"3da40e93-f8cf-4e07-88ca-10ba45ddb056\",\"task\":\"water the plants\",\"due_at_utc\":\"2026-10-22T11:00:00+00:00\",\"timezone\":\"Asia/Kuala_Lumpur\",\"recurrence_rule\":null,\"recipient_user_id\":\"USR_HUSBAND\",\"destination\":\"dm\",\"conversation_id\":\"60111111111@s.whatsapp.net\",\"space\":\"FAMILY_SHARED\",\"claimable\":false,\"presence_aware\":false,\"delivery_class\":\"routine\",\"follow_up_after_hours\":24,\"pending_item_id\":\"5f11f36f-5cf5-478f-8fd1-98ba198d947c\"}"
+        }
+      ]
+    },
+    {
+      "case": 10,
+      "text": "Forty minutes later would be alright",
+      "clock": "2026-10-21T11:27:32+00:00",
+      "request_match": true,
+      "worker_errors": [],
+      "main_requests": 2,
+      "interpreter_calls": 0,
+      "created": [
+        {
+          "task": "water the plants",
+          "due_utc": "2026-10-21T12:07:32+00:00",
+          "due_local": "2026-10-21T20:07:32+08:00",
+          "delay_minutes": 40.0,
+          "owner": "USR_HUSBAND",
+          "space": "FAMILY_SHARED",
+          "destination": "60111111111@s.whatsapp.net"
+        }
+      ],
+      "draft_status": "RESOLVED",
+      "draft_resolved_by_current": true,
+      "original_task_preserved": true,
+      "extra_drafts": [],
+      "outbounds": [
+        {
+          "text": "I have reviewed the result.",
+          "context_kind": "REMINDER_CREATED",
+          "context_id": "1567e5c7-7f82-4e85-b139-f589513dc6fc",
+          "destination": "60111111111@s.whatsapp.net"
+        }
+      ],
+      "tool_receipts": [
+        {
+          "role": "tool",
+          "tool_call_id": "call_a8e29bc7cd60",
+          "content": "{\"status\":\"created\",\"reminder_id\":\"1567e5c7-7f82-4e85-b139-f589513dc6fc\",\"task\":\"water the plants\",\"due_at_utc\":\"2026-10-21T12:07:32+00:00\",\"timezone\":\"Asia/Kuala_Lumpur\",\"recurrence_rule\":null,\"recipient_user_id\":\"USR_HUSBAND\",\"destination\":\"dm\",\"conversation_id\":\"60111111111@s.whatsapp.net\",\"space\":\"FAMILY_SHARED\",\"claimable\":false,\"presence_aware\":false,\"delivery_class\":\"routine\",\"follow_up_after_hours\":24,\"pending_item_id\":\"de33ca0d-07e6-4cfe-beae-70b9cc1bea1d\"}"
+        }
+      ]
+    }
+  ]
+}

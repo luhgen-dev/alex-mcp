@@ -9,6 +9,7 @@ import re
 from mcp.server import MCPServer
 from mcp.server.mcpserver import Resolve
 from mcp.server.mcpserver.exceptions import ToolError
+from pydantic import Field
 
 from context import ActorContext, current_actor
 import db
@@ -26,7 +27,7 @@ import scope_policy
 
 mcp = MCPServer(
     "Alex Household Tools",
-    version="0.5.43",
+    version="0.5.44",
     instructions="Deterministic household tools. Identity and permissions are injected by Alex and are never model-controlled.",
 )
 
@@ -36,6 +37,30 @@ async def authenticated_actor() -> ActorContext:
 
 
 Actor = Annotated[ActorContext, Resolve(authenticated_actor)]
+
+# Keep this schema inline for the supported providers' function-calling APIs.
+# Services independently validate the values and their user-text provenance;
+# describing a time never authorizes an identity, recipient or pending record.
+ReminderTimeInterpretation = Annotated[dict, Field(json_schema_extra={
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "source_text": {"type": "string", "minLength": 1, "maxLength": 240,
+                        "description": "Exact original user wording supporting this time; do not paraphrase this evidence."},
+        "kind": {"type": "string", "enum": ["RELATIVE", "LOCAL_CLOCK"]},
+        "reference": {"type": "string", "enum": ["CURRENT_MESSAGE", "ACTIVE_DRAFT"],
+                      "description": "ACTIVE_DRAFT only when answering the displayed pending reminder; CURRENT_MESSAGE for a separate new request."},
+        "relative_minutes": {"type": "integer", "minimum": 1, "maximum": 4320,
+                             "description": "For RELATIVE: the user's stated delay, anchored to this message's receipt time."},
+        "date_text": {"type": "string", "maxLength": 64,
+                      "description": "For LOCAL_CLOCK: canonical user date such as tomorrow, friday, next friday, or an explicitly stated calendar date. Preserve next-weekday ambiguity; never invent a date."},
+        "time_text": {"type": "string", "maxLength": 16,
+                      "description": "For LOCAL_CLOCK: HH:MM in the user's local timezone. AM/PM must be supported by user wording, including a stated daypart; never infer it from the current hour."},
+        "needs_clarification": {"type": "boolean",
+                                "description": "True when date, AM/PM, or an open time range remains ambiguous. Prefer asking the user instead of calling create."},
+    },
+    "required": ["source_text", "kind", "reference", "needs_clarification"],
+})]
 
 
 _DOMAIN_TOOL_ERRORS = (ValueError, PermissionError, LookupError, sqlite3.IntegrityError)
@@ -337,13 +362,13 @@ def save_item(title: str, content: str, actor: Actor, tags: str | None = None,
 @alex_tool()
 def search_saved_items(actor: Actor, query: str | None = None, limit: int = 10,
                        kind: str | None = None) -> dict:
-    """Search or browse things the user explicitly asked Alex to save/remember. Leave query empty to list everything saved (newest first). kind may be picture, document or note (e.g. "what pictures did I save" -> kind=picture, no query). Results are numbered; the user can then say "show 2". Use get_saved_item to send an original."""
+    """Search or browse things the user explicitly asked Alex to save/remember within the authorized scope. Results contain metadata and exact item_ids, but no original attachments. For a request to find/show a specific saved picture or document, follow a unique matching result with get_saved_item in the same turn to retrieve the original. If matches are ambiguous, show the numbered choices and ask which one. Leave query empty to browse everything saved (newest first); kind may be picture, document or note (e.g. "what pictures did I save" -> kind=picture, no query). The user can follow a browsed list with "show 2"."""
     return services.search_saved_items(actor, query, limit, kind)
 
 
 @alex_tool()
 def get_saved_item(item_id: str, actor: Actor) -> dict:
-    """Retrieve one explicitly saved item, including its original attachment when it had one."""
+    """Retrieve one explicitly saved item, including its original attachment when it had one. Use the exact item_id returned by an authorized search or trusted selection; never invent an id. A unique result for a requested saved picture/document can be retrieved immediately after search_saved_items in the same turn."""
     return services.get_saved_item(actor, item_id)
 
 
@@ -354,9 +379,13 @@ def remove_saved_item(item_id: str, actor: Actor) -> dict:
 
 
 @alex_tool()
-def resolve_numbered_choice(choice: int, actor: Actor) -> dict:
-    """Resolve the newest unexpired numbered receipt, saved-memory, or original-media list to the exact original item."""
-    return services.resolve_numbered_choice(actor, choice)
+def resolve_numbered_choice(choice: int, actor: Actor,
+                            selection_kind: str | None = None,
+                            selection_id: str | None = None) -> dict:
+    """Retrieve the exact original item from a numbered receipt, saved-item, media or pending-item list. This call also retrieves the original attachment when present; Alex sends it automatically, so no separate retrieval or discovery call is needed for that item. Reading a pending voice note does not resolve or cancel it. Use a supplied conversation-state selection_id and selection_kind when available; otherwise use the newest unexpired list."""
+    return services.resolve_numbered_choice(
+        actor, choice, selection_kind=selection_kind, selection_id=selection_id
+    )
 
 
 @alex_tool()
@@ -366,11 +395,13 @@ def create_reminder(task: str, due_local: str, actor: Actor,
                     claimable: bool = False,
                     presence_aware: bool = False,
                     delivery_class: str = "routine",
-                    follow_up_after_hours: int = 24) -> dict:
-    """Create a durable reminder. recipient accepts me/spouse/husband/wife/both or the configured household names. An explicitly named assignee is a DM reminder regardless of where the command was typed unless the user explicitly asks for the group. destination=group sends one Family Shared claimable group reminder."""
+                    follow_up_after_hours: int = 24,
+                    time_interpretation: ReminderTimeInterpretation | None = None) -> dict:
+    """Create a durable reminder. Include time_interpretation for natural date/time wording so the backend can validate its meaning and calculate the due time. Its source_text must quote original user wording; use ACTIVE_DRAFT only for the displayed pending reminder. An ISO due_local alone cannot supply a missing date or AM/PM. recipient accepts me/spouse/husband/wife/both or the configured household names. An explicitly named assignee is a DM reminder regardless of where the command was typed unless the user explicitly asks for the group. destination=group sends one Family Shared claimable group reminder."""
     return services.create_reminder(
         actor, task, due_local, recurrence_rule, shared, recipient, destination,
         claimable, presence_aware, delivery_class, follow_up_after_hours,
+        time_interpretation=time_interpretation,
     )
 
 
@@ -441,11 +472,13 @@ def update_reminder(actor: Actor, reminder_id: str | None = None,
                     status: str = "open",
                     new_due_local: str | None = None,
                     snooze_minutes: int | None = None,
-                    snooze_until_local: str | None = None) -> dict:
-    """Complete/cancel/acknowledge/defer/reschedule/reopen a reminder. Use reminder_reference with the user's natural task words (for example 'balcony reminder') when no opaque reminder_id is already known. For 'reopen' use status='open'. For relative snooze pass snooze_minutes."""
+                    snooze_until_local: str | None = None,
+                    time_interpretation: ReminderTimeInterpretation | None = None) -> dict:
+    """Complete/cancel/acknowledge/defer/reschedule/reopen a reminder. Use reminder_reference with the user's natural task words (for example 'balcony reminder') when no opaque reminder_id is already known. For 'reopen' use status='open'. For relative snooze pass snooze_minutes. For a naturally worded new_due_local, include a grounded time_interpretation with CURRENT_MESSAGE reference; preserve unresolved AM/PM or weekday ambiguity."""
     return services.update_reminder(
         actor, reminder_id, status, new_due_local, snooze_minutes,
-        snooze_until_local, reminder_reference
+        snooze_until_local, reminder_reference,
+        time_interpretation=time_interpretation,
     )
 
 
@@ -785,7 +818,7 @@ def get_agenda_range(phrase: str, actor: Actor, reference_date: str | None = Non
 @alex_tool()
 def check_my_availability(start_local: str, actor: Actor,
                           end_local: str | None = None) -> dict:
-    """Owner-only private availability check. Rejected in the family group and never publishable there."""
+    """Check the owner's work-roster and Diary overlaps for a specific local interval, returning busy or no_conflict_found. start_local and end_local are ISO local datetimes; omitting end_local checks one hour from the start. Do not invent clock boundaries for vague periods such as 'evening'; ask for the interval when needed. Agenda tools list records and do not perform this interval conflict check. Owner-only private check, rejected in the family group and never publishable there."""
     return phase2.check_my_availability(actor, start_local, end_local)
 
 
@@ -1074,7 +1107,7 @@ def planning_allocate_cash_to_goal(amount: float, actor: Actor,
 def planning_create_cash_pool(name: str, actor: Actor, currency: str = "MYR",
                               shared: bool = False,
                               opening_balance: float | None = None) -> dict:
-    """Create a stash/cash pool in the space selected by the current trusted command. Plain DM/group wording follows Family Shared; explicit private wording or emoji selects owner-private. If the user says to create it with/put an amount in it, pass that amount as opening_balance so creation + funding are one atomic action."""
+    """Create a stash/cash pool in the space selected by the current trusted command. Plain DM/group wording follows Family Shared; explicit private wording or emoji selects owner-private. Without opening_balance, a new pool is an empty zero-balance container using the built-in MYR currency default unless the user requests SGD; this records no funding or money movement. For creation with funding, pass the user's stated amount as opening_balance and require reliable evidence for MYR versus SGD; ask when that currency is missing. Creation + an explicitly requested opening balance are one atomic action."""
     import runtime_clock
     visibility = scope_policy.visibility_for_new_write(actor, shared)
     return phase2_finance.create_cash_pool(
@@ -1433,7 +1466,7 @@ def work_leave_balance(leave_id: str, actor: Actor, as_of_date: str | None = Non
 @alex_tool()
 def work_departure_plan(on_date: str, actor: Actor, travel_minutes: int | None = None,
                         prep_minutes: int = 30, arrival_buffer_minutes: int = 10) -> dict:
-    """Calculate leave-home/alarm candidates from real roster plus supplied travel duration. Never invent route time or create an alarm."""
+    """Calculate leave-home/alarm candidates from real roster plus supplied travel duration. When travel_minutes is missing, return NEEDS_TRAVEL_ESTIMATE before reading the roster; no shift details are returned. Use work_schedule as well when the user also asks which shift they have. Never invent route time or create an alarm."""
     return phase2_home.shift_departure_plan(
         on_date, actor.phone, actor.conversation_type,
         travel_minutes, prep_minutes, arrival_buffer_minutes,

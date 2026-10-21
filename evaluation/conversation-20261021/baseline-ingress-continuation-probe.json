@@ -1,0 +1,110 @@
+{
+  "source_revision": "aeb3b74f64510103134a4268ca3e5e98c465646d",
+  "evidence_kind": "offline unchanged-baseline ingress helper probe using real disposable database; interpreter deliberately stubbed; no actual provider or tool write",
+  "rows": [
+    {
+      "index": 1,
+      "phrase": "Around seven tomorrow evening would work for me",
+      "concise_zero_call_gate": false,
+      "deterministic_time": true,
+      "recovered_when_interpreter_unclear": true,
+      "stubbed_interpreter_calls": 0,
+      "question_preserved": true,
+      "same_draft_id": true
+    },
+    {
+      "index": 2,
+      "phrase": "Forty minutes from the message I just sent please",
+      "concise_zero_call_gate": false,
+      "deterministic_time": false,
+      "recovered_when_interpreter_unclear": false,
+      "stubbed_interpreter_calls": 1,
+      "question_preserved": false,
+      "same_draft_id": false,
+      "recovered_with_stubbed_positive_semantics": true
+    },
+    {
+      "index": 3,
+      "phrase": "Tomorrow after dinner at eight would be best",
+      "concise_zero_call_gate": false,
+      "deterministic_time": true,
+      "recovered_when_interpreter_unclear": true,
+      "stubbed_interpreter_calls": 0,
+      "question_preserved": true,
+      "same_draft_id": true
+    },
+    {
+      "index": 4,
+      "phrase": "The time should be tomorrow evening at seven",
+      "concise_zero_call_gate": false,
+      "deterministic_time": true,
+      "recovered_when_interpreter_unclear": true,
+      "stubbed_interpreter_calls": 0,
+      "question_preserved": true,
+      "same_draft_id": true
+    },
+    {
+      "index": 5,
+      "phrase": "Roughly half an hour from the current time please",
+      "concise_zero_call_gate": false,
+      "deterministic_time": false,
+      "recovered_when_interpreter_unclear": false,
+      "stubbed_interpreter_calls": 1,
+      "question_preserved": false,
+      "same_draft_id": false,
+      "recovered_with_stubbed_positive_semantics": true
+    },
+    {
+      "index": 6,
+      "phrase": "Tonight, sometime after eight in the evening",
+      "concise_zero_call_gate": false,
+      "deterministic_time": true,
+      "recovered_when_interpreter_unclear": true,
+      "stubbed_interpreter_calls": 0,
+      "question_preserved": true,
+      "same_draft_id": true
+    },
+    {
+      "index": 7,
+      "phrase": "Tomorrow around 7ish would be convenient",
+      "concise_zero_call_gate": false,
+      "deterministic_time": true,
+      "recovered_when_interpreter_unclear": true,
+      "stubbed_interpreter_calls": 0,
+      "question_preserved": true,
+      "same_draft_id": true
+    },
+    {
+      "index": 8,
+      "phrase": "Later at 11.30 in the evening please",
+      "concise_zero_call_gate": true,
+      "deterministic_time": true,
+      "recovered_when_interpreter_unclear": true,
+      "stubbed_interpreter_calls": 0,
+      "question_preserved": true,
+      "same_draft_id": true
+    },
+    {
+      "index": 9,
+      "phrase": "At about seven o'clock tomorrow evening",
+      "concise_zero_call_gate": false,
+      "deterministic_time": true,
+      "recovered_when_interpreter_unclear": true,
+      "stubbed_interpreter_calls": 0,
+      "question_preserved": true,
+      "same_draft_id": true
+    },
+    {
+      "index": 10,
+      "phrase": "Forty minutes later would be alright",
+      "concise_zero_call_gate": false,
+      "deterministic_time": true,
+      "recovered_when_interpreter_unclear": true,
+      "stubbed_interpreter_calls": 0,
+      "question_preserved": true,
+      "same_draft_id": true
+    }
+  ],
+  "recovered_with_unclear": 8,
+  "semantic_rescue_required": 2
+}

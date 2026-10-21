@@ -156,10 +156,12 @@ class ApplyAiRouteTests(V0534Base):
         keyword = self.specs("query_finances", "list_reminders", "list_shopping_items")
         picks = ["list_work_roster", "list_leave_records", "list_tasks", "get_agenda",
                  "planning_brief", "bills_list"]
-        out, _ = self.apply({"tools": picks, "needs_clarification": False, "reason": "r"},
+        out, trace = self.apply({"tools": picks, "needs_clarification": False, "reason": "r"},
                             keyword, text="what is coming up")
         self.assertLessEqual(len(out), brain.AI_ROUTE_MERGED_MAX)
-        self.assertEqual(names(out)[:6].count("query_finances"), 0)
+        self.assertTrue(set(names(keyword)) <= set(names(out)))
+        self.assertEqual(names(out)[:5], picks[:5])
+        self.assertEqual(trace["ai_route"]["capacity_filtered"], ["bills_list"])
 
     def test_a_write_tool_is_not_offered_unless_the_user_asked_for_a_write(self):
         keyword = self.specs("query_finances")

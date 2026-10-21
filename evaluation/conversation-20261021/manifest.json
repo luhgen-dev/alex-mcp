@@ -1,0 +1,258 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-21",
+  "base_commit": "aeb3b74f64510103134a4268ca3e5e98c465646d",
+  "candidate_branch": "experiment/conversation-reliability-20261021",
+  "runtime_source_sha256": "0287e3ef6a2b018cd7cd2897a18b4013b54891936e56250c950e837682833639",
+  "runtime_hash_algorithm": "For sorted alex-mcp/app/**/*.py: repository-relative UTF-8 path, NUL, file bytes, NUL; SHA-256 of concatenation.",
+  "comparison_before_commit": true,
+  "source_identity_note": "Git revision fields identify the base checkout; runtime_source_sha256 identifies the complete tested Python runtime including untracked candidate modules. The commit containing this manifest preserves those bytes.",
+  "manifest_excludes_itself": true,
+  "files": [
+    {
+      "path": "evaluation/conversation-20261021/README.md",
+      "bytes": 6261,
+      "sha256": "93691402eec2f17d903a3ab8fecf96b4f46fa259f4effb0bee9c08156638799a"
+    },
+    {
+      "path": "evaluation/conversation-20261021/architecture-final.json",
+      "bytes": 6904,
+      "sha256": "f33acc83567f11897a3f4d7c6e5ae3419bb7c7191dcc801eea0ad5694d9b80c9"
+    },
+    {
+      "path": "evaluation/conversation-20261021/assemble_clocked_packets.py",
+      "bytes": 5488,
+      "sha256": "93cc526897e6b4b2b478048051a19ec366a556eb935f8ec747f475e93a7bafcf"
+    },
+    {
+      "path": "evaluation/conversation-20261021/baseline-ingress-continuation-probe.json",
+      "bytes": 3607,
+      "sha256": "45561574ab4552e26435bf947b46eaccc8a56cdde0eaab6852e49a0af5590269"
+    },
+    {
+      "path": "evaluation/conversation-20261021/baseline-unit.log",
+      "bytes": 86562,
+      "sha256": "ab39f64558906502e2435c2cf1486c42a5ea5344141bdcd7ce17b4bdc5d1bbf6"
+    },
+    {
+      "path": "evaluation/conversation-20261021/behavior-final.json",
+      "bytes": 898248,
+      "sha256": "85205b30c5063b8f4e71ddf6fa48ab2d39d3f2d7b948f2e53d91bcadedd76e7c"
+    },
+    {
+      "path": "evaluation/conversation-20261021/candidate-unit-before-retention-fix.log",
+      "bytes": 98357,
+      "sha256": "c42f19dee6be9203980dee62e5b68d4706e63691736055d668bf53ebe1bb4d0b"
+    },
+    {
+      "path": "evaluation/conversation-20261021/candidate-unit.log",
+      "bytes": 100204,
+      "sha256": "cd970d8a509f3d583d49df49c51c345933a529163398c9b55ffd73874597ba5f"
+    },
+    {
+      "path": "evaluation/conversation-20261021/capture_runtime_requests.py",
+      "bytes": 3513,
+      "sha256": "b747202d6bf45915050f6ffe75aec7182fe7a97502eb3a42361b7814b811908a"
+    },
+    {
+      "path": "evaluation/conversation-20261021/comparison-before-retention-fix.json",
+      "bytes": 79018,
+      "sha256": "8c8dd4a588bc9d5f5fa8ed4cd84d4778e592df817fa7b4ea18000ea07b8a3d6b"
+    },
+    {
+      "path": "evaluation/conversation-20261021/comparison.json",
+      "bytes": 79025,
+      "sha256": "cb2527287a83a65f7bd5b01d4512ec55abdf62b95f3b010fa34afc71b10769b1"
+    },
+    {
+      "path": "evaluation/conversation-20261021/deterministic-oracle-final.json",
+      "bytes": 110725,
+      "sha256": "7aad7c6a81103c572414a7b1d45c75ef59664a1a3703c3cd827048205f71e9d0"
+    },
+    {
+      "path": "evaluation/conversation-20261021/gates-before-retention-fix.json",
+      "bytes": 15310,
+      "sha256": "159c7cf3f431ddc3ff441b2c32eff06474ba485fd03db06dc68106ce896bc155"
+    },
+    {
+      "path": "evaluation/conversation-20261021/gates.json",
+      "bytes": 17615,
+      "sha256": "35de482acdff28225c2f0345827a6d3c59b0eb6891bd050e722275a2db6ede9b"
+    },
+    {
+      "path": "evaluation/conversation-20261021/holdout-harness-checks.json",
+      "bytes": 761,
+      "sha256": "def8292cc93ba0a57fda71614b7e9c1bae72f9a3252c7e80632cc444d3ab01aa"
+    },
+    {
+      "path": "evaluation/conversation-20261021/holdout-not-executed.json",
+      "bytes": 5368,
+      "sha256": "ce51f5d8baf04850ce357aa7332a4488bdfaf3eb96b367aa2e812b9cdc81130d"
+    },
+    {
+      "path": "evaluation/conversation-20261021/ingress-lifecycle-after-retention-fix.json",
+      "bytes": 200594,
+      "sha256": "60b8c4e2b8b328023ce2b8e350751b319906f7e861afa25a9006b1102cd0d25d"
+    },
+    {
+      "path": "evaluation/conversation-20261021/ingress-lifecycle-before-retention-fix.json",
+      "bytes": 202052,
+      "sha256": "5f106aa4656cab275aa38145ce2fd7a02fbc9f3490e7fe44041599f85fd2cbb9"
+    },
+    {
+      "path": "evaluation/conversation-20261021/legacy-changed-public-packets.json",
+      "bytes": 371703,
+      "sha256": "092ecc93668202952af8fbbac6d541e3160d1089f609fabf7af48e68ceb8cbda"
+    },
+    {
+      "path": "evaluation/conversation-20261021/legacy-independent-decisions.json",
+      "bytes": 15529,
+      "sha256": "41c466626b1531d36b19be82f0e900c6277c6439b202c370238b8086b86bc5f8"
+    },
+    {
+      "path": "evaluation/conversation-20261021/legacy-model-review.json",
+      "bytes": 115598,
+      "sha256": "04c15f342b9ee4914a2f29ae99bfeff52565f86a40d52230d5ce83b74293681d"
+    },
+    {
+      "path": "evaluation/conversation-20261021/packet-audit-final.json",
+      "bytes": 857,
+      "sha256": "0928b7b0a958fe4716d20986780a4aa9519e94e2ce3d05005fb70f186b1445f5"
+    },
+    {
+      "path": "evaluation/conversation-20261021/preliminary-runtime-packets.json",
+      "bytes": 445919,
+      "sha256": "78e81abe564510f9edddfe84235ec2837163e262221b5f266f888852b0f62420"
+    },
+    {
+      "path": "evaluation/conversation-20261021/preliminary-runtime-review-decisions.json",
+      "bytes": 7825,
+      "sha256": "736d428a5ac10ecd089d8e3d6105d318dca145ad36c79c7c927a58ee0dd59bab"
+    },
+    {
+      "path": "evaluation/conversation-20261021/preliminary-runtime-review-provenance.json",
+      "bytes": 12521,
+      "sha256": "58cf07e41cfa5d69918165887aba3ba2a01553acd77f445493901298f8e6b794"
+    },
+    {
+      "path": "evaluation/conversation-20261021/preliminary-runtime-review-summary.json",
+      "bytes": 55963,
+      "sha256": "e612e74afc65bfc3dd2a9b50e8a5eb8e6263df2ab7b9dbe635a2b16304fc93b9"
+    },
+    {
+      "path": "evaluation/conversation-20261021/probe_ingress_lifecycle.py",
+      "bytes": 8741,
+      "sha256": "7dbb369e1db27d640ab755ac84c5e8b1b9814153c5be17fadeec4f4fcdd37ee3"
+    },
+    {
+      "path": "evaluation/conversation-20261021/replay_clocked_runtime.py",
+      "bytes": 11709,
+      "sha256": "ad64f6f60a200029eecd2f4215b743c5ca5ec944ae606081a3ba76b676bae311"
+    },
+    {
+      "path": "evaluation/conversation-20261021/runtime-packets.json",
+      "bytes": 445849,
+      "sha256": "18e4a390b92b3ce2ef0c4897a98d6af7f21e9c050d62cc3507d7c03411025186"
+    },
+    {
+      "path": "evaluation/conversation-20261021/runtime-postfix-summary.json",
+      "bytes": 34254,
+      "sha256": "53571d70fe73adc1a49988c7f254c59ef20a889108a875b75004effd93512c3f"
+    },
+    {
+      "path": "evaluation/conversation-20261021/runtime-replay-baseline.json",
+      "bytes": 388081,
+      "sha256": "c7a2dab78f51e1285039d834f05d410c3d9414a56a35d7ea3225bf24d6a7b78a"
+    },
+    {
+      "path": "evaluation/conversation-20261021/runtime-replay-candidate-before-retention-fix.json",
+      "bytes": 609925,
+      "sha256": "ecdc8a3de19acce008a9faf4754975b8e3e00f7dd9353ce34e741a54d09fb296"
+    },
+    {
+      "path": "evaluation/conversation-20261021/runtime-replay-candidate.json",
+      "bytes": 610231,
+      "sha256": "4933c7c2d2215a703b0ded9747e74c8afae0e628abc14a5a9b12e174a9cfbbf2"
+    },
+    {
+      "path": "evaluation/conversation-20261021/runtime-review-decisions.json",
+      "bytes": 6704,
+      "sha256": "8676a7140aeb0519677839d7810332abb286ebdd6fcb19f4348444e54f955562"
+    },
+    {
+      "path": "evaluation/conversation-20261021/runtime-review-provenance.json",
+      "bytes": 29804,
+      "sha256": "4cf29ff5e27577331fb93cbdca9d76b175ff6f169147b2679e0a96e3da961966"
+    },
+    {
+      "path": "evaluation/conversation-20261021/runtime-review-summary.json",
+      "bytes": 97619,
+      "sha256": "8e894de6105b4dee5cdf85405ab7957d183ad82380bc6c492581b457c5cdf274"
+    },
+    {
+      "path": "evaluation/conversation-20261021/stress.log",
+      "bytes": 1237,
+      "sha256": "53d9dba34a5d1f5993bcced12a76a901c275d842cf611f6b9d02e9c0c330f6d1"
+    },
+    {
+      "path": "evaluation/conversation-20261021/summarize_clocked_review.py",
+      "bytes": 18967,
+      "sha256": "8f5f9a179527969616dea739654d6dcb22cd3f52504a6293a78cbac755c1dfb4"
+    },
+    {
+      "path": "evaluation/conversation-20261021/summarize_postfix_replay.py",
+      "bytes": 8704,
+      "sha256": "c5a5e7947fa7ceb6399f909bef427502df2ec4f14fe1d72ff344454d9cb12cd1"
+    },
+    {
+      "path": "CONVERSATION_CANDIDATE_REPORT.md",
+      "bytes": 22571,
+      "sha256": "fb4663816c6b63376c3217608817808b37383ab0fb93caf89dea2621251ecb1b"
+    },
+    {
+      "path": "LEARNING_CAPABILITY_AUDIT.md",
+      "bytes": 9629,
+      "sha256": "c3dd5a224a73cfd7279495c960187ed26b1b4d873b64d73eab1af910fc9dd587"
+    },
+    {
+      "path": "tests/test_conversation_pending_retention.py",
+      "bytes": 8730,
+      "sha256": "d1e36a487c0a2e93aaef57a28e414c6167112d5acab4b90db4697e80723e1ddc"
+    },
+    {
+      "path": "tests/test_conversation_reliability.py",
+      "bytes": 37728,
+      "sha256": "03d7f4dd02c5e70dd25dc315f1426e4c6b5c67ccb408eb7ff1efbfba37fd5d89"
+    },
+    {
+      "path": "tests/test_conversation_review_provenance.py",
+      "bytes": 2519,
+      "sha256": "f3dae47dcbc13229bd6a827a47c11546db027768c3ddea9bd65971c9360d8cec"
+    },
+    {
+      "path": "tests/test_conversation_route_reuse.py",
+      "bytes": 3221,
+      "sha256": "38e487132161f74ae7930fcca2a9bb9a3899d96f9ff269483bc48a92f0f36266"
+    },
+    {
+      "path": "tests/test_conversation_router_context.py",
+      "bytes": 19944,
+      "sha256": "9ae6d704dfaec4f5b2d519c09bffb806cefcacd785ccb828ad532a39fe356dff"
+    },
+    {
+      "path": "tools/conversation_comparison.py",
+      "bytes": 9513,
+      "sha256": "acf069994bfe4f63f40d62154d14b395c7f35a55535f86a10cef5d416dd72f2b"
+    },
+    {
+      "path": "tools/conversation_holdout.py",
+      "bytes": 13069,
+      "sha256": "0b20a9436fc00a422d077949914a2de66780b6e3a45004a6984d1909e09f5039"
+    },
+    {
+      "path": "tests/fixtures/conversation_holdout_review.json",
+      "bytes": 84502,
+      "sha256": "0b409035d75de70b4240423d20b296f8e7388bd537d94e896624bf56da99e462"
+    }
+  ]
+}

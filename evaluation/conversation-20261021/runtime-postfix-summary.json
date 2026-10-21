@@ -1,0 +1,952 @@
+{
+  "schema_version": 1,
+  "evidence_kind": "Post-retention-fix replay of the same blind proposals and the same three scripted lifecycle probes; no new model review or live provider",
+  "runtime_source_sha256": "0287e3ef6a2b018cd7cd2897a18b4013b54891936e56250c950e837682833639",
+  "original_review_capture_runtime_source_sha256": "2ba13c8546d3ec5b7174fd4d48bb40a239f9de9e8cb795256182434f754307db",
+  "baseline_reused_unchanged": true,
+  "total_baseline_and_final_candidate_exact_reviewed_packets": 20,
+  "raw_review_decisions_unchanged": true,
+  "source_files": {
+    "clocked-runtime-independent-decisions.json": {
+      "path": "/tmp/alex-conversation-evidence/clocked-runtime-independent-decisions.json",
+      "sha256": "8676a7140aeb0519677839d7810332abb286ebdd6fcb19f4348444e54f955562"
+    },
+    "clocked-runtime-replay-baseline.json": {
+      "path": "/tmp/alex-conversation-evidence/clocked-runtime-replay-baseline.json",
+      "sha256": "c7a2dab78f51e1285039d834f05d410c3d9414a56a35d7ea3225bf24d6a7b78a"
+    },
+    "clocked-runtime-replay-candidate-postfix.json": {
+      "path": "/tmp/alex-conversation-evidence/clocked-runtime-replay-candidate-postfix.json",
+      "sha256": "4933c7c2d2215a703b0ded9747e74c8afae0e628abc14a5a9b12e174a9cfbbf2"
+    },
+    "clocked-ingress-lifecycle-probe-postfix.json": {
+      "path": "/tmp/alex-conversation-evidence/clocked-ingress-lifecycle-probe-postfix.json",
+      "sha256": "60b8c4e2b8b328023ce2b8e350751b319906f7e861afa25a9006b1102cd0d25d"
+    },
+    "clocked-runtime-review-summary.json": {
+      "path": "/tmp/alex-conversation-evidence/clocked-runtime-review-summary.json",
+      "sha256": "8e894de6105b4dee5cdf85405ab7957d183ad82380bc6c492581b457c5cdf274"
+    },
+    "clocked-ingress-lifecycle-probe.json": {
+      "path": "/tmp/alex-conversation-evidence/clocked-ingress-lifecycle-probe.json",
+      "sha256": "5f106aa4656cab275aa38145ce2fd7a02fbc9f3490e7fe44041599f85fd2cbb9"
+    }
+  },
+  "direct_brain_counts": {
+    "baseline": {
+      "clarifications": 10,
+      "actual_reminders": 0
+    },
+    "candidate": {
+      "proposals": 8,
+      "appropriate_ambiguity_clarifications": 2,
+      "actual_reminders": 2,
+      "backend_time_clarifications": 6
+    }
+  },
+  "interpretation": [
+    "The final runtime presents exactly the same reviewed prompts/schemas; the original independent proposals remain applicable without a new blind review.",
+    "The retention fix prevents the observed task-loss path in both full-ingress UNCLEAR probes. It does not make the two time phrasings schedulable; backend clarification remains.",
+    "The independent new reminder still creates correctly while the old draft remains pending.",
+    "Six of eight direct-brain creation proposals still fail time validation. Context grounding has improved, but the broad conversational scheduling goal is not yet established.",
+    "Baseline direct-brain missing context is not proof of baseline ingress failure: eight of the ten phrasings already recover through baseline ingress, with semantic rescue available for the other two."
+  ],
+  "direct_brain_rows": [
+    {
+      "variation_index": 1,
+      "input_phrase": "Around seven tomorrow evening would work for me",
+      "packet_id": "pkt_1b567eaa6fbae3c758981396",
+      "reviewer_proposal_unchanged": {
+        "packet_id": "pkt_1b567eaa6fbae3c758981396",
+        "decision": "tools",
+        "tool_calls": [
+          {
+            "name": "create_reminder",
+            "arguments": {
+              "task": "water the plants",
+              "due_local": "2026-10-22T19:00:00",
+              "recipient": "me"
+            }
+          }
+        ],
+        "reply": "",
+        "rationale": "The active reminder and tomorrow evening at approximately 7 PM are clear."
+      },
+      "actual_request_equal_to_reviewed_packet": true,
+      "receipts": [
+        {
+          "status": "needs_clarification",
+          "clarification_question": "What time should I remind you?"
+        }
+      ],
+      "actual_reminders": [],
+      "created_reminder_count": 0,
+      "pending_after": [
+        {
+          "item_id": "2fe1fee4-2b50-4201-8118-2cb07c03c49b",
+          "kind": "REMINDER_DRAFT",
+          "owner_id": "USR_HUSBAND",
+          "conversation_id": "60111111111@s.whatsapp.net",
+          "source_message_id": "cr-draft",
+          "media_id": null,
+          "status": "PENDING",
+          "note": "fixture",
+          "accumulated_text": "Remind me to water the plants",
+          "routing_json": null,
+          "created_at_utc": "2026-10-21T08:00:00+00:00",
+          "resolved_at_utc": null,
+          "resolution_message_id": null
+        }
+      ],
+      "domain_record_count_delta": {
+        "reminders": 0,
+        "tasks": 0,
+        "saved_items": 0,
+        "shopping_items": 0,
+        "financial_events": 0,
+        "diary_events": 0,
+        "plans": 0,
+        "leave_records": 0,
+        "work_roster": 0,
+        "savings_goals": 0,
+        "money_buckets": 0,
+        "alex_phase2_work_events": 0,
+        "alex_phase2_delegations": 0,
+        "alex_phase2_cash_events": 0,
+        "alex_phase2_assets": 0,
+        "alex_phase2_goals": 0
+      }
+    },
+    {
+      "variation_index": 2,
+      "input_phrase": "Forty minutes from the message I just sent please",
+      "packet_id": "pkt_79a7a2afaf5de84df070304b",
+      "reviewer_proposal_unchanged": {
+        "packet_id": "pkt_79a7a2afaf5de84df070304b",
+        "decision": "tools",
+        "tool_calls": [
+          {
+            "name": "create_reminder",
+            "arguments": {
+              "task": "water the plants",
+              "due_local": "2026-10-21T16:40:00",
+              "recipient": "me"
+            }
+          }
+        ],
+        "reply": "",
+        "rationale": "The reply completes the active reminder; 40 minutes after the supplied receipt timestamp is 4:40 PM today."
+      },
+      "actual_request_equal_to_reviewed_packet": true,
+      "receipts": [
+        {
+          "status": "needs_clarification",
+          "clarification_question": "What time should I remind you?"
+        }
+      ],
+      "actual_reminders": [],
+      "created_reminder_count": 0,
+      "pending_after": [
+        {
+          "item_id": "19656e21-8556-4e03-92bd-6337b50cf4e7",
+          "kind": "REMINDER_DRAFT",
+          "owner_id": "USR_HUSBAND",
+          "conversation_id": "60111111111@s.whatsapp.net",
+          "source_message_id": "cr-draft",
+          "media_id": null,
+          "status": "PENDING",
+          "note": "fixture",
+          "accumulated_text": "Remind me to water the plants",
+          "routing_json": null,
+          "created_at_utc": "2026-10-21T08:00:00+00:00",
+          "resolved_at_utc": null,
+          "resolution_message_id": null
+        }
+      ],
+      "domain_record_count_delta": {
+        "reminders": 0,
+        "tasks": 0,
+        "saved_items": 0,
+        "shopping_items": 0,
+        "financial_events": 0,
+        "diary_events": 0,
+        "plans": 0,
+        "leave_records": 0,
+        "work_roster": 0,
+        "savings_goals": 0,
+        "money_buckets": 0,
+        "alex_phase2_work_events": 0,
+        "alex_phase2_delegations": 0,
+        "alex_phase2_cash_events": 0,
+        "alex_phase2_assets": 0,
+        "alex_phase2_goals": 0
+      }
+    },
+    {
+      "variation_index": 3,
+      "input_phrase": "Tomorrow after dinner at eight would be best",
+      "packet_id": "pkt_f1bdeb04542f9b4283264842",
+      "reviewer_proposal_unchanged": {
+        "packet_id": "pkt_f1bdeb04542f9b4283264842",
+        "decision": "tools",
+        "tool_calls": [
+          {
+            "name": "create_reminder",
+            "arguments": {
+              "task": "water the plants",
+              "due_local": "2026-10-22T20:00:00",
+              "recipient": "me"
+            }
+          }
+        ],
+        "reply": "",
+        "rationale": "Tomorrow after dinner at eight identifies 8 PM for the active reminder."
+      },
+      "actual_request_equal_to_reviewed_packet": true,
+      "receipts": [
+        {
+          "status": "needs_clarification",
+          "clarification_question": "What time should I remind you?"
+        }
+      ],
+      "actual_reminders": [],
+      "created_reminder_count": 0,
+      "pending_after": [
+        {
+          "item_id": "b1c22d86-3315-4765-8b61-f85b05995311",
+          "kind": "REMINDER_DRAFT",
+          "owner_id": "USR_HUSBAND",
+          "conversation_id": "60111111111@s.whatsapp.net",
+          "source_message_id": "cr-draft",
+          "media_id": null,
+          "status": "PENDING",
+          "note": "fixture",
+          "accumulated_text": "Remind me to water the plants",
+          "routing_json": null,
+          "created_at_utc": "2026-10-21T08:00:00+00:00",
+          "resolved_at_utc": null,
+          "resolution_message_id": null
+        }
+      ],
+      "domain_record_count_delta": {
+        "reminders": 0,
+        "tasks": 0,
+        "saved_items": 0,
+        "shopping_items": 0,
+        "financial_events": 0,
+        "diary_events": 0,
+        "plans": 0,
+        "leave_records": 0,
+        "work_roster": 0,
+        "savings_goals": 0,
+        "money_buckets": 0,
+        "alex_phase2_work_events": 0,
+        "alex_phase2_delegations": 0,
+        "alex_phase2_cash_events": 0,
+        "alex_phase2_assets": 0,
+        "alex_phase2_goals": 0
+      }
+    },
+    {
+      "variation_index": 4,
+      "input_phrase": "The time should be tomorrow evening at seven",
+      "packet_id": "pkt_3ae03ebf6ea49bf30c8fd70c",
+      "reviewer_proposal_unchanged": {
+        "packet_id": "pkt_3ae03ebf6ea49bf30c8fd70c",
+        "decision": "tools",
+        "tool_calls": [
+          {
+            "name": "create_reminder",
+            "arguments": {
+              "task": "water the plants",
+              "due_local": "2026-10-22T19:00:00",
+              "recipient": "me"
+            }
+          }
+        ],
+        "reply": "",
+        "rationale": "The reply completes the active plant-watering reminder with tomorrow at 7 PM local time."
+      },
+      "actual_request_equal_to_reviewed_packet": true,
+      "receipts": [
+        {
+          "status": "needs_clarification",
+          "clarification_question": "What time should I remind you?"
+        }
+      ],
+      "actual_reminders": [],
+      "created_reminder_count": 0,
+      "pending_after": [
+        {
+          "item_id": "a685e0d6-81f9-4a96-95bb-209c3a0e0db5",
+          "kind": "REMINDER_DRAFT",
+          "owner_id": "USR_HUSBAND",
+          "conversation_id": "60111111111@s.whatsapp.net",
+          "source_message_id": "cr-draft",
+          "media_id": null,
+          "status": "PENDING",
+          "note": "fixture",
+          "accumulated_text": "Remind me to water the plants",
+          "routing_json": null,
+          "created_at_utc": "2026-10-21T08:00:00+00:00",
+          "resolved_at_utc": null,
+          "resolution_message_id": null
+        }
+      ],
+      "domain_record_count_delta": {
+        "reminders": 0,
+        "tasks": 0,
+        "saved_items": 0,
+        "shopping_items": 0,
+        "financial_events": 0,
+        "diary_events": 0,
+        "plans": 0,
+        "leave_records": 0,
+        "work_roster": 0,
+        "savings_goals": 0,
+        "money_buckets": 0,
+        "alex_phase2_work_events": 0,
+        "alex_phase2_delegations": 0,
+        "alex_phase2_cash_events": 0,
+        "alex_phase2_assets": 0,
+        "alex_phase2_goals": 0
+      }
+    },
+    {
+      "variation_index": 5,
+      "input_phrase": "Roughly half an hour from the current time please",
+      "packet_id": "pkt_4a1d903020265d9b971a5ddd",
+      "reviewer_proposal_unchanged": {
+        "packet_id": "pkt_4a1d903020265d9b971a5ddd",
+        "decision": "tools",
+        "tool_calls": [
+          {
+            "name": "create_reminder",
+            "arguments": {
+              "task": "water the plants",
+              "due_local": "2026-10-21T16:30:00",
+              "recipient": "me"
+            }
+          }
+        ],
+        "reply": "",
+        "rationale": "The active reminder is due approximately 30 minutes after the supplied current timestamp, at 4:30 PM today."
+      },
+      "actual_request_equal_to_reviewed_packet": true,
+      "receipts": [
+        {
+          "status": "needs_clarification",
+          "clarification_question": "What time should I remind you?"
+        }
+      ],
+      "actual_reminders": [],
+      "created_reminder_count": 0,
+      "pending_after": [
+        {
+          "item_id": "d06130ae-fa12-47a0-b3a6-decb531c847a",
+          "kind": "REMINDER_DRAFT",
+          "owner_id": "USR_HUSBAND",
+          "conversation_id": "60111111111@s.whatsapp.net",
+          "source_message_id": "cr-draft",
+          "media_id": null,
+          "status": "PENDING",
+          "note": "fixture",
+          "accumulated_text": "Remind me to water the plants",
+          "routing_json": null,
+          "created_at_utc": "2026-10-21T08:00:00+00:00",
+          "resolved_at_utc": null,
+          "resolution_message_id": null
+        }
+      ],
+      "domain_record_count_delta": {
+        "reminders": 0,
+        "tasks": 0,
+        "saved_items": 0,
+        "shopping_items": 0,
+        "financial_events": 0,
+        "diary_events": 0,
+        "plans": 0,
+        "leave_records": 0,
+        "work_roster": 0,
+        "savings_goals": 0,
+        "money_buckets": 0,
+        "alex_phase2_work_events": 0,
+        "alex_phase2_delegations": 0,
+        "alex_phase2_cash_events": 0,
+        "alex_phase2_assets": 0,
+        "alex_phase2_goals": 0
+      }
+    },
+    {
+      "variation_index": 6,
+      "input_phrase": "Tonight, sometime after eight in the evening",
+      "packet_id": "pkt_129f61b613e3d0f65ea618e4",
+      "reviewer_proposal_unchanged": {
+        "packet_id": "pkt_129f61b613e3d0f65ea618e4",
+        "decision": "clarify",
+        "tool_calls": [],
+        "reply": "What time after 8 PM tonight should I remind you to water the plants?",
+        "rationale": "The task and date are known, but sometime after eight supplies no specific reminder time."
+      },
+      "actual_request_equal_to_reviewed_packet": true,
+      "receipts": [],
+      "actual_reminders": [],
+      "created_reminder_count": 0,
+      "pending_after": [
+        {
+          "item_id": "3823bbf7-8aca-4091-9b30-f834ce6fa925",
+          "kind": "REMINDER_DRAFT",
+          "owner_id": "USR_HUSBAND",
+          "conversation_id": "60111111111@s.whatsapp.net",
+          "source_message_id": "cr-draft",
+          "media_id": null,
+          "status": "PENDING",
+          "note": "fixture",
+          "accumulated_text": "Remind me to water the plants",
+          "routing_json": null,
+          "created_at_utc": "2026-10-21T08:00:00+00:00",
+          "resolved_at_utc": null,
+          "resolution_message_id": null
+        }
+      ],
+      "domain_record_count_delta": {
+        "reminders": 0,
+        "tasks": 0,
+        "saved_items": 0,
+        "shopping_items": 0,
+        "financial_events": 0,
+        "diary_events": 0,
+        "plans": 0,
+        "leave_records": 0,
+        "work_roster": 0,
+        "savings_goals": 0,
+        "money_buckets": 0,
+        "alex_phase2_work_events": 0,
+        "alex_phase2_delegations": 0,
+        "alex_phase2_cash_events": 0,
+        "alex_phase2_assets": 0,
+        "alex_phase2_goals": 0
+      }
+    },
+    {
+      "variation_index": 7,
+      "input_phrase": "Tomorrow around 7ish would be convenient",
+      "packet_id": "pkt_d31842d52cee13d60a5414e3",
+      "reviewer_proposal_unchanged": {
+        "packet_id": "pkt_d31842d52cee13d60a5414e3",
+        "decision": "clarify",
+        "tool_calls": [],
+        "reply": "Do you mean 7 AM or 7 PM tomorrow for the plant-watering reminder?",
+        "rationale": "The active task is known, but 7ish does not establish morning or evening."
+      },
+      "actual_request_equal_to_reviewed_packet": true,
+      "receipts": [],
+      "actual_reminders": [],
+      "created_reminder_count": 0,
+      "pending_after": [
+        {
+          "item_id": "030f4724-fd96-4dff-b774-897bfa99370e",
+          "kind": "REMINDER_DRAFT",
+          "owner_id": "USR_HUSBAND",
+          "conversation_id": "60111111111@s.whatsapp.net",
+          "source_message_id": "cr-draft",
+          "media_id": null,
+          "status": "PENDING",
+          "note": "fixture",
+          "accumulated_text": "Remind me to water the plants",
+          "routing_json": null,
+          "created_at_utc": "2026-10-21T08:00:00+00:00",
+          "resolved_at_utc": null,
+          "resolution_message_id": null
+        }
+      ],
+      "domain_record_count_delta": {
+        "reminders": 0,
+        "tasks": 0,
+        "saved_items": 0,
+        "shopping_items": 0,
+        "financial_events": 0,
+        "diary_events": 0,
+        "plans": 0,
+        "leave_records": 0,
+        "work_roster": 0,
+        "savings_goals": 0,
+        "money_buckets": 0,
+        "alex_phase2_work_events": 0,
+        "alex_phase2_delegations": 0,
+        "alex_phase2_cash_events": 0,
+        "alex_phase2_assets": 0,
+        "alex_phase2_goals": 0
+      }
+    },
+    {
+      "variation_index": 8,
+      "input_phrase": "Later at 11.30 in the evening please",
+      "packet_id": "pkt_0cff39be38a982e99baf9b5b",
+      "reviewer_proposal_unchanged": {
+        "packet_id": "pkt_0cff39be38a982e99baf9b5b",
+        "decision": "tools",
+        "tool_calls": [
+          {
+            "name": "create_reminder",
+            "arguments": {
+              "task": "water the plants",
+              "due_local": "2026-10-21T23:30:00",
+              "recipient": "me"
+            }
+          }
+        ],
+        "reply": "",
+        "rationale": "At the supplied 4 PM local time, later at 11:30 PM means tonight for the active reminder."
+      },
+      "actual_request_equal_to_reviewed_packet": true,
+      "receipts": [
+        {
+          "status": "created",
+          "reminder_id": "05410fb5-8356-41a8-b7a2-9cf00573aa4b",
+          "task": "water the plants",
+          "due_at_utc": "2026-10-21T15:30:00+00:00",
+          "timezone": "Asia/Kuala_Lumpur",
+          "recurrence_rule": null,
+          "recipient_user_id": "USR_HUSBAND",
+          "destination": "dm",
+          "conversation_id": "60111111111@s.whatsapp.net",
+          "space": "FAMILY_SHARED",
+          "claimable": false,
+          "presence_aware": false,
+          "delivery_class": "routine",
+          "follow_up_after_hours": 24
+        }
+      ],
+      "actual_reminders": [
+        {
+          "reminder_id": "05410fb5-8356-41a8-b7a2-9cf00573aa4b",
+          "action_key": "79fea8754a646d4437156fee3334a01117b1c2a74cb0c0196f043ab29b50483e",
+          "source_message_id": "cr-varied-answer",
+          "owner_id": "USR_HUSBAND",
+          "space_id": "FAMILY_SHARED",
+          "conversation_id": "60111111111@s.whatsapp.net",
+          "task_text": "water the plants",
+          "due_at_utc": "2026-10-21T15:30:00+00:00",
+          "timezone_name": "Asia/Kuala_Lumpur",
+          "recurrence_rule": null,
+          "status": "OPEN",
+          "presence_aware": 0,
+          "delivery_class": "routine",
+          "follow_up_after_hours": 24,
+          "acknowledged_at_utc": null,
+          "last_fired_at_utc": null,
+          "last_follow_up_at_utc": null,
+          "next_delivery_at_utc": null,
+          "defer_reason": null,
+          "claimable": 0,
+          "claimed_by_user_id": null,
+          "claimed_at_utc": null,
+          "claimant_follow_up_at_utc": null,
+          "family_resurfaced_at_utc": null,
+          "seen_at_utc": null,
+          "seen_by_user_id": null,
+          "nudged_at_utc": null,
+          "initiator_notified_at_utc": null,
+          "relinquished_at_utc": null,
+          "created_at_utc": "2026-10-21 10:27:56"
+        }
+      ],
+      "created_reminder_count": 1,
+      "pending_after": [
+        {
+          "item_id": "46073978-b3b2-403b-8448-b205332d8092",
+          "kind": "REMINDER_DRAFT",
+          "owner_id": "USR_HUSBAND",
+          "conversation_id": "60111111111@s.whatsapp.net",
+          "source_message_id": "cr-draft",
+          "media_id": null,
+          "status": "PENDING",
+          "note": "fixture",
+          "accumulated_text": "Remind me to water the plants",
+          "routing_json": null,
+          "created_at_utc": "2026-10-21T08:00:00+00:00",
+          "resolved_at_utc": null,
+          "resolution_message_id": null
+        }
+      ],
+      "domain_record_count_delta": {
+        "reminders": 1,
+        "tasks": 0,
+        "saved_items": 0,
+        "shopping_items": 0,
+        "financial_events": 0,
+        "diary_events": 0,
+        "plans": 0,
+        "leave_records": 0,
+        "work_roster": 0,
+        "savings_goals": 0,
+        "money_buckets": 0,
+        "alex_phase2_work_events": 0,
+        "alex_phase2_delegations": 0,
+        "alex_phase2_cash_events": 0,
+        "alex_phase2_assets": 0,
+        "alex_phase2_goals": 0
+      }
+    },
+    {
+      "variation_index": 9,
+      "input_phrase": "At about seven o'clock tomorrow evening",
+      "packet_id": "pkt_6e80234e13813e509ee08e18",
+      "reviewer_proposal_unchanged": {
+        "packet_id": "pkt_6e80234e13813e509ee08e18",
+        "decision": "tools",
+        "tool_calls": [
+          {
+            "name": "create_reminder",
+            "arguments": {
+              "task": "water the plants",
+              "due_local": "2026-10-22T19:00:00",
+              "recipient": "me"
+            }
+          }
+        ],
+        "reply": "",
+        "rationale": "About 7 PM tomorrow is sufficiently specific for the active reminder."
+      },
+      "actual_request_equal_to_reviewed_packet": true,
+      "receipts": [
+        {
+          "status": "needs_clarification",
+          "clarification_question": "What time should I remind you?"
+        }
+      ],
+      "actual_reminders": [],
+      "created_reminder_count": 0,
+      "pending_after": [
+        {
+          "item_id": "2ab3467f-61ab-4189-837e-49d31fb7fb49",
+          "kind": "REMINDER_DRAFT",
+          "owner_id": "USR_HUSBAND",
+          "conversation_id": "60111111111@s.whatsapp.net",
+          "source_message_id": "cr-draft",
+          "media_id": null,
+          "status": "PENDING",
+          "note": "fixture",
+          "accumulated_text": "Remind me to water the plants",
+          "routing_json": null,
+          "created_at_utc": "2026-10-21T08:00:00+00:00",
+          "resolved_at_utc": null,
+          "resolution_message_id": null
+        }
+      ],
+      "domain_record_count_delta": {
+        "reminders": 0,
+        "tasks": 0,
+        "saved_items": 0,
+        "shopping_items": 0,
+        "financial_events": 0,
+        "diary_events": 0,
+        "plans": 0,
+        "leave_records": 0,
+        "work_roster": 0,
+        "savings_goals": 0,
+        "money_buckets": 0,
+        "alex_phase2_work_events": 0,
+        "alex_phase2_delegations": 0,
+        "alex_phase2_cash_events": 0,
+        "alex_phase2_assets": 0,
+        "alex_phase2_goals": 0
+      }
+    },
+    {
+      "variation_index": 10,
+      "input_phrase": "Forty minutes later would be alright",
+      "packet_id": "pkt_2dcacdd4890c2dfe12094f7a",
+      "reviewer_proposal_unchanged": {
+        "packet_id": "pkt_2dcacdd4890c2dfe12094f7a",
+        "decision": "tools",
+        "tool_calls": [
+          {
+            "name": "create_reminder",
+            "arguments": {
+              "task": "water the plants",
+              "due_local": "2026-10-21T16:40:00",
+              "recipient": "me"
+            }
+          }
+        ],
+        "reply": "",
+        "rationale": "In the active scheduling question, forty minutes later refers naturally to the supplied current time, giving 4:40 PM today."
+      },
+      "actual_request_equal_to_reviewed_packet": true,
+      "receipts": [
+        {
+          "status": "created",
+          "reminder_id": "e0d2a814-69ba-40ca-a91b-0ba43b905cb9",
+          "task": "water the plants",
+          "due_at_utc": "2026-10-21T08:40:00+00:00",
+          "timezone": "Asia/Kuala_Lumpur",
+          "recurrence_rule": null,
+          "recipient_user_id": "USR_HUSBAND",
+          "destination": "dm",
+          "conversation_id": "60111111111@s.whatsapp.net",
+          "space": "FAMILY_SHARED",
+          "claimable": false,
+          "presence_aware": false,
+          "delivery_class": "routine",
+          "follow_up_after_hours": 24
+        }
+      ],
+      "actual_reminders": [
+        {
+          "reminder_id": "e0d2a814-69ba-40ca-a91b-0ba43b905cb9",
+          "action_key": "d389d10a9779c07bd1585d6f3ab7e5e6831546f2fe9aee6b1e6678c2767e2869",
+          "source_message_id": "cr-varied-answer",
+          "owner_id": "USR_HUSBAND",
+          "space_id": "FAMILY_SHARED",
+          "conversation_id": "60111111111@s.whatsapp.net",
+          "task_text": "water the plants",
+          "due_at_utc": "2026-10-21T08:40:00+00:00",
+          "timezone_name": "Asia/Kuala_Lumpur",
+          "recurrence_rule": null,
+          "status": "OPEN",
+          "presence_aware": 0,
+          "delivery_class": "routine",
+          "follow_up_after_hours": 24,
+          "acknowledged_at_utc": null,
+          "last_fired_at_utc": null,
+          "last_follow_up_at_utc": null,
+          "next_delivery_at_utc": null,
+          "defer_reason": null,
+          "claimable": 0,
+          "claimed_by_user_id": null,
+          "claimed_at_utc": null,
+          "claimant_follow_up_at_utc": null,
+          "family_resurfaced_at_utc": null,
+          "seen_at_utc": null,
+          "seen_by_user_id": null,
+          "nudged_at_utc": null,
+          "initiator_notified_at_utc": null,
+          "relinquished_at_utc": null,
+          "created_at_utc": "2026-10-21 10:27:56"
+        }
+      ],
+      "created_reminder_count": 1,
+      "pending_after": [
+        {
+          "item_id": "a23359a5-848a-4e91-a9cb-d4e575021921",
+          "kind": "REMINDER_DRAFT",
+          "owner_id": "USR_HUSBAND",
+          "conversation_id": "60111111111@s.whatsapp.net",
+          "source_message_id": "cr-draft",
+          "media_id": null,
+          "status": "PENDING",
+          "note": "fixture",
+          "accumulated_text": "Remind me to water the plants",
+          "routing_json": null,
+          "created_at_utc": "2026-10-21T08:00:00+00:00",
+          "resolved_at_utc": null,
+          "resolution_message_id": null
+        }
+      ],
+      "domain_record_count_delta": {
+        "reminders": 1,
+        "tasks": 0,
+        "saved_items": 0,
+        "shopping_items": 0,
+        "financial_events": 0,
+        "diary_events": 0,
+        "plans": 0,
+        "leave_records": 0,
+        "work_roster": 0,
+        "savings_goals": 0,
+        "money_buckets": 0,
+        "alex_phase2_work_events": 0,
+        "alex_phase2_delegations": 0,
+        "alex_phase2_cash_events": 0,
+        "alex_phase2_assets": 0,
+        "alex_phase2_goals": 0
+      }
+    }
+  ],
+  "full_ingress_clock_setup": {
+    "python_clock_fixed_before_imports": "2026-10-21T10:27:57+00:00",
+    "aligned_to_current_sqlite_wall_clock": true,
+    "payload_sent_at_matches": true,
+    "seeded_rows_timestamped_before_execution": true,
+    "relative_proposal_due_shifted_by_clock_offset_only": true,
+    "raw_and_translated_arguments_preserved": true,
+    "actor_fields_changed_outside_normal_ingress": false,
+    "pending_cleanup_or_action_result_rewrite": false
+  },
+  "full_ingress_rows": [
+    {
+      "case": "continuation_unclear_variation_2",
+      "assessment": "Time parser still asks for clarification; the original task draft is now retained and the clarification is bound to its exact ID.",
+      "old_pending_unchanged": true,
+      "old_pending_after": {
+        "item_id": "20b4bc49-6fab-472e-b2b5-77aa065f6948",
+        "kind": "REMINDER_DRAFT",
+        "owner_id": "USR_HUSBAND",
+        "conversation_id": "60111111111@s.whatsapp.net",
+        "source_message_id": "cr-draft",
+        "media_id": null,
+        "status": "PENDING",
+        "note": "fixture",
+        "accumulated_text": "Remind me to water the plants",
+        "routing_json": null,
+        "created_at_utc": "2026-10-21T10:27:57+00:00",
+        "resolved_at_utc": null,
+        "resolution_message_id": null
+      },
+      "created_reminder_count": 0,
+      "actual_reminders": [],
+      "original_reviewed_call": {
+        "name": "create_reminder",
+        "arguments": {
+          "task": "water the plants",
+          "due_local": "2026-10-21T16:40:00",
+          "recipient": "me"
+        }
+      },
+      "translated_call": {
+        "name": "create_reminder",
+        "arguments": {
+          "task": "water the plants",
+          "due_local": "2026-10-21T19:07:57",
+          "recipient": "me"
+        }
+      },
+      "tool_receipts": [
+        {
+          "role": "tool",
+          "tool_call_id": "conversation-script-1-0",
+          "content": "{\"status\":\"needs_clarification\",\"clarification_question\":\"What time should I remind you?\"}"
+        }
+      ]
+    },
+    {
+      "case": "continuation_unclear_variation_5",
+      "assessment": "Time parser still asks for clarification; the original task draft is now retained and the clarification is bound to its exact ID.",
+      "old_pending_unchanged": true,
+      "old_pending_after": {
+        "item_id": "c1b706ec-a37a-468c-84ec-bc959c5e9144",
+        "kind": "REMINDER_DRAFT",
+        "owner_id": "USR_HUSBAND",
+        "conversation_id": "60111111111@s.whatsapp.net",
+        "source_message_id": "cr-draft",
+        "media_id": null,
+        "status": "PENDING",
+        "note": "fixture",
+        "accumulated_text": "Remind me to water the plants",
+        "routing_json": null,
+        "created_at_utc": "2026-10-21T10:27:57+00:00",
+        "resolved_at_utc": null,
+        "resolution_message_id": null
+      },
+      "created_reminder_count": 0,
+      "actual_reminders": [],
+      "original_reviewed_call": {
+        "name": "create_reminder",
+        "arguments": {
+          "task": "water the plants",
+          "due_local": "2026-10-21T16:30:00",
+          "recipient": "me"
+        }
+      },
+      "translated_call": {
+        "name": "create_reminder",
+        "arguments": {
+          "task": "water the plants",
+          "due_local": "2026-10-21T18:57:57",
+          "recipient": "me"
+        }
+      },
+      "tool_receipts": [
+        {
+          "role": "tool",
+          "tool_call_id": "conversation-script-1-0",
+          "content": "{\"status\":\"needs_clarification\",\"clarification_question\":\"What time should I remind you?\"}"
+        }
+      ]
+    },
+    {
+      "case": "independent_new_reminder_with_old_draft",
+      "assessment": "New dentist reminder creates independently; old plant draft is neither consumed nor cancelled.",
+      "old_pending_unchanged": true,
+      "old_pending_after": {
+        "item_id": "bb0ac502-c826-4529-a846-7753417c25c5",
+        "kind": "REMINDER_DRAFT",
+        "owner_id": "USR_HUSBAND",
+        "conversation_id": "60111111111@s.whatsapp.net",
+        "source_message_id": "cr-draft",
+        "media_id": null,
+        "status": "PENDING",
+        "note": "fixture",
+        "accumulated_text": "Remind me to water the plants",
+        "routing_json": null,
+        "created_at_utc": "2026-10-21T10:27:57+00:00",
+        "resolved_at_utc": null,
+        "resolution_message_id": null
+      },
+      "created_reminder_count": 1,
+      "actual_reminders": [
+        {
+          "reminder_id": "7f4dd80f-714d-41e2-aa52-3b7d9b4dc5b4",
+          "action_key": "56375de318a2c39aa3dcf15f8b3bf1fdcb8704bc112742dcbd6fb0ebfec61078",
+          "source_message_id": "lifecycle-independent_new_reminder_with_old_draft",
+          "owner_id": "USR_HUSBAND",
+          "space_id": "FAMILY_SHARED",
+          "conversation_id": "60111111111@s.whatsapp.net",
+          "task_text": "call the dentist",
+          "due_at_utc": "2026-10-21T11:07:57+00:00",
+          "timezone_name": "Asia/Kuala_Lumpur",
+          "recurrence_rule": null,
+          "status": "OPEN",
+          "presence_aware": 0,
+          "delivery_class": "routine",
+          "follow_up_after_hours": 24,
+          "acknowledged_at_utc": null,
+          "last_fired_at_utc": null,
+          "last_follow_up_at_utc": null,
+          "next_delivery_at_utc": null,
+          "defer_reason": null,
+          "claimable": 0,
+          "claimed_by_user_id": null,
+          "claimed_at_utc": null,
+          "claimant_follow_up_at_utc": null,
+          "family_resurfaced_at_utc": null,
+          "seen_at_utc": null,
+          "seen_by_user_id": null,
+          "nudged_at_utc": null,
+          "initiator_notified_at_utc": null,
+          "relinquished_at_utc": null,
+          "created_at_utc": "2026-10-21 10:27:58"
+        }
+      ],
+      "original_reviewed_call": null,
+      "translated_call": {
+        "name": "create_reminder",
+        "arguments": {
+          "task": "call the dentist",
+          "due_local": "2026-10-21T19:07:57",
+          "recipient": "me"
+        }
+      },
+      "tool_receipts": [
+        {
+          "role": "tool",
+          "tool_call_id": "conversation-script-1-0",
+          "content": "{\"status\":\"created\",\"reminder_id\":\"7f4dd80f-714d-41e2-aa52-3b7d9b4dc5b4\",\"task\":\"call the dentist\",\"due_at_utc\":\"2026-10-21T11:07:57+00:00\",\"timezone\":\"Asia/Kuala_Lumpur\",\"recurrence_rule\":null,\"recipient_user_id\":\"USR_HUSBAND\",\"destination\":\"dm\",\"conversation_id\":\"60111111111@s.whatsapp.net\",\"space\":\"FAMILY_SHARED\",\"claimable\":false,\"presence_aware\":false,\"delivery_class\":\"routine\",\"follow_up_after_hours\":24}"
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "No general NLU accuracy, live provider reliability, latency, cost, production traffic or real delivery is measured.",
+    "The direct-brain tests bypass ingress; normal pending resolution belongs to ingress and is not forced in replay.",
+    "The full-ingress probes deliberately force semantic UNCLEAR and translate only due_local by the recorded clock offset; they are conditional scripted lifecycle tests.",
+    "The initial failure and raw decisions remain preserved separately; this report does not erase earlier observations."
+  ],
+  "reproducibility_workers": [
+    "replay_clocked_runtime.py",
+    "probe_ingress_lifecycle.py",
+    "summarize_postfix_replay.py"
+  ]
+}

@@ -1,0 +1,214 @@
+[
+  {
+    "packet_id": "pkt_11ff53d52545885dd653a43d",
+    "decision": "clarify",
+    "tool_calls": [],
+    "reply": "Do you mean around 7 AM or 7 PM tomorrow for watering the plants?",
+    "rationale": "The active draft supplies the task, but seven tomorrow could mean morning or evening and materially changes the reminder time."
+  },
+  {
+    "packet_id": "pkt_3992533ce5d9031153798d80",
+    "decision": "clarify",
+    "tool_calls": [],
+    "reply": "What would you like me to do at about 7 PM tomorrow?",
+    "rationale": "This packet supplies a time but no requested action, reminder task, or existing record to which it can be bound."
+  },
+  {
+    "packet_id": "pkt_9b25e30ce1f3ac61e766f0bb",
+    "decision": "tools",
+    "tool_calls": [
+      {
+        "name": "create_reminder",
+        "arguments": {
+          "task": "water the plants",
+          "due_local": "2026-10-22T19:00:00",
+          "recipient": "me"
+        }
+      }
+    ],
+    "reply": "",
+    "rationale": "The current reply completes the active reminder draft with approximately 7 PM tomorrow, which is 22 October 2026 in the supplied local context."
+  },
+  {
+    "packet_id": "pkt_b967ebe36cd24f33462d9f84",
+    "decision": "tools",
+    "tool_calls": [
+      {
+        "name": "create_reminder",
+        "arguments": {
+          "task": "water the plants",
+          "due_local": "2026-10-21T23:30:00",
+          "recipient": "me"
+        }
+      }
+    ],
+    "reply": "",
+    "rationale": "The active reminder draft is awaiting a time, and later at 11:30 in the evening specifies 11:30 PM on the supplied local date."
+  },
+  {
+    "packet_id": "pkt_4279f40aa944407c73630421",
+    "decision": "tools",
+    "tool_calls": [
+      {
+        "name": "create_reminder",
+        "arguments": {
+          "task": "water the plants",
+          "due_local": "2026-10-22T20:00:00",
+          "recipient": "me"
+        }
+      }
+    ],
+    "reply": "",
+    "rationale": "The user completes the active watering reminder with eight after dinner tomorrow, naturally specifying 8 PM on 22 October 2026."
+  },
+  {
+    "packet_id": "pkt_c342b28960277563fefefb31",
+    "decision": "tools",
+    "tool_calls": [
+      {
+        "name": "create_reminder",
+        "arguments": {
+          "task": "water the plants",
+          "due_local": "2026-10-21T16:40:00",
+          "recipient": "me"
+        }
+      }
+    ],
+    "reply": "",
+    "rationale": "The reply supplies a forty-minute delay for the active draft, anchored by the explicit instruction to use received_at_utc, which corresponds to 4 PM locally."
+  },
+  {
+    "packet_id": "pkt_bcf3a90c148fa44a00d759a0",
+    "decision": "tools",
+    "tool_calls": [
+      {
+        "name": "create_reminder",
+        "arguments": {
+          "task": "water the plants",
+          "due_local": "2026-10-21T16:30:00",
+          "recipient": "me"
+        }
+      }
+    ],
+    "reply": "",
+    "rationale": "The half-hour reply completes the active reminder, and the packet instructs relative timing to use the supplied received_at_utc timestamp corresponding to 4 PM locally."
+  },
+  {
+    "packet_id": "pkt_ef7dafe8a87f3622cf04ae2b",
+    "decision": "clarify",
+    "tool_calls": [],
+    "reply": "What would you like me to do at 11:30 PM tonight?",
+    "rationale": "Although the time is understandable, this packet contains no action, reminder task, or grounded existing reminder to create or change."
+  },
+  {
+    "packet_id": "pkt_92cd4fe5c59f6396f982997b",
+    "decision": "clarify",
+    "tool_calls": [],
+    "reply": "What would you like me to schedule for 7 PM tomorrow?",
+    "rationale": "The stated time has no task or record binding within this packet, so choosing a reminder or other action would invent missing context."
+  },
+  {
+    "packet_id": "pkt_c31664cb4aef5a9d0189e27f",
+    "decision": "tools",
+    "tool_calls": [
+      {
+        "name": "create_reminder",
+        "arguments": {
+          "task": "water the plants",
+          "due_local": "2026-10-21T16:40:00",
+          "recipient": "me"
+        }
+      }
+    ],
+    "reply": "",
+    "rationale": "The active draft supplies the watering task and the current reply explicitly anchors forty minutes to the supplied message timestamp, yielding 4:40 PM locally."
+  },
+  {
+    "packet_id": "pkt_6b5fac8a19d85535c77d95ba",
+    "decision": "clarify",
+    "tool_calls": [],
+    "reply": "What would you like me to do, and should “forty minutes later” mean 40 minutes from now?",
+    "rationale": "The isolated fragment supplies neither the intended action nor a clear reference point for later."
+  },
+  {
+    "packet_id": "pkt_6cb82266beee48c552712cc8",
+    "decision": "clarify",
+    "tool_calls": [],
+    "reply": "What is this timing for, and do you mean around 7 AM or 7 PM tomorrow?",
+    "rationale": "This packet lacks both the intended action and the morning-or-evening distinction needed to ground a scheduled time."
+  },
+  {
+    "packet_id": "pkt_877f639894ce597cb502d555",
+    "decision": "tools",
+    "tool_calls": [
+      {
+        "name": "create_reminder",
+        "arguments": {
+          "task": "water the plants",
+          "due_local": "2026-10-22T19:00:00",
+          "recipient": "me"
+        }
+      }
+    ],
+    "reply": "",
+    "rationale": "The current message answers the active watering reminder question with about 7 PM tomorrow, making the task, recipient, and local date and time sufficiently clear."
+  },
+  {
+    "packet_id": "pkt_03d1c63d066395d61b82fa67",
+    "decision": "clarify",
+    "tool_calls": [],
+    "reply": "What would you like me to do tonight, and at what time after 8 PM?",
+    "rationale": "Neither an intended action nor a definite time within the open-ended after-eight window is supplied in this packet."
+  },
+  {
+    "packet_id": "pkt_1e0e9454e94c57e3076c46f7",
+    "decision": "clarify",
+    "tool_calls": [],
+    "reply": "What would you like me to do at 8 PM tomorrow?",
+    "rationale": "The dinner context makes eight naturally an evening time, but there is no task or existing record to act on."
+  },
+  {
+    "packet_id": "pkt_de574104c0efd677d5c7ce8b",
+    "decision": "clarify",
+    "tool_calls": [],
+    "reply": "What would you like me to do in about half an hour?",
+    "rationale": "A relative time alone identifies no household action or reminder task, and this packet also lacks a clock timestamp for calculating an exact due time."
+  },
+  {
+    "packet_id": "pkt_df7b923b266ee3ba2dad63b2",
+    "decision": "tools",
+    "tool_calls": [
+      {
+        "name": "create_reminder",
+        "arguments": {
+          "task": "water the plants",
+          "due_local": "2026-10-22T19:00:00",
+          "recipient": "me"
+        }
+      }
+    ],
+    "reply": "",
+    "rationale": "The active draft supplies the watering task, and tomorrow evening at seven completes it with a due time of 7 PM on 22 October 2026."
+  },
+  {
+    "packet_id": "pkt_265192e70bef9bbda6ed2bdf",
+    "decision": "clarify",
+    "tool_calls": [],
+    "reply": "What would you like me to do around 7 PM tomorrow?",
+    "rationale": "The time expression is clear, but no task, prior question, or target record is present in this individual packet."
+  },
+  {
+    "packet_id": "pkt_9986a1f800ea0e7454e620e0",
+    "decision": "clarify",
+    "tool_calls": [],
+    "reply": "What time after 8 PM tonight should I remind you to water the plants?",
+    "rationale": "The task and date are grounded by the active draft, but sometime after eight leaves the actual reminder time unspecified."
+  },
+  {
+    "packet_id": "pkt_672c4bd0a1d14ab563408721",
+    "decision": "clarify",
+    "tool_calls": [],
+    "reply": "What would you like me to do 40 minutes after your message?",
+    "rationale": "The message supplies an offset but no intended action or task, and no message timestamp is present to compute an exact due time."
+  }
+]

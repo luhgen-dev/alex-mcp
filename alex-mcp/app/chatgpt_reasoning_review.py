@@ -33,7 +33,20 @@ import human_ai_lab
 # 2026-10-05 v0.5.20 reminder-lifecycle recertification: 61 existing public
 # packets changed only through the reviewed reminder tool surface; the
 # deterministic oracle still scores all 388 decisions correctly.
-REVIEWED_CORPUS_FINGERPRINT = "f58aed2b9cec3a9789c76bfe4bbc1c778b17200c451bcc58499e31d39003ac1b"
+# 2026-10-21 conversation candidate: full public comparison found 59 packets
+# changed only in available_tools: exact optional numbered-list binding, and
+# removal of an unrelated shopping mutation from one negative memory request.
+# Expected capability choices remain unchanged. Fresh blind model disagreements
+# are separately preserved in the v4 snapshot; this oracle is not that review.
+# 2026-10-21 v0.5.44 repair: public packets now include the exact relevant
+# runtime policies, synthetic receipt OCR and visible selection history. The
+# tool surface includes the bounded reminder time interpretation. Successful
+# fixtures now supply missing amounts, intervals and AM/PM; their original
+# underspecified wording is retained in separate no-invention coverage. The
+# deterministic rules below explicitly clarify the new ambiguous fixtures and
+# no longer infer private ownership from a person's label. The independent
+# full review is imported separately with its original raw decisions intact.
+REVIEWED_CORPUS_FINGERPRINT = "67e1d51a6c8e38865ce4eb47b1cad4e632f8f27c015d1d1fafbefce8d2d7a276"
 
 
 def _low(value: str) -> str:
@@ -97,13 +110,30 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
     if re.search(r"\b(?:might buy|maybe we need|thinking of getting) coffee\b", text):
         return result("clarify")
 
-    # Cross-spouse private deletion is a privacy refusal, not a failed lookup.
+    # A private lookup is scoped by the backend. A person's label cannot tell
+    # this public-only oracle who owns a named item; obtain the authorized id
+    # before the conditional delete, and let the ACL enforce ownership.
     if (
         actor == "wife"
         and "cobalt" in text
         and re.search(r"\b(?:remove|delete)\b", text)
     ):
-        return result("refuse")
+        return result("tools", _pick(tools, "search_saved_items", "remove_saved_item"))
+
+    # Preserved incomplete regression phrases must not become successful
+    # writes merely because an action tool is exposed. This is hand-authored
+    # regression coverage, separate from the independent model judgments.
+    if text in {
+        "record the tnb bill as paid.",
+        "i paid the electricity bill; record the payment.",
+        "prepare a home assistant automation for the hall light; don't deploy it.",
+        "draft a home assistant automation for the hall light.",
+        "alx plz remidn me tmrw 9 pay elctrcity",
+        "alex set remnder tmr 9 electricity",
+        "நாளை 9 மணிக்கு மின்சார கட்டணம் செலுத்த நினைவூட்டு",
+        "நாளைக்கு 9 மணிக்கு மின்சார பில் கட்ட நினைவூட்டு",
+    }:
+        return result("clarify")
 
     # High-value short follow-ups whose meaning comes from the preceding turn.
     if text == "confirm that one as food.":
