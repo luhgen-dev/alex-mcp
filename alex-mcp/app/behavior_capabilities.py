@@ -18,7 +18,7 @@ CAPABILITY_TO_TOOLS: dict[str, frozenset[str]] = {
     "finance.pending.confirm": frozenset({"confirm_expense"}),
     "finance.correct": frozenset({"correct_expense"}),
     "receipt.find": frozenset({"find_receipts"}),
-    "receipt.get": frozenset({"get_receipt"}),
+    "receipt.get": frozenset({"get_receipt", "get_transaction_receipt"}),
     "media.find": frozenset({"find_media"}),
     "media.get": frozenset({"get_media_original"}),
     "media.pending": frozenset({
@@ -71,6 +71,7 @@ CAPABILITY_TO_TOOLS: dict[str, frozenset[str]] = {
     "goal.progress": frozenset({"planning_goal_progress"}),
     "goal.lock": frozenset({"planning_lock_goal"}),
     "goal.reopen": frozenset({"planning_reopen_goal"}),
+    "goal.cancel": frozenset({"planning_cancel_goal"}),
     "goal.period_target": frozenset({"planning_set_period_target"}),
     "goal.baseline.change": frozenset({"planning_change_goal_baseline"}),
     "goal.contribution": frozenset({"planning_record_goal_contribution"}),
