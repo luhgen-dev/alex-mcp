@@ -932,6 +932,34 @@ def log_expense(actor: ActorContext, description: str, amount: float | None = No
         )
         for media_id in actor.media_ids:
             conn.execute("INSERT OR IGNORE INTO event_media_links(event_id,media_id) VALUES(?,?)", (event_id, media_id))
+        pending_item_id = None
+        if status == "PENDING_HUMAN_REVIEW":
+            existing_pending = conn.execute(
+                """SELECT item_id FROM pending_items
+                   WHERE source_message_id=? AND kind='FINANCE_REVIEW'
+                   LIMIT 1""",
+                (actor.source_message_id,),
+            ).fetchone()
+            if existing_pending:
+                pending_item_id = str(existing_pending["item_id"])
+            else:
+                pending_item_id = str(uuid.uuid4())
+                conn.execute(
+                    """INSERT INTO pending_items(
+                           item_id,kind,owner_id,conversation_id,source_message_id,
+                           media_id,note
+                       ) VALUES(?,?,?,?,?,?,?)""",
+                    (
+                        pending_item_id, "FINANCE_REVIEW", actor.user_id,
+                        actor.conversation_id, actor.source_message_id,
+                        (actor.media_ids[0] if actor.media_ids else None),
+                        json.dumps({
+                            "event_id": event_id,
+                            "reason": reason,
+                            "description": description.strip()[:300],
+                        }, ensure_ascii=False, sort_keys=True),
+                    ),
+                )
         conn.commit()
         return {
             "status": "logged" if status == "ACTIVE" else "needs_confirmation",
@@ -942,6 +970,7 @@ def log_expense(actor: ActorContext, description: str, amount: float | None = No
             "category": resolved_category,
             "space": space,
             "pending_reason": reason,
+            "pending_item_id": pending_item_id,
             "receipt_saved": bool(actor.media_ids),
         }
     finally:
@@ -967,6 +996,12 @@ def confirm_expense(actor: ActorContext, event_id: str, approve: bool = True,
             }
         if not approve:
             conn.execute("UPDATE financial_events SET status='IGNORED' WHERE event_id=?", (event_id,))
+            conn.execute(
+                """UPDATE pending_items
+                   SET status='CANCELLED',resolved_at_utc=?,resolution_message_id=?
+                   WHERE source_message_id=? AND kind='FINANCE_REVIEW' AND status='PENDING'""",
+                (utc_now(), actor.source_message_id, row["source_message_id"]),
+            )
             conn.commit()
             return {"status": "ignored", "event_id": event_id}
         new_amount = _minor(amount) if amount is not None else row["amount_minor"]
@@ -977,6 +1012,12 @@ def confirm_expense(actor: ActorContext, event_id: str, approve: bool = True,
         conn.execute(
             "UPDATE financial_events SET amount_minor=?,category=?,status='ACTIVE' WHERE event_id=?",
             (new_amount, new_category, event_id),
+        )
+        conn.execute(
+            """UPDATE pending_items
+               SET status='RESOLVED',resolved_at_utc=?,resolution_message_id=?
+               WHERE source_message_id=? AND kind='FINANCE_REVIEW' AND status='PENDING'""",
+            (utc_now(), actor.source_message_id, row["source_message_id"]),
         )
         conn.commit()
         return {"status": "confirmed", "event_id": event_id, "amount": new_amount / 100,
