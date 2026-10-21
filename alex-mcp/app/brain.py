@@ -341,6 +341,7 @@ def _tool_priority(name: str, text: str, has_media: bool) -> int:
         "cancel_task": (r"(?:cancel|remove).*\btask\b", 143),
         "check_my_availability": (r"am i free|my availability|do i have", 110),
         "check_spouse_availability": (r"wife.*free|husband.*free|spouse.*free|partner.*free", 110),
+        "work_import_profile": (r"import.*work profile|save.*permanent.*roster|configure.*(?:roster|work profile)", 158),
         "work_schedule": (r"roster|shift|work schedule|working", 110),
         "work_day": (r"work.*today|work.*tomorrow|shift.*today|shift.*tomorrow", 112),
         "work_record_event": (r"\b(?:leave|mc|overtime)\b|shift swap|\bot\b worked|\bot\b planned", 102),
@@ -1276,6 +1277,8 @@ def _select_tool_names(user_text: str, media_context: list[str] | None = None) -
         selected |= PLANNING_TOOLS
     if re.search(r"\b(?:roster|shift|working|work schedule|work today|work tomorrow|leave home.*work|departure|overtime|\bot\b|mc|medical leave|annual leave|childcare leave|wellness leave|hospitalisation leave|hospitalization leave|doil leave|leave balance|leave entries|leave records|swap shift)\b", low):
         selected |= WORK_TOOLS | {"set_leave_record","list_leave_records"}
+    if re.search(r"\b(?:import|configure|save)\b.*\b(?:work profile|permanent roster|roster profile)\b", low):
+        selected.add("work_import_profile")
     if re.search(r"\b(?:task|tasks|todo|to-do)\b|\bleft to do\b", low):
         selected |= TASK_TOOLS
     if re.search(r"\b(?:holiday|vacation|trip|plan|draft)\b", low):
