@@ -1519,6 +1519,7 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         "A generic device control with no uniquely grounded AC must clarify rather than invent an entity.",
         (
             "Switch off the AC.",
+            "Turn the air conditioner off.",
         ),
         _fs("ha_control"), seed="empty", live=False,
         expect_clarification=True,
@@ -1747,6 +1748,7 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         "A task heads-up request with no reminder time must clarify instead of inventing a clock.",
         (
             "Give me a heads-up reminder for that task.",
+            "Remind me about that task later.",
         ),
         _fs("task.reminder.link"), seed="core", live=False,
         expect_clarification=True,
