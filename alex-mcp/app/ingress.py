@@ -24,6 +24,7 @@ import scope_policy
 import diagnostics
 import chatgpt_plan
 import shadow_router
+import daily_brief
 from config import DATA_DIR, get_settings
 from text_normalization import normalize_intent_text
 
@@ -1621,10 +1622,18 @@ def process(payload: dict) -> dict:
                 payload["message_id"],
                 [],
             )
+            target_message_id = str(payload.get("reaction_target_message_id") or "")
+            reaction_text = str(payload.get("reaction_text") or "")
+            brief_result = daily_brief.acknowledge_reaction(
+                actor, target_message_id, reaction_text
+            )
+            if brief_result.get("status") != "not_daily_brief_ack":
+                db.finish_inbound(
+                    payload["message_id"], json.dumps(brief_result, sort_keys=True)
+                )
+                return {"ok": True, "reaction": brief_result}
             result = services.claim_reminder_from_reaction(
-                actor,
-                str(payload.get("reaction_target_message_id") or ""),
-                str(payload.get("reaction_text") or ""),
+                actor, target_message_id, reaction_text
             )
             # A successful first claim moves responsibility into the claimant's
             # DM immediately. The group stays quiet; the reaction itself remains
