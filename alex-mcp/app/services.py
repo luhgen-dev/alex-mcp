@@ -1284,6 +1284,33 @@ def _store_selection(conn, actor: ActorContext, kind: str, ids: list[str]) -> st
     return selection_id
 
 
+def store_task_selection(actor: ActorContext, task_ids: list[str]) -> str | None:
+    ids = [str(value) for value in task_ids if str(value or "").strip()]
+    if not ids:
+        return None
+    selection_id = str(uuid.uuid4())
+    expires = (runtime_clock.now_utc() + timedelta(hours=48)).isoformat()
+    bound_scope = str(getattr(actor, "read_scope", None) or "all").strip().casefold()
+    if bound_scope not in {"family", "private", "all"}:
+        bound_scope = "all"
+    conn = connect()
+    try:
+        conn.execute(
+            """INSERT INTO task_selection_sets(
+                   selection_id,user_id,conversation_id,items_json,
+                   read_scope,created_at_utc,expires_at_utc
+               ) VALUES(?,?,?,?,?,?,?)""",
+            (
+                selection_id, actor.user_id, actor.conversation_id,
+                json.dumps(ids, ensure_ascii=False), bound_scope, utc_now(), expires,
+            ),
+        )
+        conn.commit()
+        return selection_id
+    finally:
+        conn.close()
+
+
 def store_finance_selection(actor: ActorContext, event_ids: list[str]) -> str | None:
     """Freeze the exact transaction order just shown in this conversation."""
     ids = [str(value) for value in event_ids if str(value or "").strip()]
@@ -2161,8 +2188,10 @@ def latest_single_selection_context(actor: ActorContext,
             args_a.append(created_after_utc)
             args_b.append(created_after_utc)
         args_c = [actor.user_id, actor.conversation_id, utc_now()]
+        args_d = [actor.user_id, actor.conversation_id, utc_now()]
         if created_after_utc:
             args_c.append(created_after_utc)
+            args_d.append(created_after_utc)
         rows = conn.execute(
             f"""SELECT selection_kind,items_json,created_at_utc,
                        COALESCE(read_scope,'') AS read_scope
@@ -2181,8 +2210,14 @@ def latest_single_selection_context(actor: ActorContext,
                   FROM finance_selection_sets
                  WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
                        {where_after}
+                UNION ALL
+                SELECT 'TASK' AS selection_kind,items_json,created_at_utc,
+                       COALESCE(read_scope,'') AS read_scope
+                  FROM task_selection_sets
+                 WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
+                       {where_after}
                 ORDER BY created_at_utc DESC LIMIT 1""",
-            args_a + args_b + args_c,
+            args_a + args_b + args_c + args_d,
         ).fetchall()
         if not rows:
             return None
@@ -2231,11 +2266,13 @@ def latest_selection_set_context(actor: ActorContext,
     args_b = [actor.user_id, actor.conversation_id, now]
     args_c = [actor.user_id, actor.conversation_id, now]
     args_d = [actor.user_id, actor.conversation_id, now]
+    args_e = [actor.user_id, actor.conversation_id, now]
     if created_after_utc:
         args_a.append(created_after_utc)
         args_b.append(created_after_utc)
         args_c.append(created_after_utc)
         args_d.append(created_after_utc)
+        args_e.append(created_after_utc)
     conn = connect()
     try:
         row = conn.execute(
@@ -2262,8 +2299,14 @@ def latest_selection_set_context(actor: ActorContext,
                    FROM finance_selection_sets
                   WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
                         {after_sql}
+                  UNION ALL
+                 SELECT selection_id,'TASK' AS selection_kind,items_json,created_at_utc,
+                        COALESCE(read_scope,'') AS read_scope
+                   FROM task_selection_sets
+                  WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
+                        {after_sql}
                   ORDER BY created_at_utc DESC LIMIT 1""",
-            args_a + args_b + args_c + args_d,
+            args_a + args_b + args_c + args_d + args_e,
         ).fetchone()
         if not row:
             return None
@@ -2326,6 +2369,15 @@ def resolve_numbered_choice(actor: ActorContext, choice: int,
                          AND expires_at_utc>? LIMIT 1""",
                     (selection_id, actor.user_id, actor.conversation_id, now),
                 ).fetchone()
+            elif kind == "TASK":
+                latest = conn.execute(
+                    """SELECT 'TASK' AS selection_kind,items_json,
+                              COALESCE(read_scope,'') AS read_scope
+                       FROM task_selection_sets
+                       WHERE selection_id=? AND user_id=? AND conversation_id=?
+                         AND expires_at_utc>? LIMIT 1""",
+                    (selection_id, actor.user_id, actor.conversation_id, now),
+                ).fetchone()
             else:
                 raise ValueError("unsupported numbered selection context")
         else:
@@ -2349,8 +2401,14 @@ def resolve_numbered_choice(actor: ActorContext, choice: int,
                           COALESCE(read_scope,'') AS read_scope
                      FROM finance_selection_sets
                     WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
+                   UNION ALL
+                   SELECT selection_id,'TASK' AS selection_kind,items_json,created_at_utc,
+                          COALESCE(read_scope,'') AS read_scope
+                     FROM task_selection_sets
+                    WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
                    ORDER BY created_at_utc DESC LIMIT 1""",
                 (
+                    actor.user_id, actor.conversation_id, now,
                     actor.user_id, actor.conversation_id, now,
                     actor.user_id, actor.conversation_id, now,
                     actor.user_id, actor.conversation_id, now,
@@ -2392,6 +2450,9 @@ def resolve_numbered_choice(actor: ActorContext, choice: int,
         return get_media_original(effective_actor, target)
     if kind == "FINANCE":
         return get_financial_event_detail(effective_actor, target)
+    if kind == "TASK":
+        import phase2
+        return phase2.task_detail(effective_actor, target)
     if kind == "PENDING_ITEM":
         media_id = str((pending or {}).get("media_id") or "")
         if media_id:
