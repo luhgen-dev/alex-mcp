@@ -1886,6 +1886,8 @@ _SAVED_GENERIC_WORDS = {
 _SAVED_KIND_ALIASES = {
     "picture": "IMAGE", "pictures": "IMAGE", "photo": "IMAGE", "image": "IMAGE", "images": "IMAGE",
     "document": "DOCUMENT", "documents": "DOCUMENT", "pdf": "DOCUMENT", "file": "DOCUMENT",
+    "voice": "AUDIO", "voice note": "AUDIO", "audio": "AUDIO", "recording": "AUDIO",
+    "video": "VIDEO", "videos": "VIDEO", "clip": "VIDEO",
     "note": "NOTE", "notes": "NOTE", "text": "NOTE",
 }
 
@@ -1986,6 +1988,10 @@ def search_saved_items(actor: ActorContext, query: str | None = None, limit: int
         base += " AND m.media_type='IMAGE'"
     elif kind_key == "DOCUMENT":
         base += " AND m.media_type IN ('PDF','DOCUMENT')"
+    elif kind_key == "AUDIO":
+        base += " AND m.media_type='AUDIO'"
+    elif kind_key == "VIDEO":
+        base += " AND m.media_type='VIDEO'"
     elif kind_key == "NOTE":
         base += " AND s.media_id IS NULL"
 
@@ -2033,6 +2039,7 @@ def search_saved_items(actor: ActorContext, query: str | None = None, limit: int
                 "kind": (
                     "picture" if m.get("media_type") == "IMAGE"
                     else "voice note" if m.get("media_type") == "AUDIO"
+                    else "video" if m.get("media_type") == "VIDEO"
                     else "document" if m.get("media_type") in ("PDF", "DOCUMENT")
                     else "note"
                 ),
@@ -2067,7 +2074,12 @@ def get_saved_item(actor: ActorContext, item_id: str) -> dict:
         if row["local_path"]:
             result["_attachments"] = [{
                 "path": row["local_path"], "mime_type": row["mime_type"],
-                "kind": "IMAGE" if row["media_type"] == "IMAGE" else "DOCUMENT",
+                "kind": (
+                    "IMAGE" if row["media_type"] == "IMAGE"
+                    else "AUDIO" if row["media_type"] == "AUDIO"
+                    else "VIDEO" if row["media_type"] == "VIDEO"
+                    else "DOCUMENT"
+                ),
             }]
         return result
     finally:
