@@ -887,12 +887,17 @@ def log_expense(actor: ActorContext, description: str, amount: float | None = No
                 event_type: str = "Expense") -> dict:
     if not actor.action_key:
         raise RuntimeError("missing deterministic action key")
-    resolved_currency = (currency or "").strip().upper()
+    raw_currency = (currency or "").strip().upper()
+    currency_aliases = {
+        "": "MYR", "RM": "MYR", "MYR": "MYR",
+        "S$": "SGD", "SGD": "SGD",
+    }
+    resolved_currency = currency_aliases.get(raw_currency)
     if resolved_currency not in {"MYR", "SGD"}:
         return {
             "status": "clarification_required",
             "missing": ["currency"],
-            "message": "Ask whether this expense was MYR or SGD. Nothing was logged yet.",
+            "message": "That currency is not supported. Ask whether this should be MYR or SGD. Nothing was logged yet.",
         }
     conn = connect()
     try:
@@ -1065,7 +1070,7 @@ def query_finances(actor: ActorContext, start_date: str | None = None, end_date:
             f"SELECT COUNT(*) AS n FROM financial_events WHERE {where}", params
         ).fetchone()
         row_sql = f"""SELECT event_id,event_type,category,amount_minor,currency,event_date_utc,
-                             description,reference_text,space_id
+                             description,reference_text,space_id,source_message_id,created_at_utc
                       FROM financial_events WHERE {where}
                       ORDER BY event_date_utc DESC, created_at_utc DESC, rowid DESC"""
         row_params = list(params)
@@ -1077,6 +1082,18 @@ def query_finances(actor: ActorContext, start_date: str | None = None, end_date:
             canonical = _clean_category(row.get("category"))
             if canonical:
                 row["category"] = canonical
+        source_ids = [str(row.get("source_message_id") or "") for row in rows if row.get("source_message_id")]
+        source_meta = {}
+        if source_ids:
+            marks_src = ",".join("?" for _ in source_ids)
+            source_meta = {
+                str(src["message_id"]): dict(src)
+                for src in conn.execute(
+                    f"""SELECT message_id,raw_text,received_at_utc
+                        FROM inbound_messages WHERE message_id IN ({marks_src})""",
+                    source_ids,
+                ).fetchall()
+            }
     finally:
         conn.close()
 
@@ -1105,10 +1122,19 @@ def query_finances(actor: ActorContext, start_date: str | None = None, end_date:
             local = datetime.fromisoformat(r["event_date_utc"]).astimezone(tz).isoformat()
         except Exception:
             local = r["event_date_utc"]
+        src = source_meta.get(str(r.get("source_message_id") or ""), {})
+        logged_raw = src.get("received_at_utc") or r.get("created_at_utc")
+        try:
+            logged_local = datetime.fromisoformat(str(logged_raw).replace("Z", "+00:00")).astimezone(tz).isoformat()
+        except Exception:
+            logged_local = logged_raw
         records.append({
             "event_id": r["event_id"], "type": r["event_type"], "amount": amount,
             "currency": r["currency"], "category": r["category"], "description": r["description"],
-            "date_local": local, "reference": r["reference_text"],
+            "date_local": local, "logged_at_local": logged_local,
+            "source_text": str(src.get("raw_text") or "")[:500] or None,
+            "has_receipt": False,
+            "reference": r["reference_text"],
             "scope": "family" if r["space_id"] == "FAMILY_SHARED" else "private",
         })
 
@@ -1117,6 +1143,24 @@ def query_finances(actor: ActorContext, start_date: str | None = None, end_date:
         cur: round(spending_totals.get(cur, 0) - income_totals.get(cur, 0), 2)
         for cur in currencies
     }
+    if records:
+        conn = connect()
+        try:
+            ids = [row["event_id"] for row in records]
+            marks_ids = ",".join("?" for _ in ids)
+            linked = {
+                str(row["event_id"])
+                for row in conn.execute(
+                    f"""SELECT DISTINCT event_id FROM event_media_links
+                        WHERE event_id IN ({marks_ids})""",
+                    ids,
+                ).fetchall()
+            }
+        finally:
+            conn.close()
+        for row in records:
+            row["has_receipt"] = row["event_id"] in linked
+
     return {
         "spending_totals": spending_totals,
         "income_totals": income_totals,
@@ -1283,6 +1327,12 @@ def find_receipts(actor: ActorContext, query: str | None = None, amount: float |
                                    OR LOWER(COALESCE(i.raw_text,'')) LIKE '%invoice%'
                                )"""
             saved_params: list = spaces[:]
+            if start_date:
+                saved_sql += " AND m.created_at_utc>=?"
+                saved_params.append(_local_bound(start_date, actor.timezone, False))
+            if end_date:
+                saved_sql += " AND m.created_at_utc<=?"
+                saved_params.append(_local_bound(end_date, actor.timezone, True))
             if query:
                 stop = {"latest","recent","receipt","receipts","show","find","get","send",
                         "open","original","please","my","our","the","a","an"}
@@ -1367,6 +1417,61 @@ def find_receipts(actor: ActorContext, query: str | None = None, amount: float |
             _store_selection(conn, actor, "RECEIPT", [m["media_id"] for m in matches])
             conn.commit()
         return {"matches": [{**m, "choice": i + 1} for i, m in enumerate(matches)]}
+    finally:
+        conn.close()
+
+
+def get_receipt_for_event(actor: ActorContext, event_id: str) -> dict:
+    """Return only receipt evidence linked to one exact financial event.
+
+    This deliberately has no fuzzy/latest-receipt fallback. If the event has no
+    linked receipt, the correct result is no_receipt_linked.
+    """
+    marks, spaces = _spaces_sql(actor)
+    conn = connect()
+    try:
+        event = conn.execute(
+            f"""SELECT event_id,description,amount_minor,currency,event_date_utc
+                FROM financial_events
+                WHERE event_id=? AND space_id IN ({marks})
+                  AND status IN ('ACTIVE','PENDING_HUMAN_REVIEW')
+                LIMIT 1""",
+            [event_id] + spaces,
+        ).fetchone()
+        if not event:
+            raise PermissionError("financial event not found in your accessible data")
+        rows = conn.execute(
+            """SELECT m.media_id,m.media_type,m.mime_type,m.local_path
+               FROM event_media_links l
+               JOIN media_objects m ON m.media_id=l.media_id
+               WHERE l.event_id=? AND m.media_type IN ('IMAGE','PDF','DOCUMENT')
+               ORDER BY m.created_at_utc""",
+            (event_id,),
+        ).fetchall()
+        if not rows:
+            return {
+                "status": "no_receipt_linked",
+                "event_id": event_id,
+                "description": event["description"],
+                "amount": (event["amount_minor"] / 100 if event["amount_minor"] is not None else None),
+                "currency": event["currency"],
+            }
+        return {
+            "status": "found",
+            "event_id": event_id,
+            "description": event["description"],
+            "amount": (event["amount_minor"] / 100 if event["amount_minor"] is not None else None),
+            "currency": event["currency"],
+            "event_date_utc": event["event_date_utc"],
+            "_attachments": [
+                {
+                    "path": row["local_path"],
+                    "mime_type": row["mime_type"],
+                    "kind": "IMAGE" if row["media_type"] == "IMAGE" else "DOCUMENT",
+                }
+                for row in rows
+            ],
+        }
     finally:
         conn.close()
 
