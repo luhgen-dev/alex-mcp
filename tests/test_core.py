@@ -85,7 +85,7 @@ class AlexCoreTests(unittest.TestCase):
                 "alex_profile_config_versions",
                 "tool_audit", "tool_execution_claims", "ai_usage", "diagnostic_runs", "monitor_notifications",
                 "pending_error_reports", "user_reported_errors",
-                "ha_notification_outbox", "outbound_messages", "conversation_turns", "selection_sets", "pending_selection_sets", "active_report_contexts",
+                "ha_notification_outbox", "outbound_messages", "conversation_turns", "selection_sets", "finance_selection_sets", "pending_selection_sets", "active_report_contexts",
                 "reminder_handoffs", "reminder_claim_events", "reminder_events",
                 "task_reminder_links", "task_events", "tasks",
                 "diary_reminder_links", "plan_diary_links", "schedule_conflicts", "diary_events", "plans",
@@ -653,17 +653,18 @@ class AlexCoreTests(unittest.TestCase):
             ha.control("lock.front_door", "unlock")
 
 
-    def test_currency_is_never_silently_guessed(self):
+    def test_unspecified_currency_uses_household_myr_default(self):
         self.claim("currency-amb", "+60111111111", "spent 10 for lunch")
         actor = with_action_key(self.actor("currency-amb", "+60111111111"), "currency-amb-action")
         result = services.log_expense(actor, "Lunch", 10, "food", currency=None)
-        self.assertEqual(result["status"], "clarification_required")
+        self.assertEqual(result["status"], "logged")
+        self.assertEqual(result["currency"], "MYR")
         conn = db.connect()
         try:
-            n = conn.execute(
-                "SELECT COUNT(*) AS n FROM financial_events WHERE source_message_id='currency-amb'"
-            ).fetchone()["n"]
-            self.assertEqual(n, 0)
+            row = conn.execute(
+                "SELECT amount_minor,currency FROM financial_events WHERE source_message_id='currency-amb'"
+            ).fetchone()
+            self.assertEqual(dict(row), {"amount_minor": 1000, "currency": "MYR"})
         finally:
             conn.close()
 
@@ -2853,7 +2854,9 @@ class AlexCoreTests(unittest.TestCase):
         confirm_actor = with_action_key(
             self.actor("plan-confirm-post", "+60111111111"), "plan-confirm-post-action"
         )
-        confirmed = phase2.confirm_plan(confirm_actor, plan["plan_id"])
+        confirmed = phase2.confirm_plan(
+            confirm_actor, plan["plan_id"], add_to_diary=True
+        )
         self.assertTrue(confirmed.get("diary_id"))
         self.claim("plan-cancel-post", "+60111111111", "cancel plan")
         cancel_actor = with_action_key(
