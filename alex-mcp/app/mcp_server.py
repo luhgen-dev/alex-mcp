@@ -559,10 +559,15 @@ def nudge_reminder_claimant(reminder_id: str, actor: Actor) -> dict:
 def create_task(title: str, actor: Actor, notes: str | None = None,
                 assignee: str = "unassigned", shared: bool = False,
                 due_local: str | None = None, plan_id: str | None = None,
+                plan_name: str | None = None,
                 reminder_id: str | None = None) -> dict:
-    """Create a first-class task with OPEN lifecycle state. New-write scope is resolved from the trusted user command. A reminder is never created implicitly."""
+    """Create a first-class task with OPEN lifecycle state. A natural plan_name may be supplied instead of an opaque plan_id; Alex resolves exactly one accessible plan internally, so do not list plans first merely to obtain an id. New-write scope is resolved from the trusted user command. A reminder is never created implicitly."""
+    resolved_plan = (
+        phase2.resolve_plan_reference(actor, plan_id, plan_name)
+        if plan_id or plan_name else None
+    )
     return phase2.create_task(
-        actor, title, notes, assignee, shared, due_local, plan_id, reminder_id
+        actor, title, notes, assignee, shared, due_local, resolved_plan, reminder_id
     )
 
 
