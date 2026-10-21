@@ -94,15 +94,19 @@ jobs:
       - name: Prepare independent reasoning delta
         id: prepare_review
         run: |
-          python alex-mcp/app/github_models_delta_review.py prepare \
+          rm -rf /tmp/alex-independent-review-prompts /tmp/alex-independent-review-responses
+          mkdir -p /tmp/alex-independent-review-prompts /tmp/alex-independent-review-responses
+          python alex-mcp/app/sharded_reasoning_review.py prepare \
             --snapshot alex-mcp/app/real_ai_snapshot.json \
-            --prompt-out /tmp/alex-independent-review-prompt.txt \
-            --metadata-out /tmp/alex-independent-review-meta.json
+            --prompt-dir /tmp/alex-independent-review-prompts \
+            --metadata-out /tmp/alex-independent-review-meta.json \
+            --shard-size 48
           python - <<'PY'
           import json, os
           meta = json.load(open("/tmp/alex-independent-review-meta.json", encoding="utf-8"))
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
               out.write("needs_review=" + ("true" if meta.get("delta_packets") else "false") + "\n")
+              out.write("shard_count=" + str(meta.get("shard_count", 0)) + "\n")
               out.write("delta_packets=" + str(meta.get("delta_packets", 0)) + "\n")
           PY
 
@@ -114,25 +118,32 @@ jobs:
         if: steps.prepare_review.outputs.needs_review == 'true'
         run: |
           tar -C "$GITHUB_WORKSPACE" -czf /tmp/alex-repo-before-review.tgz .
-          cp /tmp/alex-independent-review-prompt.txt /tmp/alex-review-public.txt
           find "$GITHUB_WORKSPACE" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
-          cp /tmp/alex-review-public.txt "$GITHUB_WORKSPACE/review.txt"
 
-      - name: Run isolated independent reasoning review
+      - name: Run isolated sharded independent reasoning review
         if: steps.prepare_review.outputs.needs_review == 'true'
-        id: independent_review
         env:
-          RUNNER_DEBUG: "1"
-        uses: actions/ai-inference@v3
-        with:
-          prompt: Read review.txt from the current workspace and follow its instructions exactly. Return only the requested JSON.
-          model: gpt-4.1
-          system-prompt: You are an isolated reviewer. Read only review.txt. Return only the exact JSON requested there, with no markdown.
-          copilot-allow-tools: read(review.txt)
-
-      - name: Preserve independent review response
-        if: steps.prepare_review.outputs.needs_review == 'true'
-        run: cp "${{ steps.independent_review.outputs.response-file }}" /tmp/alex-independent-review-response.txt
+          COPILOT_GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          for PROMPT_FILE in /tmp/alex-independent-review-prompts/shard-*.txt; do
+            NAME="$(basename "$PROMPT_FILE" .txt)"
+            cp "$PROMPT_FILE" "$GITHUB_WORKSPACE/review.txt"
+            echo "Reviewing $NAME"
+            set +e
+            copilot -p "Read review.txt from the current workspace and follow its instructions exactly. Return only the requested JSON, with no markdown." \
+              -s --no-ask-user --model auto --allow-tool='read(review.txt)' \
+              > "/tmp/alex-independent-review-responses/$NAME.json" \
+              2> "/tmp/$NAME.stderr"
+            STATUS=$?
+            set -e
+            if [ "$STATUS" -ne 0 ]; then
+              echo "Copilot reviewer failed for $NAME with exit code $STATUS"
+              cat "/tmp/$NAME.stderr"
+              exit "$STATUS"
+            fi
+            test -s "/tmp/alex-independent-review-responses/$NAME.json"
+            rm -f "$GITHUB_WORKSPACE/review.txt"
+          done
 
       - name: Restore repository after isolated review
         if: always() && steps.prepare_review.outputs.needs_review == 'true'
@@ -140,12 +151,12 @@ jobs:
           find "$GITHUB_WORKSPACE" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
           tar -C "$GITHUB_WORKSPACE" -xzf /tmp/alex-repo-before-review.tgz
 
-      - name: Import and verify independent reasoning delta
+      - name: Import and verify sharded independent reasoning delta
         if: steps.prepare_review.outputs.needs_review == 'true'
         run: |
-          python alex-mcp/app/github_models_delta_review.py import \
+          python alex-mcp/app/sharded_reasoning_review.py import \
             --snapshot alex-mcp/app/real_ai_snapshot.json \
-            --response /tmp/alex-independent-review-response.txt \
+            --response-dir /tmp/alex-independent-review-responses \
             --report /tmp/alex-copilot-independent-review.json
 
       - name: Preserve refreshed independent-review evidence
@@ -157,6 +168,7 @@ jobs:
             alex-mcp/app/real_ai_snapshot.json
             /tmp/alex-copilot-independent-review.json
             /tmp/alex-independent-review-meta.json
+            /tmp/alex-independent-review-responses/
           retention-days: 14
 
       - name: Run frozen real-AI reasoning snapshot
