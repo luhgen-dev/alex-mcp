@@ -320,7 +320,7 @@ def _reconcile_pending_item_markers(conn) -> None:
            JOIN pending_items p ON p.item_id=o.context_id
            WHERE o.context_kind='PENDING_ITEM'
              AND (
-                (p.status='PENDING' AND p.kind IN ('VOICE','REMINDER_DRAFT'))
+                (p.status='PENDING' AND p.kind IN ('VOICE','REMINDER_DRAFT','FINANCE_REVIEW'))
                 OR (
                     (p.status IN ('RESOLVED','CANCELLED') OR p.kind NOT IN ('VOICE','REMINDER_DRAFT'))
                     AND (
@@ -351,6 +351,8 @@ def _reconcile_pending_item_markers(conn) -> None:
     for row in rows:
         if row["pending_status"] == "PENDING" and row["pending_kind"] == "VOICE":
             _ensure_unresolved_markers(conn, row)
+        elif row["pending_status"] == "PENDING" and row["pending_kind"] == "FINANCE_REVIEW":
+            _ensure_claim_setup_markers(conn, row)
         elif (
             row["pending_status"] == "PENDING"
             and row["pending_kind"] == "REMINDER_DRAFT"
