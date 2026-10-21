@@ -771,6 +771,31 @@ def reopen_goal(goal_id, sender_phone, conversation_type="DIRECT_DM"):
         conn.close()
 
 
+def cancel_goal(goal_id, sender_phone, conversation_type="DIRECT_DM"):
+    """Cancel a goal without deleting its funding/contribution history."""
+    ensure_schema()
+    conn = tools.get_db()
+    try:
+        goal = _get_authorized_goal(conn, goal_id, sender_phone, conversation_type)
+        if goal["status"] == "CANCELLED":
+            return {"goal_id": goal_id, "status": "CANCELLED", "already_cancelled": True}
+        if goal["status"] == "COMPLETED":
+            raise ValueError("Completed goal cannot be cancelled")
+        conn.execute("""
+            UPDATE alex_phase2_goals
+            SET status='CANCELLED',updated_at_utc=CURRENT_TIMESTAMP WHERE goal_id=?
+        """, (goal_id,))
+        conn.commit()
+        return {
+            "goal_id": goal_id,
+            "name": goal["name"],
+            "status": "CANCELLED",
+            "history_preserved": True,
+        }
+    finally:
+        conn.close()
+
+
 def _goal_baseline_for_period(conn, goal_id, period, fallback_minor=0):
     row = conn.execute("""
         SELECT monthly_minor FROM alex_phase2_goal_baseline_versions
@@ -927,6 +952,7 @@ def goal_progress(goal_id, sender_phone, conversation_type="DIRECT_DM"):
             "baseline_monthly": _money(_goal_baseline_for_period(
                 conn, goal_id, _period(), goal["baseline_monthly_minor"])),
             "currency": goal["currency"], "space": goal["space_id"],
+            "status": goal["status"], "target_date": goal["target_date"],
         }
     finally:
         conn.close()
