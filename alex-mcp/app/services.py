@@ -3144,14 +3144,29 @@ def create_reminder(actor: ActorContext, task: str, due_local: str,
                     # WhatsApp reminder from being created.
                     pass
 
+            same_time = conn.execute(
+                """SELECT task_text FROM reminders
+                   WHERE reminder_id<>? AND owner_id=? AND space_id=?
+                     AND due_at_utc=? AND status IN ('OPEN','DUE','DEFERRED')
+                   ORDER BY created_at_utc""",
+                (rid, target_user, space, due_utc),
+            ).fetchall()
             created.append({
                 "status": "created", "reminder_id": rid, "task": task, "due_at_utc": due_utc,
+                "due_local_display": _friendly_reminder_time(due_utc, actor.timezone),
                 "timezone": actor.timezone, "recurrence_rule": recurrence_rule,
                 "recipient_user_id": target_user, "destination": destination,
                 "conversation_id": conversation_id, "space": space,
                 "claimable": bool(claimable),
                 "presence_aware": bool(presence_aware), "delivery_class": delivery_class,
                 "follow_up_after_hours": follow_up_after_hours,
+                "same_time_active_count": len(same_time),
+                "same_time_tasks": [str(row["task_text"]) for row in same_time[:8]],
+                "presentation_rule": (
+                    "Confirm the local fire time. If same_time_active_count is greater than zero, "
+                    "briefly mention that other active reminder(s) already share this exact time; "
+                    "do not block creation or ask for confirmation solely because of the collision."
+                ),
                 **pending_receipt,
             })
         conn.commit()
