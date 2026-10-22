@@ -63,10 +63,13 @@ jobs:
           find "$GITHUB_WORKSPACE" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 
       - name: Run isolated independent reasoning review
+        id: independent_review
         if: steps.prepare_review.outputs.needs_review == 'true'
         env:
           COPILOT_GITHUB_TOKEN: ${{ github.token }}
         run: |
+          REVIEW_STATUS="complete"
+          REVIEW_REASON=""
           for PROMPT_FILE in /tmp/alex-independent-review-prompts/shard-*.txt; do
             NAME="$(basename "$PROMPT_FILE" .txt)"
             cp "$PROMPT_FILE" "$GITHUB_WORKSPACE/review.txt"
@@ -79,6 +82,30 @@ jobs:
             STATUS=$?
             set -e
             if [ "$STATUS" -ne 0 ]; then
+              if grep -qi "exceeded your monthly quota" "/tmp/$NAME.stderr"; then
+                REVIEW_STATUS="deferred"
+                REVIEW_REASON="github_copilot_monthly_quota"
+                echo "::warning::Independent model review deferred: GitHub Copilot monthly quota exhausted at $NAME."
+                python - <<PY
+import json
+from pathlib import Path
+Path("/tmp/alex-independent-review-deferred.json").write_text(
+    json.dumps({
+        "status": "DEFERRED_EXTERNAL_REVIEW",
+        "reason": "github_copilot_monthly_quota",
+        "failed_shard": "$NAME",
+        "completed_response_files": sorted(
+            p.name for p in Path("/tmp/alex-independent-review-responses").glob("shard-*.json")
+            if p.stat().st_size > 0
+        ),
+        "not_claimed_as_pass": True,
+    }, indent=2) + "\n",
+    encoding="utf-8",
+)
+PY
+                rm -f "$GITHUB_WORKSPACE/review.txt"
+                break
+              fi
               echo "Copilot reviewer failed for $NAME with exit code $STATUS"
               cat "/tmp/$NAME.stderr"
               exit "$STATUS"
@@ -86,6 +113,8 @@ jobs:
             test -s "/tmp/alex-independent-review-responses/$NAME.json"
             rm -f "$GITHUB_WORKSPACE/review.txt"
           done
+          echo "status=$REVIEW_STATUS" >> "$GITHUB_OUTPUT"
+          echo "reason=$REVIEW_REASON" >> "$GITHUB_OUTPUT"
 
       - name: Restore repository after isolated review
         if: always() && steps.prepare_review.outputs.needs_review == 'true'
@@ -94,7 +123,7 @@ jobs:
           tar -C "$GITHUB_WORKSPACE" -xzf /tmp/alex-repo-before-review.tgz
 
       - name: Import and verify independent reasoning delta
-        if: steps.prepare_review.outputs.needs_review == 'true'
+        if: steps.prepare_review.outputs.needs_review == 'true' && steps.independent_review.outputs.status == 'complete'
         run: |
           python alex-mcp/app/sharded_reasoning_review.py import \
             --snapshot alex-mcp/app/real_ai_snapshot.json \
@@ -103,6 +132,9 @@ jobs:
 
       - name: Run external Alex Lab
         shell: bash
+        env:
+          ALEX_EXTERNAL_REVIEW_DEFERRED: ${{ steps.independent_review.outputs.status == 'deferred' && '1' || '0' }}
+          ALEX_EXTERNAL_REVIEW_REASON: ${{ steps.independent_review.outputs.reason }}
         run: |
           PHASE="${{ github.event.inputs.phase || 'all' }}"
           GATE=""
@@ -130,6 +162,7 @@ jobs:
             /tmp/alex-real-ai-reasoning-review.json
             /tmp/alex-chatgpt-reasoning-review.json
             /tmp/alex-copilot-independent-review.json
+            /tmp/alex-independent-review-deferred.json
             /tmp/alex-independent-review-meta.json
             /tmp/alex-independent-review-responses/
             alex-mcp/app/real_ai_snapshot.json
