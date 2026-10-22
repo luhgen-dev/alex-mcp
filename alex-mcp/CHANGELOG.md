@@ -1,3 +1,33 @@
+## 0.5.46 — live-smoke repair, durable Ear journal and bounded correction teaching
+
+- Preserve exact goal identity for target edits/activation and freeze numbered goal
+  references; reject create-on-edit and duplicate same-scope goals.
+- Export exactly the displayed finance ledger, without unrelated planning sections
+  or stale private-scope carry-over. Preserve private-stash transaction atomicity.
+- Save/retrieve integrity-checked original voice/video assets from typed and quoted
+  instructions. Upgrade legacy SQLite media/outbox type constraints transactionally
+  without changing archived files, links or data.
+- Keep task provenance immutable; persist task-linked reminder clarification and its
+  original clock anchor. Clarification questions are not pinned as reminders.
+- Support explicit natural reminder claims, preserve original due delivery when
+  claimed, release post-due reminders with fresh group cards, and show full local
+  date/time/timezone. Keep durable reminder acknowledgement markers canonical.
+- Read privately imported effective-dated work/OT profiles and six leave categories
+  through authenticated owner-DM tools. Regenerated Daily Briefs share one day's
+  acknowledgement identity and use deterministic calendar/count rendering.
+- Discover enabled capabilities through a full numbered menu. Persist Ear captures,
+  grounded structured summaries, decisions, action owners/status and audit history;
+  keep numbered journal selection separate from saved media. No implicit promotion
+  to Tasks, Diary, Plans or Reminders; explicit same-scope links retain provenance.
+- Add bounded, consent-based contextual correction teaching after the smoke repairs:
+  exact swipe-reply source binding, guarded recovery, scoped/versioned interpretations
+  and separate reporting of actual software faults. This is not model fine-tuning.
+- Sanitize profile fixtures and add synthetic upgrade, privacy, restart and lifecycle
+  regressions. Live phone playback, delivery and HA acceptance remain separate gates.
+
+Before updating, create an HA backup including add-on data. See
+`ISSUE_61_REPAIR_EVIDENCE.md` for migration, verification and live-only acceptance.
+
 ## 0.5.45 — consolidated live-smoke repair and household workflow hardening
 
 - Repair the shared natural-language → exact-domain → exact-record → tool handoff exposed

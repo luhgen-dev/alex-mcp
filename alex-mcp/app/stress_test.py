@@ -40,19 +40,19 @@ Path(os.environ["ALEX_OPTIONS_PATH"]).write_text(json.dumps({
     "roster_profiles": [{
         "id": "roster", "owner": "husband", "visibility": "private",
         "name": "Alternating", "cycle_start": "2026-09-21",
-        "pattern": "evening,morning", "day_start": "07:45", "day_end": "16:15",
-        "evening_start": "16:30", "evening_end": "01:00", "active": True
+        "pattern": "evening,morning", "day_start": "08:30", "day_end": "17:30",
+        "evening_start": "17:30", "evening_end": "02:00", "active": True
     }],
     "overtime_profiles": [{
         "id": "ot", "owner": "husband", "visibility": "private",
         "name": "OT", "currency": "MYR", "morning_pre_hours": 2,
-        "morning_pre_start": "05:45", "morning_weekend_standard_start": "04:45",
-        "morning_weekend_standard_end": "16:45", "morning_weekend_low_start": "05:45",
-        "morning_weekend_low_end": "15:45", "evening_post_hours": 2.75,
-        "evening_post_start": "01:00", "evening_post_end": "04:15",
-        "evening_weekend_days": "saturday", "evening_weekend_standard_start": "16:15",
-        "evening_weekend_standard_end": "04:15", "evening_weekend_low_start": "16:15",
-        "evening_weekend_low_end": "23:59", "sunday_override_allowed": True,
+        "morning_pre_start": "06:30", "morning_weekend_standard_start": "05:30",
+        "morning_weekend_standard_end": "17:00", "morning_weekend_low_start": "06:30",
+        "morning_weekend_low_end": "16:00", "evening_post_hours": 2.75,
+        "evening_post_start": "02:00", "evening_post_end": "05:30",
+        "evening_weekend_days": "saturday", "evening_weekend_standard_start": "17:30",
+        "evening_weekend_standard_end": "05:30", "evening_weekend_low_start": "17:30",
+        "evening_weekend_low_end": "23:30", "sunday_override_allowed": True,
         "payout_days": "7,12", "rate_formula": "", "active": True
     }],
     "leave_balances": [],

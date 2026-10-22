@@ -141,9 +141,9 @@ def shift_for_profile(payload, on_date):
     }
 
 
-def _active_profile(sender_phone, conversation_type, kind):
+def _active_profile(sender_phone, conversation_type, kind, on_date=None):
     records = profile_config.authorized_records(
-        sender_phone, conversation_type, kind=kind, requested_scope="private")
+        sender_phone, conversation_type, kind=kind, requested_scope="private", effective_date=on_date)
     active = [r for r in records if r["payload"].get("active", True)]
     if not active:
         raise ValueError(f"No active {kind} profile configured")
@@ -154,7 +154,7 @@ def _active_profile(sender_phone, conversation_type, kind):
 
 def effective_shift(on_date, sender_phone, conversation_type="DIRECT_DM"):
     """Return roster shift, then apply an explicit SHIFT_SWAP event if present."""
-    roster = _active_profile(sender_phone, conversation_type, "roster")
+    roster = _active_profile(sender_phone, conversation_type, "roster", on_date)
     base = shift_for_profile(roster["payload"], on_date)
     ensure_schema()
     conn = tools.get_db()
@@ -172,12 +172,19 @@ def effective_shift(on_date, sender_phone, conversation_type="DIRECT_DM"):
             base["override"] = True
         else:
             base["override"] = False
+        prefix = "day" if base["shift"] == "morning" else "evening"
+        start, end = roster["payload"].get(prefix + "_start"), roster["payload"].get(prefix + "_end")
+        if base["shift"] != "off" and start and end:
+            day = _parse_date(on_date)
+            end_day = day + timedelta(days=1) if end <= start else day
+            base.update(start=start, end=end, start_local=f"{day.isoformat()}T{start}",
+                        end_local=f"{end_day.isoformat()}T{end}")
         return base
     finally:
         conn.close()
 
 
-def default_ot_for_date(on_date, sender_phone,
+def _default_ot_for_date(on_date, sender_phone,
                         conversation_type="DIRECT_DM",
                         work_scope="standard", manager_override=False):
     """Return default OT expectation without inventing pay.
@@ -187,7 +194,7 @@ def default_ot_for_date(on_date, sender_phone,
     """
     d = _parse_date(on_date)
     shift = effective_shift(d, sender_phone, conversation_type)["shift"]
-    rule = _active_profile(sender_phone, conversation_type, "overtime_rule")["payload"]
+    rule = _active_profile(sender_phone, conversation_type, "overtime_rule", on_date)["payload"]
     weekday = d.strftime("%A").lower()
     work_scope = str(work_scope or "standard").lower()
     if work_scope not in ("standard", "low"):
@@ -198,6 +205,8 @@ def default_ot_for_date(on_date, sender_phone,
 
     if shift == "morning":
         if weekday in ("saturday", "sunday"):
+            if weekday not in rule.get("morning_weekend_days", ["saturday", "sunday"]):
+                return {"date": d.isoformat(), "shift": shift, "ot": False, "kind": "NATURAL_OFF_DAY"}
             prefix = "morning_weekend_low" if work_scope == "low" else "morning_weekend_standard"
             return {
                 "date": d.isoformat(), "shift": shift, "ot": True,
@@ -212,7 +221,7 @@ def default_ot_for_date(on_date, sender_phone,
             "ot": bool(rule.get("morning_pre_hours")),
             "kind": "PRE_SHIFT",
             "start": rule.get("morning_pre_start"),
-            "end": None,
+            "end": rule.get("morning_pre_end"),
             "hours": rule.get("morning_pre_hours"),
             "pay_amount": None, "pay_status": "RATE_NOT_CONFIGURED",
         }
@@ -248,6 +257,9 @@ def default_ot_for_date(on_date, sender_phone,
             "pay_amount": None, "pay_status": "RATE_NOT_CONFIGURED",
         }
 
+    if weekday == "saturday":
+        return {"date": d.isoformat(), "shift": shift, "ot": False, "kind": "NATURAL_OFF_DAY"}
+
     return {
         "date": d.isoformat(), "shift": shift,
         "ot": bool(rule.get("evening_post_hours")),
@@ -259,6 +271,24 @@ def default_ot_for_date(on_date, sender_phone,
         "hours": rule.get("evening_post_hours"),
         "pay_amount": None, "pay_status": "RATE_NOT_CONFIGURED",
     }
+
+
+def default_ot_for_date(on_date, sender_phone, conversation_type="DIRECT_DM",
+                        work_scope="standard", manager_override=False):
+    result = _default_ot_for_date(on_date, sender_phone, conversation_type,
+                                  work_scope, manager_override)
+    if result.get("ot") and result.get("start"):
+        day = _parse_date(on_date)
+        if result.get("kind") == "POST_SHIFT":
+            shift = effective_shift(day, sender_phone, conversation_type)
+            if shift.get("end_local"):
+                day = date.fromisoformat(shift["end_local"][:10])
+        start, end = result["start"], result.get("end")
+        result["start_local"] = f"{day.isoformat()}T{start}"
+        if end:
+            end_day = day + timedelta(days=1) if end <= start else day
+            result["end_local"] = f"{end_day.isoformat()}T{end}"
+    return result
 
 
 def ot_eligibility_for_date(on_date, sender_phone,
@@ -412,7 +442,7 @@ def effective_ot_for_date(on_date, sender_phone,
             d, sender_phone, conversation_type,
             work_scope=override_scope,
             manager_override=bool(row["manager_override"]) or manager_override)
-        return {
+        result = {
             **fallback,
             "ot": True,
             "start": row["start_time"] or fallback.get("start"),
@@ -427,6 +457,21 @@ def effective_ot_for_date(on_date, sender_phone,
             "note": row["note"],
             "eligibility": eligibility,
         }
+        # An explicit window overrides its timestamps too, not only clock labels.
+        start, end = result.get("start"), result.get("end")
+        result.pop("start_local", None)
+        result.pop("end_local", None)
+        if start:
+            start_day = d
+            if fallback.get("kind") == "POST_SHIFT":
+                shift = effective_shift(d, sender_phone, conversation_type)
+                if shift.get("end_local"):
+                    start_day = date.fromisoformat(shift["end_local"][:10])
+            result["start_local"] = f"{start_day.isoformat()}T{start}"
+            if end:
+                end_day = start_day + timedelta(days=1) if end <= start else start_day
+                result["end_local"] = f"{end_day.isoformat()}T{end}"
+        return result
     finally:
         conn.close()
 
@@ -599,6 +644,8 @@ def leave_balance(leave_id, sender_phone, conversation_type="DIRECT_DM",
     payload = rec["payload"]
     snapshot_date = _parse_date(payload["as_of_date"])
     end = _parse_date(as_of_date) if as_of_date else runtime_clock.today()
+    if end < snapshot_date:
+        raise ValueError("No authoritative leave snapshot is available for that earlier date")
     payload_id = normalize_profile_id(payload.get("id"))
     if payload_id != normalized_id:
         raise ValueError("Leave balance profile not found or ambiguous")
@@ -653,6 +700,18 @@ def leave_balance(leave_id, sender_phone, conversation_type="DIRECT_DM",
     }
 
 
+def leave_balances(sender_phone, conversation_type="DIRECT_DM", as_of_date=None):
+    records = profile_config.authorized_records(
+        sender_phone, conversation_type, kind="leave_balance", requested_scope="private")
+    rows = [r for r in records if r["payload"].get("active", True)]
+    if not rows:
+        return {"status": "not_configured", "balances": [],
+                "message": "Your leave entitlement/used snapshot is not configured yet. Import it privately; planned diary leave is a separate record."}
+    return {"status": "configured", "balances": [
+        leave_balance(r["payload"]["id"], sender_phone, conversation_type, as_of_date)
+        for r in rows]}
+
+
 def _human_date(d):
     d = _parse_date(d)
     return f"{d.day} {d.strftime('%B')}"
@@ -688,7 +747,7 @@ def historical_work_day(on_date, sender_phone,
     if answer_focus not in ("summary", "shift", "attendance", "leave"):
         raise ValueError("answer_focus must be summary, shift, attendance or leave")
 
-    roster = _active_profile(sender_phone, conversation_type, "roster")
+    roster = _active_profile(sender_phone, conversation_type, "roster", on_date)
     scheduled = shift_for_profile(roster["payload"], d)
     effective = effective_shift(d, sender_phone, conversation_type)
 
@@ -809,6 +868,8 @@ def historical_work_day(on_date, sender_phone,
         "date": d.isoformat(),
         "scheduled_shift": scheduled_shift,
         "actual_shift": actual_shift,
+        "start_local": effective.get("start_local"),
+        "end_local": effective.get("end_local"),
         "worked": worked,
         "attendance_source": attendance_source,
         "leave_type": leave["event_type"] if leave else None,
@@ -854,6 +915,8 @@ def work_summary(start_date, end_date, sender_phone,
             "date": d.isoformat(),
             "shift": shift["shift"],
             "shift_label": _display_shift(shift["shift"]),
+            "start_local": shift.get("start_local"),
+            "end_local": shift.get("end_local"),
             "effective_ot": ot,
             "ot_available": ot_available,
         })

@@ -12,6 +12,8 @@ import json
 import re
 import uuid
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from datetime import date
+import math
 from pathlib import Path
 
 import compat_tools as tools
@@ -141,8 +143,8 @@ def _optional_float(value):
         result = float(value)
     except (TypeError, ValueError):
         raise ValueError("Value must be numeric")
-    if result < 0:
-        raise ValueError("Value cannot be negative")
+    if not math.isfinite(result) or result < 0:
+        raise ValueError("Value must be finite and non-negative")
     return result
 
 
@@ -260,6 +262,11 @@ def _recurring(raw):
     return rec
 
 
+def _effective_date(raw):
+    value = str(raw.get("effective_from") or "").strip()
+    return date.fromisoformat(value).isoformat() if value else None
+
+
 def _roster(raw):
     rec = _base_record("roster", raw)
     cycle_start = str(raw.get("cycle_start") or "").strip() or None
@@ -274,6 +281,7 @@ def _roster(raw):
         "id": _record_id(raw.get("id")),
         "name": str(raw.get("name") or "").strip(),
         "cycle_start": cycle_start,
+        "effective_from": _effective_date(raw),
         "pattern": ",".join(parts),
         "day_start": _clock(raw.get("day_start")),
         "day_end": _clock(raw.get("day_end")),
@@ -297,7 +305,10 @@ def _overtime_rule(raw):
         "id": _record_id(raw.get("id")),
         "name": str(raw.get("name") or "").strip(),
         "currency": _currency(raw.get("currency") or "MYR"),
+        "effective_from": _effective_date(raw),
+        "morning_weekend_days": _csv_days(raw.get("morning_weekend_days") if raw.get("morning_weekend_days") is not None else "saturday,sunday"),
         "morning_pre_hours": _optional_float(raw.get("morning_pre_hours")),
+        "morning_pre_end": _clock(raw.get("morning_pre_end")),
         "morning_pre_start": _clock(raw.get("morning_pre_start")),
         "morning_weekend_standard_start": _clock(raw.get("morning_weekend_standard_start")),
         "morning_weekend_standard_end": _clock(raw.get("morning_weekend_standard_end")),
@@ -337,7 +348,9 @@ def _leave_balance(raw):
             "Leave entitlement plus either used_days or remaining_days are required"
         )
     if used is None:
-        used = max(0.0, float(total) - float(remaining))
+        if float(remaining) > float(total):
+            raise ValueError("Leave remaining_days cannot exceed entitlement_days")
+        used = float(total) - float(remaining)
     if remaining is None:
         # Negative remaining is valid when leave has been over-used. Preserve
         # the real state instead of clamping or rejecting it.
@@ -481,6 +494,11 @@ def sync_options(options, conn=None):
         for key, record in incoming.items():
             payload_json, payload_hash = _canonical_payload(record)
             old = active.get(key)
+            # Runtime owner import is authoritative; a startup HA sync must
+            # not silently overwrite it with stale UI options.
+            if old and old["source"] == "USER_DIRECT":
+                unchanged += 1
+                continue
             if old and old["payload_hash"] == payload_hash:
                 unchanged += 1
                 continue
@@ -531,6 +549,8 @@ def import_user_work_profile(actor, profile_json: str) -> dict:
     The JSON is user-authored data. It is validated by the same profile builders
     as HA options, stored versioned as USER_DIRECT, and never written to source.
     """
+    if actor.conversation_type == "GROUP":
+        raise PermissionError("Work profiles must be imported in the owner’s private DM")
     try:
         payload = json.loads(str(profile_json or ""))
     except json.JSONDecodeError as exc:
@@ -543,10 +563,14 @@ def import_user_work_profile(actor, profile_json: str) -> dict:
 
     raw_records = []
     roster = payload.get("roster")
+    if roster is not None and not isinstance(roster, dict):
+        raise ValueError("roster must be an object")
     if isinstance(roster, dict):
         item = {**roster, "owner": role, "visibility": "private"}
         raw_records.append(_roster(item))
     overtime = payload.get("overtime")
+    if overtime is not None and not isinstance(overtime, dict):
+        raise ValueError("overtime must be an object")
     if isinstance(overtime, dict):
         item = {**overtime, "owner": role, "visibility": "private"}
         raw_records.append(_overtime_rule(item))
@@ -561,6 +585,9 @@ def import_user_work_profile(actor, profile_json: str) -> dict:
     if not raw_records:
         raise ValueError("profile must include roster, overtime, or leave")
 
+    identities = [(r["kind"], r["record_key"]) for r in raw_records]
+    if len(identities) != len(set(identities)):
+        raise ValueError("Duplicate work profile record")
     ensure_schema()
     conn = tools.get_db()
     try:
@@ -627,7 +654,7 @@ def sync_from_ha(path=None):
 
 
 def authorized_records(sender_phone, conversation_type, kind=None,
-                       requested_scope="all"):
+                       requested_scope="all", effective_date=None):
     """Read only records authorized by the existing Jarvis privacy boundary."""
     if kind is not None and kind not in SUPPORTED_KINDS:
         raise ValueError("Unsupported profile kind")
@@ -640,7 +667,8 @@ def authorized_records(sender_phone, conversation_type, kind=None,
             scope = scope_policy.effective_read_scope(current_actor(), requested_scope)
         except RuntimeError:
             scope = str(requested_scope or "all").lower()
-        clauses = ["valid_to_utc IS NULL"]
+        clauses = (["EXISTS (SELECT 1 FROM alex_profile_config_versions current WHERE current.kind=alex_profile_config_versions.kind AND current.record_key=alex_profile_config_versions.record_key AND current.valid_to_utc IS NULL)"]
+                   if effective_date is not None else ["valid_to_utc IS NULL"])
         args = []
         if kind:
             clauses.append("kind=?")
@@ -662,15 +690,31 @@ def authorized_records(sender_phone, conversation_type, kind=None,
         rows = conn.execute(
             "SELECT * FROM alex_profile_config_versions WHERE "
             + " AND ".join(clauses)
-            + " ORDER BY kind,record_key",
+            + " ORDER BY kind,record_key,valid_from_utc DESC,rowid DESC",
             args,
         ).fetchall()
         result = []
+        selected = {}
+        target = date.fromisoformat(str(effective_date)[:10]) if effective_date is not None else None
         for row in rows:
             item = dict(row)
             item["payload"] = json.loads(item.pop("payload_json"))
+            if target is not None:
+                effective = item["payload"].get("effective_from")
+                if effective and date.fromisoformat(effective) > target:
+                    continue
+                key = (item["kind"], item["record_key"])
+                rank = effective or "0001-01-01"
+                if key in selected and selected[key][0] >= rank:
+                    continue
+                selected[key] = (rank, item)
+                continue
             item.pop("payload_hash", None)
             result.append(item)
+        if target is not None:
+            result = [item for _, item in selected.values()]
+            for item in result:
+                item.pop("payload_hash", None)
         return result
     finally:
         conn.close()

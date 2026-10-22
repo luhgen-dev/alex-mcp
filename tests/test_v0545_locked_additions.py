@@ -121,32 +121,32 @@ class LockedAdditionTests(ConversationFixture):
         payload = {
             "roster": {
                 "id": "permanent_roster", "name": "Permanent roster",
-                "cycle_start": "2026-10-19", "pattern": "evening,morning",
-                "day_start": "07:45", "day_end": "16:15",
-                "evening_start": "16:15", "evening_end": "01:00",
+                "cycle_start": "2026-02-02", "pattern": "evening,morning",
+                "day_start": "08:30", "day_end": "17:30",
+                "evening_start": "17:30", "evening_end": "02:00",
                 "active": True,
             },
             "overtime": {
                 "id": "permanent_ot", "name": "Permanent OT",
                 "currency": "MYR",
-                "morning_pre_hours": 2, "morning_pre_start": "05:45",
-                "morning_weekend_standard_start": "04:45",
-                "morning_weekend_standard_end": "16:45",
-                "morning_weekend_low_start": "05:45",
-                "morning_weekend_low_end": "15:45",
-                "evening_post_hours": 3.25,
-                "evening_post_start": "01:00", "evening_post_end": "04:15",
+                "morning_pre_hours": 2, "morning_pre_start": "06:30",
+                "morning_weekend_standard_start": "05:30",
+                "morning_weekend_standard_end": "17:00",
+                "morning_weekend_low_start": "06:30",
+                "morning_weekend_low_end": "16:00",
+                "evening_post_hours": 3.5,
+                "evening_post_start": "02:00", "evening_post_end": "05:30",
                 "evening_weekend_days": "saturday",
-                "evening_weekend_standard_start": "16:15",
-                "evening_weekend_standard_end": "04:15",
-                "evening_weekend_low_start": "16:15",
-                "evening_weekend_low_end": "23:59",
+                "evening_weekend_standard_start": "17:30",
+                "evening_weekend_standard_end": "05:30",
+                "evening_weekend_low_start": "17:30",
+                "evening_weekend_low_end": "23:30",
                 "active": True,
             },
             "leave": [{
                 "id": "annual_leave", "name": "Annual leave",
-                "entitlement_days": 13, "used_days": 12,
-                "as_of_date": "2026-10-22", "active": True,
+                "entitlement_days": 18, "used_days": 4,
+                "as_of_date": "2026-02-05", "active": True,
             }],
         }
         result = core.profile_config.import_user_work_profile(
@@ -154,36 +154,36 @@ class LockedAdditionTests(ConversationFixture):
         )
         self.assertEqual(result["status"], "imported")
         shift = core.phase2_work.effective_shift(
-            "2026-10-22", actor.phone, actor.conversation_type
+            "2026-02-05", actor.phone, actor.conversation_type
         )
         self.assertEqual(shift["shift"], "evening")
         leave = core.phase2_work.leave_balance(
             "annual_leave", actor.phone, actor.conversation_type,
-            "2026-10-22",
+            "2026-02-05",
         )
-        self.assertEqual(leave["entitlement_days"], 13)
-        self.assertEqual(leave["used_days"], 12)
-        self.assertEqual(leave["remaining_days"], 1)
+        self.assertEqual(leave["entitlement_days"], 18)
+        self.assertEqual(leave["used_days"], 4)
+        self.assertEqual(leave["remaining_days"], 14)
 
     def test_daily_brief_uses_permanent_roster_profile(self):
         core.profile_config.sync_options({
             "roster_profiles": [{
                 "id": "permanent_roster", "owner": "husband",
                 "visibility": "private", "name": "Permanent roster",
-                "cycle_start": "2026-10-19", "pattern": "evening,morning",
-                "day_start": "07:45", "day_end": "16:15",
-                "evening_start": "16:15", "evening_end": "01:00",
+                "cycle_start": "2026-02-02", "pattern": "evening,morning",
+                "day_start": "08:30", "day_end": "17:30",
+                "evening_start": "17:30", "evening_end": "02:00",
                 "active": True,
             }],
             "leave_balances": [{
                 "id": "annual_leave", "owner": "husband",
                 "visibility": "private", "name": "Annual leave",
-                "entitlement_days": 13, "used_days": 12,
-                "as_of_date": "2026-10-22", "active": True,
+                "entitlement_days": 18, "used_days": 4,
+                "as_of_date": "2026-02-05", "active": True,
             }],
         })
         actor = self.actor("brief-read", "What's in for me today?")
-        result = daily_brief.build(actor, "2026-10-22")
+        result = daily_brief.build(actor, "2026-02-05")
         self.assertIn("Afternoon shift", result["text"])
         self.assertIn("No planned leave recorded today", result["text"])
 

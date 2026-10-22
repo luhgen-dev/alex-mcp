@@ -82,7 +82,7 @@ def _pending(conn, actor, quoted_context: dict) -> dict | None:
             """SELECT p.*,i.raw_text AS original_text FROM pending_items p
                LEFT JOIN inbound_messages i ON i.message_id=p.source_message_id
                WHERE p.item_id=? AND p.owner_id=? AND p.conversation_id=?
-                 AND p.status='PENDING' LIMIT 1""",
+                 AND p.status='PENDING' AND datetime(p.created_at_utc)>datetime('now','-30 minutes') LIMIT 1""",
             (item_id, actor.user_id, actor.conversation_id),
         ).fetchall()
     elif quoted_context:
@@ -181,6 +181,8 @@ def _list(conn, actor, quoted_context: dict) -> dict | None:
         ("finance_selection_sets", "FINANCE"),
         ("task_selection_sets", "TASK"),
         ("custom_ledger_selection_sets", "LEDGER_ENTRY"),
+        ("discussion_selection_sets", "DISCUSSION"),
+        ("goal_selection_sets", "GOAL"),
     ):
         if quoted_set and kind and requested_kind != kind:
             continue
@@ -206,8 +208,10 @@ def _list(conn, actor, quoted_context: dict) -> dict | None:
                 values = json.loads(row["items_json"] or "[]")
             except (TypeError, ValueError, OverflowError):
                 continue
-            if not isinstance(values, list) or not values:
+            if not isinstance(values, list):
                 continue
+            # An empty newly displayed list still supersedes an older domain.
+            # Never let "show 1" resurrect an unrelated stale selection.
             selection_kind = kind or row["selection_kind"]
             # Do not include record content or credentials. The persisted list
             # already fixes order, owner and chat; services revalidate each item.

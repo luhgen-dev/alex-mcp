@@ -287,3 +287,27 @@ See [DOT_EXPERIMENT.md](DOT_EXPERIMENT.md) for the default-off shared-shopping
 experiment, separate installation/live-acceptance gates, security boundaries
 and test checklist. The normal update supplies dormant setup software. This is
 not a substitute API agent and is not yet verified for live household use.
+
+
+## 0.5.46 update and acceptance
+
+1. In Home Assistant, make a backup including **Alex MCP add-on data** first.
+2. Open **Settings → Add-ons → Add-on Store → ⋮ → Check for updates** (wording
+   may vary by HA version). Keep the existing repository URL and add-on options.
+3. Open **Alex MCP → Info → Update** and confirm the displayed version is `0.5.46`.
+   Restart the add-on if HA does not restart it automatically.
+4. Inspect **Alex MCP → Log** for a clean startup. No new WhatsApp link or household
+   database reset is required. Do not clear `/data` to troubleshoot an upgrade.
+5. Run the small device-only acceptance checklist in `ISSUE_61_REPAIR_EVIDENCE.md`.
+   Offline tests cannot certify phone media playback, actual WhatsApp delivery,
+   spouse onboarding, or physical HA device state.
+
+The upgrade adds journal/reference/teaching tables and safely expands legacy
+SQLite media type constraints in a transaction. Original archives and household
+rows are preserved. Private work profiles remain runtime-only; imports must occur
+in the authenticated owner's direct chat, never GitHub. An import must include
+explicit effective dates for historical policy changes; absent dates are not guessed.
+
+Rollback: stop the add-on and restore the pre-update HA backup (add-on plus its
+matching data), rather than downgrading code against an already-migrated database.
+Do not delete media archives or manually edit lifecycle rows.

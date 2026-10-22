@@ -278,14 +278,14 @@ class LiveSmokeRepairTests(ConversationFixture):
             "leave_balances": [{
                 "id": "annual_leave", "owner": "husband",
                 "visibility": "private", "name": "Annual leave",
-                "entitlement_days": 13, "used_days": 12,
-                "as_of_date": "2026-10-22", "active": True,
+                "entitlement_days": 18, "used_days": 4,
+                "as_of_date": "2025-02-13", "active": True,
             }]
         })
         payload = rows[0]["payload"]
-        self.assertEqual(payload["entitlement_days"], 13)
-        self.assertEqual(payload["used_days"], 12)
-        self.assertEqual(payload["remaining_days"], 1)
+        self.assertEqual(payload["entitlement_days"], 18)
+        self.assertEqual(payload["used_days"], 4)
+        self.assertEqual(payload["remaining_days"], 14)
 
     def test_send_that_export_reuses_exact_active_finance_payload(self):
         actor = self.actor("live-export-read", "Show my food expenses")

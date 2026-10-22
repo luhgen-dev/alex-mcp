@@ -413,31 +413,48 @@ def _listening_summary(actor, stopped: dict) -> str:
         }
     }
     summary_prompt = (
-        "Summarize the captured family discussion only. Separate Agreed, Tentative, "
-        "Rejected/changed, and Still unresolved. Do not create, save, schedule, remind, "
-        "delete, or change anything. End by asking whether the user wants any agreed "
-        "outcome saved as a plan, diary item, task or reminder."
+        "Summarize only the captured family discussion. Return JSON only with "
+        "{summary,subject,decisions:[{text,evidence_message_ids}],"
+        "unresolved:[{text,evidence_message_ids}],actions:[{title,status,owner_id,due_local,evidence_message_ids}]}. "
+        "Each evidence_message_ids must reference captured messages supporting the fact. "
+        "Status must be IDEA,DECISION_PENDING,ACTION_PENDING,IN_PROGRESS,ON_HOLD,DONE,CANCELLED. "
+        "Only name an owner_id present in the captured participants when explicitly assigned; otherwise null. "
+        "Use null for absent due dates; ISO date only when explicit or unambiguously resolved from captured message dates. "
+        "Preserve tentative, rejected/changed, agreed and unresolved distinctions. "
+        "Do not call any action tools or create task, diary, plan or reminder."
     )
     reply, _attachments = asyncio.run(
-        brain.respond(actor, summary_prompt, quoted_context=context)
+        brain.summarize_discussion(actor, summary_prompt, context)
     )
-    return str(reply or "").strip()
+    raw = str(reply or "").strip()
+    if raw.startswith("```"):
+        raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw).strip()
+    payload = json.loads(raw)
+    import discussion_journal
+    persisted = discussion_journal.accept_structured_summary(actor, stopped["session_id"], payload)
+    return str(persisted["summary"])
 
 
 def _menu_command(text: str) -> bool:
     value = normalize_intent_text(str(text or "")).strip().casefold()
-    return value in {"/menu", "menu", "alex menu", "what can you do", "what can u do", "help menu"}
+    return value.rstrip("?.!") in {"/menu", "menu", "alex menu", "what can you do", "what can u do", "help menu"} or bool(re.fullmatch(
+        r"(?:please\s+)?(?:show|open|display|give)(?:\s+me)?\s+(?:(?:the|your|alex)\s+)?menu(?:\s+please)?[.!?]?", value
+    ))
 
 
 def _menu_text(section: int | None = None) -> str:
+    import capability_menu
+    sections = capability_menu.enabled_sections()
     if section is None:
         lines = ["*ALEX MENU*"]
-        for number, (title, summary) in _MENU_SECTIONS.items():
+        for number, (title, summary) in sections.items():
             lines.append(f"{number}. *{title}* — {summary}")
         lines.append("")
         lines.append("Reply with a number to see natural examples.")
         return "\n".join(lines)
-    title, _summary = _MENU_SECTIONS[section]
+    if section not in sections:
+        return "That capability is not enabled. Reply 0 for the current menu."
+    title, _summary = sections[section]
     examples = {
         1: ["What’s in for me today?", "What’s my agenda tomorrow?", "Am I working today?"],
         2: ["I spent RM25 on lunch.", "Show my expenses for October.", "Show 4.", "Send that as PDF."],
@@ -1187,7 +1204,7 @@ def _reminder_draft_continuation(
     domain_switch = bool(re.search(
         r"(?i)\b(?:spent|paid|bought|expense|receipt|shopping|task|diary|"
         r"calendar|meeting|appointment|show|find|search|list|what|why|how|"
-        r"where|goal|stash|cash|report|roster|shift|turn\s+(?:on|off)|"
+        r"where|goal|stash|cash|report|roster|shift|leave|menu|balance|entitlement|turn\s+(?:on|off)|"
         r"switch\s+(?:on|off))\b"
         r"|\b(?:rm|myr|sgd)\s*\d",
         value,
@@ -1262,6 +1279,45 @@ def _reminder_draft_continuation(
 
     return False, latest_question, ""
 
+def _resume_task_reminder_choice(actor, text: str, quoted_context=None):
+    """A closed choice resumes only its persisted, scoped task/time request."""
+    value = normalize_intent_text(text).strip().casefold().rstrip(".! ")
+    mode = None
+    if re.fullmatch(r"(?:just\s+|only\s+|a\s+|the\s+)*(?:heads?[ -]?up)(?:\s+(?:reminder|please|only))*", value):
+        mode = "heads_up"
+    elif re.fullmatch(r"(?:set\s+)?(?:the\s+)?task(?:[ _-]time|\s+(?:itself|due time))(?:\s+please)?", value):
+        mode = "task_time"
+    if not mode:
+        return None
+    pending = db.pending_item_for_reference(actor, quoted_context) if quoted_context else db.single_pending_item(actor, "REMINDER_DRAFT", max_age_seconds=1800)
+    payload = services.task_reminder_draft_payload(actor, pending)
+    if not payload:
+        return None
+    original = str(pending.get("accumulated_text") or pending.get("original_text") or "")
+    resumed = replace(actor, action_key=f"{actor.source_message_id}:task-reminder-choice",
+                      reminder_pending_id=pending["item_id"],
+                      reminder_context_text=original,
+                      read_scope=payload.get("read_scope") or actor.read_scope,
+                      received_at_utc=payload.get("received_at_utc") or actor.received_at_utc)
+    import mcp_server
+    from mcp.server.mcpserver.exceptions import ToolError
+    try:
+        result = mcp_server.create_task_reminder(
+            resumed, payload["due_local"], task_id=payload["task_id"],
+            reminder_mode=mode, time_interpretation=payload.get("time_interpretation"))
+    except (ValueError, PermissionError, ToolError) as exc:
+        return _finish_simple_turn(actor, "I couldn’t schedule that task reminder: " + str(exc),
+                                   context_kind="PENDING_ITEM", context_id=pending["item_id"])
+    if not result.get("reminder_id"):
+        return _finish_simple_turn(actor, result.get("clarification_question") or "What time should I use?",
+                                   context_kind="PENDING_ITEM", context_id=pending["item_id"])
+    db.resolve_pending_item(pending["item_id"], actor.user_id, actor.source_message_id)
+    return _finish_simple_turn(
+        actor, f"Reminder set for {result.get('due_local_display') or result.get('due_at_utc')}: {result.get('task')}."
+        + (" The task's due date is unchanged." if mode == "heads_up" else " The task time is updated."),
+        context_kind="REMINDER_CREATED", context_id=result["reminder_id"], task_reminder_created=True)
+
+
 def _recover_reminder_draft_context(actor, text: str) -> dict | None:
     """Bind natural continuation language to the one active reminder draft."""
     pending = db.single_pending_item(
@@ -1335,15 +1391,17 @@ def _maybe_create_reminder_draft(actor, reply: str) -> dict | None:
         return None
     request_text = (
         getattr(actor, "intent_text", "") or getattr(actor, "trusted_text", "")
+        or getattr(actor, "reminder_context_text", "")
     )
     user_requested = (
         _is_reminder_request(request_text)
         and not _is_reminder_read_request(request_text)
     )
-    ai_interpreted = _reply_explicitly_interprets_reminder(value)
     if _is_reminder_read_request(request_text) and not _reply_is_reminder_clarification(value):
         return None
-    if not (user_requested or ai_interpreted):
+    quoted_request = str(getattr(actor, "reminder_context_text", "") or "").strip()
+    authenticated_quote_request = bool(quoted_request and not str(getattr(actor, "trusted_text", "") or "").strip())
+    if not (user_requested or (authenticated_quote_request and _reply_explicitly_interprets_reminder(value))):
         return None
 
     # The AI may interpret novel layman wording, but only an unanswered
@@ -1670,6 +1728,8 @@ def _reopen_existing_reminder_command(text: str) -> bool:
 
 
 _CLAIMED_REMINDER_QUOTE_KINDS = {
+    "REMINDER_SETUP",
+    "REMINDER_RESURFACED",
     "REMINDER_CLAIM_CONFIRMED",
     "REMINDER_INITIAL",
     "REMINDER_FOLLOWUP",
@@ -1902,8 +1962,12 @@ def process(payload: dict) -> dict:
                 if stopped.get("status") != "stopped":
                     reply = "I’m not currently listening to a discussion."
                 elif stopped.get("messages"):
-                    reply = _listening_summary(actor, stopped)
-                    listening.save_summary(stopped["session_id"], reply)
+                    try:
+                        reply = _listening_summary(actor, stopped)
+                    except Exception:
+                        reply = str(stopped.get("summary") or "Discussion saved; the summary service is unavailable.")
+                    if reply:
+                        listening.save_summary(stopped["session_id"], reply)
                 else:
                     reply = "👂 Listening stopped. No discussion messages were captured."
                 db.queue_outbound(
@@ -1923,6 +1987,16 @@ def process(payload: dict) -> dict:
                     turn["received_at_utc"],
                 )
 
+        brief_request = re.fullmatch(
+            r"(?:please\s+)?(?:(?:show|give|send|refresh|regenerate)(?:\s+me)?\s+)?(?:(?:my|the|today's|todays)\s+)?daily brief(?:\s+(?:please|today))?[.!?]?",
+            normalize_intent_text(turn["trusted_text"]).strip().casefold())
+        if brief_request:
+            if actor.conversation_type == "GROUP":
+                return _finish_simple_turn(actor, "Ask me in your private chat for your Daily Brief.")
+            brief = daily_brief.create_or_get(actor, refresh=True)
+            return _finish_simple_turn(actor, brief["text"], context_kind="DAILY_BRIEF",
+                                       context_id=brief["brief_id"], daily_brief=True)
+
         menu_section = None
         if _menu_command(turn["trusted_text"]):
             reply = _menu_text()
@@ -1940,7 +2014,7 @@ def process(payload: dict) -> dict:
             if choice == 0:
                 reply = _menu_text()
                 context_id = "MAIN"
-            elif choice in _MENU_SECTIONS:
+            elif 1 <= choice <= 10:
                 reply = _menu_text(choice)
                 context_id = str(choice)
             else:
@@ -1954,6 +2028,15 @@ def process(payload: dict) -> dict:
             _record_deterministic_turn(actor, reply)
             db.finish_inbound(actor.source_message_id, reply)
             return {"ok": True, "menu": True}
+
+        try:
+            saved_media = services.save_original_media_request(
+                actor, quoted_message_id=payload.get("quoted_message_id"))
+        except (ValueError, PermissionError) as exc:
+            return _finish_simple_turn(actor, f"I couldn’t save that original media: {exc}", media_save_failed=True)
+        if saved_media:
+            return _finish_simple_turn(actor, saved_media["reply"],
+                                       original_media_saved=True, saved_item_id=saved_media.get("item_id"))
 
         if payload.get("audio_data"):
             audio_id = next(
@@ -1981,30 +2064,6 @@ def process(payload: dict) -> dict:
             _record_deterministic_turn(actor, reply)
             db.finish_inbound(actor.source_message_id, reply)
             return {"ok": True, "voice_pending": True, "pending_item_id": pending["item_id"]}
-
-        pending_voice_title = _save_pending_voice_title(turn["trusted_text"])
-        if pending_voice_title and actor.conversation_type != "GROUP":
-            voice_pending = db.single_pending_item(
-                actor, "VOICE", max_age_seconds=1800
-            )
-            if voice_pending and voice_pending.get("media_id"):
-                saved = services.save_existing_media_item(
-                    actor,
-                    pending_voice_title,
-                    pending_voice_title,
-                    str(voice_pending["media_id"]),
-                    shared=(turn["read_scope"] != "private"),
-                    tags="voice-note",
-                )
-                db.resolve_pending_item(
-                    voice_pending["item_id"], actor.user_id, actor.source_message_id
-                )
-                return _finish_simple_turn(
-                    actor,
-                    f'Saved “{pending_voice_title}” with the original voice note.',
-                    voice_note_saved=True,
-                    saved_item_id=saved.get("item_id"),
-                )
 
         # Existing authentication, group gating, privacy derivation and voice
         # pending policy above remain authoritative. Dot bypasses all semantic
@@ -2101,6 +2160,50 @@ def process(payload: dict) -> dict:
                         if routing else ""
                     ),
                 )
+
+        # Teaching is opt-in and object-bound. It never substitutes old text
+        # for the current sender's authority or bypasses normal tool guards.
+        import progressive_teaching
+        teaching_approval = progressive_teaching.approve_correction(actor, quoted_context)
+        if teaching_approval:
+            approval_reply = teaching_approval["reply"]
+            if teaching_approval.get("status") == "collision":
+                approval_reply += (
+                    "\nPrevious: " + str(teaching_approval.get("previous_interpretation") or "")[:800]
+                    + "\nNew: " + str(teaching_approval.get("new_interpretation") or "")[:800]
+                )
+            return _finish_simple_turn(
+                actor, approval_reply,
+                context_kind="TEACHING_CONFIRMATION" if teaching_approval.get("draft_id") else None,
+                context_id=teaching_approval.get("draft_id"), teaching=True)
+        teaching_attempt = progressive_teaching.prepare_correction(actor, quoted_context)
+        if teaching_attempt:
+            if teaching_attempt.get("status") != "recovery_hint":
+                return _finish_simple_turn(actor, teaching_attempt["reply"], teaching=True)
+            quoted_context = dict(quoted_context or {})
+            quoted_context["teaching_recovery_hint"] = teaching_attempt["hint"]
+
+        # Task provenance is rendered directly from its immutable source row,
+        # never reconstructed from recent conversational memory or reminders.
+        task_query = normalize_intent_text(turn["trusted_text"])
+        if re.search(r"(?i)\b(?:original|history|details|what did i say)\b", task_query) and re.search(r"(?i)\btask\b", task_query):
+            import phase2
+            exact_task = None
+            if quoted_context and quoted_context.get("context_kind") == "SELECTION":
+                parts = str(quoted_context.get("context_id") or "").split(":")
+                if len(parts) >= 2 and parts[0] == "TASK":
+                    exact_task = parts[1]
+            try:
+                task_id = phase2.resolve_task_reference(actor, exact_task, task_query)
+                detail = phase2.task_detail(actor, task_id)
+            except ValueError:
+                return _finish_simple_turn(actor, "Which task would you like the original instruction or history for?")
+            return _finish_simple_turn(actor, phase2.render_task_detail(detail),
+                                       context_kind="SELECTION", context_id=f"TASK:{task_id}", task_details=True)
+
+        task_choice_result = _resume_task_reminder_choice(actor, turn["trusted_text"], quoted_context)
+        if task_choice_result is not None:
+            return task_choice_result
 
         reminder_continuation_text = str(turn["trusted_text"] or "").strip()
         if (
@@ -2318,7 +2421,7 @@ def process(payload: dict) -> dict:
         is_error_command, inline_explanation = _error_report_command(
             turn["intent_text"]
         )
-        if is_error_command:
+        if is_error_command and not teaching_attempt:
             if not quoted_context or not quoted_context.get("outbound_id"):
                 return _finish_simple_turn(
                     actor,
@@ -2402,6 +2505,20 @@ def process(payload: dict) -> dict:
                 "Okay, I cancelled that reminder request.",
                 reminder_draft_cancelled=True,
             )
+
+        # A quoted first-person commitment refers to that canonical reminder,
+        # never to a new missing-time draft. Backend atomically checks ACL/state.
+        claim_id = _quoted_reminder_id_for_claim_release(quoted_context)
+        claim_words = normalize_intent_text(turn["trusted_text"]).casefold()
+        if claim_id and re.fullmatch(
+            r"(?:yes[, ]+)?(?:i(?:'ll| will)|let me|i can)\s+(?:handle|take|do|claim|take care of)\s+(?:this|that|it|this one|that one|the reminder)(?:\s+(?:please|thanks))?[.!]?",
+            claim_words.strip(),
+        ):
+            claimed = services.claim_reminder_with_confirmation(actor, claim_id, source="WHATSAPP_QUOTE")
+            if claimed.get("status") == "claimed":
+                return _finish_simple_turn(actor, "Claimed — I’ve queued your private confirmation.", reminder_claimed=True)
+            reply = "That reminder is already claimed." if claimed.get("status") == "already_claimed" else "That reminder is no longer available to claim."
+            return _finish_simple_turn(actor, reply, reminder_claimed=False)
 
         # Explicit reminder lifecycle controls are deterministic because
         # they mutate an already-persisted object and must not degrade into a
@@ -2681,6 +2798,12 @@ def process(payload: dict) -> dict:
         personal_reminder_id = (
             None if reminder_setup_id else _created_personal_reminder_id(actor)
         )
+        # A verified creation owns its acknowledgement. A list created by an
+        # earlier turn in the same clock second must never steal the binding.
+        if reminder_setup_id or personal_reminder_id:
+            selection_set_context = None
+            selection_context = None
+
         continuing_reminder_draft = (
             pending_item
             if pending_item
@@ -2706,6 +2829,27 @@ def process(payload: dict) -> dict:
                 else None
             )
             reminder_draft = retained_draft or _maybe_create_reminder_draft(actor, reply)
+        if reminder_created and not attachments:
+            conn = db.connect()
+            try:
+                made = conn.execute(
+                    "SELECT * FROM reminders WHERE source_message_id=? AND owner_id=?",
+                    (actor.source_message_id, actor.user_id)).fetchall()
+                other_writes = conn.execute(
+                    "SELECT tool_name FROM tool_audit WHERE source_message_id=? AND status='OK'",
+                    (actor.source_message_id,)).fetchall()
+                compound = any(row["tool_name"] not in {"create_reminder", "create_task_reminder", "list_reminders", "get_task_details"} for row in other_writes)
+                if len(made) == 1 and not compound:
+                    row = made[0]
+                    reply = f"Reminder set: {row['task_text']} — {services._friendly_reminder_time(row['due_at_utc'], row['timezone_name'])}."
+                    overlap = conn.execute(
+                        "SELECT COUNT(*) FROM reminders WHERE reminder_id<>? AND owner_id=? AND space_id=? AND due_at_utc=? AND status IN ('OPEN','DUE','DEFERRED')",
+                        (row['reminder_id'], row['owner_id'], row['space_id'], row['due_at_utc'])).fetchone()[0]
+                    if overlap:
+                        reply += f" {overlap} other active reminder(s) share this time."
+            finally:
+                conn.close()
+
         report_context = _report_context_for_turn(actor)
         finance_review = _finance_review_for_turn(actor)
 
@@ -2773,6 +2917,8 @@ def process(payload: dict) -> dict:
         _resolve_voice_pending_after_success(
             actor, pending_item, turn["trusted_text"]
         )
+        if teaching_attempt:
+            progressive_teaching.record_recovery(actor, teaching_attempt["draft_id"])
         db.finish_inbound(actor.source_message_id, reply)
         return {"ok": True}
     except media.VoiceTranscriptionUncertain as exc:

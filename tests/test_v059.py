@@ -157,11 +157,9 @@ class V059LiveRegressionTests(unittest.TestCase):
             conn.close()
 
         self.assertIsNone(markers["job_reacted_at_utc"])
-        self.assertIsNotNone(markers["job_pinned_at_utc"])
-        self.assertEqual(markers["job_pin_target"], "OUTBOUND")
-        self.assertEqual([payload["kind"] for payload in sent], ["pin"])
-        self.assertTrue(sent[0]["target_from_me"])
-        self.assertEqual(sent[0]["target_message_id"], "wa-v059-draft")
+        self.assertIsNone(markers["job_pinned_at_utc"])
+        self.assertIsNone(markers["job_pin_target"])
+        self.assertEqual([payload["kind"] for payload in sent], [])
 
         second = {
             "message_id": "v059-draft-cancel",
@@ -196,9 +194,8 @@ class V059LiveRegressionTests(unittest.TestCase):
             conn.close()
 
         self.assertEqual(draft_state, "CANCELLED")
-        self.assertIsNotNone(cleanup["job_unpinned_at_utc"])
-        self.assertEqual([payload["kind"] for payload in sent], ["unpin"])
-        self.assertTrue(sent[0]["target_from_me"])
+        self.assertIsNone(cleanup["job_unpinned_at_utc"])
+        self.assertEqual([payload["kind"] for payload in sent], [])
 
 
 if __name__ == "__main__":

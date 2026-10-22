@@ -91,6 +91,7 @@ class AlexCoreTests(unittest.TestCase):
                 "selection_sets", "finance_selection_sets", "task_selection_sets",
                 "custom_ledger_selection_sets", "media_selection_sets",
                 "pending_selection_sets", "active_report_contexts",
+                "goal_selection_sets", "discussion_selection_sets",
                 "discussion_messages", "discussion_sessions",
                 "reminder_handoffs", "reminder_claim_events", "reminder_events",
                 "task_reminder_links", "task_events", "tasks",
@@ -132,24 +133,24 @@ class AlexCoreTests(unittest.TestCase):
             "roster_profiles": [{
                 "id": "main_roster", "owner": "husband", "visibility": "private",
                 "name": "Alternating roster", "cycle_start": "2026-09-21",
-                "pattern": "evening,morning", "day_start": "07:45",
-                "day_end": "16:15", "evening_start": "16:30",
-                "evening_end": "01:00", "active": True,
+                "pattern": "evening,morning", "day_start": "08:30",
+                "day_end": "17:30", "evening_start": "17:30",
+                "evening_end": "02:00", "active": True,
             }],
             "overtime_profiles": [{
                 "id": "standard_ot", "owner": "husband", "visibility": "private",
                 "name": "Standard overtime", "currency": "MYR",
-                "morning_pre_hours": 2, "morning_pre_start": "05:45",
-                "morning_weekend_standard_start": "04:45",
-                "morning_weekend_standard_end": "16:45",
-                "morning_weekend_low_start": "05:45",
-                "morning_weekend_low_end": "15:45",
-                "evening_post_hours": 2.75, "evening_post_start": "01:00",
-                "evening_post_end": "04:15", "evening_weekend_days": "saturday",
-                "evening_weekend_standard_start": "16:15",
-                "evening_weekend_standard_end": "04:15",
-                "evening_weekend_low_start": "16:15",
-                "evening_weekend_low_end": "23:59",
+                "morning_pre_hours": 2, "morning_pre_start": "06:30",
+                "morning_weekend_standard_start": "05:30",
+                "morning_weekend_standard_end": "17:00",
+                "morning_weekend_low_start": "06:30",
+                "morning_weekend_low_end": "16:00",
+                "evening_post_hours": 2.75, "evening_post_start": "02:00",
+                "evening_post_end": "05:30", "evening_weekend_days": "saturday",
+                "evening_weekend_standard_start": "17:30",
+                "evening_weekend_standard_end": "05:30",
+                "evening_weekend_low_start": "17:30",
+                "evening_weekend_low_end": "23:30",
                 "sunday_override_allowed": True, "payout_days": "7,12",
                 "rate_formula": "", "active": True,
             }],
@@ -5854,6 +5855,7 @@ class AlexCoreTests(unittest.TestCase):
 
 
     def test_v0510_live_lamp_clarification_pins_then_creation_unpins(self):
+        # TASK-04: clarification state survives, but is never pinned as scheduled work.
         first = {
             "message_id": "v0510-r5-first",
             "provider": "WHATSAPP",
@@ -5907,11 +5909,9 @@ class AlexCoreTests(unittest.TestCase):
         finally:
             conn.close()
 
-        self.assertEqual([p["kind"] for p in controls], ["pin"])
-        self.assertTrue(controls[0]["target_from_me"])
-        self.assertEqual(controls[0]["target_message_id"], "wa-v0510-r5-question")
-        self.assertIsNotNone(marked["job_pinned_at_utc"])
-        self.assertEqual(marked["job_pin_target"], "OUTBOUND")
+        self.assertEqual([p["kind"] for p in controls], [])
+        self.assertIsNone(marked["job_pinned_at_utc"])
+        self.assertIsNone(marked["job_pin_target"])
         self.assertIsNone(marked["job_reacted_at_utc"])
 
         second = {
@@ -5961,10 +5961,8 @@ class AlexCoreTests(unittest.TestCase):
             conn.close()
 
         self.assertEqual(state, "RESOLVED")
-        self.assertEqual([p["kind"] for p in controls], ["unpin"])
-        self.assertTrue(controls[0]["target_from_me"])
-        self.assertEqual(controls[0]["target_message_id"], "wa-v0510-r5-question")
-        self.assertIsNotNone(cleaned["job_unpinned_at_utc"])
+        self.assertEqual([p["kind"] for p in controls], [])
+        self.assertIsNone(cleaned["job_unpinned_at_utc"])
 
     def test_v0510_reminder_clarification_detection_covers_natural_when_wording(self):
         for reply in (
@@ -6037,6 +6035,7 @@ class AlexCoreTests(unittest.TestCase):
 
 
     def test_v0512_multistep_reminder_draft_moves_pin_and_unpins_on_creation(self):
+        # TASK-04: clarification state survives, but is never pinned as scheduled work.
         first = {
             "message_id": "v0512-shoes-first",
             "provider": "WHATSAPP",
@@ -6083,7 +6082,7 @@ class AlexCoreTests(unittest.TestCase):
                 side_effect=lambda payload: (controls.append(payload) or True, "{}"),
             ):
                 outbox._reconcile_pending_item_markers(conn)
-            self.assertEqual([p["kind"] for p in controls], ["pin"])
+            self.assertEqual([p["kind"] for p in controls], [])
         finally:
             conn.close()
 
@@ -6129,7 +6128,7 @@ class AlexCoreTests(unittest.TestCase):
             ):
                 outbox._reconcile_pending_item_markers(conn)
             kinds = [p["kind"] for p in controls]
-            self.assertEqual(kinds, ["pin", "unpin"])
+            self.assertEqual(kinds, [])
             first_state = conn.execute(
                 """SELECT job_unpinned_at_utc FROM outbound_messages
                    WHERE outbound_id=?""",
@@ -6140,8 +6139,8 @@ class AlexCoreTests(unittest.TestCase):
                    FROM outbound_messages WHERE outbound_id=?""",
                 (second_out["outbound_id"],),
             ).fetchone()
-            self.assertIsNotNone(first_state["job_unpinned_at_utc"])
-            self.assertIsNotNone(second_state["job_pinned_at_utc"])
+            self.assertIsNone(first_state["job_unpinned_at_utc"])
+            self.assertIsNone(second_state["job_pinned_at_utc"])
             self.assertIsNone(second_state["job_unpinned_at_utc"])
         finally:
             conn.close()
@@ -6196,13 +6195,13 @@ class AlexCoreTests(unittest.TestCase):
                 side_effect=lambda payload: (controls.append(payload) or True, "{}"),
             ):
                 outbox._reconcile_pending_item_markers(conn)
-            self.assertEqual([p["kind"] for p in controls], ["unpin"])
+            self.assertEqual([p["kind"] for p in controls], [])
             final_state = conn.execute(
                 """SELECT job_unpinned_at_utc FROM outbound_messages
                    WHERE outbound_id=?""",
                 (second_out["outbound_id"],),
             ).fetchone()
-            self.assertIsNotNone(final_state["job_unpinned_at_utc"])
+            self.assertIsNone(final_state["job_unpinned_at_utc"])
         finally:
             conn.close()
 
@@ -6596,6 +6595,7 @@ class AlexCoreTests(unittest.TestCase):
 
 
     def test_v0514_ambiguous_next_friday_question_creates_and_pins_draft(self):
+        # TASK-04: clarification state survives, but is never pinned as scheduled work.
         fixed = datetime(2026, 10, 3, 16, 5, tzinfo=timezone.utc)
         payload = {
             "message_id": "v0514-next-friday",
@@ -6656,14 +6656,9 @@ class AlexCoreTests(unittest.TestCase):
         finally:
             conn.close()
 
-        self.assertEqual([p["kind"] for p in controls], ["pin"])
-        self.assertTrue(controls[0]["target_from_me"])
-        self.assertEqual(
-            controls[0]["target_message_id"],
-            "wa-v0514-next-friday-question",
-        )
-        self.assertIsNotNone(marked["job_pinned_at_utc"])
-        self.assertEqual(marked["job_pin_target"], "OUTBOUND")
+        self.assertEqual([p["kind"] for p in controls], [])
+        self.assertIsNone(marked["job_pinned_at_utc"])
+        self.assertIsNone(marked["job_pin_target"])
 
 
 
@@ -7121,6 +7116,7 @@ class AlexCoreTests(unittest.TestCase):
         self.assertTrue(any("create_reminder" in names for names in exposed), exposed)
 
     def test_v0516_new_draft_supersedes_old_and_reconciles_pin(self):
+        # TASK-04: clarification state survives, but is never pinned as scheduled work.
         conversation = "60111111111@s.whatsapp.net"
         phone = "+60111111111"
         first = {
@@ -7196,10 +7192,10 @@ class AlexCoreTests(unittest.TestCase):
         self.assertEqual(old_state["status"], "CANCELLED")
         self.assertEqual(new["status"], "PENDING")
         self.assertEqual(sum(1 for row in rows if row["status"] == "PENDING"), 1)
-        self.assertIn("unpin", [x["kind"] for x in controls])
-        self.assertIn("pin", [x["kind"] for x in controls])
+        self.assertEqual(controls, [])
 
     def test_v0516_quoted_cancel_is_deterministic_and_not_pinned(self):
+        # TASK-04: clarification state survives, but is never pinned as scheduled work.
         conversation = "60111111111@s.whatsapp.net"
         phone = "+60111111111"
         first = {
@@ -7277,7 +7273,7 @@ class AlexCoreTests(unittest.TestCase):
         self.assertEqual(state["status"], "CANCELLED")
         self.assertIsNone(ack["context_kind"])
         self.assertIn("cancelled that reminder request", ack["text_body"].casefold())
-        self.assertIn("unpin", [x["kind"] for x in controls])
+        self.assertEqual(controls, [])
         self.assertEqual(history[0]["role"], "assistant")
         self.assertIn("cancelled", history[0]["content"].casefold())
         self.assertEqual(history[1]["role"], "user")
