@@ -469,37 +469,56 @@ def main() -> dict[str, Any]:
         args.real_ai_review_report
         or report_path.with_name("alex-real-ai-reasoning-review.json")
     )
-    real_ai_review = run_real_ai_snapshot_review(real_ai_review_path)
-    real_ai_report = (
-        real_ai_review.get("report")
-        if isinstance(real_ai_review.get("report"), dict)
-        else None
+    external_review_deferred = (
+        os.environ.get("ALEX_EXTERNAL_REVIEW_DEFERRED", "").strip() == "1"
     )
-    report["real_ai_reasoning_review"] = {
-        "status": (
-            real_ai_report.get("status")
-            if isinstance(real_ai_report, dict)
-            else real_ai_review.get("status")
-        ),
-        "returncode": real_ai_review.get("returncode"),
-        "summary": (
-            real_ai_report.get("summary")
-            if isinstance(real_ai_report, dict) else None
-        ),
-        "external_model_review": (
-            real_ai_report.get("external_model_review")
-            if isinstance(real_ai_report, dict) else None
-        ),
-        "report": str(real_ai_review_path),
-    }
-    if real_ai_report is None:
-        report["status"] = "LAB_ERROR"
-        report["summary"]["infrastructure_errors"] = sorted(set(
-            list(report["summary"].get("infrastructure_errors") or [])
-            + ["real_ai_snapshot_review"]
-        ))
-    elif real_ai_report.get("status") != "PASS" and report.get("status") == "PASS":
-        report["status"] = "PRODUCT_FAIL"
+    if external_review_deferred:
+        deferred_reason = os.environ.get(
+            "ALEX_EXTERNAL_REVIEW_REASON", "external_reviewer_unavailable"
+        ).strip()
+        report["real_ai_reasoning_review"] = {
+            "status": "DEFERRED_EXTERNAL_REVIEW",
+            "returncode": 0,
+            "summary": {
+                "reason": deferred_reason,
+                "not_claimed_as_pass": True,
+            },
+            "external_model_review": None,
+            "report": None,
+        }
+        report["summary"]["external_review_deferred"] = deferred_reason
+    else:
+        real_ai_review = run_real_ai_snapshot_review(real_ai_review_path)
+        real_ai_report = (
+            real_ai_review.get("report")
+            if isinstance(real_ai_review.get("report"), dict)
+            else None
+        )
+        report["real_ai_reasoning_review"] = {
+            "status": (
+                real_ai_report.get("status")
+                if isinstance(real_ai_report, dict)
+                else real_ai_review.get("status")
+            ),
+            "returncode": real_ai_review.get("returncode"),
+            "summary": (
+                real_ai_report.get("summary")
+                if isinstance(real_ai_report, dict) else None
+            ),
+            "external_model_review": (
+                real_ai_report.get("external_model_review")
+                if isinstance(real_ai_report, dict) else None
+            ),
+            "report": str(real_ai_review_path),
+        }
+        if real_ai_report is None:
+            report["status"] = "LAB_ERROR"
+            report["summary"]["infrastructure_errors"] = sorted(set(
+                list(report["summary"].get("infrastructure_errors") or [])
+                + ["real_ai_snapshot_review"]
+            ))
+        elif real_ai_report.get("status") != "PASS" and report.get("status") == "PASS":
+            report["status"] = "PRODUCT_FAIL"
 
     chatgpt_review_path = Path(
         args.chatgpt_review_report
