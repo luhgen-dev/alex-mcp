@@ -881,6 +881,29 @@ def _build_user_error_bundle(conn, actor, target_outbound_id: str,
     return bundle, detection_state
 
 
+def _archive_error_bundle_locally(error_id: str, report: dict) -> bool:
+    """Persist a redacted incident file automatically; no user export command needed."""
+    try:
+        safe_id = str(error_id or "").upper()
+        directory = os.path.join(DATA_DIR, "diagnostics")
+        os.makedirs(directory, exist_ok=True)
+        path = os.path.join(directory, safe_id + ".json")
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as handle:
+            json.dump(
+                {
+                    "format": "alex-diagnostic-autoarchive-v2",
+                    **_redact_json(report),
+                },
+                handle, ensure_ascii=False, indent=2, sort_keys=True,
+            )
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, path)
+        return True
+    except Exception:
+        return False
+
+
 def complete_user_error_report(actor, explanation: str,
                                quoted_context: dict | None = None,
                                *, error_draft_id: str | None = None) -> dict:
@@ -953,11 +976,24 @@ def complete_user_error_report(actor, explanation: str,
                 (actor.user_id, actor.conversation_id, pending_to_clear),
             )
         conn.commit()
+        archived = _archive_error_bundle_locally(
+            error_id,
+            {
+                "error_id": error_id,
+                "user_explanation": explanation[:4000],
+                "detection_state": detection_state,
+                "bundle": bundle,
+                "created_at_utc": runtime_clock.now_utc().isoformat(),
+            },
+        )
         return {
             "status": "recorded",
             "error_id": error_id,
             "detection_state": detection_state,
-            "note": "Diagnostic only; no retry or undo was performed.",
+            "archived_locally": archived,
+            "note": (
+                "Diagnostic evidence was preserved automatically; no retry or undo was performed."
+            ),
         }
     except Exception:
         conn.rollback()

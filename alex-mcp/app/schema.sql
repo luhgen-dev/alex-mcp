@@ -106,7 +106,7 @@ CREATE TABLE IF NOT EXISTS financial_event_corrections (
 CREATE TABLE IF NOT EXISTS media_objects (
     media_id TEXT PRIMARY KEY,
     source_message_id TEXT NOT NULL,
-    media_type TEXT NOT NULL CHECK(media_type IN ('IMAGE','AUDIO','PDF','DOCUMENT')),
+    media_type TEXT NOT NULL CHECK(media_type IN ('IMAGE','AUDIO','VIDEO','PDF','DOCUMENT')),
     mime_type TEXT NOT NULL,
     sha256 TEXT NOT NULL,
     original_name TEXT,
@@ -243,6 +243,19 @@ CREATE TABLE IF NOT EXISTS selection_sets (
 CREATE INDEX IF NOT EXISTS idx_selection_context
 ON selection_sets(user_id,conversation_id,selection_kind,created_at_utc);
 
+CREATE TABLE IF NOT EXISTS finance_selection_sets (
+    selection_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    items_json TEXT NOT NULL,
+    read_scope TEXT,
+    created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at_utc TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_finance_selection_context
+ON finance_selection_sets(user_id,conversation_id,created_at_utc);
+
 CREATE TABLE IF NOT EXISTS media_selection_sets (
     selection_id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
@@ -255,6 +268,19 @@ CREATE TABLE IF NOT EXISTS media_selection_sets (
 );
 CREATE INDEX IF NOT EXISTS idx_media_selection_context
 ON media_selection_sets(user_id,conversation_id,created_at_utc);
+
+CREATE TABLE IF NOT EXISTS task_selection_sets (
+    selection_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    items_json TEXT NOT NULL,
+    read_scope TEXT,
+    created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at_utc TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_task_selection_context
+ON task_selection_sets(user_id,conversation_id,created_at_utc);
 
 CREATE TABLE IF NOT EXISTS pending_selection_sets (
     selection_id TEXT PRIMARY KEY,
@@ -561,6 +587,103 @@ CREATE TABLE IF NOT EXISTS cashflow_baselines (
     FOREIGN KEY(user_id) REFERENCES users(user_id)
 );
 
+CREATE TABLE IF NOT EXISTS daily_briefs (
+    brief_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    brief_date TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('PENDING','ACKNOWLEDGED')) DEFAULT 'PENDING',
+    payload_json TEXT NOT NULL,
+    created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    acknowledged_at_utc TEXT,
+    UNIQUE(user_id,brief_date),
+    FOREIGN KEY(user_id) REFERENCES users(user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_daily_brief_status
+ON daily_briefs(user_id,status,brief_date);
+
+
+CREATE TABLE IF NOT EXISTS custom_ledgers (
+    ledger_id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL,
+    space_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    purpose TEXT,
+    fields_json TEXT NOT NULL DEFAULT '[]',
+    status TEXT NOT NULL CHECK(status IN ('ACTIVE','CLOSED')) DEFAULT 'ACTIVE',
+    created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(space_id,name),
+    FOREIGN KEY(owner_id) REFERENCES users(user_id),
+    FOREIGN KEY(space_id) REFERENCES spaces(space_id)
+);
+CREATE TABLE IF NOT EXISTS custom_ledger_entries (
+    entry_id TEXT PRIMARY KEY,
+    action_key TEXT NOT NULL UNIQUE,
+    ledger_id TEXT NOT NULL,
+    source_message_id TEXT,
+    owner_id TEXT NOT NULL,
+    entry_date TEXT NOT NULL,
+    description TEXT NOT NULL,
+    entry_kind TEXT NOT NULL CHECK(entry_kind IN ('NOTE','SPENDING','SAVINGS','TRANSFER','REFERENCE_ONLY')),
+    amount_minor INTEGER,
+    currency TEXT,
+    data_json TEXT NOT NULL DEFAULT '{}',
+    media_id TEXT,
+    status TEXT NOT NULL CHECK(status IN ('ACTIVE','SUPERSEDED')) DEFAULT 'ACTIVE',
+    created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(ledger_id) REFERENCES custom_ledgers(ledger_id),
+    FOREIGN KEY(source_message_id) REFERENCES inbound_messages(message_id),
+    FOREIGN KEY(owner_id) REFERENCES users(user_id),
+    FOREIGN KEY(media_id) REFERENCES media_objects(media_id)
+);
+CREATE INDEX IF NOT EXISTS idx_custom_ledger_entries
+ON custom_ledger_entries(ledger_id,status,entry_date,created_at_utc);
+CREATE TABLE IF NOT EXISTS custom_ledger_selection_sets (
+    selection_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    items_json TEXT NOT NULL,
+    read_scope TEXT,
+    created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at_utc TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_custom_ledger_selection
+ON custom_ledger_selection_sets(user_id,conversation_id,created_at_utc);
+
+
+CREATE TABLE IF NOT EXISTS discussion_sessions (
+    session_id TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL,
+    started_by_user_id TEXT NOT NULL,
+    parent_session_id TEXT,
+    status TEXT NOT NULL CHECK(status IN ('ACTIVE','STOPPED','TIMED_OUT')) DEFAULT 'ACTIVE',
+    previous_summary TEXT,
+    summary_text TEXT,
+    started_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_message_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    ended_at_utc TEXT,
+    FOREIGN KEY(started_by_user_id) REFERENCES users(user_id),
+    FOREIGN KEY(parent_session_id) REFERENCES discussion_sessions(session_id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_discussion_one_active
+ON discussion_sessions(conversation_id) WHERE status='ACTIVE';
+
+CREATE TABLE IF NOT EXISTS discussion_messages (
+    message_id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    sender_phone TEXT NOT NULL,
+    text TEXT,
+    created_at_utc TEXT NOT NULL,
+    FOREIGN KEY(session_id) REFERENCES discussion_sessions(session_id),
+    FOREIGN KEY(user_id) REFERENCES users(user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_discussion_messages_session
+ON discussion_messages(session_id,created_at_utc);
+
+
 CREATE TABLE IF NOT EXISTS conversation_turns (
     turn_id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
@@ -577,7 +700,7 @@ CREATE TABLE IF NOT EXISTS outbound_messages (
     outbound_id TEXT PRIMARY KEY,
     source_message_id TEXT,
     conversation_id TEXT NOT NULL,
-    kind TEXT NOT NULL CHECK(kind IN ('TEXT','IMAGE','DOCUMENT')),
+    kind TEXT NOT NULL CHECK(kind IN ('TEXT','IMAGE','AUDIO','VIDEO','DOCUMENT')),
     text_body TEXT,
     local_path TEXT,
     mime_type TEXT,

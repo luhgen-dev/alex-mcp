@@ -22,7 +22,7 @@ from text_normalization import normalize_intent_text
 from dateutil.rrule import rrulestr
 
 from context import ActorContext
-from config import DATA_DIR, get_settings
+from config import DATA_DIR, get_settings, normalize_phone
 from db import connect, utc_now
 
 
@@ -887,12 +887,17 @@ def log_expense(actor: ActorContext, description: str, amount: float | None = No
                 event_type: str = "Expense") -> dict:
     if not actor.action_key:
         raise RuntimeError("missing deterministic action key")
-    resolved_currency = (currency or "").strip().upper()
+    raw_currency = (currency or "").strip().upper()
+    currency_aliases = {
+        "": "MYR", "RM": "MYR", "MYR": "MYR",
+        "S$": "SGD", "SGD": "SGD",
+    }
+    resolved_currency = currency_aliases.get(raw_currency)
     if resolved_currency not in {"MYR", "SGD"}:
         return {
             "status": "clarification_required",
             "missing": ["currency"],
-            "message": "Ask whether this expense was MYR or SGD. Nothing was logged yet.",
+            "message": "That currency is not supported. Ask whether this should be MYR or SGD. Nothing was logged yet.",
         }
     conn = connect()
     try:
@@ -927,6 +932,34 @@ def log_expense(actor: ActorContext, description: str, amount: float | None = No
         )
         for media_id in actor.media_ids:
             conn.execute("INSERT OR IGNORE INTO event_media_links(event_id,media_id) VALUES(?,?)", (event_id, media_id))
+        pending_item_id = None
+        if status == "PENDING_HUMAN_REVIEW":
+            existing_pending = conn.execute(
+                """SELECT item_id FROM pending_items
+                   WHERE source_message_id=? AND kind='FINANCE_REVIEW'
+                   LIMIT 1""",
+                (actor.source_message_id,),
+            ).fetchone()
+            if existing_pending:
+                pending_item_id = str(existing_pending["item_id"])
+            else:
+                pending_item_id = str(uuid.uuid4())
+                conn.execute(
+                    """INSERT INTO pending_items(
+                           item_id,kind,owner_id,conversation_id,source_message_id,
+                           media_id,note
+                       ) VALUES(?,?,?,?,?,?,?)""",
+                    (
+                        pending_item_id, "FINANCE_REVIEW", actor.user_id,
+                        actor.conversation_id, actor.source_message_id,
+                        (actor.media_ids[0] if actor.media_ids else None),
+                        json.dumps({
+                            "event_id": event_id,
+                            "reason": reason,
+                            "description": description.strip()[:300],
+                        }, ensure_ascii=False, sort_keys=True),
+                    ),
+                )
         conn.commit()
         return {
             "status": "logged" if status == "ACTIVE" else "needs_confirmation",
@@ -937,6 +970,7 @@ def log_expense(actor: ActorContext, description: str, amount: float | None = No
             "category": resolved_category,
             "space": space,
             "pending_reason": reason,
+            "pending_item_id": pending_item_id,
             "receipt_saved": bool(actor.media_ids),
         }
     finally:
@@ -962,6 +996,12 @@ def confirm_expense(actor: ActorContext, event_id: str, approve: bool = True,
             }
         if not approve:
             conn.execute("UPDATE financial_events SET status='IGNORED' WHERE event_id=?", (event_id,))
+            conn.execute(
+                """UPDATE pending_items
+                   SET status='CANCELLED',resolved_at_utc=?,resolution_message_id=?
+                   WHERE source_message_id=? AND kind='FINANCE_REVIEW' AND status='PENDING'""",
+                (utc_now(), actor.source_message_id, row["source_message_id"]),
+            )
             conn.commit()
             return {"status": "ignored", "event_id": event_id}
         new_amount = _minor(amount) if amount is not None else row["amount_minor"]
@@ -972,6 +1012,12 @@ def confirm_expense(actor: ActorContext, event_id: str, approve: bool = True,
         conn.execute(
             "UPDATE financial_events SET amount_minor=?,category=?,status='ACTIVE' WHERE event_id=?",
             (new_amount, new_category, event_id),
+        )
+        conn.execute(
+            """UPDATE pending_items
+               SET status='RESOLVED',resolved_at_utc=?,resolution_message_id=?
+               WHERE source_message_id=? AND kind='FINANCE_REVIEW' AND status='PENDING'""",
+            (utc_now(), actor.source_message_id, row["source_message_id"]),
         )
         conn.commit()
         return {"status": "confirmed", "event_id": event_id, "amount": new_amount / 100,
@@ -1065,7 +1111,7 @@ def query_finances(actor: ActorContext, start_date: str | None = None, end_date:
             f"SELECT COUNT(*) AS n FROM financial_events WHERE {where}", params
         ).fetchone()
         row_sql = f"""SELECT event_id,event_type,category,amount_minor,currency,event_date_utc,
-                             description,reference_text,space_id
+                             description,reference_text,space_id,source_message_id,created_at_utc
                       FROM financial_events WHERE {where}
                       ORDER BY event_date_utc DESC, created_at_utc DESC, rowid DESC"""
         row_params = list(params)
@@ -1077,6 +1123,18 @@ def query_finances(actor: ActorContext, start_date: str | None = None, end_date:
             canonical = _clean_category(row.get("category"))
             if canonical:
                 row["category"] = canonical
+        source_ids = [str(row.get("source_message_id") or "") for row in rows if row.get("source_message_id")]
+        source_meta = {}
+        if source_ids:
+            marks_src = ",".join("?" for _ in source_ids)
+            source_meta = {
+                str(src["message_id"]): dict(src)
+                for src in conn.execute(
+                    f"""SELECT message_id,raw_text,received_at_utc
+                        FROM inbound_messages WHERE message_id IN ({marks_src})""",
+                    source_ids,
+                ).fetchall()
+            }
     finally:
         conn.close()
 
@@ -1105,10 +1163,19 @@ def query_finances(actor: ActorContext, start_date: str | None = None, end_date:
             local = datetime.fromisoformat(r["event_date_utc"]).astimezone(tz).isoformat()
         except Exception:
             local = r["event_date_utc"]
+        src = source_meta.get(str(r.get("source_message_id") or ""), {})
+        logged_raw = src.get("received_at_utc") or r.get("created_at_utc")
+        try:
+            logged_local = datetime.fromisoformat(str(logged_raw).replace("Z", "+00:00")).astimezone(tz).isoformat()
+        except Exception:
+            logged_local = logged_raw
         records.append({
             "event_id": r["event_id"], "type": r["event_type"], "amount": amount,
             "currency": r["currency"], "category": r["category"], "description": r["description"],
-            "date_local": local, "reference": r["reference_text"],
+            "date_local": local, "logged_at_local": logged_local,
+            "source_text": str(src.get("raw_text") or "")[:500] or None,
+            "has_receipt": False,
+            "reference": r["reference_text"],
             "scope": "family" if r["space_id"] == "FAMILY_SHARED" else "private",
         })
 
@@ -1117,6 +1184,24 @@ def query_finances(actor: ActorContext, start_date: str | None = None, end_date:
         cur: round(spending_totals.get(cur, 0) - income_totals.get(cur, 0), 2)
         for cur in currencies
     }
+    if records:
+        conn = connect()
+        try:
+            ids = [row["event_id"] for row in records]
+            marks_ids = ",".join("?" for _ in ids)
+            linked = {
+                str(row["event_id"])
+                for row in conn.execute(
+                    f"""SELECT DISTINCT event_id FROM event_media_links
+                        WHERE event_id IN ({marks_ids})""",
+                    ids,
+                ).fetchall()
+            }
+        finally:
+            conn.close()
+        for row in records:
+            row["has_receipt"] = row["event_id"] in linked
+
     return {
         "spending_totals": spending_totals,
         "income_totals": income_totals,
@@ -1197,6 +1282,114 @@ def _store_selection(conn, actor: ActorContext, kind: str, ids: list[str]) -> st
          json.dumps(ids, ensure_ascii=False), bound_scope, utc_now(), expires),
     )
     return selection_id
+
+
+def store_task_selection(actor: ActorContext, task_ids: list[str]) -> str | None:
+    ids = [str(value) for value in task_ids if str(value or "").strip()]
+    if not ids:
+        return None
+    selection_id = str(uuid.uuid4())
+    expires = (runtime_clock.now_utc() + timedelta(hours=48)).isoformat()
+    bound_scope = str(getattr(actor, "read_scope", None) or "all").strip().casefold()
+    if bound_scope not in {"family", "private", "all"}:
+        bound_scope = "all"
+    conn = connect()
+    try:
+        conn.execute(
+            """INSERT INTO task_selection_sets(
+                   selection_id,user_id,conversation_id,items_json,
+                   read_scope,created_at_utc,expires_at_utc
+               ) VALUES(?,?,?,?,?,?,?)""",
+            (
+                selection_id, actor.user_id, actor.conversation_id,
+                json.dumps(ids, ensure_ascii=False), bound_scope, utc_now(), expires,
+            ),
+        )
+        conn.commit()
+        return selection_id
+    finally:
+        conn.close()
+
+
+def store_finance_selection(actor: ActorContext, event_ids: list[str]) -> str | None:
+    """Freeze the exact transaction order just shown in this conversation."""
+    ids = [str(value) for value in event_ids if str(value or "").strip()]
+    if not ids:
+        return None
+    selection_id = str(uuid.uuid4())
+    expires = (runtime_clock.now_utc() + timedelta(hours=48)).isoformat()
+    bound_scope = str(getattr(actor, "read_scope", None) or "all").strip().casefold()
+    if bound_scope not in {"family", "private", "all"}:
+        bound_scope = "all"
+    conn = connect()
+    try:
+        conn.execute(
+            """INSERT INTO finance_selection_sets(
+                   selection_id,user_id,conversation_id,items_json,
+                   read_scope,created_at_utc,expires_at_utc
+               ) VALUES(?,?,?,?,?,?,?)""",
+            (
+                selection_id, actor.user_id, actor.conversation_id,
+                json.dumps(ids, ensure_ascii=False), bound_scope, utc_now(), expires,
+            ),
+        )
+        conn.commit()
+        return selection_id
+    finally:
+        conn.close()
+
+
+def get_financial_event_detail(actor: ActorContext, event_id: str) -> dict:
+    """Return one exact transaction with provenance; never send its receipt automatically."""
+    marks, spaces = _spaces_sql(actor)
+    conn = connect()
+    try:
+        row = conn.execute(
+            f"""SELECT f.*,i.raw_text AS source_text,i.received_at_utc AS source_received_at
+                FROM financial_events f
+                LEFT JOIN inbound_messages i ON i.message_id=f.source_message_id
+                WHERE f.event_id=? AND f.space_id IN ({marks})
+                  AND f.status='ACTIVE' LIMIT 1""",
+            [event_id] + spaces,
+        ).fetchone()
+        if not row:
+            raise PermissionError("financial event not found in your accessible data")
+        tz = ZoneInfo(actor.timezone)
+        def localize(value):
+            if not value:
+                return None
+            try:
+                return datetime.fromisoformat(str(value).replace("Z", "+00:00")).astimezone(tz).isoformat()
+            except Exception:
+                return str(value)
+        receipt = conn.execute(
+            """SELECT 1 FROM event_media_links l
+               JOIN media_objects m ON m.media_id=l.media_id
+               WHERE l.event_id=? AND m.media_type IN ('IMAGE','PDF','DOCUMENT')
+               LIMIT 1""",
+            (event_id,),
+        ).fetchone()
+        return {
+            "status": "found",
+            "event_id": row["event_id"],
+            "type": row["event_type"],
+            "description": row["description"],
+            "amount": (row["amount_minor"] / 100 if row["amount_minor"] is not None else None),
+            "currency": row["currency"],
+            "category": _clean_category(row["category"]),
+            "event_date_local": localize(row["event_date_utc"]),
+            "logged_at_local": localize(row["source_received_at"] or row["created_at_utc"]),
+            "reference": row["reference_text"],
+            "scope": "family" if row["space_id"] == "FAMILY_SHARED" else "private",
+            "source_text": str(row["source_text"] or "")[:500] or None,
+            "receipt_available": bool(receipt),
+            "presentation_rule": (
+                "Show human transaction details and local logged time. Never display event_id. "
+                "Offer to show the original receipt only when receipt_available is true; do not attach it automatically."
+            ),
+        }
+    finally:
+        conn.close()
 
 
 def find_receipts(actor: ActorContext, query: str | None = None, amount: float | None = None,
@@ -1283,6 +1476,12 @@ def find_receipts(actor: ActorContext, query: str | None = None, amount: float |
                                    OR LOWER(COALESCE(i.raw_text,'')) LIKE '%invoice%'
                                )"""
             saved_params: list = spaces[:]
+            if start_date:
+                saved_sql += " AND m.created_at_utc>=?"
+                saved_params.append(_local_bound(start_date, actor.timezone, False))
+            if end_date:
+                saved_sql += " AND m.created_at_utc<=?"
+                saved_params.append(_local_bound(end_date, actor.timezone, True))
             if query:
                 stop = {"latest","recent","receipt","receipts","show","find","get","send",
                         "open","original","please","my","our","the","a","an"}
@@ -1367,6 +1566,61 @@ def find_receipts(actor: ActorContext, query: str | None = None, amount: float |
             _store_selection(conn, actor, "RECEIPT", [m["media_id"] for m in matches])
             conn.commit()
         return {"matches": [{**m, "choice": i + 1} for i, m in enumerate(matches)]}
+    finally:
+        conn.close()
+
+
+def get_receipt_for_event(actor: ActorContext, event_id: str) -> dict:
+    """Return only receipt evidence linked to one exact financial event.
+
+    This deliberately has no fuzzy/latest-receipt fallback. If the event has no
+    linked receipt, the correct result is no_receipt_linked.
+    """
+    marks, spaces = _spaces_sql(actor)
+    conn = connect()
+    try:
+        event = conn.execute(
+            f"""SELECT event_id,description,amount_minor,currency,event_date_utc
+                FROM financial_events
+                WHERE event_id=? AND space_id IN ({marks})
+                  AND status IN ('ACTIVE','PENDING_HUMAN_REVIEW')
+                LIMIT 1""",
+            [event_id] + spaces,
+        ).fetchone()
+        if not event:
+            raise PermissionError("financial event not found in your accessible data")
+        rows = conn.execute(
+            """SELECT m.media_id,m.media_type,m.mime_type,m.local_path
+               FROM event_media_links l
+               JOIN media_objects m ON m.media_id=l.media_id
+               WHERE l.event_id=? AND m.media_type IN ('IMAGE','PDF','DOCUMENT')
+               ORDER BY m.created_at_utc""",
+            (event_id,),
+        ).fetchall()
+        if not rows:
+            return {
+                "status": "no_receipt_linked",
+                "event_id": event_id,
+                "description": event["description"],
+                "amount": (event["amount_minor"] / 100 if event["amount_minor"] is not None else None),
+                "currency": event["currency"],
+            }
+        return {
+            "status": "found",
+            "event_id": event_id,
+            "description": event["description"],
+            "amount": (event["amount_minor"] / 100 if event["amount_minor"] is not None else None),
+            "currency": event["currency"],
+            "event_date_utc": event["event_date_utc"],
+            "_attachments": [
+                {
+                    "path": row["local_path"],
+                    "mime_type": row["mime_type"],
+                    "kind": "IMAGE" if row["media_type"] == "IMAGE" else "DOCUMENT",
+                }
+                for row in rows
+            ],
+        }
     finally:
         conn.close()
 
@@ -1700,6 +1954,8 @@ _SAVED_GENERIC_WORDS = {
 _SAVED_KIND_ALIASES = {
     "picture": "IMAGE", "pictures": "IMAGE", "photo": "IMAGE", "image": "IMAGE", "images": "IMAGE",
     "document": "DOCUMENT", "documents": "DOCUMENT", "pdf": "DOCUMENT", "file": "DOCUMENT",
+    "voice": "AUDIO", "voice note": "AUDIO", "audio": "AUDIO", "recording": "AUDIO",
+    "video": "VIDEO", "videos": "VIDEO", "clip": "VIDEO",
     "note": "NOTE", "notes": "NOTE", "text": "NOTE",
 }
 
@@ -1721,6 +1977,59 @@ def _saved_local_date(value: str | None, tz_name: str) -> str | None:
         )
     except Exception:
         return None
+
+
+def save_existing_media_item(actor: ActorContext, title: str, content: str,
+                             media_id: str, shared: bool = False,
+                             tags: str | None = None) -> dict:
+    """Save an already-preserved owner media object after a trusted typed instruction."""
+    if not str(title or "").strip():
+        raise ValueError("saved item title is required")
+    conn = connect()
+    try:
+        media_row = conn.execute(
+            """SELECT m.media_id,m.media_type,i.sender_phone
+               FROM media_objects m
+               JOIN inbound_messages i ON i.message_id=m.source_message_id
+               WHERE m.media_id=? LIMIT 1""",
+            (media_id,),
+        ).fetchone()
+        if not media_row or normalize_phone(media_row["sender_phone"]) != normalize_phone(actor.phone):
+            raise PermissionError("media is not owned by the authenticated user")
+        space = scope_policy.resolve_new_write_space(actor, requested_shared=shared)
+        if space not in actor.allowed_spaces:
+            raise PermissionError("requested memory space is not accessible")
+        action_key = hashlib.sha256(
+            f"{actor.source_message_id}|save-existing-media|{media_id}|{space}".encode("utf-8")
+        ).hexdigest()
+        existing = conn.execute(
+            "SELECT item_id FROM saved_items WHERE action_key=?", (action_key,)
+        ).fetchone()
+        if existing:
+            return {
+                "status": "already_saved",
+                "item_id": existing["item_id"],
+                "media_saved": True,
+            }
+        item_id = str(uuid.uuid4())
+        conn.execute(
+            """INSERT INTO saved_items(
+                   item_id,action_key,source_message_id,space_id,owner_id,
+                   title,content,tags,media_id
+               ) VALUES(?,?,?,?,?,?,?,?,?)""",
+            (
+                item_id, action_key, actor.source_message_id, space, actor.user_id,
+                str(title).strip()[:200], str(content or title).strip()[:20000],
+                (tags or "")[:500] or None, media_id,
+            ),
+        )
+        conn.commit()
+        return {
+            "status": "saved", "item_id": item_id, "space": space,
+            "media_saved": True, "media_type": media_row["media_type"],
+        }
+    finally:
+        conn.close()
 
 
 def search_saved_items(actor: ActorContext, query: str | None = None, limit: int = 10,
@@ -1747,6 +2056,10 @@ def search_saved_items(actor: ActorContext, query: str | None = None, limit: int
         base += " AND m.media_type='IMAGE'"
     elif kind_key == "DOCUMENT":
         base += " AND m.media_type IN ('PDF','DOCUMENT')"
+    elif kind_key == "AUDIO":
+        base += " AND m.media_type='AUDIO'"
+    elif kind_key == "VIDEO":
+        base += " AND m.media_type='VIDEO'"
     elif kind_key == "NOTE":
         base += " AND s.media_id IS NULL"
 
@@ -1793,6 +2106,8 @@ def search_saved_items(actor: ActorContext, query: str | None = None, limit: int
                 "tags": m["tags"],
                 "kind": (
                     "picture" if m.get("media_type") == "IMAGE"
+                    else "voice note" if m.get("media_type") == "AUDIO"
+                    else "video" if m.get("media_type") == "VIDEO"
                     else "document" if m.get("media_type") in ("PDF", "DOCUMENT")
                     else "note"
                 ),
@@ -1827,7 +2142,12 @@ def get_saved_item(actor: ActorContext, item_id: str) -> dict:
         if row["local_path"]:
             result["_attachments"] = [{
                 "path": row["local_path"], "mime_type": row["mime_type"],
-                "kind": "IMAGE" if row["media_type"] == "IMAGE" else "DOCUMENT",
+                "kind": (
+                    "IMAGE" if row["media_type"] == "IMAGE"
+                    else "AUDIO" if row["media_type"] == "AUDIO"
+                    else "VIDEO" if row["media_type"] == "VIDEO"
+                    else "DOCUMENT"
+                ),
             }]
         return result
     finally:
@@ -1867,6 +2187,13 @@ def latest_single_selection_context(actor: ActorContext,
         if created_after_utc:
             args_a.append(created_after_utc)
             args_b.append(created_after_utc)
+        args_c = [actor.user_id, actor.conversation_id, utc_now()]
+        args_d = [actor.user_id, actor.conversation_id, utc_now()]
+        args_e = [actor.user_id, actor.conversation_id, utc_now()]
+        if created_after_utc:
+            args_c.append(created_after_utc)
+            args_d.append(created_after_utc)
+            args_e.append(created_after_utc)
         rows = conn.execute(
             f"""SELECT selection_kind,items_json,created_at_utc,
                        COALESCE(read_scope,'') AS read_scope
@@ -1879,8 +2206,26 @@ def latest_single_selection_context(actor: ActorContext,
                   FROM media_selection_sets
                  WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
                        {where_after}
+                UNION ALL
+                SELECT 'FINANCE' AS selection_kind,items_json,created_at_utc,
+                       COALESCE(read_scope,'') AS read_scope
+                  FROM finance_selection_sets
+                 WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
+                       {where_after}
+                UNION ALL
+                SELECT 'TASK' AS selection_kind,items_json,created_at_utc,
+                       COALESCE(read_scope,'') AS read_scope
+                  FROM task_selection_sets
+                 WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
+                       {where_after}
+                UNION ALL
+                SELECT 'LEDGER_ENTRY' AS selection_kind,items_json,created_at_utc,
+                       COALESCE(read_scope,'') AS read_scope
+                  FROM custom_ledger_selection_sets
+                 WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
+                       {where_after}
                 ORDER BY created_at_utc DESC LIMIT 1""",
-            args_a + args_b,
+            args_a + args_b + args_c + args_d + args_e,
         ).fetchall()
         if not rows:
             return None
@@ -1915,6 +2260,14 @@ def get_selection_target(actor: ActorContext, kind: str, target_id: str,
         return get_receipt(effective_actor, target_id)
     if normalized == "MEDIA":
         return get_media_original(effective_actor, target_id)
+    if normalized == "FINANCE":
+        return get_financial_event_detail(effective_actor, target_id)
+    if normalized == "TASK":
+        import phase2
+        return phase2.task_detail(effective_actor, target_id)
+    if normalized == "LEDGER_ENTRY":
+        import custom_ledgers
+        return custom_ledgers.get_entry(effective_actor, target_id)
     raise ValueError("unsupported selection context")
 
 
@@ -1926,10 +2279,16 @@ def latest_selection_set_context(actor: ActorContext,
     args_a = [actor.user_id, actor.conversation_id, now]
     args_b = [actor.user_id, actor.conversation_id, now]
     args_c = [actor.user_id, actor.conversation_id, now]
+    args_d = [actor.user_id, actor.conversation_id, now]
+    args_e = [actor.user_id, actor.conversation_id, now]
+    args_f = [actor.user_id, actor.conversation_id, now]
     if created_after_utc:
         args_a.append(created_after_utc)
         args_b.append(created_after_utc)
         args_c.append(created_after_utc)
+        args_d.append(created_after_utc)
+        args_e.append(created_after_utc)
+        args_f.append(created_after_utc)
     conn = connect()
     try:
         row = conn.execute(
@@ -1950,8 +2309,26 @@ def latest_selection_set_context(actor: ActorContext,
                    FROM pending_selection_sets
                   WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
                         {after_sql}
+                  UNION ALL
+                 SELECT selection_id,'FINANCE' AS selection_kind,items_json,created_at_utc,
+                        COALESCE(read_scope,'') AS read_scope
+                   FROM finance_selection_sets
+                  WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
+                        {after_sql}
+                  UNION ALL
+                 SELECT selection_id,'TASK' AS selection_kind,items_json,created_at_utc,
+                        COALESCE(read_scope,'') AS read_scope
+                   FROM task_selection_sets
+                  WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
+                        {after_sql}
+                  UNION ALL
+                 SELECT selection_id,'LEDGER_ENTRY' AS selection_kind,items_json,created_at_utc,
+                        COALESCE(read_scope,'') AS read_scope
+                   FROM custom_ledger_selection_sets
+                  WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
+                        {after_sql}
                   ORDER BY created_at_utc DESC LIMIT 1""",
-            args_a + args_b + args_c,
+            args_a + args_b + args_c + args_d + args_e + args_f,
         ).fetchone()
         if not row:
             return None
@@ -2005,6 +2382,33 @@ def resolve_numbered_choice(actor: ActorContext, choice: int,
                          AND expires_at_utc>? LIMIT 1""",
                     (selection_id, actor.user_id, actor.conversation_id, now),
                 ).fetchone()
+            elif kind == "FINANCE":
+                latest = conn.execute(
+                    """SELECT 'FINANCE' AS selection_kind,items_json,
+                              COALESCE(read_scope,'') AS read_scope
+                       FROM finance_selection_sets
+                       WHERE selection_id=? AND user_id=? AND conversation_id=?
+                         AND expires_at_utc>? LIMIT 1""",
+                    (selection_id, actor.user_id, actor.conversation_id, now),
+                ).fetchone()
+            elif kind == "TASK":
+                latest = conn.execute(
+                    """SELECT 'TASK' AS selection_kind,items_json,
+                              COALESCE(read_scope,'') AS read_scope
+                       FROM task_selection_sets
+                       WHERE selection_id=? AND user_id=? AND conversation_id=?
+                         AND expires_at_utc>? LIMIT 1""",
+                    (selection_id, actor.user_id, actor.conversation_id, now),
+                ).fetchone()
+            elif kind == "LEDGER_ENTRY":
+                latest = conn.execute(
+                    """SELECT 'LEDGER_ENTRY' AS selection_kind,items_json,
+                              COALESCE(read_scope,'') AS read_scope
+                       FROM custom_ledger_selection_sets
+                       WHERE selection_id=? AND user_id=? AND conversation_id=?
+                         AND expires_at_utc>? LIMIT 1""",
+                    (selection_id, actor.user_id, actor.conversation_id, now),
+                ).fetchone()
             else:
                 raise ValueError("unsupported numbered selection context")
         else:
@@ -2023,8 +2427,26 @@ def resolve_numbered_choice(actor: ActorContext, choice: int,
                           '' AS read_scope
                      FROM pending_selection_sets
                     WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
+                   UNION ALL
+                   SELECT selection_id,'FINANCE' AS selection_kind,items_json,created_at_utc,
+                          COALESCE(read_scope,'') AS read_scope
+                     FROM finance_selection_sets
+                    WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
+                   UNION ALL
+                   SELECT selection_id,'TASK' AS selection_kind,items_json,created_at_utc,
+                          COALESCE(read_scope,'') AS read_scope
+                     FROM task_selection_sets
+                    WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
+                   UNION ALL
+                   SELECT selection_id,'LEDGER_ENTRY' AS selection_kind,items_json,created_at_utc,
+                          COALESCE(read_scope,'') AS read_scope
+                     FROM custom_ledger_selection_sets
+                    WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
                    ORDER BY created_at_utc DESC LIMIT 1""",
                 (
+                    actor.user_id, actor.conversation_id, now,
+                    actor.user_id, actor.conversation_id, now,
+                    actor.user_id, actor.conversation_id, now,
                     actor.user_id, actor.conversation_id, now,
                     actor.user_id, actor.conversation_id, now,
                     actor.user_id, actor.conversation_id, now,
@@ -2063,6 +2485,14 @@ def resolve_numbered_choice(actor: ActorContext, choice: int,
         return get_saved_item(effective_actor, target)
     if kind == "MEDIA":
         return get_media_original(effective_actor, target)
+    if kind == "FINANCE":
+        return get_financial_event_detail(effective_actor, target)
+    if kind == "TASK":
+        import phase2
+        return phase2.task_detail(effective_actor, target)
+    if kind == "LEDGER_ENTRY":
+        import custom_ledgers
+        return custom_ledgers.get_entry(effective_actor, target)
     if kind == "PENDING_ITEM":
         media_id = str((pending or {}).get("media_id") or "")
         if media_id:
@@ -2714,14 +3144,29 @@ def create_reminder(actor: ActorContext, task: str, due_local: str,
                     # WhatsApp reminder from being created.
                     pass
 
+            same_time = conn.execute(
+                """SELECT task_text FROM reminders
+                   WHERE reminder_id<>? AND owner_id=? AND space_id=?
+                     AND due_at_utc=? AND status IN ('OPEN','DUE','DEFERRED')
+                   ORDER BY created_at_utc""",
+                (rid, target_user, space, due_utc),
+            ).fetchall()
             created.append({
                 "status": "created", "reminder_id": rid, "task": task, "due_at_utc": due_utc,
+                "due_local_display": _friendly_reminder_time(due_utc, actor.timezone),
                 "timezone": actor.timezone, "recurrence_rule": recurrence_rule,
                 "recipient_user_id": target_user, "destination": destination,
                 "conversation_id": conversation_id, "space": space,
                 "claimable": bool(claimable),
                 "presence_aware": bool(presence_aware), "delivery_class": delivery_class,
                 "follow_up_after_hours": follow_up_after_hours,
+                "same_time_active_count": len(same_time),
+                "same_time_tasks": [str(row["task_text"]) for row in same_time[:8]],
+                "presentation_rule": (
+                    "Confirm the local fire time. If same_time_active_count is greater than zero, "
+                    "briefly mention that other active reminder(s) already share this exact time; "
+                    "do not block creation or ask for confirmation solely because of the collision."
+                ),
                 **pending_receipt,
             })
         conn.commit()
@@ -4207,6 +4652,53 @@ def list_shopping_items(actor: ActorContext, include_purchased: bool = False, li
             spaces + [max(1, min(100, int(limit)))],
         ).fetchall()
         return {"items": [dict(r) for r in rows]}
+    finally:
+        conn.close()
+
+
+def resolve_shopping_reference(actor: ActorContext, item_id: str | None = None,
+                               item_name: str | None = None) -> str:
+    """Resolve one shopping item in the current trusted scope by id or natural name."""
+    marks, spaces = _spaces_sql(actor)
+    conn = connect()
+    try:
+        if item_id:
+            row = conn.execute(
+                f"""SELECT item_id FROM shopping_items
+                    WHERE item_id=? AND space_id IN ({marks}) LIMIT 1""",
+                [str(item_id)] + spaces,
+            ).fetchone()
+            if not row:
+                raise PermissionError("shopping item not found in your accessible list")
+            return str(row["item_id"])
+        wanted = " ".join(re.findall(r"[a-z0-9]+", str(item_name or "").casefold()))
+        if not wanted:
+            raise ValueError("provide item_id or item_name")
+        rows = conn.execute(
+            f"""SELECT item_id,item_name,status,space_id FROM shopping_items
+                WHERE space_id IN ({marks}) AND status IN ('OPEN','PURCHASED')
+                ORDER BY status='OPEN' DESC,updated_at_utc DESC""",
+            spaces,
+        ).fetchall()
+        def norm(value):
+            text = " ".join(re.findall(r"[a-z0-9]+", str(value or "").casefold()))
+            # Cheap singularization covers normal household wording such as
+            # "2 detergents" referring to the listed "detergent".
+            return text[:-1] if text.endswith("s") and len(text) > 3 else text
+        wanted_n = norm(wanted)
+        exact = [row for row in rows if norm(row["item_name"]) == wanted_n]
+        candidates = exact or [
+            row for row in rows
+            if wanted_n in norm(row["item_name"]) or norm(row["item_name"]) in wanted_n
+        ]
+        open_candidates = [row for row in candidates if row["status"] == "OPEN"]
+        candidates = open_candidates or candidates
+        if len(candidates) == 1:
+            return str(candidates[0]["item_id"])
+        if not candidates:
+            raise ValueError(f"no shopping item matches {item_name!r}")
+        labels = ", ".join(str(row["item_name"]) for row in candidates[:5])
+        raise ValueError("more than one shopping item matches; ask which one: " + labels)
     finally:
         conn.close()
 

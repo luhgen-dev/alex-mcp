@@ -765,14 +765,24 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
     ),
     PromptContract(
         "p2.leave.write", "phase2", "work",
-        "Future/taken leave lifecycle updates must use the leave-record path.",
+        "Grounded future/taken leave updates must use the leave-record path.",
+        (
+            "Record annual leave for 10 October 2026.",
+            "I took MC on 10 October 2026; record it.",
+            "I'm on annual leave tomorrow, save that.",
+        ),
+        _fs("set_leave_record", "work_record_event"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p2.leave.write.ambiguous", "phase2", "work",
+        "A bare calendar day with no year must clarify when the year is materially ambiguous rather than guessing.",
         (
             "Record annual leave for 10 October.",
             "Mark 10 October as planned annual leave.",
             "I took MC on 10 October; record it.",
-            "I'm on annual leave tomorrow, save that.",
         ),
         _fs("set_leave_record", "work_record_event"), seed="core", live=False,
+        expect_clarification=True,
     ),
     PromptContract(
         "p2.leave.records", "phase2", "work",
@@ -1029,6 +1039,15 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
             "Resume that holiday goal as a draft.",
         ),
         _fs("planning_reopen_goal"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p2.goals.cancel", "phase2", "goals",
+        "Explicit owner cancellation must close the goal without deleting its contribution history.",
+        (
+            "Cancel the Family Holiday Savings goal.",
+            "Stop tracking my Family Holiday Savings goal.",
+        ),
+        _fs("planning_cancel_goal"), seed="core", live=False,
     ),
     PromptContract(
         "p2.goals.baseline.change", "phase2", "goals",
@@ -1488,12 +1507,22 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
     ),
     PromptContract(
         "p3.home.control.synonym", "phase3", "routing",
-        "Natural verb/device ordering must still expose explicit HA control.",
+        "Natural verb/device ordering with a grounded room/device must expose explicit HA control.",
         (
-            "Switch off the AC.",
             "Turn the hall AC off.",
+            "Switch off the hall air conditioner.",
         ),
         _fs("ha_control"), seed="empty", live=False,
+    ),
+    PromptContract(
+        "p3.home.control.ambiguous", "phase3", "routing",
+        "A generic device control with no uniquely grounded AC must clarify rather than invent an entity.",
+        (
+            "Switch off the AC.",
+            "Turn the air conditioner off.",
+        ),
+        _fs("ha_control"), seed="empty", live=False,
+        expect_clarification=True,
     ),
     PromptContract(
         "p3.work.departure.compound", "phase3", "routing",
@@ -1614,6 +1643,117 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
             ),
         ),
     ),
+    PromptContract(
+        "p3.work.profile.import", "phase3", "work",
+        "An owner can explicitly import a supplied permanent private work profile without source-code defaults.",
+        (
+            "Import my work profile: {\"roster\":{\"id\":\"permanent_roster\",\"name\":\"Permanent roster\",\"cycle_start\":\"2026-10-19\",\"pattern\":\"evening,morning\",\"day_start\":\"07:45\",\"day_end\":\"16:15\",\"evening_start\":\"16:15\",\"evening_end\":\"01:00\",\"active\":true}}.",
+            "Configure my permanent roster from this profile: {\"roster\":{\"id\":\"permanent_roster\",\"name\":\"Permanent roster\",\"cycle_start\":\"2026-10-19\",\"pattern\":\"evening,morning\",\"day_start\":\"07:45\",\"day_end\":\"16:15\",\"evening_start\":\"16:15\",\"evening_end\":\"01:00\",\"active\":true}}.",
+        ),
+        _fs("work.profile.import"), seed="empty", live=False,
+    ),
+    PromptContract(
+        "p3.work.profile.import.missing", "phase3", "work",
+        "A reference to a work-profile payload that was not actually supplied must clarify rather than fabricate profile data.",
+        (
+            "Import my work profile with this JSON.",
+            "Configure my permanent roster from this work profile.",
+        ),
+        _fs("work.profile.import"), seed="empty", live=False,
+        expect_clarification=True,
+    ),
+    PromptContract(
+        "p3.daily.brief", "phase3", "daily_brief",
+        "Owners can ask for one deterministic daily brief without mutating underlying records.",
+        (
+            "What's in for me today?",
+            "Give me my daily brief.",
+        ),
+        _fs("daily.brief"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p3.discussion.recall", "phase3", "discussion",
+        "Captured Family Listening discussions can be recalled without turning them into actions.",
+        (
+            "Recall our Greece discussion.",
+            "What did we discuss about the holiday?",
+        ),
+        _fs("discussion.recall"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p3.ledger.create", "phase3", "ledger",
+        "A genuinely custom tracker can be created when no specialist engine fits.",
+        (
+            "Create a private car service ledger.",
+            "Set up a family tracker for things we lend people.",
+        ),
+        _fs("ledger.create"), seed="empty", live=False,
+    ),
+    PromptContract(
+        "p3.ledger.list", "phase3", "ledger",
+        "Custom ledgers can be listed in the current privacy scope.",
+        (
+            "Show my ledgers.",
+            "What trackers do I have?",
+        ),
+        _fs("ledger.list"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p3.ledger.entry.add", "phase3", "ledger",
+        "Explicitly typed custom-ledger entries expose the entry writer while ambiguous money semantics still clarify in the backend.",
+        (
+            "Add this note to my car service ledger.",
+            "Record this in my household maintenance tracker.",
+        ),
+        _fs("ledger.entry.add"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p3.ledger.query", "phase3", "ledger",
+        "Custom ledger history can be queried and numbered.",
+        (
+            "Show my car service ledger history.",
+            "What is in my household maintenance tracker?",
+        ),
+        _fs("ledger.query"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p3.ledger.close", "phase3", "ledger",
+        "Closing a custom ledger preserves history instead of deleting it.",
+        (
+            "Close my old car service ledger.",
+            "Stop tracking that custom maintenance ledger.",
+        ),
+        _fs("ledger.close"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p3.task.details", "phase3", "tasks",
+        "A task detail request exposes provenance/history rather than only a list.",
+        (
+            "Show me the details of Alex smoke task.",
+            "What did I originally say for that task?",
+        ),
+        _fs("task.details"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p3.task.reminder.link", "phase3", "tasks",
+        "A timed reminder requested for an existing task uses the linked task-reminder capability; the backend then resolves any date-only task-mode ambiguity safely.",
+        (
+            "For Alex smoke task remind me in 20 minutes.",
+            "Give me a heads-up reminder in 20 minutes for Alex smoke task.",
+        ),
+        _fs("task.reminder.link"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p3.task.reminder.link.missing_time", "phase3", "tasks",
+        "A task heads-up request with no reminder time must clarify instead of inventing a clock.",
+        (
+            "Give me a heads-up reminder for that task.",
+            "Remind me about that task later.",
+        ),
+        _fs("task.reminder.link"), seed="core", live=False,
+        expect_clarification=True,
+    ),
+
     PromptContract(
         "p3.read.only", "phase3", "safety",
         "Read-only questions must not expose unrelated mutations when fallback is used.",
@@ -1855,6 +1995,7 @@ CONVERSATION_CONTRACTS: tuple[ConversationContract, ...] = (
                 conversation_type="GROUP",
                 forbid_private_fixture_leak=True,
                 forbidden_terms=("cobalt",),
+                expect_refusal=True,
             ),
         ),
     ),

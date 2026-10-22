@@ -55,12 +55,84 @@ CREATE INDEX IF NOT EXISTS idx_p2_asset_docs
 """
 
 
+def _merge_complementary_asset_duplicates(conn):
+    """Merge only obviously complementary same-name rows.
+
+    Exactly one row must carry physical identity metadata; every other duplicate
+    must be metadata-only. Any conflicting non-empty field prevents a merge.
+    """
+    rows = conn.execute(
+        """SELECT * FROM alex_phase2_assets
+           WHERE status='ACTIVE'
+           ORDER BY owner_user_id,space_id,LOWER(name),created_at_utc"""
+    ).fetchall()
+    groups = {}
+    for row in rows:
+        key = (
+            row["owner_user_id"], row["space_id"],
+            str(row["name"] or "").strip().casefold(),
+        )
+        groups.setdefault(key, []).append(row)
+    fields = ("category","brand","model","serial_number","purchase_date","warranty_end","note")
+    identity_fields = ("category","brand","model","serial_number")
+    merged = 0
+    for group in groups.values():
+        if len(group) < 2:
+            continue
+        identity_rows = [
+            row for row in group
+            if any(str(row[field] or "").strip() for field in identity_fields)
+        ]
+        if len(identity_rows) != 1:
+            continue
+        keeper = identity_rows[0]
+        others = [row for row in group if row["asset_id"] != keeper["asset_id"]]
+        if any(
+            any(str(row[field] or "").strip() for field in identity_fields)
+            for row in others
+        ):
+            continue
+        merged_values = {}
+        conflict = False
+        for field in fields:
+            values = []
+            for row in group:
+                value = str(row[field] or "").strip()
+                if value and value not in values:
+                    values.append(value)
+            if len(values) > 1:
+                conflict = True
+                break
+            merged_values[field] = values[0] if values else None
+        if conflict:
+            continue
+        conn.execute(
+            """UPDATE alex_phase2_assets
+               SET category=?,brand=?,model=?,serial_number=?,purchase_date=?,
+                   warranty_end=?,note=?,updated_at_utc=CURRENT_TIMESTAMP
+               WHERE asset_id=?""",
+            tuple(merged_values[field] for field in fields) + (keeper["asset_id"],),
+        )
+        for row in others:
+            conn.execute(
+                "UPDATE alex_phase2_asset_documents SET asset_id=? WHERE asset_id=?",
+                (keeper["asset_id"], row["asset_id"]),
+            )
+            conn.execute(
+                "DELETE FROM alex_phase2_assets WHERE asset_id=?",
+                (row["asset_id"],),
+            )
+            merged += 1
+    return merged
+
+
 def ensure_schema(conn=None):
     own = conn is None
     if own:
         conn = tools.get_db()
     try:
         conn.executescript(SCHEMA)
+        _merge_complementary_asset_duplicates(conn)
         if own:
             conn.commit()
     finally:
@@ -125,6 +197,63 @@ def create_asset(name, sender_phone, conversation_type="DIRECT_DM",
     try:
         user_id, space_id = _space_for(
             conn, sender_phone, conversation_type, visibility)
+        clean_name = str(name).strip()
+        existing = conn.execute(
+            """SELECT * FROM alex_phase2_assets
+               WHERE space_id=? AND owner_user_id=? AND status='ACTIVE'
+                 AND LOWER(TRIM(name))=LOWER(TRIM(?))
+               ORDER BY updated_at_utc DESC""",
+            (space_id, user_id, clean_name),
+        ).fetchall()
+        if len(existing) > 1:
+            return {
+                "status": "needs_disambiguation",
+                "name": clean_name,
+                "message": "More than one active asset already has this name. Clarify the model/serial before creating or updating anything.",
+            }
+        if len(existing) == 1:
+            row = existing[0]
+            supplied = {
+                "category": category, "brand": brand, "model": model,
+                "serial_number": serial_number,
+                "purchase_date": str(purchase_date)[:10] if purchase_date else None,
+                "warranty_end": str(warranty_end)[:10] if warranty_end else None,
+                "note": note,
+            }
+            conflicts = [
+                field for field, value in supplied.items()
+                if value not in (None, "")
+                and row[field] not in (None, "")
+                and str(row[field]).strip().casefold() != str(value).strip().casefold()
+            ]
+            if conflicts:
+                return {
+                    "status": "needs_confirmation_distinct_asset",
+                    "name": clean_name,
+                    "conflicting_fields": conflicts,
+                    "message": "An asset with this name already exists but supplied identity/details conflict. Ask whether this is a different physical asset.",
+                }
+            values = {
+                field: (supplied[field] if supplied[field] not in (None, "") else row[field])
+                for field in supplied
+            }
+            conn.execute(
+                """UPDATE alex_phase2_assets
+                   SET category=?,brand=?,model=?,serial_number=?,purchase_date=?,
+                       warranty_end=?,note=?,updated_at_utc=CURRENT_TIMESTAMP
+                   WHERE asset_id=?""",
+                (
+                    values["category"], values["brand"], values["model"],
+                    values["serial_number"], values["purchase_date"],
+                    values["warranty_end"], values["note"], row["asset_id"],
+                ),
+            )
+            conn.commit()
+            return {
+                "status": "enriched_existing", "asset_id": row["asset_id"],
+                "name": clean_name, "space": space_id,
+            }
+
         ident = str(uuid.uuid4())
         conn.execute("""
             INSERT INTO alex_phase2_assets(
@@ -132,12 +261,12 @@ def create_asset(name, sender_phone, conversation_type="DIRECT_DM",
                 serial_number,purchase_date,warranty_end,note
             ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
         """, (
-            ident, space_id, user_id, str(name).strip(), category, brand, model,
+            ident, space_id, user_id, clean_name, category, brand, model,
             serial_number, str(purchase_date)[:10] if purchase_date else None,
             str(warranty_end)[:10] if warranty_end else None, note,
         ))
         conn.commit()
-        return {"asset_id": ident, "name": str(name).strip(), "space": space_id}
+        return {"status": "created", "asset_id": ident, "name": clean_name, "space": space_id}
     finally:
         conn.close()
 

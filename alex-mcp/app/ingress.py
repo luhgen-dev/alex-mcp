@@ -24,6 +24,8 @@ import scope_policy
 import diagnostics
 import chatgpt_plan
 import shadow_router
+import daily_brief
+import listening
 from config import DATA_DIR, get_settings
 from text_normalization import normalize_intent_text
 
@@ -305,14 +307,17 @@ def build_turn(payload: dict, media_lines: list[str]) -> dict:
     intent_text = normalize_intent_text(semantic_text)
     has_audio = bool(payload.get("audio_data"))
     has_image = bool(payload.get("image_data"))
+    has_video = bool(payload.get("video_data"))
     has_pdf = bool(payload.get("pdf_data"))
-    if has_audio and not (has_image or has_pdf):
+    if has_audio and not (has_image or has_video or has_pdf):
         source = "voice"
-    elif has_image and not (has_audio or has_pdf):
+    elif has_image and not (has_audio or has_video or has_pdf):
         source = "image"
-    elif has_pdf and not (has_audio or has_image):
+    elif has_video and not (has_audio or has_image or has_pdf):
+        source = "video"
+    elif has_pdf and not (has_audio or has_image or has_video):
         source = "document"
-    elif has_audio or has_image or has_pdf:
+    elif has_audio or has_image or has_video or has_pdf:
         source = "mixed"
     else:
         source = "text"
@@ -323,7 +328,7 @@ def build_turn(payload: dict, media_lines: list[str]) -> dict:
         "read_scope": scope_policy.resolve_read_scope(trusted_text),
         "document_lines": document_lines,
         "source": source,
-        "has_document_media": has_image or has_pdf,
+        "has_document_media": has_image or has_video or has_pdf,
         "received_at_utc": _received_at_utc(payload),
     }
 
@@ -361,6 +366,119 @@ def _dm_conversation_for_actor(actor) -> str:
     return actor.phone.replace("+", "") + "@s.whatsapp.net"
 
 
+_MENU_SECTIONS = {
+    1: ("Today", "Daily Brief, agenda, work shift, leave and what is due today."),
+    2: ("Money", "Expenses, receipts, bills, commitments, reports and payment proof."),
+    3: ("Reminders & Tasks", "Create, change, complete, snooze, reopen and review tasks/reminders."),
+    4: ("Diary & Plans", "Appointments, availability, planning discussions and plan handoff."),
+    5: ("Shopping", "Add, update and complete household shopping items."),
+    6: ("Saved Things", "Save and retrieve notes, pictures, documents, voice notes and videos."),
+    7: ("Home", "Check and control permitted Home Assistant devices."),
+    8: ("Goals & Savings", "Goals, contributions, stash/cash pools and allocations."),
+    9: ("Alex Listening", "Start/stop a Family Shared discussion-listening session."),
+    10: ("Ledgers & Trackers", "Create or use private/shared specialist or custom trackers."),
+}
+
+
+def _listening_start_command(text: str) -> bool:
+    low = normalize_intent_text(str(text or "")).strip().casefold()
+    return bool(re.fullmatch(
+        r"(?:alex\s+)?(?:start listening|listen to (?:this|our) discussion|listen in)",
+        low,
+    ))
+
+
+def _listening_stop_command(text: str) -> bool:
+    low = normalize_intent_text(str(text or "")).strip().casefold()
+    return bool(re.fullmatch(
+        r"(?:alex\s+)?(?:stop listening|you can stop listening|end listening|stop listening now)",
+        low,
+    ))
+
+
+def _listening_resume_query(text: str) -> str | None:
+    low = normalize_intent_text(str(text or "")).strip()
+    match = re.fullmatch(
+        r"(?is)(?:alex\s+)?resume\s+(?:our\s+|the\s+)?(.+?)(?:\s+discussion)?",
+        low,
+    )
+    return match.group(1).strip() if match else None
+
+
+def _listening_summary(actor, stopped: dict) -> str:
+    context = {
+        "listening_context": {
+            "previous_summary": stopped.get("previous_summary"),
+            "messages": stopped.get("messages") or [],
+        }
+    }
+    summary_prompt = (
+        "Summarize the captured family discussion only. Separate Agreed, Tentative, "
+        "Rejected/changed, and Still unresolved. Do not create, save, schedule, remind, "
+        "delete, or change anything. End by asking whether the user wants any agreed "
+        "outcome saved as a plan, diary item, task or reminder."
+    )
+    reply, _attachments = asyncio.run(
+        brain.respond(actor, summary_prompt, quoted_context=context)
+    )
+    return str(reply or "").strip()
+
+
+def _menu_command(text: str) -> bool:
+    value = normalize_intent_text(str(text or "")).strip().casefold()
+    return value in {"/menu", "menu", "alex menu", "what can you do", "what can u do", "help menu"}
+
+
+def _menu_text(section: int | None = None) -> str:
+    if section is None:
+        lines = ["*ALEX MENU*"]
+        for number, (title, summary) in _MENU_SECTIONS.items():
+            lines.append(f"{number}. *{title}* — {summary}")
+        lines.append("")
+        lines.append("Reply with a number to see natural examples.")
+        return "\n".join(lines)
+    title, _summary = _MENU_SECTIONS[section]
+    examples = {
+        1: ["What’s in for me today?", "What’s my agenda tomorrow?", "Am I working today?"],
+        2: ["I spent RM25 on lunch.", "Show my expenses for October.", "Show 4.", "Send that as PDF."],
+        3: ["Remind me to print at 11 PM.", "Add a task for tomorrow.", "Mark task 2 done."],
+        4: ["Add dinner tomorrow at 8 PM.", "Start a Greece holiday plan.", "What are we still deciding?"],
+        5: ["We need detergent.", "Change detergent to 2 bottles.", "I bought the detergent."],
+        6: ["Save this as warranty photo.", "Show my saved pictures.", "Show 1."],
+        7: ["What’s the Hall AC status?", "Turn the Hall AC off."],
+        8: ["Create a goal for RM5,000.", "I put RM200 toward my goal.", "Show my stash 😍"],
+        9: ["@Alex (bare mention starts/stops listening)", "@Alex start listening", "@Alex resume our Greece discussion"],
+        10: ["Create a private car-service tracker.", "Show my ledgers.", "Add this transfer to my drone tracker."],
+    }
+    lines = [f"*{title}*"]
+    lines.extend(f"• {item}" for item in examples.get(section, []))
+    lines.extend(["", "Reply 0 to return to the main menu."])
+    return "\n".join(lines)
+
+
+def _latest_menu_context(actor) -> str | None:
+    conn = db.connect()
+    try:
+        row = conn.execute(
+            """SELECT context_id FROM outbound_messages
+               WHERE conversation_id=? AND context_kind='MENU'
+                 AND datetime(created_at_utc)>=datetime('now','-10 minutes')
+               ORDER BY created_at_utc DESC,rowid DESC LIMIT 1""",
+            (actor.conversation_id,),
+        ).fetchone()
+        latest = conn.execute(
+            """SELECT context_kind,context_id FROM outbound_messages
+               WHERE conversation_id=?
+               ORDER BY created_at_utc DESC,rowid DESC LIMIT 1""",
+            (actor.conversation_id,),
+        ).fetchone()
+        if not row or not latest or latest["context_kind"] != "MENU":
+            return None
+        return str(row["context_id"] or "")
+    finally:
+        conn.close()
+
+
 def _error_report_command(text: str) -> tuple[bool, str]:
     """Recognize a small deterministic vocabulary for quote-bound bug reports."""
     raw = re.sub(r"\s+", " ", str(text or "").strip())
@@ -389,6 +507,20 @@ def _error_report_cancel_command(text: str) -> bool:
         r"(?:error\s+)?report|never\s*mind",
         value,
     ))
+
+
+def _save_pending_voice_title(text: str) -> str | None:
+    """Recognize an explicit typed request to save the one recent voice note."""
+    value = normalize_intent_text(str(text or "")).strip()
+    match = re.fullmatch(
+        r"(?is)(?:please\s+)?(?:save|keep|remember)\s+(?:this\s+)?"
+        r"(?:voice\s*note|voicenote|audio(?:\s*note)?)?\s*(?:as|called|named)\s+(.+?)\s*[.!]?",
+        value,
+    )
+    if not match:
+        return None
+    title = str(match.group(1) or "").strip().strip('"“”')
+    return title[:200] if title else None
 
 
 def _diagnostic_export_command(text: str) -> str | None:
@@ -686,7 +818,7 @@ def _fulfill_private_search_offer(actor, pending: dict) -> dict:
         kind = item.get("kind", "DOCUMENT")
         db.queue_outbound(
             dm_conversation,
-            "IMAGE" if kind == "IMAGE" else "DOCUMENT",
+            _attachment_outbound_kind(item),
             text=reply if first else None,
             local_path=path,
             mime_type=item.get("mime_type"),
@@ -710,6 +842,21 @@ def _fulfill_private_search_offer(actor, pending: dict) -> dict:
 
     db.finish_inbound(actor.source_message_id, reply)
     return {"ok": True, "private_search": True}
+
+
+def _finance_review_for_turn(actor) -> dict | None:
+    conn = db.connect()
+    try:
+        row = conn.execute(
+            """SELECT * FROM pending_items
+               WHERE owner_id=? AND conversation_id=? AND source_message_id=?
+                 AND kind='FINANCE_REVIEW' AND status='PENDING'
+               ORDER BY created_at_utc DESC LIMIT 1""",
+            (actor.user_id, actor.conversation_id, actor.source_message_id),
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
 
 
 def _selection_context_for_offer(actor, reply: str, attachments: list[dict]) -> dict | None:
@@ -1349,6 +1496,59 @@ def _record_deterministic_turn(actor, reply: str) -> None:
     db.add_turn(actor.user_id, actor.conversation_id, "assistant", reply)
 
 
+def _human_local_timestamp(value: str | None) -> str | None:
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        hour = dt.strftime("%I").lstrip("0") or "12"
+        return f"{dt.day} {dt.strftime('%B %Y')}, {hour}:{dt.strftime('%M')} {dt.strftime('%p')}"
+    except Exception:
+        return str(value)
+
+
+def _finance_detail_reply(result: dict, choice: int) -> str:
+    amount = result.get("amount")
+    currency = str(result.get("currency") or "MYR")
+    money = f"{currency} {float(amount):.2f}" if amount is not None else "Amount unknown"
+    lines = [
+        f"*Transaction {choice}*",
+        f"• *Description:* {result.get('description') or '—'}",
+        f"• *Amount:* {money}",
+    ]
+    event_time = _human_local_timestamp(result.get("event_date_local"))
+    logged_time = _human_local_timestamp(result.get("logged_at_local"))
+    if event_time:
+        lines.append(f"• *Transaction date:* {event_time}")
+    if logged_time:
+        lines.append(f"• *Logged with Alex:* {logged_time}")
+    if result.get("category"):
+        lines.append(f"• *Category:* {result.get('category')}")
+    if result.get("reference"):
+        lines.append(f"• *Reference:* {result.get('reference')}")
+    lines.append(
+        f"• *Scope:* {'Family Shared' if result.get('scope') == 'family' else 'Private'}"
+    )
+    if result.get("source_text"):
+        lines.append(f"• *Original instruction:* {result.get('source_text')}")
+    if result.get("receipt_available"):
+        lines.append("")
+        lines.append("I have the original receipt for this transaction. Ask me to show it if you want it.")
+    return "\n".join(lines)
+
+
+def _attachment_outbound_kind(item: dict) -> str:
+    kind = str((item or {}).get("kind") or "DOCUMENT").upper()
+    mime = str((item or {}).get("mime_type") or "").lower()
+    if kind == "IMAGE" or mime.startswith("image/"):
+        return "IMAGE"
+    if kind == "AUDIO" or mime.startswith("audio/"):
+        return "AUDIO"
+    if kind == "VIDEO" or mime.startswith("video/"):
+        return "VIDEO"
+    return "DOCUMENT"
+
+
 def _deliver_numbered_selection(actor, choice: int,
                                 context: dict | None = None) -> dict:
     parts = _selection_set_context_parts(context)
@@ -1362,15 +1562,28 @@ def _deliver_numbered_selection(actor, choice: int,
         set_context = services.latest_selection_set_context(actor)
 
     attachments = list(result.get("_attachments") or [])
+    finance_detail = bool(set_context and set_context.get("kind") == "FINANCE")
     reply = (
-        "Here it is."
-        if attachments
-        else str(result.get("content") or result.get("title") or result.get("note") or "Here it is.")
+        _finance_detail_reply(result, choice)
+        if finance_detail
+        else (
+            "Here it is."
+            if attachments
+            else str(result.get("content") or result.get("title") or result.get("note") or "Here it is.")
+        )
     )
-    context_kind = "SELECTION_SET" if set_context else None
+    context_kind = (
+        "FINANCIAL_EVENT"
+        if finance_detail and result.get("event_id")
+        else ("SELECTION_SET" if set_context else None)
+    )
     context_id = (
-        f"{set_context['kind']}:{set_context['id']}"
-        if set_context else None
+        str(result.get("event_id"))
+        if context_kind == "FINANCIAL_EVENT"
+        else (
+            f"{set_context['kind']}:{set_context['id']}"
+            if set_context else None
+        )
     )
     db.queue_outbound(
         actor.conversation_id, "TEXT", text=reply,
@@ -1386,7 +1599,7 @@ def _deliver_numbered_selection(actor, choice: int,
         kind = item.get("kind", "DOCUMENT")
         db.queue_outbound(
             actor.conversation_id,
-            "IMAGE" if kind == "IMAGE" else "DOCUMENT",
+            _attachment_outbound_kind(item),
             local_path=local_path,
             mime_type=item.get("mime_type"),
             source_message_id=actor.source_message_id,
@@ -1419,7 +1632,7 @@ def _deliver_selection_followup(actor, context: dict) -> dict:
         kind = item.get("kind", "DOCUMENT")
         db.queue_outbound(
             actor.conversation_id,
-            "IMAGE" if kind == "IMAGE" else "DOCUMENT",
+            _attachment_outbound_kind(item),
             local_path=local_path,
             mime_type=item.get("mime_type"),
             source_message_id=actor.source_message_id,
@@ -1456,15 +1669,34 @@ def _reopen_existing_reminder_command(text: str) -> bool:
     )
 
 
+_CLAIMED_REMINDER_QUOTE_KINDS = {
+    "REMINDER_CLAIM_CONFIRMED",
+    "REMINDER_INITIAL",
+    "REMINDER_FOLLOWUP",
+    "REMINDER_CLAIMANT_FOLLOWUP",
+    "REMINDER_CREATED",
+    "REMINDER_ASSIGNED",
+}
+
+
+def _quoted_reminder_id_for_claim_release(quoted_context: dict | None) -> str:
+    """Use an exact quoted reminder id only from a durable reminder outbound.
+
+    Ownership/claim state is still revalidated by release_reminder_claim; the
+    quote supplies identity only and cannot authorize a release by itself.
+    """
+    if not quoted_context:
+        return ""
+    if str(quoted_context.get("context_kind") or "") not in _CLAIMED_REMINDER_QUOTE_KINDS:
+        return ""
+    return str(quoted_context.get("context_id") or "").strip()
+
+
 def _return_claimed_reminder_to_family_command(
     text: str, quoted_context: dict | None = None
 ) -> bool:
     low = normalize_intent_text(text).casefold()
-    object_bound = bool(
-        quoted_context
-        and quoted_context.get("context_kind") == "REMINDER_CLAIM_CONFIRMED"
-        and quoted_context.get("context_id")
-    )
+    object_bound = bool(_quoted_reminder_id_for_claim_release(quoted_context))
     if object_bound and re.search(
         r"\b(?:release|unclaim)\b"
         r"|\b(?:push|send|put|return|give)\b.{0,50}\b(?:back|group|mcp home|family)\b"
@@ -1504,10 +1736,18 @@ def process(payload: dict) -> dict:
                 payload["message_id"],
                 [],
             )
+            target_message_id = str(payload.get("reaction_target_message_id") or "")
+            reaction_text = str(payload.get("reaction_text") or "")
+            brief_result = daily_brief.acknowledge_reaction(
+                actor, target_message_id, reaction_text
+            )
+            if brief_result.get("status") != "not_daily_brief_ack":
+                db.finish_inbound(
+                    payload["message_id"], json.dumps(brief_result, sort_keys=True)
+                )
+                return {"ok": True, "reaction": brief_result}
             result = services.claim_reminder_from_reaction(
-                actor,
-                str(payload.get("reaction_target_message_id") or ""),
-                str(payload.get("reaction_text") or ""),
+                actor, target_message_id, reaction_text
             )
             # A successful first claim moves responsibility into the claimant's
             # DM immediately. The group stays quiet; the reaction itself remains
@@ -1582,6 +1822,30 @@ def process(payload: dict) -> dict:
             )
             db.finish_inbound(payload["message_id"], reply)
             return {"ok": True, "media_failed": True}
+        if (
+            payload.get("conversation_type") == "GROUP"
+            and payload.get("listening_capture_only")
+        ):
+            capture_actor = db.resolve_actor(
+                payload["sender_phone"], payload["conversation_id"], "GROUP",
+                payload["message_id"], [],
+            )
+            capture_text = str(payload.get("text") or "").strip()
+            if not capture_text:
+                capture_text = (
+                    "[video]" if payload.get("video_data")
+                    else "[image]" if payload.get("image_data")
+                    else "[audio]" if payload.get("audio_data")
+                    else "[document]" if payload.get("pdf_data")
+                    else "[message]"
+                )
+            result = listening.capture(
+                capture_actor, payload["message_id"], capture_text,
+                _received_at_utc(payload),
+            )
+            db.finish_inbound(payload["message_id"], json.dumps(result, sort_keys=True))
+            return {"ok": True, "listening_capture": result.get("status") == "captured"}
+
         db.touch_inbound_processing(payload["message_id"])
         media_ids, media_lines, vision_parts = media.process_payload_media(payload)
         db.touch_inbound_processing(payload["message_id"])
@@ -1607,6 +1871,90 @@ def process(payload: dict) -> dict:
                 and turn["read_scope"] == "private"
             ),
         )
+        if actor.conversation_type == "GROUP":
+            current_listening = listening.active_session(actor.conversation_id)
+            resume_query = _listening_resume_query(turn["trusted_text"])
+            start_requested = _listening_start_command(turn["trusted_text"])
+            stop_requested = _listening_stop_command(turn["trusted_text"])
+            bare_toggle = bool(payload.get("bare_alex_mention"))
+
+            if (bare_toggle and not current_listening) or start_requested or resume_query:
+                started = listening.start(actor, resume_query=resume_query)
+                reply = (
+                    "👂 Listening resumed. I’ll capture this Family discussion until you "
+                    "tag me alone again or there is 1 hour of inactivity."
+                    if started.get("resumed")
+                    else "👂 I’m listening. I’ll capture this Family discussion until you "
+                    "tag me alone again or there is 1 hour of inactivity."
+                )
+                db.queue_outbound(
+                    actor.conversation_id, "TEXT", text=reply,
+                    source_message_id=actor.source_message_id,
+                    context_kind="LISTENING_SESSION",
+                    context_id=started.get("session_id"),
+                )
+                _record_deterministic_turn(actor, reply)
+                db.finish_inbound(actor.source_message_id, reply)
+                return {"ok": True, "listening_started": True}
+
+            if (bare_toggle and current_listening) or stop_requested:
+                stopped = listening.stop(actor)
+                if stopped.get("status") != "stopped":
+                    reply = "I’m not currently listening to a discussion."
+                elif stopped.get("messages"):
+                    reply = _listening_summary(actor, stopped)
+                    listening.save_summary(stopped["session_id"], reply)
+                else:
+                    reply = "👂 Listening stopped. No discussion messages were captured."
+                db.queue_outbound(
+                    actor.conversation_id, "TEXT", text=reply,
+                    source_message_id=actor.source_message_id,
+                    context_kind="LISTENING_SUMMARY",
+                    context_id=stopped.get("session_id"),
+                )
+                _record_deterministic_turn(actor, reply)
+                db.finish_inbound(actor.source_message_id, reply)
+                return {"ok": True, "listening_stopped": True}
+
+            if payload.get("listening_active") and current_listening:
+                listening.capture(
+                    actor, actor.source_message_id,
+                    str(turn["trusted_text"] or "[Alex interaction]"),
+                    turn["received_at_utc"],
+                )
+
+        menu_section = None
+        if _menu_command(turn["trusted_text"]):
+            reply = _menu_text()
+            db.queue_outbound(
+                actor.conversation_id, "TEXT", text=reply,
+                source_message_id=actor.source_message_id,
+                context_kind="MENU", context_id="MAIN",
+            )
+            _record_deterministic_turn(actor, reply)
+            db.finish_inbound(actor.source_message_id, reply)
+            return {"ok": True, "menu": True}
+        bare_menu_number = re.fullmatch(r"\s*(\d{1,2})\s*", turn["trusted_text"])
+        if bare_menu_number and _latest_menu_context(actor):
+            choice = int(bare_menu_number.group(1))
+            if choice == 0:
+                reply = _menu_text()
+                context_id = "MAIN"
+            elif choice in _MENU_SECTIONS:
+                reply = _menu_text(choice)
+                context_id = str(choice)
+            else:
+                reply = "Choose a menu number from 1 to 10, or 0 to go back."
+                context_id = _latest_menu_context(actor) or "MAIN"
+            db.queue_outbound(
+                actor.conversation_id, "TEXT", text=reply,
+                source_message_id=actor.source_message_id,
+                context_kind="MENU", context_id=context_id,
+            )
+            _record_deterministic_turn(actor, reply)
+            db.finish_inbound(actor.source_message_id, reply)
+            return {"ok": True, "menu": True}
+
         if payload.get("audio_data"):
             audio_id = next(
                 (
@@ -1633,6 +1981,30 @@ def process(payload: dict) -> dict:
             _record_deterministic_turn(actor, reply)
             db.finish_inbound(actor.source_message_id, reply)
             return {"ok": True, "voice_pending": True, "pending_item_id": pending["item_id"]}
+
+        pending_voice_title = _save_pending_voice_title(turn["trusted_text"])
+        if pending_voice_title and actor.conversation_type != "GROUP":
+            voice_pending = db.single_pending_item(
+                actor, "VOICE", max_age_seconds=1800
+            )
+            if voice_pending and voice_pending.get("media_id"):
+                saved = services.save_existing_media_item(
+                    actor,
+                    pending_voice_title,
+                    pending_voice_title,
+                    str(voice_pending["media_id"]),
+                    shared=(turn["read_scope"] != "private"),
+                    tags="voice-note",
+                )
+                db.resolve_pending_item(
+                    voice_pending["item_id"], actor.user_id, actor.source_message_id
+                )
+                return _finish_simple_turn(
+                    actor,
+                    f'Saved “{pending_voice_title}” with the original voice note.',
+                    voice_note_saved=True,
+                    saved_item_id=saved.get("item_id"),
+                )
 
         # Existing authentication, group gating, privacy derivation and voice
         # pending policy above remain authoritative. Dot bypasses all semantic
@@ -1893,6 +2265,12 @@ def process(payload: dict) -> dict:
             quoted_context = db.resolve_recent_instruction_context(
                 actor.conversation_id, actor.phone, actor.source_message_id
             )
+        if actor.conversation_type == "GROUP" and payload.get("listening_active"):
+            listening_context = listening.context(actor.conversation_id)
+            if listening_context:
+                quoted_context = dict(quoted_context or {})
+                quoted_context["listening_context"] = listening_context
+
         db.touch_inbound_processing(payload["message_id"])
 
         # User-reported behavioural errors are object-bound at every step.
@@ -2067,11 +2445,8 @@ def process(payload: dict) -> dict:
         if _return_claimed_reminder_to_family_command(
             turn["intent_text"], quoted_context
         ):
-            quoted_claim_reminder_id = (
-                str(quoted_context.get("context_id") or "")
-                if quoted_context
-                and quoted_context.get("context_kind") == "REMINDER_CLAIM_CONFIRMED"
-                else ""
+            quoted_claim_reminder_id = _quoted_reminder_id_for_claim_release(
+                quoted_context
             )
             try:
                 released = services.release_reminder_claim(
@@ -2243,7 +2618,7 @@ def process(payload: dict) -> dict:
                     sent_paths.add(path)
                     db.queue_outbound(
                         dm_conversation,
-                        "IMAGE" if kind == "IMAGE" else "DOCUMENT",
+                        _attachment_outbound_kind(item),
                         text=private_reply if first_private_attachment else None,
                         local_path=path,
                         mime_type=item.get("mime_type"),
@@ -2332,6 +2707,7 @@ def process(payload: dict) -> dict:
             )
             reminder_draft = retained_draft or _maybe_create_reminder_draft(actor, reply)
         report_context = _report_context_for_turn(actor)
+        finance_review = _finance_review_for_turn(actor)
 
         if reminder_created:
             for pending_id in _completed_reminder_drafts_for_turn(actor):
@@ -2344,6 +2720,7 @@ def process(payload: dict) -> dict:
             context_kind = (
                 "PENDING_ITEM" if private_search_offer
                 else "PENDING_ITEM" if reminder_draft
+                else "PENDING_ITEM" if finance_review
                 else "SELECTION_SET" if selection_set_context
                 else "SELECTION" if selection_context
                 else "REMINDER_SETUP" if reminder_setup_id
@@ -2354,6 +2731,7 @@ def process(payload: dict) -> dict:
             context_id = (
                 private_search_offer["item_id"] if private_search_offer
                 else reminder_draft["item_id"] if reminder_draft
+                else finance_review["item_id"] if finance_review
                 else f"{selection_set_context['kind']}:{selection_set_context['id']}"
                 if selection_set_context
                 else (
@@ -2383,7 +2761,7 @@ def process(payload: dict) -> dict:
                 sent_paths.add(path)
                 db.queue_outbound(
                     actor.conversation_id,
-                    "IMAGE" if kind == "IMAGE" else "DOCUMENT",
+                    _attachment_outbound_kind(item),
                     text=reply if first_attachment else None,
                     local_path=path,
                     mime_type=item.get("mime_type"),

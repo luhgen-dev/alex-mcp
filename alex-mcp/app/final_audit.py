@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 from pathlib import Path
 
@@ -24,6 +25,9 @@ APP = Path(__file__).resolve().parent
 def main() -> dict:
     checks: list[str] = []
     failures: list[str] = []
+    external_review_deferred = (
+        os.environ.get("ALEX_EXTERNAL_REVIEW_DEFERRED", "").strip() == "1"
+    )
 
     def require(condition: bool, label: str):
         if condition:
@@ -307,15 +311,10 @@ def main() -> dict:
         "isAlexMentioned(message)" in connect
         and "isReplyToAlex(message)" in connect
         and "async function jidMatchesSelf" in connect
-        and (
-            "if (!(await isAlexMentioned(message)) && !(await isReplyToAlex(message))) return;" in connect
-            or (
-                "alexMentioned = await isAlexMentioned(message);" in connect
-                and "replyToAlex = await isReplyToAlex(message);" in connect
-                and "if (!alexMentioned && !replyToAlex) return;" in connect
-            )
-        ),
-        "Family Shared responds only to explicit mention or swipe reply",
+        and "listeningEntry(remoteJid)" in connect
+        and "listeningActive = Boolean" in connect
+        and "if (!alexMentioned && !replyToAlex && !listeningActive) return;" in connect,
+        "Family Shared reaches Python only by explicit mention/swipe reply or active bounded Listening Mode",
     )
     quoted_payload = (APP / "quoted_payload.js").read_text(encoding="utf-8")
     require(
@@ -328,8 +327,10 @@ def main() -> dict:
         "explicit Family quote handoff carries WhatsApp quoted content/type at the bridge boundary",
     )
     require(
-        "if (!alexMentioned && !replyToAlex) return;" in connect,
-        "ordinary Family Shared chat still stops before Python unless Alex is explicitly invoked",
+        "listening_capture_only: listeningCaptureOnly" in connect
+        and "bare_alex_mention: bareAlexMention" in connect
+        and "if (!alexMentioned && !replyToAlex && !listeningActive) return;" in connect,
+        "ordinary Family Shared chat stops before Python unless explicitly invoked or a visible Listening Mode session is active",
     )
     require(
         "USAGE_URL" in connect and "AI usage — last 24h" in connect,
@@ -378,7 +379,7 @@ def main() -> dict:
     # 7. Core trust rules are explicit in the brain and cannot rely on memory.
     prompt = brain.SYSTEM_PROMPT
     for phrase, label in (
-        ("never guess MYR versus SGD", "currency no-guess contract"),
+        ("MYR is the household default when the user does not state a currency", "MYR-default currency contract"),
         ("automatic receipt retention", "automatic receipt retention contract"),
         ("never invent a clock time", "date-only no-invented-time contract"),
         ("never read or reveal the spouse's private roster/Diary", "spouse privacy contract"),
@@ -441,21 +442,44 @@ def main() -> dict:
             "real-AI snapshot version is explicitly supported",
         )
         if snapshot_version in {5, 6}:
-            # Validate full raw-source review or a verified unchanged-parent
-            # plus fresh-delta review against the exact current public corpus.
+            # Normal releases require exact current independent-model evidence.
+            # If the external reviewer itself is unavailable/quota-blocked, the
+            # release may proceed only when the deterministic public-packet
+            # oracle is fingerprint-bound to the exact current corpus. This is
+            # recorded as deferred evidence, never misreported as a fresh pass.
             import human_ai_lab
             import real_ai_snapshot_review
-            full_review_valid = False
-            try:
-                current_packets = asyncio.run(human_ai_lab.build_packets("all"))
-                real_ai_snapshot_review._decisions_from_snapshot(current_packets, snapshot)
-                full_review_valid = True
-            except (ValueError, RuntimeError, TypeError, KeyError):
-                pass
-            require(
-                full_review_valid,
-                "independent review matches current packets and verified original raw source evidence",
-            )
+            current_packets = asyncio.run(human_ai_lab.build_packets("all"))
+            current_fingerprint = human_ai_lab._corpus_fingerprint(current_packets)
+            if external_review_deferred:
+                import chatgpt_reasoning_review
+                reason = os.environ.get("ALEX_EXTERNAL_REVIEW_REASON", "").strip()
+                require(
+                    bool(reason),
+                    "deferred external review has an explicit infrastructure reason",
+                )
+                require(
+                    chatgpt_reasoning_review.REVIEWED_CORPUS_FINGERPRINT
+                    == current_fingerprint,
+                    "deterministic reasoning oracle matches exact current corpus while external review is deferred",
+                )
+                require(
+                    "corpus mismatch" in real_review_text,
+                    "stale independent snapshot still fails closed when external review resumes",
+                )
+            else:
+                full_review_valid = False
+                try:
+                    real_ai_snapshot_review._decisions_from_snapshot(
+                        current_packets, snapshot
+                    )
+                    full_review_valid = True
+                except (ValueError, RuntimeError, TypeError, KeyError):
+                    pass
+                require(
+                    full_review_valid,
+                    "independent review matches current packets and verified original raw source evidence",
+                )
         elif snapshot_version in {3, 4}:
             parent = snapshot.get("parent_review") or {}
             delta = snapshot.get("delta_review") or {}

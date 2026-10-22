@@ -114,8 +114,10 @@ def _payload(row) -> dict:
         "image/jpeg" if kind == "IMAGE" else "application/octet-stream"
     )
     outbound_kind = (
-        "image" if kind == "IMAGE"
-        else ("audio" if str(mime).lower().startswith("audio/") else "document")
+        "image" if kind == "IMAGE" or str(mime).lower().startswith("image/")
+        else "audio" if kind == "AUDIO" or str(mime).lower().startswith("audio/")
+        else "video" if kind == "VIDEO" or str(mime).lower().startswith("video/")
+        else "document"
     )
     return {
         **common,
@@ -318,7 +320,7 @@ def _reconcile_pending_item_markers(conn) -> None:
            JOIN pending_items p ON p.item_id=o.context_id
            WHERE o.context_kind='PENDING_ITEM'
              AND (
-                (p.status='PENDING' AND p.kind IN ('VOICE','REMINDER_DRAFT'))
+                (p.status='PENDING' AND p.kind IN ('VOICE','REMINDER_DRAFT','FINANCE_REVIEW'))
                 OR (
                     (p.status IN ('RESOLVED','CANCELLED') OR p.kind NOT IN ('VOICE','REMINDER_DRAFT'))
                     AND (
@@ -349,6 +351,8 @@ def _reconcile_pending_item_markers(conn) -> None:
     for row in rows:
         if row["pending_status"] == "PENDING" and row["pending_kind"] == "VOICE":
             _ensure_unresolved_markers(conn, row)
+        elif row["pending_status"] == "PENDING" and row["pending_kind"] == "FINANCE_REVIEW":
+            _ensure_claim_setup_markers(conn, row)
         elif (
             row["pending_status"] == "PENDING"
             and row["pending_kind"] == "REMINDER_DRAFT"
@@ -364,6 +368,26 @@ def _reconcile_pending_item_markers(conn) -> None:
         else:
             # Also cleans stale markers from transient offer/draft prompts.
             _cleanup_resolved_markers(conn, row)
+
+
+def _reconcile_daily_brief_markers(conn) -> None:
+    rows = conn.execute(
+        """SELECT o.*,b.status AS brief_status
+           FROM outbound_messages o
+           JOIN daily_briefs b ON b.brief_id=o.context_id
+           WHERE o.context_kind='DAILY_BRIEF' AND o.delivery_status='SENT'
+             AND (
+               b.status='PENDING'
+               OR (o.job_reacted_at_utc IS NOT NULL AND o.job_reaction_cleared_at_utc IS NULL)
+               OR (o.job_pinned_at_utc IS NOT NULL AND o.job_unpinned_at_utc IS NULL)
+             )
+           ORDER BY o.rowid DESC"""
+    ).fetchall()
+    for row in rows:
+        if row["brief_status"] == "PENDING":
+            _ensure_claim_setup_markers(conn, row)
+        else:
+            _cleanup_claim_setup_markers(conn, row)
 
 
 def _reconcile_error_report_markers(conn) -> None:
@@ -907,6 +931,7 @@ def sweep():
         _reconcile_pending_item_markers(conn)
         _reconcile_claim_setup_markers(conn)
         _reconcile_reminder_pins(conn)
+        _reconcile_daily_brief_markers(conn)
         _reconcile_error_report_markers(conn)
         _retry_delivered_document_cleanup(conn)
 

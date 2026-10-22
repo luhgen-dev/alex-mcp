@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Annotated
 from functools import wraps
+from datetime import datetime
+from zoneinfo import ZoneInfo
 import inspect
 import sqlite3
 import re
@@ -23,11 +25,15 @@ import phase2_delegation
 import phase2_monitor
 import phase2_home
 import phase2_reports
+import profile_config
+import daily_brief
+import listening
+import custom_ledgers
 import scope_policy
 
 mcp = MCPServer(
     "Alex Household Tools",
-    version="0.5.44",
+    version="0.5.45",
     instructions="Deterministic household tools. Identity and permissions are injected by Alex and are never model-controlled.",
 )
 
@@ -105,7 +111,7 @@ def log_expense(description: str, actor: Actor, amount: float | None = None,
                 category: str | None = None, currency: str | None = None,
                 event_date_local: str | None = None, reference: str | None = None,
                 event_type: str = "Expense") -> dict:
-    """Record an expense or income. Currency must be explicitly known as MYR or SGD; never guess it. Use null category/amount when genuinely unclear. Omit event_date_local unless the user or the receipt states a date/time; Alex stamps the message time automatically and never needs an invented clock time."""
+    """Record an expense or income. MYR is the default when the user states no currency; explicit SGD/S$ overrides it. Use null category/amount when genuinely unclear. Omit event_date_local unless the user or the receipt states a date/time; Alex stamps the message time automatically and never needs an invented clock time."""
     return services.log_expense(actor, description, amount, category, currency, event_date_local, reference, event_type)
 
 
@@ -208,6 +214,18 @@ def query_finances(actor: Actor, start_date: str | None = None, end_date: str | 
         actor, start_date, end_date, category, search, currency, limit,
         effective_scope, source,
     )
+    # Freeze the exact transaction order shown to the user. Numbered follow-ups
+    # resolve this set directly instead of re-running a fuzzy finance search.
+    event_ids = [str(row.get("event_id") or "") for row in result.get("records", [])]
+    selection_id = services.store_finance_selection(actor, event_ids)
+    if selection_id:
+        for index, row in enumerate(result.get("records", []), 1):
+            row["choice"] = index
+        result["selection_id"] = selection_id
+        result["presentation_rule"] = (
+            "Present general expense queries as a numbered transaction list in this exact order. "
+            "Do not expose event_id or selection_id. Category summaries are secondary unless the user asks for a category breakdown."
+        )
     preserve_presented_monthly = bool(
         active
         and active.get("kind") == "monthly_finance"
@@ -262,6 +280,12 @@ def find_receipts(actor: Actor, query: str | None = None, amount: float | None =
 def get_receipt(media_id: str, actor: Actor) -> dict:
     """Retrieve one original receipt previously found by find_receipts so Alex can send the actual image/document back."""
     return services.get_receipt(actor, media_id)
+
+
+@alex_tool()
+def get_transaction_receipt(event_id: str, actor: Actor) -> dict:
+    """Retrieve receipt evidence linked to one exact transaction. Never substitute a different/latest receipt when the transaction has no linked evidence."""
+    return services.get_receipt_for_event(actor, event_id)
 
 
 @alex_tool()
@@ -535,47 +559,170 @@ def nudge_reminder_claimant(reminder_id: str, actor: Actor) -> dict:
 def create_task(title: str, actor: Actor, notes: str | None = None,
                 assignee: str = "unassigned", shared: bool = False,
                 due_local: str | None = None, plan_id: str | None = None,
+                plan_name: str | None = None,
                 reminder_id: str | None = None) -> dict:
-    """Create a first-class task with OPEN lifecycle state. New-write scope is resolved from the trusted user command. A reminder is never created implicitly."""
-    return phase2.create_task(
-        actor, title, notes, assignee, shared, due_local, plan_id, reminder_id
+    """Create a first-class task with OPEN lifecycle state. A natural plan_name may be supplied instead of an opaque plan_id; Alex resolves exactly one accessible plan internally, so do not list plans first merely to obtain an id. New-write scope is resolved from the trusted user command. A reminder is never created implicitly."""
+    resolved_plan = (
+        phase2.resolve_plan_reference(actor, plan_id, plan_name)
+        if plan_id or plan_name else None
     )
+    return phase2.create_task(
+        actor, title, notes, assignee, shared, due_local, resolved_plan, reminder_id
+    )
+
+
+@alex_tool()
+def create_task_reminder(actor: Actor, due_local: str,
+                         task_id: str | None = None,
+                         task_name: str | None = None,
+                         reminder_mode: str | None = None,
+                         time_interpretation: ReminderTimeInterpretation | None = None) -> dict:
+    """Create a reminder linked to one existing task. For a date-only task, reminder_mode must be heads_up or task_time; omit it to get a clarification instead of guessing. heads_up leaves the task due date unchanged; task_time also gives the task that exact due time."""
+    resolved = phase2.resolve_task_reference(
+        actor, task_id, task_name, include_closed=False
+    )
+    conn = db.connect()
+    try:
+        task = conn.execute(
+            """SELECT task_id,title,space_id,due_at_utc,due_date_local
+               FROM tasks WHERE task_id=? LIMIT 1""",
+            (resolved,),
+        ).fetchone()
+        if not task:
+            raise ValueError("task not found")
+    finally:
+        conn.close()
+
+    mode = str(reminder_mode or "").strip().casefold().replace("-", "_")
+    if task["due_date_local"] and not task["due_at_utc"] and mode not in {"heads_up", "task_time"}:
+        return {
+            "status": "needs_clarification",
+            "clarification_question": (
+                "Do you want this as a heads-up reminder while keeping the task due "
+                f"anytime on {task['due_date_local']}, or should I set the task itself "
+                "to the reminder time?"
+            ),
+            "choices": ["heads_up", "task_time"],
+            "task": task["title"],
+        }
+    if mode and mode not in {"heads_up", "task_time"}:
+        raise ValueError("reminder_mode must be heads_up or task_time")
+
+    result = services.create_reminder(
+        actor,
+        str(task["title"]),
+        due_local,
+        recurrence_rule=None,
+        shared=(task["space_id"] == "FAMILY_SHARED"),
+        recipient="me",
+        destination="dm",
+        claimable=False,
+        presence_aware=False,
+        delivery_class="routine",
+        follow_up_after_hours=24,
+        time_interpretation=time_interpretation,
+    )
+    reminder_id = str(result.get("reminder_id") or "")
+    due_utc = result.get("due_at_utc")
+    if not reminder_id:
+        return result
+
+    conn = db.connect()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("DELETE FROM task_reminder_links WHERE task_id=?", (resolved,))
+        conn.execute(
+            "INSERT INTO task_reminder_links(task_id,reminder_id) VALUES(?,?)",
+            (resolved, reminder_id),
+        )
+        if mode == "task_time" and due_utc:
+            local = datetime.fromisoformat(
+                str(due_utc).replace("Z", "+00:00")
+            ).astimezone(ZoneInfo(actor.timezone))
+            conn.execute(
+                """UPDATE tasks
+                   SET due_at_utc=?,due_date_local=?,updated_at_utc=CURRENT_TIMESTAMP
+                   WHERE task_id=?""",
+                (str(due_utc), local.date().isoformat(), resolved),
+            )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    return {
+        **result,
+        "task_linked": True,
+        "task": task["title"],
+        "reminder_mode": mode or "heads_up",
+        "task_time_changed": bool(mode == "task_time"),
+    }
 
 
 @alex_tool()
 def list_tasks(actor: Actor, status: str = "open",
                plan_id: str | None = None, limit: int = 50) -> dict:
-    """List authorized tasks. status may be open, done, cancelled, or all; plan_id optionally narrows to one accessible plan."""
-    return phase2.list_tasks(actor, status, plan_id, limit)
+    """List authorized tasks. Results are numbered and frozen for exact Show N follow-ups. status may be open, done, cancelled, or all."""
+    result = phase2.list_tasks(actor, status, plan_id, limit)
+    rows = result.get("tasks", [])
+    selection_id = services.store_task_selection(
+        actor, [str(row.get("task_id") or "") for row in rows]
+    )
+    if selection_id:
+        for index, row in enumerate(rows, 1):
+            row["choice"] = index
+        result["selection_id"] = selection_id
+    result["presentation_rule"] = (
+        "Show numbered tasks with title, due date/time when present and status. "
+        "Never expose task_id or selection_id. A numbered follow-up resolves the exact displayed task."
+    )
+    return result
 
 
 @alex_tool()
-def update_task(task_id: str, actor: Actor, title: str | None = None,
+def get_task_details(actor: Actor, task_id: str | None = None,
+                     task_name: str | None = None) -> dict:
+    """Show one exact task's provenance, original instruction, due date/time, links and history using an exact id or natural task name."""
+    resolved = phase2.resolve_task_reference(actor, task_id, task_name)
+    return phase2.task_detail(actor, resolved)
+
+
+@alex_tool()
+def update_task(actor: Actor, task_id: str | None = None,
+                task_name: str | None = None, title: str | None = None,
                 notes: str | None = None, due_local: str | None = None,
                 assignee: str | None = None, plan_id: str | None = None,
                 reminder_id: str | None = None) -> dict:
-    """Edit task fields without changing task lifecycle state. Empty due_local/plan_id/reminder_id clears that optional link/value. This never creates a reminder or rewrites the linked plan."""
+    """Edit one task by exact id or natural name without changing lifecycle state. This never creates a reminder or rewrites the linked plan."""
+    resolved = phase2.resolve_task_reference(actor, task_id, task_name)
     return phase2.update_task(
-        actor, task_id, title, notes, due_local, assignee, plan_id, reminder_id
+        actor, resolved, title, notes, due_local, assignee, plan_id, reminder_id
     )
 
 
 @alex_tool()
-def complete_task(task_id: str, actor: Actor) -> dict:
-    """Mark an OPEN task DONE while preserving its lifecycle history and linked plan/reminder state."""
-    return phase2.complete_task(actor, task_id)
+def complete_task(actor: Actor, task_id: str | None = None,
+                  task_name: str | None = None) -> dict:
+    """Mark one OPEN task DONE by exact id or natural name while preserving history and linked records."""
+    resolved = phase2.resolve_task_reference(actor, task_id, task_name, include_closed=False)
+    return phase2.complete_task(actor, resolved)
 
 
 @alex_tool()
-def reopen_task(task_id: str, actor: Actor) -> dict:
-    """Explicitly reopen a DONE task back to OPEN while preserving lifecycle history."""
-    return phase2.reopen_task(actor, task_id)
+def reopen_task(actor: Actor, task_id: str | None = None,
+                task_name: str | None = None) -> dict:
+    """Explicitly reopen one DONE task by exact id or natural name."""
+    resolved = phase2.resolve_task_reference(actor, task_id, task_name)
+    return phase2.reopen_task(actor, resolved)
 
 
 @alex_tool()
-def cancel_task(task_id: str, actor: Actor) -> dict:
-    """Cancel a task without deleting or changing any linked plan or reminder."""
-    return phase2.cancel_task(actor, task_id)
+def cancel_task(actor: Actor, task_id: str | None = None,
+                task_name: str | None = None) -> dict:
+    """Cancel one task by exact id or natural name without deleting linked plan/reminder records."""
+    resolved = phase2.resolve_task_reference(actor, task_id, task_name)
+    return phase2.cancel_task(actor, resolved)
 
 
 @alex_tool()
@@ -621,11 +768,14 @@ def list_shopping_items(actor: Actor, include_purchased: bool = False, limit: in
 
 
 @alex_tool()
-def update_shopping_item(item_id: str, actor: Actor, status: str | None = None,
+def update_shopping_item(actor: Actor, item_id: str | None = None,
+                         item_name: str | None = None,
+                         status: str | None = None,
                          quantity: str | None = None, notes: str | None = None,
                          item: str | None = None) -> dict:
-    """Rename a shopping item or update status/quantity/notes. Omitted status preserves its existing state; never mark purchased unless the user explicitly indicates it."""
-    return services.update_shopping_item(actor, item_id, status, quantity, notes, item)
+    """Rename/update one shopping item by exact id or natural item_name. Omitted status preserves state; explicit bought/purchased wording marks it purchased."""
+    resolved = services.resolve_shopping_reference(actor, item_id, item_name)
+    return services.update_shopping_item(actor, resolved, status, quantity, notes, item)
 
 
 @alex_tool()
@@ -747,10 +897,10 @@ def update_plan(actor: Actor, plan_id: str | None = None,
 
 @alex_tool()
 def confirm_plan(actor: Actor, plan_id: str | None = None,
-                 plan_name: str | None = None, add_to_diary: bool = True,
+                 plan_name: str | None = None, add_to_diary: bool = False,
                  reminder_minutes_before: int | None = None,
                  reminder_recipient: str = "me") -> dict:
-    """Confirm a plan by exact id or natural plan_name. A dated plan materializes a linked Diary event."""
+    """Confirm/finalise a plan by exact id or natural plan_name. Finalising alone keeps it in Plans; set add_to_diary=true only when the user explicitly asks to put it in the diary."""
     resolved = phase2.resolve_plan_reference(actor, plan_id, plan_name)
     return phase2.confirm_plan(
         actor, resolved, add_to_diary, reminder_minutes_before, reminder_recipient
@@ -791,13 +941,17 @@ def resolve_latest_diary_conflict(choice: int, actor: Actor,
 
 
 @alex_tool()
-def update_diary_event(diary_id: str, actor: Actor, status: str | None = None,
+def update_diary_event(actor: Actor, diary_id: str | None = None,
+                       diary_name: str | None = None,
+                       on_date: str | None = None,
+                       status: str | None = None,
                        start_local: str | None = None, end_local: str | None = None,
                        title: str | None = None, notes: str | None = None,
                        linked_reminders: str = "ask") -> dict:
-    """Reschedule/cancel a diary event. If linked reminders exist, keep/shift/cancel must be explicit."""
+    """Reschedule/cancel a diary event by exact id or natural title/date. If linked reminders exist, keep/shift/cancel must be explicit."""
+    resolved = phase2.resolve_diary_reference(actor, diary_id, diary_name, on_date)
     return phase2.update_diary_event(
-        actor, diary_id, status, start_local, end_local, title, notes, linked_reminders
+        actor, resolved, status, start_local, end_local, title, notes, linked_reminders
     )
 
 
@@ -913,6 +1067,18 @@ def planning_reopen_goal(actor: Actor, goal_id: str | None = None,
         goal_id, goal_name, actor.phone, actor.conversation_type
     )
     return phase2_finance.reopen_goal(
+        resolved, actor.phone, actor.conversation_type
+    )
+
+
+@alex_tool()
+def planning_cancel_goal(actor: Actor, goal_id: str | None = None,
+                         goal_name: str | None = None) -> dict:
+    """Cancel one goal while preserving target, funding and contribution history. Use the natural goal name when supplied; never ask the user to create a replacement goal."""
+    resolved = phase2_finance.resolve_goal_reference(
+        goal_id, goal_name, actor.phone, actor.conversation_type
+    )
+    return phase2_finance.cancel_goal(
         resolved, actor.phone, actor.conversation_type
     )
 
@@ -1179,9 +1345,27 @@ def planning_record_cash_pool_spend(amount: float, actor: Actor,
                                     note: str | None = None) -> dict:
     """Record spending from a stash/cash pool with optional category and funding-source note. This reduces the pool balance and does not create a second income record."""
     import runtime_clock
-    resolved = phase2_finance.resolve_cash_pool_reference(
-        pool_id, pool_name, actor.phone, actor.conversation_type
-    )
+    try:
+        resolved = phase2_finance.resolve_cash_pool_reference(
+            pool_id, pool_name, actor.phone, actor.conversation_type
+        )
+    except ValueError as exc:
+        message = str(exc)
+        if (
+            "No matching cash pool was found" in message
+            or "Cash pool not found in the records available to the current scope" in message
+        ):
+            miss = _structured_scoped_miss(actor, "cash_pool")
+            return {
+                **miss,
+                "operation": "spend",
+                "nothing_written": True,
+                "message": (
+                    "The named stash is not in the current authorized scope. "
+                    "Do not create an ordinary expense or partially apply this request."
+                ),
+            }
+        raise
     effective_date = event_date or runtime_clock.today(actor.timezone).isoformat()
     return phase2_finance.record_cash_pool_spend(
         resolved, amount, effective_date, actor.phone, actor.conversation_type,
@@ -1381,10 +1565,13 @@ def bills_list(actor: Actor, period: str | None = None,
 
 
 @alex_tool()
-def bills_match_payment(label: str, amount: float, event_date: str, actor: Actor) -> dict:
-    """Conservatively match payment/receipt facts to exactly one authorized recurring obligation. Ambiguous matches are returned, never guessed."""
+def bills_match_payment(label: str, amount: float, event_date: str, actor: Actor,
+                        reference: str | None = None,
+                        account_reference: str | None = None) -> dict:
+    """Conservatively match payment/receipt evidence to exactly one recurring obligation. Amount alone never identifies a commitment; configured payee aliases, reference patterns or account fingerprint must match."""
     return phase2_finance.resolve_obligation_from_evidence(
-        label, amount, event_date, actor.phone, actor.conversation_type, "all"
+        label, amount, event_date, actor.phone, actor.conversation_type, "all",
+        reference=reference, account_reference=account_reference,
     )
 
 
@@ -1412,6 +1599,12 @@ def bills_confirm_unpaid(instance_id: str, actor: Actor, note: str | None = None
     return phase2_finance.confirm_obligation_unpaid(
         instance_id, actor.phone, actor.conversation_type, note,
     )
+
+
+@alex_tool()
+def work_import_profile(profile_json: str, actor: Actor) -> dict:
+    """Import this owner's explicit permanent private roster/overtime/leave profile from user-authored JSON. Values are validated and versioned locally; nothing is published to source control."""
+    return profile_config.import_user_work_profile(actor, profile_json)
 
 
 @alex_tool()
@@ -1459,7 +1652,7 @@ def work_ot_status(on_date: str, actor: Actor) -> dict:
 
 @alex_tool()
 def work_leave_balance(leave_id: str, actor: Actor, as_of_date: str | None = None) -> dict:
-    """Read annual/medical leave from configured snapshot plus later TAKEN/recorded events."""
+    """Read a configured leave balance. Annual/medical reconcile later recorded leave events; childcare, wellness, hospitalisation and DOIL use the authoritative snapshot until updated."""
     return phase2_work.leave_balance(leave_id, actor.phone, actor.conversation_type, as_of_date)
 
 
@@ -1822,73 +2015,113 @@ def report_export(format: str, actor: Actor, period: str | None = None,
             ),
         }
 
-    if report_kind in {"finance_query", "monthly_finance"}:
+    reuse_active_exact = bool(
+        active
+        and use_active_context
+        and not include_raw_income
+        and not explicit_filter
+        and not full_report
+        and not period_changed
+        and report_kind == active_kind
+        and isinstance(active.get("payload"), dict)
+    )
+    if reuse_active_exact:
+        # "Send that as PDF/CSV/JSON" means the exact dataset Alex just
+        # displayed. Never reconstruct it from category/search wording.
         if report_kind == "monthly_finance":
-            effective_period = spec.get("period") or effective_period
+            canonical = active["payload"]
+        elif report_kind == "finance_query":
+            ledger = active["payload"]
             scope = spec.get("scope") or "all"
-            if not effective_period:
-                raise ValueError("monthly finance report has no period")
-            year, month = (int(x) for x in effective_period.split("-", 1))
-            start_date = f"{year:04d}-{month:02d}-01"
-            end_date = f"{year:04d}-{month:02d}-{calendar.monthrange(year, month)[1]:02d}"
-            ledger = services.query_finances(
-                actor, start_date=start_date, end_date=end_date,
-                category=spec.get("category"), search=spec.get("search"),
-                scope=scope, include_all_records=True,
-            )
-        else:
-            scope = spec.get("scope")
-            query_start = spec.get("start_date")
-            query_end = spec.get("end_date")
-            # A frozen monthly report may carry category/scope filters without
-            # explicit start/end fields. The period still bounds the dataset.
-            if (
-                effective_period
-                and re.fullmatch(r"\d{4}-\d{2}", str(effective_period))
-                and not query_start and not query_end
-            ):
-                year, month = (int(x) for x in str(effective_period).split("-", 1))
-                query_start = f"{year:04d}-{month:02d}-01"
-                query_end = (
-                    f"{year:04d}-{month:02d}-"
-                    f"{calendar.monthrange(year, month)[1]:02d}"
+            if effective_period and re.fullmatch(r"\d{4}-\d{2}", str(effective_period)):
+                canonical = phase2_reports.build_monthly_finance_report(
+                    ledger, effective_period, actor.phone, actor.conversation_type,
+                    scope,
                 )
-            ledger = services.query_finances(
-                actor,
-                start_date=query_start,
-                end_date=query_end,
-                category=spec.get("category"),
-                search=spec.get("search"),
-                currency=spec.get("currency"),
-                limit=max(int(spec.get("limit") or 20), 1),
-                scope=scope,
-                source=spec.get("source"),
-                include_all_records=True,
-            )
-        if effective_period and re.fullmatch(r"\d{4}-\d{2}", str(effective_period)):
-            report = phase2_reports.build_monthly_finance_report(
-                ledger, effective_period, actor.phone, actor.conversation_type,
-                scope or "all",
-            )
+            else:
+                canonical = {
+                    "report_type": "finance_query",
+                    "period": effective_period or "Custom range",
+                    "scope": scope,
+                    "ledger": ledger,
+                    "category_totals": [
+                        {**row, "label": phase2_reports._human_category(row.get("category"))}
+                        for row in ledger.get("category_totals", [])
+                    ],
+                    "obligations": [],
+                    "goals": [],
+                }
         else:
-            report = {
-                "report_type": "finance_query",
-                "period": effective_period or "Custom range",
-                "scope": scope or "all",
-                "ledger": ledger,
-                "category_totals": [
-                    {**row, "label": phase2_reports._human_category(row.get("category"))}
-                    for row in ledger.get("category_totals", [])
-                ],
-                "obligations": [],
-                "goals": [],
-            }
-        canonical = report
+            canonical = active["payload"]
     else:
-        canonical = phase2_reports.build_snapshot(
-            actor.phone, actor.conversation_type, "all", effective_period,
-            include_raw_income=include_raw_income, include_assets=True, include_leave=True,
-        )
+        if report_kind in {"finance_query", "monthly_finance"}:
+            if report_kind == "monthly_finance":
+                effective_period = spec.get("period") or effective_period
+                scope = spec.get("scope") or "all"
+                if not effective_period:
+                    raise ValueError("monthly finance report has no period")
+                year, month = (int(x) for x in effective_period.split("-", 1))
+                start_date = f"{year:04d}-{month:02d}-01"
+                end_date = f"{year:04d}-{month:02d}-{calendar.monthrange(year, month)[1]:02d}"
+                ledger = services.query_finances(
+                    actor, start_date=start_date, end_date=end_date,
+                    category=spec.get("category"), search=spec.get("search"),
+                    scope=scope, include_all_records=True,
+                )
+            else:
+                scope = spec.get("scope")
+                query_start = spec.get("start_date")
+                query_end = spec.get("end_date")
+                # A frozen monthly report may carry category/scope filters without
+                # explicit start/end fields. The period still bounds the dataset.
+                if (
+                    effective_period
+                    and re.fullmatch(r"\d{4}-\d{2}", str(effective_period))
+                    and not query_start and not query_end
+                ):
+                    year, month = (int(x) for x in str(effective_period).split("-", 1))
+                    query_start = f"{year:04d}-{month:02d}-01"
+                    query_end = (
+                        f"{year:04d}-{month:02d}-"
+                        f"{calendar.monthrange(year, month)[1]:02d}"
+                    )
+                ledger = services.query_finances(
+                    actor,
+                    start_date=query_start,
+                    end_date=query_end,
+                    category=spec.get("category"),
+                    search=spec.get("search"),
+                    currency=spec.get("currency"),
+                    limit=max(int(spec.get("limit") or 20), 1),
+                    scope=scope,
+                    source=spec.get("source"),
+                    include_all_records=True,
+                )
+            if effective_period and re.fullmatch(r"\d{4}-\d{2}", str(effective_period)):
+                report = phase2_reports.build_monthly_finance_report(
+                    ledger, effective_period, actor.phone, actor.conversation_type,
+                    scope or "all",
+                )
+            else:
+                report = {
+                    "report_type": "finance_query",
+                    "period": effective_period or "Custom range",
+                    "scope": scope or "all",
+                    "ledger": ledger,
+                    "category_totals": [
+                        {**row, "label": phase2_reports._human_category(row.get("category"))}
+                        for row in ledger.get("category_totals", [])
+                    ],
+                    "obligations": [],
+                    "goals": [],
+                }
+            canonical = report
+        else:
+            canonical = phase2_reports.build_snapshot(
+                actor.phone, actor.conversation_type, "all", effective_period,
+                include_raw_income=include_raw_income, include_assets=True, include_leave=True,
+            )
+    
 
     out_dir = Path(DATA_DIR) / "reports"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -1971,6 +2204,72 @@ def report_payload(target: str, actor: Actor, period: str | None = None) -> dict
     if target_name in {"tv", "dashboard"}:
         return {"target": "tv", "payload": phase2_reports.tv_payload(snapshot)}
     raise ValueError("target must be google_sheets or tv")
+
+
+@alex_tool()
+def create_custom_ledger(name: str, actor: Actor, purpose: str | None = None,
+                         fields: list[str] | None = None,
+                         shared: bool = False) -> dict:
+    """Create a custom private/shared tracker only when no specialist Alex engine (goal, stash, bill, task, etc.) fits better."""
+    return custom_ledgers.create_ledger(actor, name, purpose, fields, shared)
+
+
+@alex_tool()
+def list_custom_ledgers(actor: Actor, include_closed: bool = False) -> dict:
+    """List custom trackers in the current privacy scope."""
+    return custom_ledgers.list_ledgers(actor, include_closed)
+
+
+@alex_tool()
+def add_custom_ledger_entry(actor: Actor, description: str,
+                            ledger_id: str | None = None,
+                            ledger_name: str | None = None,
+                            entry_date: str | None = None,
+                            entry_kind: str | None = None,
+                            amount: float | None = None,
+                            currency: str | None = None,
+                            data: dict | None = None) -> dict:
+    """Add a custom-ledger entry. Money entries require explicit semantic kind: SPENDING, SAVINGS, TRANSFER or REFERENCE_ONLY; ambiguity returns a clarification and writes nothing."""
+    resolved = custom_ledgers.resolve_ledger(actor, ledger_id, ledger_name)
+    return custom_ledgers.add_entry(
+        actor, resolved, description, entry_date, entry_kind, amount, currency, data
+    )
+
+
+@alex_tool()
+def query_custom_ledger(actor: Actor, ledger_id: str | None = None,
+                        ledger_name: str | None = None,
+                        start_date: str | None = None,
+                        end_date: str | None = None,
+                        entry_kind: str | None = None,
+                        limit: int = 100) -> dict:
+    """Read one custom ledger. Results are numbered and frozen for exact Show N follow-ups."""
+    resolved = custom_ledgers.resolve_ledger(actor, ledger_id, ledger_name)
+    return custom_ledgers.query_entries(
+        actor, resolved, start_date, end_date, entry_kind, limit
+    )
+
+
+@alex_tool()
+def close_custom_ledger(actor: Actor, ledger_id: str | None = None,
+                        ledger_name: str | None = None) -> dict:
+    """Close one custom ledger while preserving all history."""
+    resolved = custom_ledgers.resolve_ledger(
+        actor, ledger_id, ledger_name, include_closed=True
+    )
+    return custom_ledgers.close_ledger(actor, resolved)
+
+
+@alex_tool()
+def recall_discussion(query: str, actor: Actor) -> dict:
+    """Recall a previously captured Family Shared Listening Mode discussion by natural topic words. Read-only; never turns discussion into a plan, task, reminder, diary entry or saved item automatically."""
+    return listening.recall(actor, query)
+
+
+@alex_tool()
+def get_daily_brief(actor: Actor, on_date: str | None = None) -> dict:
+    """Build the owner's deterministic private Daily Brief for a local date. Combines Family Shared plus this owner's private records; never exposes a spouse's private records. This is read-only."""
+    return daily_brief.build(actor, on_date)
 
 
 @alex_tool()

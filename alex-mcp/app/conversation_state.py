@@ -114,7 +114,18 @@ def _pending(conn, actor, quoted_context: dict) -> dict | None:
 
 def _financial_event(conn, actor, quoted_context: dict) -> dict | None:
     event = quoted_context.get("financial_event")
-    if not isinstance(event, dict) or not event.get("event_id"):
+    event_id = (
+        str(event.get("event_id") or "")
+        if isinstance(event, dict)
+        else ""
+    )
+    durable_context = (
+        quoted_context.get("context_kind") == "FINANCIAL_EVENT"
+        and quoted_context.get("context_id")
+    )
+    if durable_context:
+        event_id = str(quoted_context.get("context_id") or "")
+    if not event_id:
         return None
     spaces = _spaces(actor)
     if not spaces:
@@ -123,21 +134,24 @@ def _financial_event(conn, actor, quoted_context: dict) -> dict | None:
         "SELECT * FROM financial_events WHERE event_id=? AND space_id IN ("
         + ",".join("?" for _ in spaces)
         + ") AND status IN ('ACTIVE','PENDING_HUMAN_REVIEW')",
-        [str(event["event_id"]), *spaces],
+        [event_id, *spaces],
     ).fetchone()
     if not row:
         return None
-    # A caller-provided id alone is insufficient; it must originate in the
-    # bound turn (the normal quote resolver already supplies this provenance).
-    source = str(quoted_context.get("source_message_id") or "")
-    if not source or source != str(row["source_message_id"]):
-        return None
-    inbound = conn.execute(
-        "SELECT conversation_id FROM inbound_messages WHERE message_id=?",
-        (source,),
-    ).fetchone()
-    if not inbound or inbound["conversation_id"] != actor.conversation_id:
-        return None
+
+    if not durable_context:
+        # Model/caller-provided ids are insufficient. Legacy quote binding must
+        # still prove the event originated from the quoted source turn.
+        source = str(quoted_context.get("source_message_id") or "")
+        if not source or source != str(row["source_message_id"]):
+            return None
+        inbound = conn.execute(
+            "SELECT conversation_id FROM inbound_messages WHERE message_id=?",
+            (source,),
+        ).fetchone()
+        if not inbound or inbound["conversation_id"] != actor.conversation_id:
+            return None
+
     return {
         "kind": "FINANCIAL_EVENT", "id": row["event_id"],
         "status": row["status"], "reference": "QUOTED",
@@ -164,6 +178,9 @@ def _list(conn, actor, quoted_context: dict) -> dict | None:
     for table, kind in (
         ("selection_sets", None), ("media_selection_sets", "MEDIA"),
         ("pending_selection_sets", "PENDING_ITEM"),
+        ("finance_selection_sets", "FINANCE"),
+        ("task_selection_sets", "TASK"),
+        ("custom_ledger_selection_sets", "LEDGER_ENTRY"),
     ):
         if quoted_set and kind and requested_kind != kind:
             continue
@@ -266,7 +283,10 @@ def required_tools(state: dict | None) -> set[str]:
         tools |= {"query_finances", "correct_expense"}
         if active.get("status") == "PENDING_HUMAN_REVIEW":
             tools.add("confirm_expense")
-    if state.get("latest_list"):
+    # A persisted latest list is context only. An explicitly quoted list is
+    # authoritative for numbered follow-ups and must retain the resolver.
+    quoted = state.get("quoted") or {}
+    if quoted.get("kind") == "SELECTION_SET":
         tools.add("resolve_numbered_choice")
     return tools
 

@@ -18,7 +18,7 @@ CAPABILITY_TO_TOOLS: dict[str, frozenset[str]] = {
     "finance.pending.confirm": frozenset({"confirm_expense"}),
     "finance.correct": frozenset({"correct_expense"}),
     "receipt.find": frozenset({"find_receipts"}),
-    "receipt.get": frozenset({"get_receipt"}),
+    "receipt.get": frozenset({"get_receipt", "get_transaction_receipt"}),
     "media.find": frozenset({"find_media"}),
     "media.get": frozenset({"get_media_original"}),
     "media.pending": frozenset({
@@ -59,6 +59,8 @@ CAPABILITY_TO_TOOLS: dict[str, frozenset[str]] = {
     # First-class task lifecycle. Legacy aliases remain classified for migration safety.
     "task.create": frozenset({"create_task", "add_task", "task_create"}),
     "task.read": frozenset({"list_tasks", "task_list"}),
+    "task.details": frozenset({"get_task_details"}),
+    "task.reminder.link": frozenset({"create_task_reminder"}),
     "task.update": frozenset({"update_task", "task_update", "task_change"}),
     "task.complete": frozenset({"complete_task", "task_complete", "task_change"}),
     "task.reopen": frozenset({"reopen_task", "task_reopen", "task_change"}),
@@ -71,6 +73,7 @@ CAPABILITY_TO_TOOLS: dict[str, frozenset[str]] = {
     "goal.progress": frozenset({"planning_goal_progress"}),
     "goal.lock": frozenset({"planning_lock_goal"}),
     "goal.reopen": frozenset({"planning_reopen_goal"}),
+    "goal.cancel": frozenset({"planning_cancel_goal"}),
     "goal.period_target": frozenset({"planning_set_period_target"}),
     "goal.baseline.change": frozenset({"planning_change_goal_baseline"}),
     "goal.contribution": frozenset({"planning_record_goal_contribution"}),
@@ -96,6 +99,13 @@ CAPABILITY_TO_TOOLS: dict[str, frozenset[str]] = {
     "planning.cash.outflow": frozenset({"planning_cash_outflow"}),
     "planning.brief": frozenset({"planning_brief"}),
 
+    # Custom Ledgers / trackers
+    "ledger.create": frozenset({"create_custom_ledger"}),
+    "ledger.list": frozenset({"list_custom_ledgers"}),
+    "ledger.entry.add": frozenset({"add_custom_ledger_entry"}),
+    "ledger.query": frozenset({"query_custom_ledger"}),
+    "ledger.close": frozenset({"close_custom_ledger"}),
+
     # Bills
     "bills.list": frozenset({"bills_list"}),
     "bills.match": frozenset({"bills_match_payment"}),
@@ -104,6 +114,7 @@ CAPABILITY_TO_TOOLS: dict[str, frozenset[str]] = {
     "bills.confirm_unpaid": frozenset({"bills_confirm_unpaid"}),
 
     # Work / leave
+    "work.profile.import": frozenset({"work_import_profile"}),
     "work.schedule": frozenset({"work_schedule"}),
     "work.day": frozenset({"work_day"}),
     "work.roster.list": frozenset({"list_work_roster"}),
@@ -138,6 +149,8 @@ CAPABILITY_TO_TOOLS: dict[str, frozenset[str]] = {
     "report.snapshot": frozenset({"report_snapshot"}),
     "report.export": frozenset({"report_export"}),
     "report.payload": frozenset({"report_payload"}),
+    "daily.brief": frozenset({"get_daily_brief"}),
+    "discussion.recall": frozenset({"recall_discussion"}),
     "diagnostics.health": frozenset({"system_health"}),
     "diagnostics.failures": frozenset({"recent_failures"}),
     "calculate": frozenset({"calculate"}),

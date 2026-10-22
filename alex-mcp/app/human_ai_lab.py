@@ -82,7 +82,7 @@ def _runtime_policy() -> dict[str, str]:
     """Export actual, generally applicable runtime policy, never scorer labels."""
     prefixes = {
         "household_records": "Personal facts are never guessed.",
-        "financial_currency": "For every money write, never guess MYR versus SGD.",
+        "financial_currency": "For money writes, MYR is the household default",
         "empty_cash_pool": "Creating a named stash without an amount",
         "private_scope": "Ordinary DM reads are Family Shared by default;",
         "tentative_shopping": "For tentative shopping language",
@@ -136,6 +136,8 @@ def _prompt_fixture_history(contract_id: str) -> list[dict[str, str]]:
 def _conversation_result_fixture(contract_id: str, step_index: int) -> str:
     if contract_id == "conv.memory.numbered" and step_index == 0:
         return "Saved pictures\n1. Vinyl — original saved picture."
+    if contract_id == "conv.diary.reminder" and step_index == 0:
+        return "1 October 2026 agenda\n1. Dentist appointment — 4:00 PM."
     return "[previous synthetic Alex result; use only user-turn continuity]"
 
 
@@ -163,7 +165,9 @@ def _packet_base(packet_id: str, contract_id: str, phase: str, domain: str,
             "Selecting that later capability does not claim its arguments are already "
             "known or that it has executed. Never invent household facts, record ids, "
             "amounts, currencies or timing. If a required user decision is missing, "
-            "clarify. Never assume a capability that is not supplied."
+            "clarify. Never assume a capability that is not supplied. If a supplied "
+            "tool explicitly accepts a natural name/reference and resolves it internally, "
+            "use that tool directly instead of inventing a separate lookup tool."
         ),
         "runtime_policy": _runtime_policy(),
         "evaluation_scope": (

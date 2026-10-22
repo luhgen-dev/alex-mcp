@@ -38,7 +38,8 @@ def _safe_ext(mime_type: str, media_type: str) -> str:
     known = {
         "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp",
         "audio/ogg": ".ogg", "audio/opus": ".opus", "audio/mpeg": ".mp3",
-        "audio/mp4": ".m4a", "application/pdf": ".pdf",
+        "audio/mp4": ".m4a", "video/mp4": ".mp4", "video/quicktime": ".mov",
+        "application/pdf": ".pdf",
     }
     return known.get((mime_type or "").split(";")[0].lower()) or mimetypes.guess_extension(mime_type or "") or {
         "IMAGE": ".jpg", "AUDIO": ".ogg", "PDF": ".pdf"
@@ -819,6 +820,14 @@ def process_payload_media(payload: dict) -> tuple[list[str], list[str], list[dic
                 "type": "image_url",
                 "image_url": {"url": f"data:{mime};base64,{payload['image_data']}"},
             })
+
+    if payload.get("video_data"):
+        mid = save_media(
+            payload["message_id"], "VIDEO",
+            payload.get("video_mime_type") or "video/mp4",
+            payload["video_data"],
+        )
+        media_ids.append(mid)
 
     if payload.get("pdf_data"):
         mid = save_media(payload["message_id"], "PDF", "application/pdf", payload["pdf_data"])

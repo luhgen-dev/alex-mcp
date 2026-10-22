@@ -771,6 +771,31 @@ def reopen_goal(goal_id, sender_phone, conversation_type="DIRECT_DM"):
         conn.close()
 
 
+def cancel_goal(goal_id, sender_phone, conversation_type="DIRECT_DM"):
+    """Cancel a goal without deleting its funding/contribution history."""
+    ensure_schema()
+    conn = tools.get_db()
+    try:
+        goal = _get_authorized_goal(conn, goal_id, sender_phone, conversation_type)
+        if goal["status"] == "CANCELLED":
+            return {"goal_id": goal_id, "status": "CANCELLED", "already_cancelled": True}
+        if goal["status"] == "COMPLETED":
+            raise ValueError("Completed goal cannot be cancelled")
+        conn.execute("""
+            UPDATE alex_phase2_goals
+            SET status='CANCELLED',updated_at_utc=CURRENT_TIMESTAMP WHERE goal_id=?
+        """, (goal_id,))
+        conn.commit()
+        return {
+            "goal_id": goal_id,
+            "name": goal["name"],
+            "status": "CANCELLED",
+            "history_preserved": True,
+        }
+    finally:
+        conn.close()
+
+
 def _goal_baseline_for_period(conn, goal_id, period, fallback_minor=0):
     row = conn.execute("""
         SELECT monthly_minor FROM alex_phase2_goal_baseline_versions
@@ -927,6 +952,7 @@ def goal_progress(goal_id, sender_phone, conversation_type="DIRECT_DM"):
             "baseline_monthly": _money(_goal_baseline_for_period(
                 conn, goal_id, _period(), goal["baseline_monthly_minor"])),
             "currency": goal["currency"], "space": goal["space_id"],
+            "status": goal["status"], "target_date": goal["target_date"],
         }
     finally:
         conn.close()
@@ -2493,17 +2519,30 @@ def record_evidence_fact(evidence_ref, fact_type, sender_phone,
 def resolve_obligation_from_evidence(label, amount, event_date,
                                      sender_phone,
                                      conversation_type="DIRECT_DM",
-                                     requested_scope="all"):
-    """Conservatively resolve a receipt/payment fact to one obligation.
+                                     requested_scope="all",
+                                     reference=None,
+                                     account_reference=None):
+    """Conservatively resolve payment evidence to one recurring obligation.
 
-    Exact/normalized name plus amount and period are used when available.
-    Multiple plausible obligations are never guessed.
+    Amount alone is never identity. At least one payee/name alias, configured
+    reference pattern or configured account fingerprint must match.
     """
     ensure_schema()
     d = date.fromisoformat(str(event_date)[:10])
     period = _period(d)
     value = _minor(amount) if amount is not None else None
     wanted = _norm(label)
+    reference_text = str(reference or "").casefold()
+    account_digits = re.sub(r"\D", "", str(account_reference or ""))
+    profiles = {
+        record["record_key"]: record["payload"]
+        for record in profile_config.authorized_records(
+            sender_phone, conversation_type,
+            kind="recurring_payment", requested_scope=requested_scope,
+        )
+        if record["payload"].get("active", True)
+    }
+
     conn = tools.get_db()
     try:
         _, _, clause, args = _authorized_space_clause(
@@ -2516,28 +2555,67 @@ def resolve_obligation_from_evidence(label, amount, event_date,
         ).fetchall()
         candidates = []
         for row in rows:
-            name = _norm(row["name"])
-            name_match = bool(
-                wanted and (wanted == name or wanted in name or name in wanted)
+            profile = profiles.get(row["profile_record_key"], {})
+            aliases = [
+                _norm(value)
+                for value in ([row["name"]] + list(profile.get("match_aliases") or []))
+                if _norm(value)
+            ]
+            label_match = bool(
+                wanted and any(
+                    wanted == alias or wanted in alias or alias in wanted
+                    for alias in aliases
+                )
             )
+            patterns = [
+                str(value).casefold().strip()
+                for value in (profile.get("reference_patterns") or [])
+                if str(value or "").strip()
+            ]
+            reference_match = bool(
+                reference_text and patterns
+                and any(pattern in reference_text for pattern in patterns)
+            )
+            configured_last4 = re.sub(
+                r"\D", "", str(profile.get("account_last4") or "")
+            )[-4:]
+            account_match = bool(
+                configured_last4 and account_digits
+                and account_digits.endswith(configured_last4)
+            )
+
+            # If evidence includes an account and the configured account differs,
+            # reject even when name/amount happen to look plausible.
+            if configured_last4 and account_digits and not account_match:
+                continue
+            # Configured reference patterns are hard identity evidence when the
+            # receipt actually exposes a reference string.
+            if patterns and reference_text and not reference_match:
+                continue
+
+            identity_score = (
+                (3 if account_match else 0)
+                + (3 if reference_match else 0)
+                + (2 if label_match else 0)
+            )
+            if identity_score <= 0:
+                continue
+
+            tolerance = int(profile.get("amount_tolerance_minor") or 0)
             amount_match = (
                 value is not None and row["expected_minor"] is not None
-                and value == row["expected_minor"]
+                and abs(value - row["expected_minor"]) <= tolerance
             )
-            # If a label is supplied, require it to match. Amount then
-            # strengthens/disambiguates the match rather than overriding name.
-            if wanted:
-                if not name_match:
-                    continue
-                score = 2 + (1 if amount_match else 0)
-            else:
-                if not amount_match:
-                    continue
-                score = 1
+            # A fixed expected amount strengthens a match. A mismatch does not
+            # override stronger identity evidence because some commitments vary.
+            score = identity_score + (1 if amount_match else 0)
             candidates.append((score, row))
 
         if not candidates:
-            return {"status": "NOT_FOUND", "instance_id": None}
+            return {
+                "status": "NOT_FOUND", "instance_id": None,
+                "reason": "NO_IDENTITY_FINGERPRINT_MATCH",
+            }
         best_score = max(score for score, _ in candidates)
         best = [row for score, row in candidates if score == best_score]
         if len(best) != 1:

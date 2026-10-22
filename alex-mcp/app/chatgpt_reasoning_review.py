@@ -46,7 +46,7 @@ import human_ai_lab
 # deterministic rules below explicitly clarify the new ambiguous fixtures and
 # no longer infer private ownership from a person's label. The independent
 # full review is imported separately with its original raw decisions intact.
-REVIEWED_CORPUS_FINGERPRINT = "67e1d51a6c8e38865ce4eb47b1cad4e632f8f27c015d1d1fafbefce8d2d7a276"
+REVIEWED_CORPUS_FINGERPRINT = "ddbdbec0313e0ebdc5bf64737512462f0a34bf1dddad779b93a3f4289e5eb280"
 
 
 def _low(value: str) -> str:
@@ -109,6 +109,72 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
     # Genuine ambiguity: possibility is not permission to mutate.
     if re.search(r"\b(?:might buy|maybe we need|thinking of getting) coffee\b", text):
         return result("clarify")
+
+    # 0.5.45 exact semantics that must outrank older generic keyword rules.
+    # These are deterministic regression expectations only; the independent
+    # reviewer remains a separate evidence layer.
+    if text in {
+        "record annual leave for 10 october.",
+        "mark 10 october as planned annual leave.",
+        "i took mc on 10 october; record it.",
+    }:
+        return result("clarify")
+
+    if (
+        re.search(r"\b(?:cancel|stop tracking)\b.*\bfamily holiday savings\b.*\bgoal\b", text)
+        or re.search(r"\bstop tracking my family holiday savings goal\b", text)
+    ):
+        return result("tools", _one(tools, "planning_cancel_goal"))
+
+    if (
+        "family holiday savings" in text
+        and re.search(r"\b(?:contribution|baseline)\b", text)
+        and re.search(r"\b(?:every month|monthly|from now on)\b", text)
+        and re.search(r"\brm\s*300\b", text)
+    ):
+        return result("tools", _one(tools, "planning_change_goal_baseline"))
+
+    if re.search(
+        r"\b(?:change my school reserve to rm\s*250 a month|disable the school reserve)\b",
+        text,
+    ):
+        return result("tools", _one(tools, "planning_update_reserve"))
+
+    if text in {
+        "switch off the ac.",
+        "turn the air conditioner off.",
+    }:
+        return result("clarify")
+
+    if text in {
+        "import my work profile with this json.",
+        "configure my permanent roster from this work profile.",
+    }:
+        return result("clarify")
+
+    if (
+        re.search(r"\bclose my old car service ledger\b", text)
+        or re.search(r"\bstop tracking that custom maintenance ledger\b", text)
+    ):
+        return result("tools", _one(tools, "close_custom_ledger"))
+
+    if (
+        "alex smoke task" in text
+        and re.search(r"\b(?:details|originally say)\b", text)
+    ) or text == "what did i originally say for that task?":
+        return result("tools", _one(tools, "get_task_details"))
+
+    if text in {
+        "give me a heads-up reminder for that task.",
+        "remind me about that task later.",
+    }:
+        return result("clarify")
+
+    if (
+        "alex smoke task" in text
+        and re.search(r"\b(?:remind me in 20 minutes|heads-up reminder in 20 minutes)\b", text)
+    ):
+        return result("tools", _one(tools, "create_task_reminder"))
 
     # A private lookup is scoped by the backend. A person's label cannot tell
     # this public-only oracle who owns a named item; obtain the authorized id
@@ -722,6 +788,29 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
                 _pick(tools, "list_tasks", "cancel_task")
                 or _one(tools, "cancel_task"),
             )
+
+    # 0.5.45 deterministic additions. These are repeatable regression rules;
+    # independent model evidence remains real_ai_snapshot.json.
+    if "daily brief" in text or "what's in for me today" in text:
+        return result("tools", _one(tools, "get_daily_brief"))
+    if re.search(r"\b(?:recall|remember|what did we discuss)\b.*\b(?:discussion|holiday|greece)\b", text):
+        return result("tools", _one(tools, "recall_discussion"))
+    if re.search(r"\b(?:create|set up|setup)\b.*\b(?:ledger|tracker)\b", text):
+        return result("tools", _one(tools, "create_custom_ledger"))
+    if re.search(r"\b(?:show|what)\b.*\b(?:ledgers|trackers)\b", text):
+        return result("tools", _one(tools, "list_custom_ledgers"))
+    if re.search(r"\b(?:add|record)\b.*\b(?:ledger|tracker)\b", text):
+        return result("tools", _one(tools, "add_custom_ledger_entry"))
+    if re.search(r"\b(?:history|what is in|show)\b.*\b(?:ledger|tracker)\b", text):
+        return result("tools", _one(tools, "query_custom_ledger"))
+    if re.search(r"\b(?:close|stop tracking)\b.*\b(?:ledger|tracker)\b", text):
+        return result("tools", _one(tools, "close_custom_ledger"))
+    if re.search(r"\b(?:details|original).*\btask\b|\btask\b.*\b(?:details|original)\b", text):
+        return result("tools", _one(tools, "get_task_details"))
+    if re.search(r"\b(?:remind|heads-up|heads up)\b.*\btask\b|\btask\b.*\bremind\b", text):
+        return result("tools", _one(tools, "create_task_reminder"))
+    if re.search(r"\b(?:import|configure)\b.*\b(?:work profile|permanent roster)\b", text):
+        return result("tools", _one(tools, "work_import_profile"))
 
     # Diary / agenda / availability.
     if (

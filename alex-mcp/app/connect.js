@@ -22,6 +22,7 @@ const OPTIONS_FILE = path.join(DATA_DIR, 'options.json');
 const SELFTEST_FILE = path.join(DATA_DIR, 'selftest.json');
 const GROUP_FILE = path.join(DATA_DIR, 'family_group.json');
 const RUNTIME_STATUS_FILE = path.join(DATA_DIR, 'runtime_status.json');
+const LISTENING_FILE = path.join(DATA_DIR, 'listening_sessions.json');
 const INGRESS_URL = 'http://127.0.0.1:5001/ingress';
 const PROVIDER_PROBE_URL = 'http://127.0.0.1:5001/provider-probe';
 const USAGE_URL = 'http://127.0.0.1:5001/usage-summary';
@@ -113,6 +114,27 @@ function cleanNumber(value) {
   return String(value || '').replace(/\D/g, '');
 }
 
+function dmEphemeralSeconds() {
+  const opts = readOptions();
+  const value = Number(opts.dm_disappearing_seconds === undefined ? 86400 : opts.dm_disappearing_seconds);
+  return [0, 86400, 604800, 7776000].includes(value) ? value : 86400;
+}
+
+async function applyDmDisappearingMode(sock) {
+  const seconds = dmEphemeralSeconds();
+  for (const phone of allowedNumbers()) {
+    const jid = phone + '@s.whatsapp.net';
+    try {
+      await sock.sendMessage(
+        jid,
+        { disappearingMessagesInChat: seconds > 0 ? seconds : false }
+      );
+    } catch (err) {
+      console.error('[Alex MCP] Could not set DM disappearing mode for ' + maskId(jid) + ': ' + err.message);
+    }
+  }
+}
+
 function allowedNumbers() {
   const opts = readOptions();
   return [cleanNumber(opts.husband_phone), cleanNumber(opts.wife_phone)].filter(Boolean);
@@ -121,6 +143,18 @@ function allowedNumbers() {
 function isWhitelisted(phone) {
   const clean = cleanNumber(phone);
   return clean.length > 0 && allowedNumbers().includes(clean);
+}
+
+function listeningEntry(groupJid) {
+  try {
+    const data = JSON.parse(fs.readFileSync(LISTENING_FILE, 'utf8'));
+    const entry = data && data[groupJid];
+    if (!entry) return null;
+    const expires = Number(entry.expires_at_ms || 0);
+    return expires > Date.now() ? entry : null;
+  } catch (_err) {
+    return null;
+  }
 }
 
 function getFamilyGroupJid() {
@@ -155,6 +189,7 @@ function extractText(message) {
     m.conversation ||
     (m.extendedTextMessage && m.extendedTextMessage.text) ||
     (m.imageMessage && m.imageMessage.caption) ||
+    (m.videoMessage && m.videoMessage.caption) ||
     (m.documentMessage && m.documentMessage.caption) ||
     ''
   );
@@ -166,6 +201,7 @@ function extractContextInfo(message) {
   return (
     (m.extendedTextMessage && m.extendedTextMessage.contextInfo) ||
     (m.imageMessage && m.imageMessage.contextInfo) ||
+    (m.videoMessage && m.videoMessage.contextInfo) ||
     (m.audioMessage && m.audioMessage.contextInfo) ||
     (m.documentMessage && m.documentMessage.contextInfo) ||
     null
@@ -265,6 +301,7 @@ function detectMedia(message) {
   const m = unwrapMessage(message);
   if (!m) return { type: null, node: null };
   if (m.imageMessage) return { type: 'image', node: m.imageMessage };
+  if (m.videoMessage) return { type: 'video', node: m.videoMessage };
   if (m.audioMessage) return { type: 'audio', node: m.audioMessage };
   if (m.documentMessage && m.documentMessage.mimetype === 'application/pdf') {
     return { type: 'pdf', node: m.documentMessage };
@@ -283,6 +320,7 @@ async function downloadMedia(message, mediaType) {
     const m = unwrapMessage(message);
     let mime = 'application/octet-stream';
     if (mediaType === 'image') mime = (m.imageMessage && m.imageMessage.mimetype) || 'image/jpeg';
+    if (mediaType === 'video') mime = (m.videoMessage && m.videoMessage.mimetype) || 'video/mp4';
     if (mediaType === 'audio') mime = (m.audioMessage && m.audioMessage.mimetype) || 'audio/ogg';
     if (mediaType === 'pdf') mime = 'application/pdf';
     return { data: buffer.toString('base64'), mimeType: mime };
@@ -407,15 +445,18 @@ async function handleIncoming(message) {
     return;
   }
 
+  let listeningActive = false;
+  let listeningCaptureOnly = false;
   if (isGroup) {
     const familyGroup = getFamilyGroupJid();
     if (!familyGroup || familyGroup !== remoteJid) return;
-    // Family Shared is intentionally opt-in per message: Alex responds only
-    // when explicitly @mentioned or when someone swipe-replies to Alex.
+    listeningActive = Boolean(listeningEntry(remoteJid));
+    // Outside Listening Mode, Family Shared remains strictly opt-in per message.
     alexMentioned = await isAlexMentioned(message);
     replyToAlex = await isReplyToAlex(message);
-    if (!alexMentioned && !replyToAlex) return;
-    rawText = await stripAlexMentionText(message, rawText);
+    if (!alexMentioned && !replyToAlex && !listeningActive) return;
+    listeningCaptureOnly = listeningActive && !alexMentioned && !replyToAlex;
+    if (alexMentioned) rawText = await stripAlexMentionText(message, rawText);
   }
 
   const media = detectMedia(message);
@@ -447,7 +488,10 @@ async function handleIncoming(message) {
   const mentionOnlyQuotedContext = Boolean(
     isGroup && alexMentioned && quotedMessageId
   );
-  if (!rawText && !media.type && !mentionOnlyQuotedContext) return;
+  const bareAlexMention = Boolean(
+    isGroup && alexMentioned && !replyToAlex && !quotedMessageId && !rawText && !media.type
+  );
+  if (!rawText && !media.type && !mentionOnlyQuotedContext && !bareAlexMention) return;
 
   // Keep the exact inbound WAMessage briefly so the durable final response can
   // render as a real WhatsApp reply to the user's original message. If Alex is
@@ -485,9 +529,14 @@ async function handleIncoming(message) {
     participant_alt: message.key.participantAlt || null,
     alex_mentioned: alexMentioned,
     reply_to_alex: replyToAlex,
+    listening_active: listeningActive,
+    listening_capture_only: listeningCaptureOnly,
+    bare_alex_mention: bareAlexMention,
     sent_at_ms: messageTimestampMs(message),
     image_data: media.type === 'image' && mediaData ? mediaData.data : null,
     image_mime_type: media.type === 'image' && mediaData ? mediaData.mimeType : null,
+    video_data: media.type === 'video' && mediaData ? mediaData.data : null,
+    video_mime_type: media.type === 'video' && mediaData ? mediaData.mimeType : null,
     audio_data: media.type === 'audio' && mediaData ? mediaData.data : null,
     audio_mime_type: media.type === 'audio' && mediaData ? mediaData.mimeType : null,
     pdf_data: media.type === 'pdf' && mediaData ? mediaData.data : null,
@@ -516,6 +565,17 @@ async function handleIncoming(message) {
 
   try {
     await forwardToPython(payload);
+    if (isGroup && (listeningCaptureOnly || (listeningActive && (alexMentioned || replyToAlex) && !bareAlexMention))) {
+      try {
+        if (currentSock) {
+          await currentSock.sendMessage(remoteJid, {
+            react: { text: '👂', key: message.key }
+          });
+        }
+      } catch (err) {
+        console.error('[Alex MCP] Listening reaction failed:', err.message);
+      }
+    }
   } catch (err) {
     console.error('[Alex MCP] Ingress forwarding failed:', err.message);
     try {
@@ -572,6 +632,7 @@ async function startWhatsApp() {
           lastError: null,
         });
         console.log('[Alex MCP] WhatsApp connected.');
+        await applyDmDisappearingMode(sock);
       }
 
       if (connection === 'close') {
@@ -968,6 +1029,10 @@ function startEgress() {
         const sendOptions = {};
         if (payload.message_id) sendOptions.messageId = String(payload.message_id);
         if (quoted) sendOptions.quoted = quoted;
+        const ephemeralSeconds = dmEphemeralSeconds();
+        if (!String(to).endsWith('@g.us') && ephemeralSeconds > 0) {
+          sendOptions.ephemeralExpiration = ephemeralSeconds;
+        }
         if (payload.kind === 'text') {
           sent = await currentSock.sendMessage(to, { text: payload.text || '' }, sendOptions);
         } else if (payload.kind === 'reaction' || payload.kind === 'pin' || payload.kind === 'unpin') {
@@ -984,6 +1049,9 @@ function startEgress() {
           const mime = String(payload.mimetype || 'audio/ogg').toLowerCase();
           const ptt = mime.includes('audio/ogg') || mime.includes('audio/opus');
           sent = await currentSock.sendMessage(to, { audio: buf, mimetype: payload.mimetype || 'audio/ogg', ptt }, sendOptions);
+        } else if (payload.kind === 'video') {
+          const buf = Buffer.from(payload.file_b64 || '', 'base64');
+          sent = await currentSock.sendMessage(to, { video: buf, mimetype: payload.mimetype || 'video/mp4', caption: payload.caption || undefined }, sendOptions);
         } else {
           throw new Error('Unsupported outbound kind');
         }
