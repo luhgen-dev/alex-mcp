@@ -46,7 +46,7 @@ import human_ai_lab
 # deterministic rules below explicitly clarify the new ambiguous fixtures and
 # no longer infer private ownership from a person's label. The independent
 # full review is imported separately with its original raw decisions intact.
-REVIEWED_CORPUS_FINGERPRINT = "68669bae29681c4d19bab85a35a8afb36857b48174a67f9a99099bb3c835cd64"
+REVIEWED_CORPUS_FINGERPRINT = "ddbdbec0313e0ebdc5bf64737512462f0a34bf1dddad779b93a3f4289e5eb280"
 
 
 def _low(value: str) -> str:
