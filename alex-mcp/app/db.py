@@ -107,6 +107,10 @@ def initialize() -> None:
     conn = connect()
     try:
         conn.executescript(schema)
+        from media_schema import ensure_original_media_types
+        ensure_original_media_types(conn)
+        from progressive_teaching import SCHEMA as teaching_schema
+        conn.executescript(teaching_schema)
         # Small additive migrations keep persistent /data safe across app updates.
         _ensure_column(conn, "inbound_messages", "attempt_count", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(conn, "inbound_messages", "processing_started_at_utc", "TEXT")

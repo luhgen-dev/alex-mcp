@@ -13,7 +13,8 @@ from mcp.server.mcpserver import Resolve
 from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import Field
 
-from context import ActorContext, current_actor
+from context import ActorContext, current_actor, use_actor
+from dataclasses import replace
 import db
 import services
 import phase2
@@ -22,18 +23,19 @@ import phase2_finance
 import phase2_work
 import phase2_library
 import phase2_delegation
-import phase2_monitor
 import phase2_home
 import phase2_reports
 import profile_config
 import daily_brief
 import listening
+import goal_references
+import discussion_journal
 import custom_ledgers
 import scope_policy
 
 mcp = MCPServer(
     "Alex Household Tools",
-    version="0.5.45",
+    version="0.5.46",
     instructions="Deterministic household tools. Identity and permissions are injected by Alex and are never model-controlled.",
 )
 
@@ -72,6 +74,24 @@ ReminderTimeInterpretation = Annotated[dict, Field(json_schema_extra={
 _DOMAIN_TOOL_ERRORS = (ValueError, PermissionError, LookupError, sqlite3.IntegrityError)
 
 
+
+_PRIVATE_WORK_READS = {"work_schedule", "work_day", "work_ot_status", "work_leave_balance", "work_departure_plan"}
+
+
+def _work_read_actor(actor):
+    """A personal work query is explicit owner intent, never a family ACL widening."""
+    text = str(actor.trusted_text or actor.intent_text or "").casefold()
+    if actor.conversation_type != "DIRECT_DM":
+        raise PermissionError("Your work profile is private. Ask in your own direct chat.")
+    if re.search(r"\b(?:family|shared)\b", text) and not scope_policy.explicit_private(text):
+        raise PermissionError("Work profiles are private, not shared family records. Ask for your own work profile in your direct chat.")
+    if re.search(r"\b(?:wife|husband|spouse|partner|her|his|their)\b", text):
+        raise PermissionError("Only your own private work profile can be read here.")
+    if not re.search(r"\b(?:work|roster|shift|overtime|ot|leave|entitlement|entitlements|departure)\b", text):
+        return actor
+    return replace(actor, read_scope="private")
+
+
 def alex_tool(*tool_args, **tool_kwargs):
     """Register a tool while preserving actionable domain errors for the model.
 
@@ -96,6 +116,12 @@ def alex_tool(*tool_args, **tool_kwargs):
             @wraps(fn)
             def wrapped(*args, **kwargs):
                 try:
+                    if fn.__name__ in _PRIVATE_WORK_READS:
+                        bound = inspect.signature(fn).bind(*args, **kwargs)
+                        owner = _work_read_actor(bound.arguments["actor"])
+                        bound.arguments["actor"] = owner
+                        with use_actor(owner):
+                            return fn(*bound.args, **bound.kwargs)
                     return fn(*args, **kwargs)
                 except ToolError:
                     raise
@@ -535,6 +561,15 @@ def reminder_history(actor: Actor, reminder_id: str | None = None,
 
 
 @alex_tool()
+def claim_reminder(actor: Actor, reminder_id: str | None = None,
+                   reminder_reference: str | None = None) -> dict:
+    """Explicitly take responsibility for one existing Family reminder. Prefer the authenticated quoted reminder ID; a unique natural name is allowed. Never creates a new reminder or changes its due time."""
+    resolved = services._resolve_reminder_reference_id(actor, reminder_id,
+        reminder_reference, include_closed=False)
+    return services.claim_reminder_with_confirmation(actor, resolved, source="MCP")
+
+
+@alex_tool()
 def handoff_reminder_claim(reminder_id: str, recipient: str, actor: Actor) -> dict:
     """Ask a household member such as Priya/spouse to accept your claimed Family Shared reminder. You remain claimant until they react to the DM request."""
     return services.request_reminder_handoff(actor, reminder_id, recipient)
@@ -602,6 +637,7 @@ def create_task_reminder(actor: Actor, due_local: str,
                 f"anytime on {task['due_date_local']}, or should I set the task itself "
                 "to the reminder time?"
             ),
+            **services.save_task_reminder_draft(actor, resolved, due_local, time_interpretation),
             "choices": ["heads_up", "task_time"],
             "task": task["title"],
         }
@@ -1037,11 +1073,11 @@ def planning_create_goal(name: str, target_amount: float, actor: Actor,
 @alex_tool()
 def planning_update_goal_target(new_target_amount: float, actor: Actor,
                                 goal_id: str | None = None,
-                                goal_name: str | None = None) -> dict:
+                                goal_name: str | None = None,
+                                choice: int | None = None,
+                                selection_id: str | None = None) -> dict:
     """Change only an existing goal's target amount after explicit user instruction. This never creates a deadline or recurring contribution."""
-    resolved = phase2_finance.resolve_goal_reference(
-        goal_id, goal_name, actor.phone, actor.conversation_type
-    )
+    resolved = goal_references.resolve(actor, goal_id, goal_name, choice, selection_id)
     return phase2_finance.update_goal_target(
         resolved, new_target_amount, actor.phone, actor.conversation_type
     )
@@ -1049,11 +1085,11 @@ def planning_update_goal_target(new_target_amount: float, actor: Actor,
 
 @alex_tool()
 def planning_lock_goal(actor: Actor, goal_id: str | None = None,
-                       goal_name: str | None = None) -> dict:
+                       goal_name: str | None = None,
+                                choice: int | None = None,
+                                selection_id: str | None = None) -> dict:
     """Lock/activate one draft goal after explicit owner approval. Provide either goal_id from a prior result or its natural goal_name; Alex resolves names conservatively."""
-    resolved = phase2_finance.resolve_goal_reference(
-        goal_id, goal_name, actor.phone, actor.conversation_type
-    )
+    resolved = goal_references.resolve(actor, goal_id, goal_name, choice, selection_id)
     return phase2_finance.lock_goal(
         resolved, actor.phone, actor.conversation_type
     )
@@ -1061,11 +1097,11 @@ def planning_lock_goal(actor: Actor, goal_id: str | None = None,
 
 @alex_tool()
 def planning_reopen_goal(actor: Actor, goal_id: str | None = None,
-                         goal_name: str | None = None) -> dict:
+                         goal_name: str | None = None,
+                                choice: int | None = None,
+                                selection_id: str | None = None) -> dict:
     """Reopen one eligible goal only after explicit owner instruction. goal_name may be used instead of an opaque id."""
-    resolved = phase2_finance.resolve_goal_reference(
-        goal_id, goal_name, actor.phone, actor.conversation_type
-    )
+    resolved = goal_references.resolve(actor, goal_id, goal_name, choice, selection_id)
     return phase2_finance.reopen_goal(
         resolved, actor.phone, actor.conversation_type
     )
@@ -1073,11 +1109,11 @@ def planning_reopen_goal(actor: Actor, goal_id: str | None = None,
 
 @alex_tool()
 def planning_cancel_goal(actor: Actor, goal_id: str | None = None,
-                         goal_name: str | None = None) -> dict:
+                         goal_name: str | None = None,
+                                choice: int | None = None,
+                                selection_id: str | None = None) -> dict:
     """Cancel one goal while preserving target, funding and contribution history. Use the natural goal name when supplied; never ask the user to create a replacement goal."""
-    resolved = phase2_finance.resolve_goal_reference(
-        goal_id, goal_name, actor.phone, actor.conversation_type
-    )
+    resolved = goal_references.resolve(actor, goal_id, goal_name, choice, selection_id)
     return phase2_finance.cancel_goal(
         resolved, actor.phone, actor.conversation_type
     )
@@ -1091,9 +1127,7 @@ def planning_set_period_target(amount: float, actor: Actor,
                                reason: str | None = None) -> dict:
     """Set a one-period goal target such as 'RM100 is enough this month' without changing future recurring baseline. Natural goal_name is supported; omitted period means the current local month."""
     import runtime_clock
-    resolved = phase2_finance.resolve_goal_reference(
-        goal_id, goal_name, actor.phone, actor.conversation_type
-    )
+    resolved = goal_references.resolve(actor, goal_id, goal_name)
     effective_period = period or runtime_clock.today(actor.timezone).strftime("%Y-%m")
     return phase2_finance.set_goal_period_target(
         resolved, effective_period, amount,
@@ -1108,9 +1142,7 @@ def planning_change_goal_baseline(new_monthly_amount: float, actor: Actor,
                                   effective_from_period: str | None = None,
                                   reason: str | None = None) -> dict:
     """Change a recurring goal baseline prospectively. Natural goal_name is supported; earlier periods remain unchanged."""
-    resolved = phase2_finance.resolve_goal_reference(
-        goal_id, goal_name, actor.phone, actor.conversation_type
-    )
+    resolved = goal_references.resolve(actor, goal_id, goal_name)
     return phase2_finance.set_goal_baseline(
         resolved, new_monthly_amount, actor.phone, actor.conversation_type,
         effective_from_period, reason,
@@ -1126,9 +1158,7 @@ def planning_record_goal_contribution(amount: float, actor: Actor,
                                       source_cash_event_id: str | None = None) -> dict:
     """Record an actual goal contribution without changing its recurring plan. goal_name is accepted and omitted contribution_date means today locally."""
     import runtime_clock
-    resolved = phase2_finance.resolve_goal_reference(
-        goal_id, goal_name, actor.phone, actor.conversation_type
-    )
+    resolved = goal_references.resolve(actor, goal_id, goal_name)
     effective_date = (
         contribution_date
         or runtime_clock.today(actor.timezone).isoformat()
@@ -1179,9 +1209,7 @@ def planning_goal_deviation(actor: Actor, goal_id: str | None = None,
                             period: str | None = None) -> dict:
     """Compare actual contribution with the approved period plan. If actual_amount is omitted Alex computes actual contributions from stored records; omitted period means current local month."""
     import runtime_clock
-    resolved = phase2_finance.resolve_goal_reference(
-        goal_id, goal_name, actor.phone, actor.conversation_type
-    )
+    resolved = goal_references.resolve(actor, goal_id, goal_name)
     effective_period = period or runtime_clock.today(actor.timezone).strftime("%Y-%m")
     return phase2_finance.evaluate_goal_deviation(
         resolved, actual_amount, effective_period,
@@ -1260,9 +1288,7 @@ def planning_allocate_cash_to_goal(amount: float, actor: Actor,
         amount=cash_event_amount, source_message_id=actor.source_message_id,
         require_unallocated=True,
     )
-    resolved_goal = phase2_finance.resolve_goal_reference(
-        goal_id, goal_name, actor.phone, actor.conversation_type
-    )
+    resolved_goal = goal_references.resolve(actor, goal_id, goal_name)
     return phase2_finance.allocate_cash_to_goal(
         resolved_cash, resolved_goal, amount,
         actor.phone, actor.conversation_type, contribution_date,
@@ -1459,9 +1485,7 @@ def planning_goal_projection(actor: Actor, goal_id: str | None = None,
                              goal_name: str | None = None,
                              from_period: str | None = None) -> dict:
     """Project a goal using its approved baseline only; natural goal_name is accepted and one-off extra contributions do not rewrite future baseline."""
-    resolved = phase2_finance.resolve_goal_reference(
-        goal_id, goal_name, actor.phone, actor.conversation_type
-    )
+    resolved = goal_references.resolve(actor, goal_id, goal_name)
     return phase2_finance.goal_projection(
         resolved, actor.phone, actor.conversation_type, from_period
     )
@@ -1524,9 +1548,7 @@ def planning_brief(actor: Actor, currency: str = "MYR") -> dict:
 @alex_tool()
 def planning_list_goals(actor: Actor) -> dict:
     """List authorized advanced goals and their current plan state."""
-    return {"goals": phase2_finance.list_goals(
-        actor.phone, actor.conversation_type, "all"
-    )}
+    return goal_references.list_for_actor(actor)
 
 
 @alex_tool()
@@ -1651,8 +1673,10 @@ def work_ot_status(on_date: str, actor: Actor) -> dict:
 
 
 @alex_tool()
-def work_leave_balance(leave_id: str, actor: Actor, as_of_date: str | None = None) -> dict:
+def work_leave_balance(actor: Actor, leave_id: str | None = None, as_of_date: str | None = None) -> dict:
     """Read a configured leave balance. Annual/medical reconcile later recorded leave events; childcare, wellness, hospitalisation and DOIL use the authoritative snapshot until updated."""
+    if not leave_id:
+        return phase2_work.leave_balances(actor.phone, actor.conversation_type, as_of_date)
     return phase2_work.leave_balance(leave_id, actor.phone, actor.conversation_type, as_of_date)
 
 
@@ -2026,6 +2050,9 @@ def report_export(format: str, actor: Actor, period: str | None = None,
         and isinstance(active.get("payload"), dict)
     )
     if reuse_active_exact:
+        stored_scope = str(spec.get("scope") or "family").casefold()
+        if scope_policy.effective_read_scope(actor, stored_scope) != stored_scope:
+            raise PermissionError("That active report has a different privacy scope. Explicitly authorize that scope in this export request.")
         # "Send that as PDF/CSV/JSON" means the exact dataset Alex just
         # displayed. Never reconstruct it from category/search wording.
         if report_kind == "monthly_finance":
@@ -2267,9 +2294,51 @@ def recall_discussion(query: str, actor: Actor) -> dict:
 
 
 @alex_tool()
+def list_discussions(actor: Actor, query: str = "", pending_only: bool = False,
+                     limit: int = 20) -> dict:
+    """List genuine durable Ear discussions by topic, latest or pending actions. Freeze numbered order; never search unrelated saved notes."""
+    return discussion_journal.list_discussions(actor, query, pending_only, limit)
+
+
+@alex_tool()
+def get_discussion(session_id: str, actor: Actor) -> dict:
+    """Read one authorized Ear discussion: original capture, summary, decisions, action owners/status and audit history. No action is created."""
+    return discussion_journal.detail(actor, session_id)
+
+
+@alex_tool()
+def update_discussion(session_id: str, actor: Actor, subject: str | None = None,
+                      status: str | None = None, decisions: list[str] | None = None,
+                      unresolved: list[str] | None = None,
+                      expected_revision: int | None = None) -> dict:
+    """Record explicit discussion decisions or status with history. Status: IDEA, DECISION_PENDING, ACTION_PENDING, IN_PROGRESS, ON_HOLD, DONE, CANCELLED. Read/acknowledged is NOT done. Never create a Task/Diary/Reminder without separate permission."""
+    return discussion_journal.update_discussion(actor, session_id, subject=subject,
+        status=status, decisions=decisions, unresolved=unresolved,
+        expected_revision=expected_revision)
+
+
+@alex_tool()
+def update_discussion_action(session_id: str, actor: Actor,
+                             title: str | None = None, action_id: str | None = None,
+                             status: str | None = None, owner_id: str | None = None,
+                             due_local: str | None = None, clear_due: bool = False) -> dict:
+    """Create/update a discussion action ONLY from the user's explicit instruction. Use grounded action/owner IDs from returned records; clarify ambiguous action/owner. Never invent a deadline. Status DONE means actual completion, not acknowledgement. Does not create reminders/tasks/diary."""
+    return discussion_journal.update_action(actor, session_id, title=title,
+        action_id=action_id, status=status, owner_id=owner_id,
+        due_local=due_local, clear_due=clear_due)
+
+
+@alex_tool()
+def link_discussion_action(session_id: str, action_id: str, target_kind: str,
+                           target_id: str, actor: Actor, confirmed: bool = False) -> dict:
+    """Link an existing same-scope task/diary/plan/reminder to an Ear action ONLY with explicit promotion consent. Does not create or schedule anything. Read both exact records first."""
+    return discussion_journal.link_action(actor, session_id, action_id, target_kind, target_id, confirmed)
+
+
+@alex_tool()
 def get_daily_brief(actor: Actor, on_date: str | None = None) -> dict:
     """Build the owner's deterministic private Daily Brief for a local date. Combines Family Shared plus this owner's private records; never exposes a spouse's private records. This is read-only."""
-    return daily_brief.build(actor, on_date)
+    return daily_brief.create_or_get(actor, on_date, refresh=True)
 
 
 @alex_tool()

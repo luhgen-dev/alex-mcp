@@ -189,12 +189,12 @@ def build_monthly_finance_report(ledger, period, sender_phone,
         }
         for row in (ledger.get("category_totals") or [])
     ]
-    obligations = phase2_finance.list_obligations(
-        sender_phone, conversation_type, requested_scope, period=period
-    )
-    goals = phase2_finance.list_goals(
-        sender_phone, conversation_type, requested_scope
-    )
+    # A finance view contains the displayed ledger, not a fresh planning query.
+    # Enrichment here changed "send that as PDF" after the display and could
+    # expose unrelated goals. The explicit household snapshot is the separate
+    # opt-in surface for planning/obligations.
+    obligations = []
+    goals = []
     title = f"{_month_label(period)} Finance Report"
     summary_lines = []
     for currency, amount in sorted((ledger.get("spending_totals") or {}).items()):

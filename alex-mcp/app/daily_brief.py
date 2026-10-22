@@ -12,9 +12,7 @@ import phase2_finance
 import phase2_work
 import profile_config
 import runtime_clock
-import services
-from context import ActorContext
-from config import get_settings
+from context import ActorContext, use_actor
 
 
 SCHEMA = """
@@ -76,14 +74,16 @@ def _all_scope_actor(actor: ActorContext) -> ActorContext:
 def _work_section(actor, day):
     try:
         shift = phase2_work.effective_shift(day, actor.phone, "DIRECT_DM")
-    except ValueError:
-        return {"configured": False, "line": "Work roster is not configured."}
+    except ValueError as exc:
+        if "No active roster profile configured" in str(exc):
+            return {"configured": False, "line": "Work roster is not configured. Import your profile privately to enable it."}
+        return {"configured": False, "line": "Work roster needs clarification: more than one profile or an invalid configuration."}
     code = shift.get("shift")
     label = {"morning": "Morning shift", "evening": "Afternoon shift", "off": "Off"}.get(code, str(code))
     start = end = None
     try:
         rows = profile_config.authorized_records(
-            actor.phone, "DIRECT_DM", kind="roster", requested_scope="private"
+            actor.phone, "DIRECT_DM", kind="roster", requested_scope="private", effective_date=day
         )
         active = [r for r in rows if r["payload"].get("active", True)]
         payload = active[0]["payload"] if len(active) == 1 else {}
@@ -93,24 +93,32 @@ def _work_section(actor, day):
             start, end = payload.get("evening_start"), payload.get("evening_end")
     except Exception:
         pass
-    line = label
-    if start and end:
+    line = label + " week — weekend" if day.weekday() >= 5 and code != "off" else label
+    if start and end and day.weekday() < 5:
         line += f" — {start}–{end}"
     try:
-        ot = phase2_work.default_ot_for_date(day, actor.phone, "DIRECT_DM")
+        ot = phase2_work.effective_ot_for_date(day, actor.phone, "DIRECT_DM")
     except Exception:
         ot = None
     if ot and ot.get("ot"):
         window = "–".join(x for x in (ot.get("start"), ot.get("end")) if x)
         if window:
-            line += f"; default OT {window}"
+            line += f"; {'explicit OT' if ot.get('override') else 'default OT'} {window}"
         elif ot.get("hours"):
             line += f"; default OT {ot.get('hours'):g}h"
+    if day.weekday() >= 5 and ot is not None and not ot.get("ot"):
+        line += "; no OT scheduled"
     return {"configured": True, "shift": code, "line": line, "ot": ot}
 
 
 def build(actor: ActorContext, on_date: str | None = None) -> dict:
     actor = _all_scope_actor(actor)
+    # Helpers consult the authenticated ContextVar, not just their argument.
+    with use_actor(actor):
+        return _build(actor, on_date)
+
+
+def _build(actor: ActorContext, on_date: str | None = None) -> dict:
     day = date.fromisoformat(str(on_date)[:10]) if on_date else runtime_clock.today(actor.timezone)
     day_text = day.isoformat()
     agenda = phase2.get_agenda(actor, day_text, day_text, include_plans=True)
@@ -186,7 +194,8 @@ def build(actor: ActorContext, on_date: str | None = None) -> dict:
     diary = agenda.get("diary") or []
     tentative = agenda.get("plans") or []
 
-    lines = ["🌅 *Good morning — here’s your day*", ""]
+    lines = ["🌅 *Good morning — here’s your day*",
+             day.strftime("%A, %d %B %Y") + f" ({actor.timezone})", ""]
     lines.append("*Work*")
     lines.append(work["line"])
     if leave:
@@ -208,7 +217,7 @@ def build(actor: ActorContext, on_date: str | None = None) -> dict:
         for row in tentative:
             lines.append(f"• {row.get('title')}")
 
-    lines.extend(["", "*Tasks*"])
+    lines.extend(["", f"*Tasks due today or overdue ({len(due_tasks)} of {len(tasks)} open)*"])
     if due_tasks:
         for i, row in enumerate(due_tasks, 1):
             label = "overdue" if (
@@ -255,7 +264,7 @@ def build(actor: ActorContext, on_date: str | None = None) -> dict:
             lines.append(f"{i}. ⏳ {item}")
 
     summary = (
-        f"{len(due_tasks)} task{'s' if len(due_tasks)!=1 else ''} · "
+        f"{len(due_tasks)} task{'s' if len(due_tasks)!=1 else ''} due/overdue ({len(tasks)} open) · "
         f"{len(reminder_rows)} reminder{'s' if len(reminder_rows)!=1 else ''} · "
         f"{len(due_bills)} bill{'s' if len(due_bills)!=1 else ''} due · "
         f"{len(diary)} appointment{'s' if len(diary)!=1 else ''}"
@@ -266,27 +275,32 @@ def build(actor: ActorContext, on_date: str | None = None) -> dict:
         "text": "\n".join(lines),
         "actionable": bool(due_tasks or reminder_rows or due_bills or diary or waiting or work.get("configured")),
         "counts": {
-            "tasks": len(due_tasks), "reminders": len(reminder_rows),
+            "tasks": len(due_tasks), "open_tasks": len(tasks), "reminders": len(reminder_rows),
             "bills": len(due_bills), "diary": len(diary), "waiting": len(waiting),
         },
     }
 
 
-def create_or_get(actor: ActorContext, on_date: str | None = None) -> dict:
+def create_or_get(actor: ActorContext, on_date: str | None = None, *, refresh: bool = False) -> dict:
     actor = _all_scope_actor(actor)
     payload = build(actor, on_date)
     ensure_schema()
     conn = db.connect()
     try:
+        conn.execute("BEGIN IMMEDIATE")
         existing = conn.execute(
             "SELECT * FROM daily_briefs WHERE user_id=? AND brief_date=?",
             (actor.user_id, payload["date"]),
         ).fetchone()
         if existing:
+            if refresh:
+                conn.execute("UPDATE daily_briefs SET payload_json=? WHERE brief_id=?",
+                             (json.dumps(payload, ensure_ascii=False, sort_keys=True), existing["brief_id"]))
+                conn.commit()
             return {
                 "brief_id": existing["brief_id"],
                 "status": existing["status"],
-                **json.loads(existing["payload_json"]),
+                **(payload if refresh else json.loads(existing["payload_json"])),
             }
         brief_id = str(uuid.uuid4())
         conn.execute(
@@ -305,6 +319,8 @@ def create_or_get(actor: ActorContext, on_date: str | None = None) -> dict:
 
 
 def acknowledge_reaction(actor: ActorContext, provider_message_id: str, reaction_text: str | None) -> dict:
+    if actor.conversation_type == "GROUP":
+        return {"status": "not_daily_brief_ack"}
     reaction = str(reaction_text or "")
     if "✅" not in reaction:
         return {"status": "not_daily_brief_ack"}
@@ -317,9 +333,9 @@ def acknowledge_reaction(actor: ActorContext, provider_message_id: str, reaction
                JOIN daily_briefs b ON b.brief_id=o.context_id
                WHERE o.provider_message_id=?
                  AND o.context_kind='DAILY_BRIEF'
-                 AND b.user_id=?
+                 AND b.user_id=? AND o.conversation_id=?
                ORDER BY o.delivered_at_utc DESC,o.created_at_utc DESC LIMIT 1""",
-            (provider_message_id, actor.user_id),
+            (provider_message_id, actor.user_id, actor.conversation_id),
         ).fetchone()
         if not row:
             return {"status": "not_daily_brief_ack"}

@@ -513,6 +513,12 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         _fs("reminder_history"), seed="core", live=False,
     ),
     PromptContract(
+        "p1.reminder.claim.take", "phase1", "reminders",
+        "Taking responsibility for an existing family reminder uses claim, not reminder creation.",
+        ("I'll handle the family reminder to collect the parcel", "Let me take responsibility for the parcel reminder"),
+        _fs("reminder.claim.take"), forbidden=_fs("reminder.create"), seed="core", live=False,
+    ),
+    PromptContract(
         "p1.reminder.claim.release", "phase1", "reminders",
         "A claimant must be able to explicitly release a claimable family reminder; deleting the reaction alone must never release it.",
         (
@@ -1019,7 +1025,7 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
             "Update the holiday goal target to RM6,000, nothing else.",
         ),
         _fs("planning_update_goal_target"),
-        forbidden=_fs("planning_change_goal_baseline", "planning_set_period_target"),
+        forbidden=_fs("planning_change_goal_baseline", "planning_set_period_target", "planning_create_goal"),
         seed="core", live=False,
     ),
     PromptContract(
@@ -1647,8 +1653,8 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         "p3.work.profile.import", "phase3", "work",
         "An owner can explicitly import a supplied permanent private work profile without source-code defaults.",
         (
-            "Import my work profile: {\"roster\":{\"id\":\"permanent_roster\",\"name\":\"Permanent roster\",\"cycle_start\":\"2026-10-19\",\"pattern\":\"evening,morning\",\"day_start\":\"07:45\",\"day_end\":\"16:15\",\"evening_start\":\"16:15\",\"evening_end\":\"01:00\",\"active\":true}}.",
-            "Configure my permanent roster from this profile: {\"roster\":{\"id\":\"permanent_roster\",\"name\":\"Permanent roster\",\"cycle_start\":\"2026-10-19\",\"pattern\":\"evening,morning\",\"day_start\":\"07:45\",\"day_end\":\"16:15\",\"evening_start\":\"16:15\",\"evening_end\":\"01:00\",\"active\":true}}.",
+            "Import my work profile: {\"roster\":{\"id\":\"permanent_roster\",\"name\":\"Permanent roster\",\"cycle_start\":\"2025-02-03\",\"pattern\":\"evening,morning\",\"day_start\":\"08:30\",\"day_end\":\"17:30\",\"evening_start\":\"17:30\",\"evening_end\":\"02:00\",\"active\":true}}.",
+            "Configure my permanent roster from this profile: {\"roster\":{\"id\":\"permanent_roster\",\"name\":\"Permanent roster\",\"cycle_start\":\"2025-02-03\",\"pattern\":\"evening,morning\",\"day_start\":\"08:30\",\"day_end\":\"17:30\",\"evening_start\":\"17:30\",\"evening_end\":\"02:00\",\"active\":true}}.",
         ),
         _fs("work.profile.import"), seed="empty", live=False,
     ),
@@ -1765,6 +1771,62 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         _fs("search_saved_items", "get_agenda_range", "list_reminders"),
         forbidden=_fs("log_expense", "create_reminder", "add_diary_event", "ha_control"),
         seed="core",
+    ),
+)
+
+
+# Issue 61 synthetic language-boundary regressions. These packets are genuine
+# tool-selection expectations, not a claim of phone delivery or model training.
+PROMPT_CONTRACTS += (
+    PromptContract(
+        "p3.repair.ear.list", "phase3", "discussion",
+        "Ear history must be retrieved in its own domain; no saved-note or task substitution.",
+        ("Alex, show us our discussions", "List our Ear sessions", "What discussions did we save?"),
+        _fs("discussion.list"), forbidden=_fs("memory.search", "task.read"),
+        conversation_type="GROUP", seed="empty", live=False,
+        unchanged_tables=("tasks", "reminders", "diary_events"),
+    ),
+    PromptContract(
+        "p3.repair.ear.detail", "phase3", "discussion",
+        "A discussion detail request looks up the grounded Ear record before using an internal ID.",
+        ("What did we agree about organising the garage?", "Show our most recent Ear discussion"),
+        _fs("discussion.list", "discussion.get", "discussion.recall"),
+        forbidden=_fs("memory.search", "task.create", "diary.create"),
+        seed="empty", live=False,
+    ),
+    PromptContract(
+        "p3.repair.ear.status", "phase3", "discussion",
+        "An explicit discussion-state correction belongs to the journal, not diary/task promotion.",
+        ("For our garage Ear discussion, we haven't decided a date yet", "Put our garage discussion on hold"),
+        _fs("discussion.list", "discussion.update"),
+        forbidden=_fs("task.create", "diary.create", "reminder.create"),
+        seed="empty", live=False,
+    ),
+    PromptContract(
+        "p3.repair.ear.action", "phase3", "discussion",
+        "Completion of a discussion action resolves the journal action identity, not an unrelated task.",
+        ("I finished the sorting action from our garage discussion", "Mark my garage Ear discussion action done"),
+        _fs("discussion.list", "discussion.action.update"),
+        forbidden=_fs("task.complete", "task.create"), seed="empty", live=False,
+    ),
+    PromptContract(
+        "p3.repair.ear.link", "phase3", "discussion",
+        "An explicitly requested link preserves journal/task separation and resolves both records first.",
+        ("Link my garage discussion action to the existing garage task", "Connect the sorting action in our Ear journal with my existing sorting task"),
+        _fs("discussion.action.link", "discussion.list", "task.read"),
+        forbidden=_fs("task.create", "diary.create"), seed="empty", live=False,
+    ),
+    PromptContract(
+        "p3.repair.work.entitlements", "phase3", "work",
+        "Owner asks for authoritative entitlement/used/remaining categories, not planned diary leave.",
+        ("What are my leave entitlements and how much have I used?", "Show my annual, childcare, medical, wellness, hospitalisation and DOIL balances"),
+        _fs("work.leave.balance"), forbidden=_fs("work.leave.list"), seed="core", live=False,
+    ),
+    PromptContract(
+        "p3.repair.brief.regenerate", "phase3", "daily_brief",
+        "Refreshing a Daily Brief uses the canonical deterministic brief, never a new reminder.",
+        ("Refresh my daily brief", "Regenerate today's daily brief"),
+        _fs("daily.brief"), forbidden=_fs("reminder.create", "task.create"), seed="core", live=False,
     ),
 )
 
@@ -2023,6 +2085,30 @@ CONVERSATION_CONTRACTS: tuple[ConversationContract, ...] = (
                 _fs("list_reminders"),
                 expected_terms=("electricity",),
                 clock_utc="2026-09-29T16:05:00+00:00",
+            ),
+        ),
+    ),
+)
+
+
+CONVERSATION_CONTRACTS += (
+    ConversationContract(
+        "conv.repair.reminder.quote.claim", "phase1", "reminders",
+        "Quoted natural claim preserves the exact family reminder and its due time.",
+        "empty",
+        (
+            ConversationStep(
+                "Remind the family tomorrow at 9am to collect the parcel; anyone can claim it.",
+                _fs("reminder.create"), conversation_type="GROUP",
+                state_expectations=(StateExpectation("reminders", fields=(("claimable", 1),), count=1, delta=1),),
+            ),
+            ConversationStep(
+                "I'll handle this one", _fs("reminder.claim.take"),
+                quote_previous=True, conversation_type="GROUP",
+                state_expectations=(
+                    StateExpectation("reminders", count=1, delta=0),
+                    StateExpectation("reminders", fields=(("claimed_by_user_id", "$HUSBAND"),), count=1, delta=1),
+                ),
             ),
         ),
     ),

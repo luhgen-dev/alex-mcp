@@ -4,10 +4,13 @@ import json
 import os
 import re
 import uuid
+import tempfile
 from datetime import datetime, timedelta, timezone
 
 import db
 import runtime_clock
+import scope_policy
+import discussion_journal
 from config import DATA_DIR
 
 
@@ -51,6 +54,7 @@ def ensure_schema(conn=None):
         conn = db.connect()
     try:
         conn.executescript(SCHEMA)
+        discussion_journal.ensure_schema(conn)
         if own:
             conn.commit()
     finally:
@@ -83,10 +87,15 @@ def _sync_state_file(conn=None):
             payload[str(row["conversation_id"])] = {
                 "expires_at_ms": int((stamp + timedelta(minutes=TIMEOUT_MINUTES)).timestamp() * 1000)
             }
-        tmp = STATE_FILE + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as handle:
-            json.dump(payload, handle, ensure_ascii=False, sort_keys=True)
-        os.replace(tmp, STATE_FILE)
+        os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
+        fd, tmp = tempfile.mkstemp(prefix="listening-", suffix=".tmp", dir=os.path.dirname(STATE_FILE))
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle, ensure_ascii=False, sort_keys=True)
+            os.replace(tmp, STATE_FILE)
+        finally:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
     finally:
         if own:
             conn.close()
@@ -152,6 +161,8 @@ def _search_prior(conn, conversation_id: str, query: str) -> dict | None:
 def start(actor, resume_query: str | None = None) -> dict:
     if actor.conversation_type != "GROUP":
         raise ValueError("Listening Mode is for the Family Shared group")
+    if "FAMILY_SHARED" not in scope_policy.read_spaces(actor):
+        raise PermissionError("Family discussion access required")
     expire_inactive()
     conn = db.connect()
     try:
@@ -177,6 +188,7 @@ def start(actor, resume_query: str | None = None) -> dict:
                 now, now,
             ),
         )
+        discussion_journal.register(conn, actor, session_id)
         conn.commit()
         _sync_state_file(conn)
         return {
@@ -192,6 +204,8 @@ def start(actor, resume_query: str | None = None) -> dict:
 def capture(actor, message_id: str, text: str, received_at_utc: str | None = None) -> dict:
     if actor.conversation_type != "GROUP":
         return {"status": "not_group"}
+    if "FAMILY_SHARED" not in scope_policy.read_spaces(actor):
+        raise PermissionError("Family discussion access required")
     expire_inactive()
     conn = db.connect()
     try:
@@ -230,7 +244,7 @@ def context(conversation_id: str, max_messages: int = 120) -> dict | None:
     conn = db.connect()
     try:
         rows = conn.execute(
-            """SELECT user_id,text,created_at_utc FROM discussion_messages
+            """SELECT message_id,user_id,text,created_at_utc FROM discussion_messages
                WHERE session_id=? ORDER BY created_at_utc DESC LIMIT ?""",
             (session["session_id"], max(1, min(200, int(max_messages)))),
         ).fetchall()
@@ -247,26 +261,34 @@ def context(conversation_id: str, max_messages: int = 120) -> dict | None:
 def stop(actor) -> dict:
     if actor.conversation_type != "GROUP":
         raise ValueError("Listening Mode is for the Family Shared group")
+    if "FAMILY_SHARED" not in scope_policy.read_spaces(actor):
+        raise PermissionError("Family discussion access required")
     session = active_session(actor.conversation_id)
     if not session:
         return {"status": "not_listening"}
     conn = db.connect()
     try:
         rows = conn.execute(
-            """SELECT user_id,text,created_at_utc FROM discussion_messages
+            """SELECT message_id,user_id,text,created_at_utc FROM discussion_messages
                WHERE session_id=? ORDER BY created_at_utc""",
             (session["session_id"],),
         ).fetchall()
+        # Persist an evidence-only fallback in the same transaction as stopping.
+        # A provider failure after this point cannot erase the captured journal.
+        fallback = "Discussion saved — unstructured capture; decisions/actions need review.\n" + "\n".join(
+            str(row["text"] or "") for row in rows
+        )
         conn.execute(
             """UPDATE discussion_sessions
-               SET status='STOPPED',ended_at_utc=CURRENT_TIMESTAMP
+               SET status='STOPPED',ended_at_utc=?,summary_text=COALESCE(summary_text,?)
                WHERE session_id=? AND status='ACTIVE'""",
-            (session["session_id"],),
+            (_now().isoformat(), fallback, session["session_id"]),
         )
         conn.commit()
         _sync_state_file(conn)
         return {
             "status": "stopped",
+            "summary": fallback,
             "session_id": session["session_id"],
             "previous_summary": session.get("previous_summary"),
             "messages": [dict(row) for row in rows],
@@ -288,36 +310,11 @@ def save_summary(session_id: str, summary: str) -> None:
 
 
 def recall(actor, query: str) -> dict:
-    if actor.conversation_type == "GROUP":
-        conversation_id = actor.conversation_id
-    else:
-        # A DM recall is allowed only for this owner's configured Family group.
-        try:
-            data = json.loads(open(os.path.join(DATA_DIR, "family_group.json"), "r", encoding="utf-8").read())
-            conversation_id = str(data.get("group_jid") or "")
-        except Exception:
-            conversation_id = ""
-    if not conversation_id:
-        return {"status": "not_found"}
-    ensure_schema()
-    conn = db.connect()
-    try:
-        session = _search_prior(conn, conversation_id, query)
-        if not session:
-            return {"status": "not_found"}
-        rows = conn.execute(
-            """SELECT text,created_at_utc FROM discussion_messages
-               WHERE session_id=? ORDER BY created_at_utc""",
-            (session["session_id"],),
-        ).fetchall()
-        return {
-            "status": "found",
-            "summary": session.get("summary_text") or session.get("previous_summary"),
-            "messages": [dict(row) for row in rows[-60:]],
-            "presentation_rule": (
-                "Summarize the remembered discussion naturally. Distinguish agreed, tentative, "
-                "rejected and unresolved items; do not turn it into a plan/task/reminder without explicit instruction."
-            ),
-        }
-    finally:
-        conn.close()
+    """Search the Ear journal, never generic saved notes or unrelated lists."""
+    result = discussion_journal.list_discussions(actor, query)
+    if result["status"] == "not_found":
+        return result
+    if re.search(r"\bdiscussions\b", str(query).casefold()):
+        return result
+    found = result["discussions"][0]
+    return discussion_journal.detail(actor, found["session_id"])

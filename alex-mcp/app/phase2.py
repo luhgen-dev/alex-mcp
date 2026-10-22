@@ -2026,3 +2026,20 @@ def get_cashflow_baseline(actor: ActorContext, currency: str) -> dict:
         }
     finally:
         conn.close()
+
+
+def render_task_detail(detail: dict) -> str:
+    """Render only recorded task provenance; current query is never history."""
+    lines = [f"*{detail['title']}* — {detail['status']}"]
+    original = detail.get("original_instruction")
+    lines.append("Original instruction: " + (original if original else "Not recorded for this task."))
+    if detail.get("due_local") or detail.get("due_date_local"):
+        lines.append("Due: " + str(detail.get("due_local") or detail["due_date_local"]))
+    lines.append("History:")
+    for event in detail.get("history", []):
+        lines.append(f"• {event.get('at_local') or 'Time not recorded'}: {event.get('action')} — {event.get('title') or ''}")
+    if not detail.get("history"):
+        lines.append("No recorded edits.")
+    reminder = detail.get("reminder")
+    lines.append("Linked reminder: " + (f"{reminder['status']} — {reminder.get('due_local') or 'time not recorded'}" if reminder else "None."))
+    return "\n".join(lines)

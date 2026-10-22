@@ -423,6 +423,19 @@ def create_goal(name, target_amount, baseline_monthly, sender_phone,
                 conversation_type="DIRECT_DM", visibility="private",
                 currency="MYR", target_date=None, status="ACTIVE",
                 baseline_effective_period=None):
+    try:
+        actor = current_actor()
+    except RuntimeError:
+        actor = None
+    # Creating a new identity must never implement an edit/activation request.
+    # This is a safety backstop, not the natural-language routing mechanism.
+    if actor and re.search(
+        r"\b(?:update|change|revise|increase|decrease|activate|resume|reopen|cancel)\b"
+        r"|\bmake\b.*\bactive\b",
+        str(actor.trusted_text or ""), re.I,
+    ) and not re.search(r"\b(?:new|another|separate)\s+(?:savings?\s+)?goal\b",
+                        str(actor.trusted_text or ""), re.I):
+        raise ValueError("This request changes an existing goal. Resolve that goal and use its update/status tool; do not create another goal.")
     if not str(name or "").strip():
         raise ValueError("Goal name is required")
     currency = str(currency or "MYR").upper()
@@ -443,6 +456,13 @@ def create_goal(name, target_amount, baseline_monthly, sender_phone,
     try:
         user_id, space_id = _space_for(
             conn, sender_phone, conversation_type, visibility)
+        conn.execute("BEGIN IMMEDIATE")
+        same_name = conn.execute(
+            "SELECT name FROM alex_phase2_goals WHERE space_id=? AND status<>'CANCELLED'",
+            (space_id,),
+        ).fetchall()
+        if any(_normalized_ref(row["name"]) == _normalized_ref(name) for row in same_name):
+            raise ValueError("A current goal with that name already exists. Update that goal, or give a separate new goal a distinct name.")
         ident = str(uuid.uuid4())
         conn.execute("""
             INSERT INTO alex_phase2_goals(
@@ -565,10 +585,12 @@ def resolve_goal_reference(goal_id, goal_name, sender_phone,
         return candidates[0]["goal_id"]
     if not candidates:
         raise ValueError(f"No authorized goal uniquely matches {goal_name!r}.")
-    names = ", ".join(str(row.get("name")) for row in candidates[:5])
-    raise ValueError(
-        f"Goal name is ambiguous; ask which one: {names}"
+    choices = "; ".join(
+        f"{row.get('name')} — {row.get('status')}, "
+        f"{row.get('currency') or 'MYR'} {float(row.get('target') or 0):,.2f}"
+        for index, row in enumerate(candidates[:5], 1)
     )
+    raise ValueError(f"Which goal do you mean? Specify its name, status and target, or ask for the numbered goal list: {choices}")
 
 
 def _get_authorized_cash_event(conn, cash_event_id, sender_phone,

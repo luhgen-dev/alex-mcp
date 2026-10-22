@@ -853,3 +853,43 @@ CREATE TABLE IF NOT EXISTS diagnostic_runs (
     report_json TEXT NOT NULL,
     created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS goal_selection_sets (
+    selection_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    items_json TEXT NOT NULL,
+    read_scope TEXT,
+    created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at_utc TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(user_id)
+);
+
+-- Durable Ear journal and scoped numbered navigation.
+
+CREATE TABLE IF NOT EXISTS discussion_journal (
+ session_id TEXT PRIMARY KEY REFERENCES discussion_sessions(session_id) ON DELETE CASCADE,
+ space_id TEXT NOT NULL, owner_id TEXT NOT NULL REFERENCES users(user_id),
+ subject TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'IDEA',
+ decisions_json TEXT NOT NULL DEFAULT '[]', unresolved_json TEXT NOT NULL DEFAULT '[]',
+ revision INTEGER NOT NULL DEFAULT 1, review_state TEXT NOT NULL DEFAULT 'UNSTRUCTURED', updated_at_utc TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_discussion_journal_scope ON discussion_journal(space_id,owner_id);
+CREATE TABLE IF NOT EXISTS discussion_actions (
+ action_id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES discussion_sessions(session_id) ON DELETE CASCADE,
+ title TEXT NOT NULL, owner_id TEXT REFERENCES users(user_id), due_local TEXT,
+ status TEXT NOT NULL, created_at_utc TEXT NOT NULL, updated_at_utc TEXT NOT NULL,
+ linked_kind TEXT, linked_id TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_discussion_actions_session ON discussion_actions(session_id);
+CREATE TABLE IF NOT EXISTS discussion_history (
+ history_id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES discussion_sessions(session_id) ON DELETE CASCADE,
+ action_id TEXT, actor_id TEXT NOT NULL, event_kind TEXT NOT NULL,
+ before_json TEXT, after_json TEXT NOT NULL, source_message_id TEXT,
+ operation_key TEXT NOT NULL UNIQUE, created_at_utc TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS discussion_selection_sets (
+ selection_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, conversation_id TEXT NOT NULL,
+ items_json TEXT NOT NULL, read_scope TEXT NOT NULL,
+ created_at_utc TEXT NOT NULL, expires_at_utc TEXT NOT NULL
+);

@@ -717,6 +717,9 @@ def _resolve_reminder_due(actor: ActorContext, due_local: str | None,
         if (
             raw_context and relative_reminder_delta(time_text) is not None
             and relative_reminder_delta(current) is None
+            and not (pending and task_reminder_draft_payload(actor, pending)
+                     and task_reminder_draft_payload(actor, pending).get("received_at_utc")
+                     == str(getattr(actor, "received_at_utc", "") or ""))
         ):
             # Old drafts do not persist the transport timestamp per fragment.
             # Restarting their duration at a later "yes" would silently change
@@ -1949,12 +1952,13 @@ _SAVED_GENERIC_WORDS = {
     "pictures", "picture", "photos", "photo", "images", "image", "pics", "pic",
     "documents", "document", "docs", "doc", "files", "file", "notes", "note",
     "privately", "private", "memory", "memories", "later", "about",
-    "is", "are", "was", "were",
+    "is", "are", "was", "were", "video", "videos", "clip", "clips",
+    "audio", "voice", "voicenote", "voicenotes", "recording", "recordings",
 }
 _SAVED_KIND_ALIASES = {
     "picture": "IMAGE", "pictures": "IMAGE", "photo": "IMAGE", "image": "IMAGE", "images": "IMAGE",
     "document": "DOCUMENT", "documents": "DOCUMENT", "pdf": "DOCUMENT", "file": "DOCUMENT",
-    "voice": "AUDIO", "voice note": "AUDIO", "audio": "AUDIO", "recording": "AUDIO",
+    "voice": "AUDIO", "voice note": "AUDIO", "voice notes": "AUDIO", "audio": "AUDIO", "recording": "AUDIO", "recordings": "AUDIO",
     "video": "VIDEO", "videos": "VIDEO", "clip": "VIDEO",
     "note": "NOTE", "notes": "NOTE", "text": "NOTE",
 }
@@ -1979,6 +1983,96 @@ def _saved_local_date(value: str | None, tz_name: str) -> str | None:
         return None
 
 
+def _verified_original_media_path(row) -> Path:
+    path = Path(row["local_path"])
+    if not path.is_file():
+        raise ValueError("The original attachment is unavailable; please resend it.")
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    if digest.hexdigest() != row["sha256"]:
+        raise ValueError("The original attachment failed its integrity check; please resend it.")
+    return path
+
+
+def resolve_media_to_save(actor: ActorContext, quoted_message_id: str | None = None) -> str | None:
+    """Resolve only authenticated current/quoted media or one pending voice note.
+
+    An explicit quote never falls back to an unrelated pending asset. A quote
+    is looked up directly because text captions do not remove media identity.
+    """
+    conn = connect()
+    try:
+        if quoted_message_id:
+            rows = conn.execute(
+                """SELECT m.media_id FROM media_objects m
+                   JOIN inbound_messages i ON i.message_id=m.source_message_id
+                   WHERE i.message_id=? AND i.conversation_id=? AND i.sender_phone=?""",
+                (quoted_message_id, actor.conversation_id, normalize_phone(actor.phone)),
+            ).fetchall()
+            if not rows:
+                # A swipe-reply may target Alex's authenticated voice-inbox
+                # acknowledgement rather than the user's original attachment.
+                quoted = db.resolve_quoted_context(
+                    actor.conversation_id, quoted_message_id, actor.phone,
+                )
+                pending = db.pending_item_for_reference(actor, quoted)
+                if pending and pending.get("media_id"):
+                    return str(pending["media_id"])
+                raise ValueError("That quoted original media is not available in this chat. Please resend it.")
+        elif actor.media_ids:
+            marks = ",".join("?" for _ in actor.media_ids)
+            rows = conn.execute(
+                f"""SELECT m.media_id FROM media_objects m
+                    JOIN inbound_messages i ON i.message_id=m.source_message_id
+                    WHERE m.media_id IN ({marks}) AND i.conversation_id=? AND i.sender_phone=?""",
+                list(actor.media_ids) + [actor.conversation_id, normalize_phone(actor.phone)],
+            ).fetchall()
+        else:
+            pending = db.single_pending_item(actor, "VOICE", max_age_seconds=1800)
+            return str(pending["media_id"]) if pending and pending.get("media_id") else None
+        if len(rows) > 1:
+            raise ValueError("Which original should I save? Reply to the specific attachment.")
+        return rows[0]["media_id"] if rows else None
+    finally:
+        conn.close()
+
+
+def save_original_media_request(actor: ActorContext, quoted_message_id: str | None = None) -> dict | None:
+    """Bounded fast path for explicit typed attachment-save instructions.
+
+    Returning None leaves ordinary note requests to the normal tools. This is
+    never called on an ASR transcript and cannot execute embedded media text.
+    """
+    if actor.source == "voice":
+        return None
+    text = str(actor.trusted_text or "").strip()
+    if re.search(r"\bas\s+(?:a\s+)?(?:text|note)\s*:", text, re.I):
+        # A typed replacement note is not consent to archive the recording.
+        return None
+    match = re.fullmatch(
+        r"(?is)(?:please\s+)?(?:save|keep|remember)\s+"
+        r"(?:(?:this|that|the)\s*)?"
+        r"(?:(?:voice\s*note|voicenote|audio(?:\s*note)?|video|clip|picture|photo|attachment|file)\s*)?"
+        r"(?:(?:as|called|named|under|tagged)\s+(.+?))?[.!]?", text,
+    )
+    if not match:
+        return None
+    media_id = resolve_media_to_save(actor, quoted_message_id)
+    if not media_id:
+        return None
+    title = (match.group(1) or "Saved attachment").strip().strip('"“”')[:200]
+    result = save_existing_media_item(
+        actor, title, title, media_id,
+        shared=(scope_policy.effective_read_scope(actor, None) != "private"),
+    )
+    pending = db.pending_item_for_reference(actor, {"quoted_media_id": media_id})
+    if pending:
+        db.resolve_pending_item(pending["item_id"], actor.user_id, actor.source_message_id)
+    return {**result, "reply": f'Saved “{title}” with the original attachment.'}
+
+
 def save_existing_media_item(actor: ActorContext, title: str, content: str,
                              media_id: str, shared: bool = False,
                              tags: str | None = None) -> dict:
@@ -1988,20 +2082,24 @@ def save_existing_media_item(actor: ActorContext, title: str, content: str,
     conn = connect()
     try:
         media_row = conn.execute(
-            """SELECT m.media_id,m.media_type,i.sender_phone
+            """SELECT m.media_id,m.media_type,m.local_path,m.sha256,i.sender_phone,i.conversation_id
                FROM media_objects m
                JOIN inbound_messages i ON i.message_id=m.source_message_id
                WHERE m.media_id=? LIMIT 1""",
             (media_id,),
         ).fetchone()
-        if not media_row or normalize_phone(media_row["sender_phone"]) != normalize_phone(actor.phone):
-            raise PermissionError("media is not owned by the authenticated user")
+        if (not media_row
+                or normalize_phone(media_row["sender_phone"]) != normalize_phone(actor.phone)
+                or media_row["conversation_id"] != actor.conversation_id):
+            raise PermissionError("media is not owned by the authenticated user in this chat")
+        _verified_original_media_path(media_row)
         space = scope_policy.resolve_new_write_space(actor, requested_shared=shared)
         if space not in actor.allowed_spaces:
             raise PermissionError("requested memory space is not accessible")
         action_key = hashlib.sha256(
-            f"{actor.source_message_id}|save-existing-media|{media_id}|{space}".encode("utf-8")
+            f"{actor.user_id}|save-existing-media|{media_id}|{space}".encode("utf-8")
         ).hexdigest()
+        conn.execute("BEGIN IMMEDIATE")
         existing = conn.execute(
             "SELECT item_id FROM saved_items WHERE action_key=?", (action_key,)
         ).fetchone()
@@ -2043,6 +2141,22 @@ def search_saved_items(actor: ActorContext, query: str | None = None, limit: int
     marks, spaces = _spaces_sql(actor)
     bounded = max(1, min(25, int(limit or 10)))
     kind_key = _SAVED_KIND_ALIASES.get(str(kind or "").strip().casefold())
+    if kind and not kind_key:
+        raise ValueError("Choose picture, document, audio, video or note as the saved-item type.")
+    query_words = [w for w in re.findall(r"[\w'-]+", str(query or "").casefold())
+                   if len(w) > 1 and w not in _SAVED_GENERIC_WORDS]
+    if not kind_key and not query_words:
+        # Preserve a requested media filter even if the model omitted `kind`.
+        # The current trusted message, never a recalled conversation, is used.
+        requested = str(getattr(actor, "trusted_text", "") or "").casefold()
+        kinds = {value for pattern, value in (
+            (r"\bvideos?|clips?\b", "VIDEO"),
+            (r"\baudio|voice\s*notes?|recordings?\b", "AUDIO"),
+            (r"\bpictures?|photos?|images?\b", "IMAGE"),
+            (r"\bdocuments?|pdfs?\b", "DOCUMENT"),
+        ) if re.search(pattern, requested)}
+        if len(kinds) == 1:
+            kind_key = kinds.pop()
     raw = str(query or "").strip().casefold()
     words = [w for w in re.findall(r"[\w'-]+", raw) if len(w) > 1 and w not in _SAVED_GENERIC_WORDS]
 
@@ -2126,7 +2240,7 @@ def get_saved_item(actor: ActorContext, item_id: str) -> dict:
     try:
         row = conn.execute(
             f"""SELECT s.item_id,s.title,s.content,s.tags,s.created_at_utc,s.media_id,
-                       m.local_path,m.mime_type,m.media_type
+                       m.local_path,m.mime_type,m.media_type,m.sha256
                 FROM saved_items s
                 LEFT JOIN media_objects m ON m.media_id=s.media_id
                 WHERE s.item_id=? AND s.space_id IN ({marks}) LIMIT 1""",
@@ -2139,7 +2253,8 @@ def get_saved_item(actor: ActorContext, item_id: str) -> dict:
             "content": row["content"], "tags": row["tags"],
             "saved_on": _saved_local_date(row["created_at_utc"], actor.timezone),
         }
-        if row["local_path"]:
+        if row["media_id"]:
+            _verified_original_media_path(row)
             result["_attachments"] = [{
                 "path": row["local_path"], "mime_type": row["mime_type"],
                 "kind": (
@@ -2224,8 +2339,20 @@ def latest_single_selection_context(actor: ActorContext,
                   FROM custom_ledger_selection_sets
                  WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
                        {where_after}
+                UNION ALL
+                SELECT 'DISCUSSION' AS selection_kind,items_json,created_at_utc,
+                       COALESCE(read_scope,'') AS read_scope
+                  FROM discussion_selection_sets
+                 WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
+                       {where_after}
+                UNION ALL
+                SELECT 'GOAL' AS selection_kind,items_json,created_at_utc,
+                       COALESCE(read_scope,'') AS read_scope
+                  FROM goal_selection_sets
+                 WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
+                       {where_after}
                 ORDER BY created_at_utc DESC LIMIT 1""",
-            args_a + args_b + args_c + args_d + args_e,
+            args_a + args_b + args_c + args_d + args_e + args_e + args_e,
         ).fetchall()
         if not rows:
             return None
@@ -2268,6 +2395,12 @@ def get_selection_target(actor: ActorContext, kind: str, target_id: str,
     if normalized == "LEDGER_ENTRY":
         import custom_ledgers
         return custom_ledgers.get_entry(effective_actor, target_id)
+    if normalized == "DISCUSSION":
+        import discussion_journal
+        return discussion_journal.detail(effective_actor, target_id)
+    if normalized == "GOAL":
+        import goal_references
+        return goal_references.detail(effective_actor, target_id)
     raise ValueError("unsupported selection context")
 
 
@@ -2327,8 +2460,20 @@ def latest_selection_set_context(actor: ActorContext,
                    FROM custom_ledger_selection_sets
                   WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
                         {after_sql}
+                  UNION ALL
+                 SELECT selection_id,'DISCUSSION' AS selection_kind,items_json,created_at_utc,
+                        COALESCE(read_scope,'') AS read_scope
+                   FROM discussion_selection_sets
+                  WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
+                        {after_sql}
+                  UNION ALL
+                 SELECT selection_id,'GOAL' AS selection_kind,items_json,created_at_utc,
+                        COALESCE(read_scope,'') AS read_scope
+                   FROM goal_selection_sets
+                  WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
+                        {after_sql}
                   ORDER BY created_at_utc DESC LIMIT 1""",
-            args_a + args_b + args_c + args_d + args_e + args_f,
+            args_a + args_b + args_c + args_d + args_e + args_f + args_f + args_f,
         ).fetchone()
         if not row:
             return None
@@ -2409,6 +2554,14 @@ def resolve_numbered_choice(actor: ActorContext, choice: int,
                          AND expires_at_utc>? LIMIT 1""",
                     (selection_id, actor.user_id, actor.conversation_id, now),
                 ).fetchone()
+            elif kind in {"DISCUSSION", "GOAL"}:
+                table = "discussion_selection_sets" if kind == "DISCUSSION" else "goal_selection_sets"
+                latest = conn.execute(
+                    f"""SELECT ? AS selection_kind,items_json,COALESCE(read_scope,'') AS read_scope
+                       FROM {table} WHERE selection_id=? AND user_id=? AND conversation_id=?
+                         AND expires_at_utc>? LIMIT 1""",
+                    (kind, selection_id, actor.user_id, actor.conversation_id, now),
+                ).fetchone()
             else:
                 raise ValueError("unsupported numbered selection context")
         else:
@@ -2442,8 +2595,20 @@ def resolve_numbered_choice(actor: ActorContext, choice: int,
                           COALESCE(read_scope,'') AS read_scope
                      FROM custom_ledger_selection_sets
                     WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
+                   UNION ALL
+                   SELECT selection_id,'DISCUSSION' AS selection_kind,items_json,created_at_utc,
+                          COALESCE(read_scope,'') AS read_scope
+                     FROM discussion_selection_sets
+                    WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
+                   UNION ALL
+                   SELECT selection_id,'GOAL' AS selection_kind,items_json,created_at_utc,
+                          COALESCE(read_scope,'') AS read_scope
+                     FROM goal_selection_sets
+                    WHERE user_id=? AND conversation_id=? AND expires_at_utc>?
                    ORDER BY created_at_utc DESC LIMIT 1""",
                 (
+                    actor.user_id, actor.conversation_id, now,
+                    actor.user_id, actor.conversation_id, now,
                     actor.user_id, actor.conversation_id, now,
                     actor.user_id, actor.conversation_id, now,
                     actor.user_id, actor.conversation_id, now,
@@ -2493,6 +2658,12 @@ def resolve_numbered_choice(actor: ActorContext, choice: int,
     if kind == "LEDGER_ENTRY":
         import custom_ledgers
         return custom_ledgers.get_entry(effective_actor, target)
+    if kind == "DISCUSSION":
+        import discussion_journal
+        return discussion_journal.detail(effective_actor, target)
+    if kind == "GOAL":
+        import goal_references
+        return goal_references.detail(effective_actor, target)
     if kind == "PENDING_ITEM":
         media_id = str((pending or {}).get("media_id") or "")
         if media_id:
@@ -2726,8 +2897,8 @@ def _friendly_reminder_time(due_utc: str, tz_name: str) -> str:
         suffix = "th" if 10 <= day % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
         hour = local.strftime("%I").lstrip("0") or "12"
         return (
-            f"{day}{suffix} {local.strftime('%B %Y')}, "
-            f"{hour}.{local.strftime('%M')}{local.strftime('%p')}"
+            f"{local.strftime('%a')} {day}{suffix} {local.strftime('%B %Y')}, "
+            f"{hour}.{local.strftime('%M')}{local.strftime('%p')} {tz_name}"
         )
     except Exception:
         return str(due_utc)
@@ -3163,7 +3334,7 @@ def create_reminder(actor: ActorContext, task: str, due_local: str,
                 "same_time_active_count": len(same_time),
                 "same_time_tasks": [str(row["task_text"]) for row in same_time[:8]],
                 "presentation_rule": (
-                    "Confirm the local fire time. If same_time_active_count is greater than zero, "
+                    "Include due_local_display verbatim (resolved date, weekday, time and timezone), never only tomorrow. If same_time_active_count is greater than zero, "
                     "briefly mention that other active reminder(s) already share this exact time; "
                     "do not block creation or ask for confirmation solely because of the collision."
                 ),
@@ -3757,7 +3928,7 @@ def _claim_reminder_tx(
         raise PermissionError("reminder not accessible to this household user")
     row = conn.execute(
         """SELECT reminder_id,task_text,status,space_id,claimable,
-                  claimed_by_user_id,follow_up_after_hours
+                  claimed_by_user_id,follow_up_after_hours,due_at_utc,next_delivery_at_utc
            FROM reminders WHERE reminder_id=?""",
         (reminder_id,),
     ).fetchone()
@@ -3786,7 +3957,9 @@ def _claim_reminder_tx(
                next_delivery_at_utc=?
            WHERE reminder_id=? AND claimed_by_user_id IS NULL
              AND claimable=1 AND status NOT IN ('COMP','CANC')""",
-        (actor.user_id, now.isoformat(), next_delivery, reminder_id),
+        (actor.user_id, now.isoformat(),
+         next_delivery if row["status"] == "DUE" else row["next_delivery_at_utc"],
+         reminder_id),
     )
     if updated.rowcount != 1:
         winner = conn.execute(
@@ -3835,6 +4008,53 @@ def claim_reminder(actor: ActorContext, reminder_id: str, source: str = "DIRECT"
         conn.close()
 
 
+def claim_reminder_with_confirmation(actor: ActorContext, reminder_id: str,
+                                     source: str = "DIRECT") -> dict:
+    """Commit ownership and its private confirmation in one transaction.
+
+    A retry never emits a new confirmation for an already-owned reminder;
+    release/reclaim does produce a new card for the new claim lifecycle.
+    """
+    conn = connect()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        result = _claim_reminder_tx(conn, actor, reminder_id, source=source)
+        if result.get("status") == "claimed" or (
+            result.get("status") == "already_claimed" and result.get("claimed_by_me")
+        ):
+            phone = _active_user_phone(conn, actor.user_id)
+            if not phone:
+                raise ValueError("claimant has no configured private delivery address")
+            destination = phone.replace("+", "") + "@s.whatsapp.net"
+            previous = None
+            if result["status"] == "already_claimed":
+                previous = conn.execute(
+                    """SELECT outbound_id,delivery_status FROM outbound_messages
+                       WHERE context_kind='REMINDER_CLAIM_CONFIRMED' AND context_id=?
+                         AND conversation_id=? ORDER BY rowid DESC LIMIT 1""",
+                    (reminder_id, destination)).fetchone()
+            if previous:
+                result.update(confirmation_outbound_id=previous["outbound_id"],
+                              confirmation_delivery_status=previous["delivery_status"])
+            else:
+                reminder = conn.execute("SELECT task_text FROM reminders WHERE reminder_id=?", (reminder_id,)).fetchone()
+                oid = str(uuid.uuid4())
+                conn.execute(
+                    """INSERT INTO outbound_messages(outbound_id,source_message_id,conversation_id,
+                       kind,text_body,context_kind,context_id)
+                       VALUES(?,?,?,'TEXT',?,'REMINDER_CLAIM_CONFIRMED',?)""",
+                    (oid, actor.source_message_id, destination,
+                     f"You’ve claimed “{reminder['task_text']}”. I’ll follow up with you privately.", reminder_id))
+                result.update(confirmation_outbound_id=oid, confirmation_delivery_status="PENDING")
+        conn.commit()
+        return result
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 def _accept_reminder_handoff_tx(
     conn, actor: ActorContext, handoff_id: str, *,
     source: str, provider_message_id: str | None = None,
@@ -3849,7 +4069,7 @@ def _accept_reminder_handoff_tx(
     if handoff["to_user_id"] != actor.user_id:
         raise PermissionError("this reminder handoff was not addressed to you")
     reminder = conn.execute(
-        """SELECT reminder_id,task_text,status,claimed_by_user_id,follow_up_after_hours
+        """SELECT reminder_id,task_text,status,claimed_by_user_id,follow_up_after_hours,due_at_utc,next_delivery_at_utc
            FROM reminders WHERE reminder_id=?""",
         (handoff["reminder_id"],),
     ).fetchone()
@@ -4851,3 +5071,46 @@ def list_money_buckets(actor: ActorContext) -> dict:
         ]}
     finally:
         conn.close()
+
+
+def save_task_reminder_draft(actor: ActorContext, task_id: str, due_local: str,
+                             time_interpretation=None) -> dict:
+    """Persist exact task/time binding before asking the heads-up choice.
+
+    The backend already resolved the task; the pending record is owner/chat
+    bound, expires with other reminder drafts, and never carries a pin.
+    """
+    import phase2
+    phase2.task_detail(actor, task_id)  # Recheck current read ACL.
+    pending = db.create_pending_item(actor, "REMINDER_DRAFT")
+    payload = {"kind": "TASK_REMINDER_MODE", "task_id": task_id,
+               "due_local": due_local, "read_scope": actor.read_scope,
+               "received_at_utc": str(getattr(actor, "received_at_utc", "") or ""),
+               "time_interpretation": time_interpretation}
+    if hasattr(time_interpretation, "model_dump"):
+        payload["time_interpretation"] = time_interpretation.model_dump()
+    conn = connect()
+    try:
+        conn.execute("UPDATE pending_items SET note=? WHERE item_id=? AND owner_id=? AND conversation_id=?",
+                     (json.dumps(payload), pending["item_id"], actor.user_id, actor.conversation_id))
+        conn.commit()
+    finally:
+        conn.close()
+    return {"pending_item_id": pending["item_id"]}
+
+
+def task_reminder_draft_payload(actor: ActorContext, pending: dict | None) -> dict | None:
+    if not pending or pending.get("owner_id") != actor.user_id or pending.get("conversation_id") != actor.conversation_id:
+        return None
+    if pending.get("status") != "PENDING" or pending.get("kind") != "REMINDER_DRAFT":
+        return None
+    try:
+        created = datetime.fromisoformat(str(pending["created_at_utc"]).replace("Z", "+00:00"))
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+        if not -60 <= (runtime_clock.now_utc() - created).total_seconds() <= 1800:
+            return None
+        payload = json.loads(pending.get("note") or "{}")
+        return payload if payload.get("kind") == "TASK_REMINDER_MODE" and payload.get("task_id") and payload.get("due_local") else None
+    except (TypeError, ValueError, KeyError):
+        return None
