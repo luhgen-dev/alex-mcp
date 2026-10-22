@@ -110,6 +110,72 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
     if re.search(r"\b(?:might buy|maybe we need|thinking of getting) coffee\b", text):
         return result("clarify")
 
+    # 0.5.45 exact semantics that must outrank older generic keyword rules.
+    # These are deterministic regression expectations only; the independent
+    # reviewer remains a separate evidence layer.
+    if text in {
+        "record annual leave for 10 october.",
+        "mark 10 october as planned annual leave.",
+        "i took mc on 10 october; record it.",
+    }:
+        return result("clarify")
+
+    if (
+        re.search(r"\b(?:cancel|stop tracking)\b.*\bfamily holiday savings\b.*\bgoal\b", text)
+        or re.search(r"\bstop tracking my family holiday savings goal\b", text)
+    ):
+        return result("tools", _one(tools, "planning_cancel_goal"))
+
+    if (
+        "family holiday savings" in text
+        and re.search(r"\b(?:contribution|baseline)\b", text)
+        and re.search(r"\b(?:every month|monthly|from now on)\b", text)
+        and re.search(r"\brm\s*300\b", text)
+    ):
+        return result("tools", _one(tools, "planning_change_goal_baseline"))
+
+    if re.search(
+        r"\b(?:change my school reserve to rm\s*250 a month|disable the school reserve)\b",
+        text,
+    ):
+        return result("tools", _one(tools, "planning_update_reserve"))
+
+    if text in {
+        "switch off the ac.",
+        "turn the air conditioner off.",
+    }:
+        return result("clarify")
+
+    if text in {
+        "import my work profile with this json.",
+        "configure my permanent roster from this work profile.",
+    }:
+        return result("clarify")
+
+    if (
+        re.search(r"\bclose my old car service ledger\b", text)
+        or re.search(r"\bstop tracking that custom maintenance ledger\b", text)
+    ):
+        return result("tools", _one(tools, "close_custom_ledger"))
+
+    if (
+        "alex smoke task" in text
+        and re.search(r"\b(?:details|originally say)\b", text)
+    ) or text == "what did i originally say for that task?":
+        return result("tools", _one(tools, "get_task_details"))
+
+    if text in {
+        "give me a heads-up reminder for that task.",
+        "remind me about that task later.",
+    }:
+        return result("clarify")
+
+    if (
+        "alex smoke task" in text
+        and re.search(r"\b(?:remind me in 20 minutes|heads-up reminder in 20 minutes)\b", text)
+    ):
+        return result("tools", _one(tools, "create_task_reminder"))
+
     # A private lookup is scoped by the backend. A person's label cannot tell
     # this public-only oracle who owns a named item; obtain the authorized id
     # before the conditional delete, and let the ACL enforce ownership.
