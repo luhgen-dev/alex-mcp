@@ -108,7 +108,6 @@ class LockedAdditionTests(ConversationFixture):
         self.assertEqual(started["status"], "listening")
         captured = listening.capture(
             actor, "listen-msg-1", "Maybe Greece in June",
-            "2026-10-22T00:00:00+00:00",
         )
         self.assertEqual(captured["status"], "captured")
         context = listening.context(actor.conversation_id)
