@@ -144,23 +144,7 @@ jobs:
                 REVIEW_STATUS="deferred"
                 REVIEW_REASON="github_copilot_monthly_quota"
                 echo "::warning::Independent model review deferred: GitHub Copilot monthly quota exhausted at $NAME."
-                python - <<PY
-                import json
-                from pathlib import Path
-                Path("/tmp/alex-independent-review-deferred.json").write_text(
-                    json.dumps({
-                        "status": "DEFERRED_EXTERNAL_REVIEW",
-                        "reason": "github_copilot_monthly_quota",
-                        "failed_shard": "$NAME",
-                        "completed_response_files": sorted(
-                            p.name for p in Path("/tmp/alex-independent-review-responses").glob("shard-*.json")
-                            if p.stat().st_size > 0
-                        ),
-                        "not_claimed_as_pass": True,
-                    }, indent=2) + "\n",
-                    encoding="utf-8",
-                )
-                PY
+                printf '{"status":"DEFERRED_EXTERNAL_REVIEW","reason":"github_copilot_monthly_quota","failed_shard":"%s","not_claimed_as_pass":true}\n' "$NAME" > /tmp/alex-independent-review-deferred.json
                 rm -f "$GITHUB_WORKSPACE/review.txt"
                 break
               fi
