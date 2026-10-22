@@ -46,7 +46,13 @@ import human_ai_lab
 # deterministic rules below explicitly clarify the new ambiguous fixtures and
 # no longer infer private ownership from a person's label. The independent
 # full review is imported separately with its original raw decisions intact.
-REVIEWED_CORPUS_FINGERPRINT = "ddbdbec0313e0ebdc5bf64737512462f0a34bf1dddad779b93a3f4289e5eb280"
+# 2026-10-22 issue-61 repair: reviewed all sixteen previously unmatched public
+# requests against their visible tool descriptions: own leave entitlement reads,
+# durable Ear list/detail/action/link operations, and explicit reminder claims
+# including user-turn continuity. The 443-packet corpus also contains the
+# repaired bounded tool surfaces and synthetic work fixtures. The rules remain
+# hand-authored regression checks; no independent snapshot was regenerated.
+REVIEWED_CORPUS_FINGERPRINT = "07613c4e4aecaf47b0f6cd4e8066af4a5114d7656bbe4142afa8c8a3712f178f"
 
 
 def _low(value: str) -> str:
@@ -109,6 +115,41 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
     # Genuine ambiguity: possibility is not permission to mutate.
     if re.search(r"\b(?:might buy|maybe we need|thinking of getting) coffee\b", text):
         return result("clarify")
+
+    # Explicit first-person responsibility is a claim, not another reminder.
+    # Resolve the existing reminder first when necessary; quoted follow-ups use
+    # only the visible prior user request for continuity, never hidden labels.
+    if (
+        "claim_reminder" in tools
+        and re.search(r"\b(?:i(?:'ll| will) handle|let me take responsibility|i(?:'ll| will) claim)\b", text)
+        and ("reminder" in text or "remind" in prior)
+    ):
+        return result("tools", _pick(tools, "list_reminders", "claim_reminder"))
+
+    # The durable discussion journal is distinct from saved notes and tasks.
+    # Resolve the discussion before editing; if only retrieval is exposed,
+    # start there rather than inventing a different-domain write.
+    if "list_discussions" in tools and (
+        re.search(r"\b(?:discussions?|ear sessions?|ear journal)\b", text)
+        or re.search(r"\bwhat did we (?:agree|decide|discuss)\b", text)
+    ):
+        if re.search(r"\b(?:link|connect)\b", text) and "existing" in text:
+            return result("tools", _pick(tools, "list_discussions", "get_discussion", "link_discussion_action"))
+        if re.search(r"\baction\b", text) and re.search(r"\b(?:finished|done|complete|completed)\b", text):
+            return result("tools", _pick(tools, "list_discussions", "update_discussion_action"))
+        if re.search(r"\b(?:on hold|haven't decided|not decided|undecided)\b", text):
+            return result("tools", _pick(tools, "list_discussions", "update_discussion"))
+        if re.search(r"\brecall\b|\bwhat did we (?:agree|decide|discuss)\b", text):
+            return result("tools", _one(tools, "recall_discussion", "list_discussions"))
+        return result("tools", _one(tools, "list_discussions", "recall_discussion"))
+
+    # Entitlements and category balances are authoritative work-profile reads,
+    # not expense totals or a list of leave events. Never infer absent balances.
+    if "work_leave_balance" in tools and (
+        re.search(r"\bleave entitlements?\b", text)
+        or (re.search(r"\bbalances?\b", text) and re.search(r"\b(?:annual|childcare|medical|wellness|hospitalisation|doil)\b", text))
+    ) and re.search(r"\b(?:what|show|list|tell|check)\b", text):
+        return result("tools", ["work_leave_balance"])
 
     # 0.5.45 exact semantics that must outrank older generic keyword rules.
     # These are deterministic regression expectations only; the independent

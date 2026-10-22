@@ -324,3 +324,87 @@ class DiscussionJournalTests(ConversationFixture):
             with self.subTest(text=text), self.assertRaises(ValueError):
                 journal._grounded_due('2026-09-05', [{'text': text,
                     'created_at_utc': '2026-09-03T09:00:00+00:00'}], actor)
+
+    def test_explicit_rejected_dates_are_not_grounded_in_summary_or_action_update(self):
+        rejected = [
+            'Do not schedule it for 5 September 2026.',
+            'The deadline is not 2026-09-05.',
+            'We cancelled the date of 5 September 2026.',
+            '5 September 2026 is no longer the deadline.',
+            'We are undecided about 2026-09-05.',
+            "Don't set the date to 5 September 2026.",
+            'The deadline moved from 5 September 2026 to 7 September 2026.',
+        ]
+        for index, text in enumerate(rejected):
+            with self.subTest(text=text):
+                actor = self.group('rejected-start-' + str(index))
+                sid = listening.start(actor)['session_id']
+                message_id = 'rejected-date-' + str(index)
+                listening.capture(actor, message_id, text)
+                listening.stop(actor)
+                payload = {'summary': text, 'actions': [
+                    {'title': 'Sort shelves', 'status': 'ACTION_PENDING',
+                     'owner_id': actor.user_id, 'due_local': '2026-09-05',
+                     'evidence_message_ids': [message_id]}]}
+                with self.assertRaises(ValueError):
+                    journal.accept_structured_summary(actor, sid, payload)
+                saved = journal.detail(actor, sid)
+                self.assertEqual(saved['review_state'], 'UNSTRUCTURED')
+                self.assertEqual(saved['actions'], [])
+                self.assertIn(text, saved['summary'])
+                action = journal.update_action(self.group('date-action-' + str(index), 'Sort shelves'),
+                                               sid, title='Sort shelves')['updated_action_id']
+                before = journal.detail(actor, sid)
+                with self.assertRaises(ValueError):
+                    journal.update_action(self.group('date-update-' + str(index), text), sid,
+                                          action_id=action, due_local='2026-09-05')
+                after = journal.detail(actor, sid)
+                self.assertIsNone(after['actions'][0]['due_local'])
+                self.assertEqual(after['history'], before['history'])
+
+    def test_later_date_retraction_cannot_be_bypassed_by_earlier_affirmation(self):
+        actor = self.group()
+        evidence = [
+            {'text': 'Agreed 5 September 2026.', 'created_at_utc': '2026-09-01T12:00:00+00:00'},
+            {'text': 'The deadline is not 2026-09-05.', 'created_at_utc': '2026-09-01T12:01:00+00:00'},
+        ]
+        for rows in (evidence, list(reversed(evidence))):
+            with self.assertRaises(ValueError):
+                journal._grounded_due('2026-09-05', rows, actor)
+
+    def test_affirmed_date_survives_unrelated_no_promotion_or_object_negation(self):
+        actor = self.group()
+        for text in ['Agreed 5 September 2026; do not add a task or diary.',
+                     'Sort shelves Saturday, not the boxes.',
+                     'Saturday 5 September 2026; no reminder or task.']:
+            with self.subTest(text=text):
+                self.assertEqual(journal._grounded_due('2026-09-05', [{
+                    'text': text, 'created_at_utc': '2026-09-03T09:00:00+00:00'}], actor), '2026-09-05')
+
+    def test_final_affirmed_date_supersedes_prior_tentative_evidence(self):
+        actor = self.group()
+        rows = [
+            {'text': 'Maybe 5 September 2026.', 'created_at_utc': '2026-09-01T12:00:00+00:00'},
+            {'text': 'Agreed 5 September 2026; do not create a task.',
+             'created_at_utc': '2026-09-01T12:01:00+00:00'},
+        ]
+        self.assertEqual(journal._grounded_due('2026-09-05', rows, actor), '2026-09-05')
+
+    def test_same_timestamp_conflicting_dates_fail_closed_in_either_reference_order(self):
+        actor = self.group()
+        rows = [
+            {'text': 'The deadline is not 2026-09-05.', 'created_at_utc': '2026-09-01T12:00:00+00:00'},
+            {'text': 'Agreed 5 September 2026.', 'created_at_utc': '2026-09-01T12:00:00+00:00'},
+        ]
+        for evidence in (rows, list(reversed(rows))):
+            with self.assertRaises(ValueError):
+                journal._grounded_due('2026-09-05', evidence, actor)
+        # Different textual offsets denoting the same instant are still tied.
+        equivalent = [dict(rows[0], created_at_utc='2026-09-01T20:00:00+08:00'), rows[1]]
+        for evidence in (equivalent, list(reversed(equivalent))):
+            with self.assertRaises(ValueError):
+                journal._grounded_due('2026-09-05', evidence, actor)
+        # A genuinely later explicit affirmation resolves earlier uncertainty.
+        later = [rows[0], dict(rows[1], created_at_utc='2026-09-01T12:00:01+00:00')]
+        for evidence in (later, list(reversed(later))):
+            self.assertEqual(journal._grounded_due('2026-09-05', evidence, actor), '2026-09-05')

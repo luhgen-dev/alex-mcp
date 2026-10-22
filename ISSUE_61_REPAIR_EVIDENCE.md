@@ -27,22 +27,42 @@ rendering, original-media codec playability on a phone, or physical HA operation
 
 Release candidate: **0.5.46**. Local evidence at first PR publication:
 
-- Python suite: 800 tests run, 2 intentionally skipped, no errors/failures (20.789s;
-  798 passed; two packaged-runtime cases require CI image).
+- Python suite: 805 tests run, 2 intentionally skipped, no errors/failures (21.214s;
+  803 passed; two packaged-runtime cases require CI image).
 - Offline certification: 164 contracts, 152 prompt contracts, 12 conversations,
-  33 conversation-step checks, 1301 variant passes, zero failures; four discovery
-  cases still require a real provider. Tool exposure cap remains six.
+  33 conversation-step checks, 1305 variant passes, zero failures and zero discovery-dependent cases. Tool exposure cap remains six.
 - Public human-AI corpus: 443 packets; zero routing gaps/forbidden exposure.
-- External Lab unit/self-test/Tier-A stress/catalog/offline checks passed. Its
-  independent reasoning snapshot is stale after the corpus changes: **not passed**
-  until the isolated CI review produces and verifies new source-backed evidence.
+- External Lab unit/self-test/Tier-A stress/catalog/offline checks passed. The
+  deterministic public-packet oracle was reviewed and recertified: 443/443 pass.
+  This is not an independent model test.
 - Four JavaScript WhatsApp payload/FIFO contracts passed; changed Python modules
   compile and targeted pyflakes/diff whitespace checks passed.
-- Container build and packaged HA smoke are delegated to the existing CI Docker
-  job; no local Docker engine is available. No image build claimed before CI.
+- CI #1057 built the HA image, verified media binaries and passed the packaged
+  startup/socket smoke. Final candidate/post-merge CI must reconfirm the exact SHA.
+
+### External independent-review blocker (not a pass)
+
+CI #1057 and External Lab #697 recorded GitHub Copilot **monthly quota exhausted**
+at the first isolated review shard. The original independent snapshot is retained
+unchanged and is stale for this corpus. Artifact evidence explicitly records
+`DEFERRED_EXTERNAL_REVIEW`, reason `github_copilot_monthly_quota`, and
+`not_claimed_as_pass: true`. No provider restriction was bypassed.
+
+The existing baseline release policy (`final_audit.py`, both workflows) permits
+this documented deferral only with an exact-corpus deterministic oracle and all
+other gates passing. It still fails closed on the stale snapshot when independent
+review resumes. This repair does not change or weaken that policy. Once the
+provider quota is restored, the existing isolated review must generate and verify
+fresh evidence; it remains an external acceptance item, not completed engineering
+evidence from this run.
 
 The final PR/CI records are authoritative for exact tested commit and packaging.
 Do not treat a green deterministic simulation as live certification.
+
+Journal extraction remains a reviewable AI interpretation. Source IDs, participants
+and cited date evidence are validated; this is not proof that every semantic
+omission or paraphrase is correct. No journal entry automatically schedules an
+external action. Review decisions/actions before explicit promotion.
 
 ## Migration and latency
 
@@ -53,6 +73,8 @@ Back up add-on data before installation; restore the matching pre-update backup
 for rollback rather than running old code against a migrated database.
 
 Normal teaching lookup is one local SELECT, with no provider call or per-turn DDL.
+A synthetic 100-sample no-match lookup measured median 1.247ms / p95 2.348ms in
+the cloud test runner; this is not HA hardware or end-to-end WhatsApp latency.
 Correction recovery uses the existing guarded reasoning flow; learning approval is
 local/deterministic. Ear structured stop uses one tool-free provider request and
 persists a durable fallback if unavailable. End-to-end phone latency is **unmeasured**.

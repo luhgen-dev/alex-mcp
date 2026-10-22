@@ -342,53 +342,72 @@ def link_action(actor, session_id: str, action_id: str, target_kind: str,
 
 
 def _grounded_due(value, evidence, actor):
-    """Accept explicit calendar dates or a single grounded weekday, never a guess."""
+    """Ground the latest date decision, not a rejected date merely mentioned."""
     if value is None:
         return None
     from zoneinfo import ZoneInfo
-    proposed = datetime.fromisoformat(str(value)).date()
+    from datetime import timezone
     from reminder_time import dates_in, canonical_date
+    proposed = datetime.fromisoformat(str(value)).date()
     weekdays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+    unsettled = re.compile(
+        r"\b(?:next|maybe|perhaps|possibly|tentative|might|could|not|never|"
+        r"undecided|unconfirmed|unsure|uncertain|cancelled|canceled|cancel|cancellation|"
+        r"rejected|reject|rejecting|rejection|withdrawn|withdraw|withdrawal|"
+        r"postponed|postpone|postponement|reschedule|rescheduled|change|changed|move|moved|avoid)\b|"
+        r"\b(?:haven't|hasn't|don't|doesn't|didn't|isn't|aren't|wasn't|weren't|"
+        r"won't|wouldn't|can't|cannot)\b|"
+        r"\bno\s+(?:longer|date|deadline)\b|\bruled\s+out\b"
+    )
+    decisions_by_time = {}
     for row in evidence:
+        row_decision = None
         text = str(row['text'] or '').casefold().replace('’', "'")
-        # Ambiguous/negated dates are not commitments. A summarizer must keep
-        # them unresolved (null due date) instead of choosing a plausible day.
-        if re.search(r"\b(?:next|maybe|perhaps|tentative|might|could)\b|"
-                     r"\b(?:haven't|have not|hasn't|has not|not yet|not)\s+(?:yet\s+)?(?:decided|agreed|chosen|set|sure)\b|"
-                     r"\bno\s+(?:date|deadline)\b|\bnot\s+(?:on\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|today|tomorrow)\b",
-                     text):
-            continue
-        for candidate in dates_in(text):
-            try:
+        anchor = datetime.fromisoformat(row['created_at_utc'].replace('Z', '+00:00'))
+        if anchor.tzinfo is None:
+            anchor = anchor.replace(tzinfo=timezone.utc)
+        timestamp = anchor.astimezone(timezone.utc)
+        base = anchor.astimezone(ZoneInfo(actor.timezone)).date()
+        # A no-task instruction or an unrelated rejected object in another
+        # clause must not invalidate an expressly agreed calendar date.
+        for clause in re.split(r"[;.!?]|,(?!\s*(?:19|20)\d{2}\b)", text):
+            if not clause.strip():
+                continue
+            candidates = set()
+            for candidate in dates_in(clause):
                 canonical = canonical_date(candidate)
                 try:
                     explicit = datetime.fromisoformat(canonical).date()
                 except ValueError:
-                    explicit = datetime.strptime(canonical, '%d %B %Y').date()
-                if explicit == proposed:
-                    return proposed.isoformat()
-            except (ValueError, TypeError):
-                pass
-        if re.search(r'\b(today|tomorrow)\b', text):
-            anchor = datetime.fromisoformat(row['created_at_utc'].replace('Z', '+00:00'))
-            if anchor.tzinfo is None:
-                from datetime import timezone
-                anchor = anchor.replace(tzinfo=timezone.utc)
-            base = anchor.astimezone(ZoneInfo(actor.timezone)).date()
-            relative = {'today': base, 'tomorrow': base + timedelta(days=1)}
-            candidates = {relative[w] for w in relative if re.search(r'\b' + w + r'\b', text)}
-            if len(candidates) == 1 and proposed in candidates:
-                return proposed.isoformat()
-        names = [name for name in weekdays if re.search(r'\b' + name + r'\b', text)]
-        if len(names) == 1:
-            anchor = datetime.fromisoformat(row['created_at_utc'].replace('Z', '+00:00'))
-            if anchor.tzinfo is None:
-                from datetime import timezone
-                anchor = anchor.replace(tzinfo=timezone.utc)
-            base = anchor.astimezone(ZoneInfo(actor.timezone)).date()
-            if base + timedelta(days=(weekdays.index(names[0]) - base.weekday()) % 7) == proposed:
-                return proposed.isoformat()
-    raise ValueError('discussion due date is not grounded in captured evidence')
+                    try:
+                        explicit = datetime.strptime(canonical, '%d %B %Y').date()
+                    except ValueError:
+                        explicit = None
+                if explicit:
+                    candidates.add(explicit)
+                elif canonical in ('today', 'tomorrow'):
+                    candidates.add(base + timedelta(days=int(canonical == 'tomorrow')))
+                elif canonical in weekdays:
+                    candidates.add(base + timedelta(days=(weekdays.index(canonical) - base.weekday()) % 7))
+                elif canonical.startswith('next ') and canonical[5:] in weekdays:
+                    # Preserve a candidate only to classify it as uncertain.
+                    day = canonical[5:]
+                    candidates.add(base + timedelta(days=(weekdays.index(day) - base.weekday()) % 7))
+            qualified = bool(unsettled.search(clause))
+            if candidates:
+                # A later explicit date decision supersedes earlier tentative
+                # evidence; a later rejected candidate cannot remain a due date.
+                row_decision = proposed in candidates and len(candidates) == 1 and not qualified
+            elif qualified and re.search(r"\b(?:date|deadline|decided|schedule|scheduled)\b", clause):
+                row_decision = False
+        if row_decision is not None:
+            decisions_by_time.setdefault(timestamp, []).append(row_decision)
+    # Source timestamps can have coarse precision. Reference-list ordering is
+    # model controlled and cannot break ties between contradictory messages.
+    # Any conflict at the latest decision timestamp therefore fails closed.
+    if decisions_by_time and all(decisions_by_time[max(decisions_by_time)]):
+        return proposed.isoformat()
+    raise ValueError('discussion due date is rejected, changed, undecided or not grounded')
 
 
 def accept_structured_summary(actor, session_id: str, payload: dict) -> dict:
