@@ -1,0 +1,313 @@
+{
+  "ok": true,
+  "source": "MYDIN Online",
+  "source_kind": "first_party_live_api",
+  "checked_at": "2026-11-01T10:37:32.013230+00:00",
+  "checked_at_local": "01 Nov 2026, 06:37 PM +08",
+  "elapsed_ms": 12635,
+  "cached": false,
+  "currency": "MYR",
+  "reference": "MYDIN online selling prices, used as the Mutiara Rini shopping reference.",
+  "products": [
+    {
+      "sku": "15189566",
+      "title": "Al-Maheera Cooking Oil (5kg)",
+      "currency": "MYR",
+      "selling_price": "30.90",
+      "maximum_price": "30.90",
+      "regular_price": "30.90",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 7,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "30.90",
+          "unit_price_unrounded": "30.9"
+        },
+        {
+          "minimum_quantity": 4,
+          "unit_price": "29.00",
+          "unit_price_unrounded": "29"
+        }
+      ],
+      "url": "https://mydin.my/product/al-maheera-cooking-oil-5kg-15189566"
+    },
+    {
+      "sku": "10003245",
+      "title": "Knife Blended Cooking Oil (5kg)",
+      "currency": "MYR",
+      "selling_price": "37.90",
+      "maximum_price": "37.90",
+      "regular_price": "37.90",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 39,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "37.90",
+          "unit_price_unrounded": "37.9"
+        },
+        {
+          "minimum_quantity": 4,
+          "unit_price": "37.90",
+          "unit_price_unrounded": "37.9"
+        }
+      ],
+      "url": "https://mydin.my/product/knife-cooking-oil-blended-5kg-10003245"
+    },
+    {
+      "sku": "10003254",
+      "title": "Knife Blended Cooking Oil (2kg)",
+      "currency": "MYR",
+      "selling_price": "16.00",
+      "maximum_price": "16.00",
+      "regular_price": "16.00",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 30,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "16.00",
+          "unit_price_unrounded": "16"
+        }
+      ],
+      "url": "https://mydin.my/product/knife-cooking-oil-blended-2kg-10003254"
+    },
+    {
+      "sku": "15008549",
+      "title": "Natural Forte DHA Cooking Oil (1Kg)",
+      "currency": "MYR",
+      "selling_price": "19.35",
+      "maximum_price": "19.35",
+      "regular_price": "19.35",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 19,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "19.35",
+          "unit_price_unrounded": "19.35"
+        },
+        {
+          "minimum_quantity": 12,
+          "unit_price": "19.35",
+          "unit_price_unrounded": "19.35"
+        }
+      ],
+      "url": "https://mydin.my/product/natural-forte-dha-cooking-oil-1kg-15008549"
+    },
+    {
+      "sku": "10003250",
+      "title": "Buruh Cooking Oil (2kg)",
+      "currency": "MYR",
+      "selling_price": "12.90",
+      "maximum_price": "12.90",
+      "regular_price": "12.90",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 7,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "12.90",
+          "unit_price_unrounded": "12.9"
+        },
+        {
+          "minimum_quantity": 6,
+          "unit_price": "12.83",
+          "unit_price_unrounded": "12.833333"
+        }
+      ],
+      "url": "https://mydin.my/product/buruh-cooking-oil-2kg-10003250"
+    },
+    {
+      "sku": "10009072",
+      "title": "Buruh Cooking Oil (1kg)",
+      "currency": "MYR",
+      "selling_price": "6.90",
+      "maximum_price": "6.90",
+      "regular_price": "6.90",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 16,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "6.90",
+          "unit_price_unrounded": "6.9"
+        },
+        {
+          "minimum_quantity": 12,
+          "unit_price": "6.90",
+          "unit_price_unrounded": "6.9"
+        }
+      ],
+      "url": "https://mydin.my/product/buruh-cooking-oil-1kg-10009072"
+    },
+    {
+      "sku": "10003244",
+      "title": "Buruh Cooking Oil (5kg)",
+      "currency": "MYR",
+      "selling_price": "30.90",
+      "maximum_price": "30.90",
+      "regular_price": "30.90",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 9,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "30.90",
+          "unit_price_unrounded": "30.9"
+        },
+        {
+          "minimum_quantity": 4,
+          "unit_price": "30.75",
+          "unit_price_unrounded": "30.75"
+        }
+      ],
+      "url": "https://mydin.my/product/buruh-cooking-oil-5kg-10003244"
+    },
+    {
+      "sku": "10003243",
+      "title": "Daisy Pure Corn Oil (1 kg)",
+      "currency": "MYR",
+      "selling_price": "17.95",
+      "maximum_price": "17.95",
+      "regular_price": "17.95",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 10,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "17.95",
+          "unit_price_unrounded": "17.95"
+        },
+        {
+          "minimum_quantity": 12,
+          "unit_price": "14.75",
+          "unit_price_unrounded": "14.75"
+        }
+      ],
+      "url": "https://mydin.my/product/daisy-corn-oil-1kg-10003243"
+    },
+    {
+      "sku": "10003561",
+      "title": "Mazola Canola Oil 1kg",
+      "currency": "MYR",
+      "selling_price": "16.15",
+      "maximum_price": "16.15",
+      "regular_price": "16.15",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 11,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "16.15",
+          "unit_price_unrounded": "16.15"
+        },
+        {
+          "minimum_quantity": 12,
+          "unit_price": "16.08",
+          "unit_price_unrounded": "16.083333"
+        }
+      ],
+      "url": "https://mydin.my/product/mazola-canola-oil-1kg-10003561"
+    },
+    {
+      "sku": "10005042",
+      "title": "Naturel Sunflower Oil (3kg)",
+      "currency": "MYR",
+      "selling_price": "36.90",
+      "maximum_price": "36.90",
+      "regular_price": "36.90",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 26,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "36.90",
+          "unit_price_unrounded": "36.9"
+        },
+        {
+          "minimum_quantity": 6,
+          "unit_price": "36.67",
+          "unit_price_unrounded": "36.666667"
+        }
+      ],
+      "url": "https://mydin.my/product/naturel-sunflw-oil-3kg-10005042"
+    },
+    {
+      "sku": "10011170",
+      "title": "Bertolli Extra Light Olive Oil (500ml)",
+      "currency": "MYR",
+      "selling_price": "40.25",
+      "maximum_price": "40.25",
+      "regular_price": "40.25",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 5,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "40.25",
+          "unit_price_unrounded": "40.25"
+        },
+        {
+          "minimum_quantity": 12,
+          "unit_price": "40.00",
+          "unit_price_unrounded": "40"
+        }
+      ],
+      "url": "https://mydin.my/product/bertolli-olv-oil-light-500ml-10011170"
+    },
+    {
+      "sku": "10011181",
+      "title": "Bertolli Extra Virgin Olive Oil (500ml)",
+      "currency": "MYR",
+      "selling_price": "42.60",
+      "maximum_price": "42.60",
+      "regular_price": "42.60",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 7,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "42.60",
+          "unit_price_unrounded": "42.6"
+        },
+        {
+          "minimum_quantity": 12,
+          "unit_price": "42.42",
+          "unit_price_unrounded": "42.416667"
+        }
+      ],
+      "url": "https://mydin.my/product/bertolli-olv-oil-ext-vrgn-500ml-10011181"
+    }
+  ],
+  "query": "cooking oil",
+  "page": 1,
+  "total_results": 353,
+  "more_results": true,
+  "unavailable_skus": []
+}

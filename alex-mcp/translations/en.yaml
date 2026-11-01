@@ -1,4 +1,7 @@
 configuration:
+  mydin_prices_enabled:
+    name: MYDIN live prices
+    description: Read current MYDIN Online prices on request. No login or API key required. Disable to stop all MYDIN lookups.
   ai_provider:
     name: AI brain
     description: "Choose the brain. dot is EXPERIMENTAL: shared-shopping text only and requires a verified connection; it never falls back to another provider. Existing modes stay unchanged."

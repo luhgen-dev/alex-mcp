@@ -1,0 +1,294 @@
+{
+  "ok": true,
+  "source": "MYDIN Online",
+  "source_kind": "first_party_live_api",
+  "checked_at": "2026-11-01T10:35:44.336719+00:00",
+  "checked_at_local": "01 Nov 2026, 06:35 PM +08",
+  "elapsed_ms": 11628,
+  "cached": false,
+  "currency": "MYR",
+  "reference": "MYDIN online selling prices, used as the Mutiara Rini shopping reference.",
+  "products": [
+    {
+      "sku": "15182834",
+      "title": "Farm Fresh Grow Susu Rumusan (4 x 125ml)",
+      "currency": "MYR",
+      "selling_price": "6.00",
+      "maximum_price": "6.00",
+      "regular_price": "6.00",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 1,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "6.00"
+        },
+        {
+          "minimum_quantity": 8,
+          "unit_price": "6.00"
+        }
+      ],
+      "url": "https://mydin.my/product/farm-fresh-grw-formulated-milk-4sx125ml-15182834"
+    },
+    {
+      "sku": "15177784",
+      "title": "Rasa Enak Coconut Milk (200ml)",
+      "currency": "MYR",
+      "selling_price": "3.30",
+      "maximum_price": "3.30",
+      "regular_price": "3.30",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 7,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "3.30"
+        },
+        {
+          "minimum_quantity": 24,
+          "unit_price": "3.15"
+        }
+      ],
+      "url": "https://mydin.my/product/rasa-enak-coconut-milk-200ml-15177784"
+    },
+    {
+      "sku": "15011727",
+      "title": "Fernleaf Family Milk Powder (850g)",
+      "currency": "MYR",
+      "selling_price": "22.60",
+      "maximum_price": "22.60",
+      "regular_price": "22.60",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 5,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "22.60"
+        },
+        {
+          "minimum_quantity": 12,
+          "unit_price": "22.60"
+        }
+      ],
+      "url": "https://mydin.my/product/fleaf-family-milk-powder-850gm-15011727"
+    },
+    {
+      "sku": "15082268",
+      "title": "Insan Susu Kambing Kurma Zip Lock Pack 500g",
+      "currency": "MYR",
+      "selling_price": "45.00",
+      "maximum_price": "45.00",
+      "regular_price": "45.00",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 8,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "45.00"
+        },
+        {
+          "minimum_quantity": 12,
+          "unit_price": "40.00"
+        }
+      ],
+      "url": "https://mydin.my/product/insan-susu-kambing-kurma-500g-15082268"
+    },
+    {
+      "sku": "15116374",
+      "title": "Dutch Baby Infant Milk Powder Step 2 (550g)",
+      "currency": "MYR",
+      "selling_price": "18.10",
+      "maximum_price": "18.10",
+      "regular_price": "18.10",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 16,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "18.10"
+        },
+        {
+          "minimum_quantity": 12,
+          "unit_price": "18.10"
+        }
+      ],
+      "url": "https://mydin.my/product/dutch-baby-infant-milk-pwd-step2-550g-15116374"
+    },
+    {
+      "sku": "15116529",
+      "title": "Dutch Baby Infant Milk Powder Step 2 (850g)",
+      "currency": "MYR",
+      "selling_price": "25.90",
+      "maximum_price": "25.90",
+      "regular_price": "25.90",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 14,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "25.90"
+        },
+        {
+          "minimum_quantity": 12,
+          "unit_price": "25.80"
+        }
+      ],
+      "url": "https://mydin.my/product/dutch-baby-infant-milk-pwd-step2-850g-15116529"
+    },
+    {
+      "sku": "10125961001",
+      "title": "Marigold UHT Milk Chocolate (1L)",
+      "currency": "MYR",
+      "selling_price": "7.15",
+      "maximum_price": "7.15",
+      "regular_price": "7.15",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 4,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "7.15"
+        },
+        {
+          "minimum_quantity": 12,
+          "unit_price": "7.00"
+        }
+      ],
+      "url": "https://mydin.my/product/marigold-uht-flv-milk-1l-chclte-10125961001"
+    },
+    {
+      "sku": "15072515002",
+      "title": "Insan Susu Kambing - Chocolate (500g)",
+      "currency": "MYR",
+      "selling_price": "23.90",
+      "maximum_price": "23.90",
+      "regular_price": "23.90",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 7,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "23.90"
+        },
+        {
+          "minimum_quantity": 12,
+          "unit_price": "23.70"
+        }
+      ],
+      "url": "https://mydin.my/product/insan-susu-kambing-500g-chclte-15072515002"
+    },
+    {
+      "sku": "15177785",
+      "title": "Rasa Enak Coconut Milk (1L)",
+      "currency": "MYR",
+      "selling_price": "13.90",
+      "maximum_price": "13.90",
+      "regular_price": "13.90",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 7,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "13.90"
+        },
+        {
+          "minimum_quantity": 12,
+          "unit_price": "13.50"
+        }
+      ],
+      "url": "https://mydin.my/product/rasa-enak-coconut-milk-1l-15177785"
+    },
+    {
+      "sku": "15116528",
+      "title": "Dutch Baby Infant Milk Powder Step 1 (850g)",
+      "currency": "MYR",
+      "selling_price": "25.90",
+      "maximum_price": "25.90",
+      "regular_price": "25.90",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 18,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "25.90"
+        },
+        {
+          "minimum_quantity": 12,
+          "unit_price": "25.80"
+        }
+      ],
+      "url": "https://mydin.my/product/dutch-baby-infant-milk-pwd-step1-850g-15116528"
+    },
+    {
+      "sku": "15062913002",
+      "title": "Magnolia UHT Full Cream Milk (1L)",
+      "currency": "MYR",
+      "selling_price": "6.60",
+      "maximum_price": "6.60",
+      "regular_price": "6.60",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 1,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "6.60"
+        },
+        {
+          "minimum_quantity": 12,
+          "unit_price": "6.20"
+        }
+      ],
+      "url": "https://mydin.my/product/magnolia-uht-milk-1l-f-crm-15062913002"
+    },
+    {
+      "sku": "15129837001",
+      "title": "Al-Maheera Low Fat Pure Milk (1L)",
+      "currency": "MYR",
+      "selling_price": "6.60",
+      "maximum_price": "6.60",
+      "regular_price": "6.60",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 14,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "6.60"
+        },
+        {
+          "minimum_quantity": 12,
+          "unit_price": "6.40"
+        }
+      ],
+      "url": "https://mydin.my/product/al-maheera-uht-pure-milk-1l-l-fat-15129837001"
+    }
+  ],
+  "query": "milk",
+  "page": 1,
+  "total_results": 184,
+  "more_results": true,
+  "unavailable_skus": []
+}

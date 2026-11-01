@@ -1,0 +1,40 @@
+{
+  "ok": true,
+  "source": "MYDIN Online",
+  "source_kind": "first_party_live_api",
+  "checked_at": "2026-11-01T10:42:59.117276+00:00",
+  "checked_at_local": "01 Nov 2026, 06:42 PM +08",
+  "elapsed_ms": 5873,
+  "cached": false,
+  "currency": "MYR",
+  "reference": "MYDIN online selling prices, used as the Mutiara Rini shopping reference.",
+  "products": [
+    {
+      "sku": "15145643",
+      "title": "MyRasa Super Import Beras Putih (5kg)",
+      "currency": "MYR",
+      "selling_price": "17.95",
+      "maximum_price": "17.95",
+      "regular_price": "17.95",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 43,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "17.95",
+          "unit_price_unrounded": "17.95"
+        }
+      ],
+      "url": "https://mydin.my/product/myrasa-beras-super-import-5kg-15145643"
+    }
+  ],
+  "query": "Myrasa 5kg",
+  "page": 1,
+  "source_total_results": 148,
+  "matching_results_on_page": 1,
+  "more_results": true,
+  "partial_matches_omitted": 4,
+  "search_note": "All product-name/pack-size terms must match. No matches on this page does not prove catalogue-wide absence; use the next page or refine the product name."
+}

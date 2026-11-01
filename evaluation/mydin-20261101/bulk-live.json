@@ -1,0 +1,44 @@
+{
+  "ok": true,
+  "source": "MYDIN Online",
+  "source_kind": "first_party_live_api",
+  "checked_at": "2026-11-01T10:38:53.314918+00:00",
+  "checked_at_local": "01 Nov 2026, 06:38 PM +08",
+  "elapsed_ms": 8524,
+  "cached": false,
+  "currency": "MYR",
+  "reference": "MYDIN online selling prices, used as the Mutiara Rini shopping reference.",
+  "products": [
+    {
+      "sku": "10010176",
+      "title": "EcoBrown Unpolished Brown Rice Original (2kg)",
+      "currency": "MYR",
+      "selling_price": "13.60",
+      "maximum_price": "13.60",
+      "regular_price": "13.60",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 2,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "13.60",
+          "unit_price_unrounded": "13.6"
+        },
+        {
+          "minimum_quantity": 5,
+          "unit_price": "13.52",
+          "unit_price_unrounded": "13.52"
+        }
+      ],
+      "url": "https://mydin.my/product/ecobrown-b-rice-2kg-10010176",
+      "requested_quantity": 5,
+      "unit_price_for_quantity": "13.52",
+      "total_for_quantity": "67.60",
+      "total_note": "Items-only estimate using the unrounded tier rate; checkout rounding and delivery excluded.",
+      "sufficient_stock": false
+    }
+  ],
+  "found": true
+}

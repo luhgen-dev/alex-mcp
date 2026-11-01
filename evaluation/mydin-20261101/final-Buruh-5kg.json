@@ -1,0 +1,45 @@
+{
+  "ok": true,
+  "source": "MYDIN Online",
+  "source_kind": "first_party_live_api",
+  "checked_at": "2026-11-01T10:43:04.827360+00:00",
+  "checked_at_local": "01 Nov 2026, 06:43 PM +08",
+  "elapsed_ms": 5709,
+  "cached": false,
+  "currency": "MYR",
+  "reference": "MYDIN online selling prices, used as the Mutiara Rini shopping reference.",
+  "products": [
+    {
+      "sku": "10003244",
+      "title": "Buruh Cooking Oil (5kg)",
+      "currency": "MYR",
+      "selling_price": "30.90",
+      "maximum_price": "30.90",
+      "regular_price": "30.90",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 9,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "30.90",
+          "unit_price_unrounded": "30.9"
+        },
+        {
+          "minimum_quantity": 4,
+          "unit_price": "30.75",
+          "unit_price_unrounded": "30.75"
+        }
+      ],
+      "url": "https://mydin.my/product/buruh-cooking-oil-5kg-10003244"
+    }
+  ],
+  "query": "Buruh 5kg",
+  "page": 1,
+  "source_total_results": 63,
+  "matching_results_on_page": 1,
+  "more_results": true,
+  "partial_matches_omitted": 4,
+  "search_note": "All product-name/pack-size terms must match. No matches on this page does not prove catalogue-wide absence; use the next page or refine the product name."
+}

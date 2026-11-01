@@ -17,6 +17,30 @@ No API key, phone number, provider or pairing credential is stored in source cod
 
 ## What runs locally
 
+### MYDIN Online prices (0.5.47)
+
+Ask Alex: “What is the current price of Myrasa 5kg at MYDIN?”, “Harga susu di
+MYDIN?”, or “Check Buruh 5kg at MYDIN.” Alex searches the public catalogue and
+returns the product/pack size, MYR selling price, source link and local check
+time. Ask about an exact iSKU from the results for a fresh quantity quote.
+
+MYDIN Online prices are the accepted reference for Mutiara Rini shopping.
+One-pack prices and minimum-quantity discounts are kept separate; insufficient
+stock is stated. Totals are items-only estimates, excluding delivery and checkout
+rounding. Ambiguous products require a choice. Configurable products require a
+variant, and a search page with no exact matches is not proof of catalogue-wide
+absence. Prices are fetched on each request; unavailable data is never replaced
+by an old or invented “current” price.
+
+No MYDIN login/API key or API Anything installation is needed. The adapter
+directly replays the read operations observed in MYDIN's public frontend.
+`mydin_prices_enabled: false` disables all MYDIN network calls. Lookups never
+add items to shopping lists, record expenses or place orders. After installing
+0.5.47, smoke-test a generic search, a brand/size query and a quantity quote in
+WhatsApp. No database migration is involved.
+
+### Local runtime
+
 - SQLite/WAL household records
 - deterministic MCP tools
 - privacy/identity checks

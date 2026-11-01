@@ -1,0 +1,33 @@
+{
+  "ok": true,
+  "source": "MYDIN Online",
+  "source_kind": "first_party_live_api",
+  "checked_at": "2026-11-01T10:39:12.607527+00:00",
+  "checked_at_local": "01 Nov 2026, 06:39 PM +08",
+  "elapsed_ms": 6010,
+  "cached": false,
+  "currency": "MYR",
+  "reference": "MYDIN online selling prices, used as the Mutiara Rini shopping reference.",
+  "products": [
+    {
+      "sku": "15198065",
+      "title": "Lava Tamu Crystal Hand Washing Pot with Tray TK34-25",
+      "currency": "MYR",
+      "selling_price": "19.90",
+      "maximum_price": "19.90",
+      "regular_price": "24.90",
+      "on_sale": true,
+      "requires_variant_selection": false,
+      "stock_quantity": 46,
+      "in_stock": true,
+      "quantity_tiers": [],
+      "url": "https://mydin.my/product/lava-tamu-as-washing-pot-tk34-25-15198065",
+      "requested_quantity": 1,
+      "unit_price_for_quantity": "19.90",
+      "total_for_quantity": "19.90",
+      "total_note": "Items-only estimate using the unrounded tier rate; checkout rounding and delivery excluded.",
+      "sufficient_stock": true
+    }
+  ],
+  "found": true
+}

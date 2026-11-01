@@ -32,10 +32,12 @@ import goal_references
 import discussion_journal
 import custom_ledgers
 import scope_policy
+import mydin_prices
+from config import get_settings
 
 mcp = MCPServer(
     "Alex Household Tools",
-    version="0.5.46",
+    version="0.5.47",
     instructions="Deterministic household tools. Identity and permissions are injected by Alex and are never model-controlled.",
 )
 
@@ -794,6 +796,22 @@ def add_shopping_item(item: str, actor: Actor, quantity: str | None = None,
                       notes: str | None = None, shared: bool = True) -> dict:
     """Add an item to the shopping list. Shared household list is the default; use shared=false only when the user clearly asks for a private list."""
     return services.add_shopping_item(actor, item, quantity, notes, shared)
+
+
+@alex_tool()
+def search_mydin_prices(query: str, actor: Actor, limit: int = 5, page: int = 1) -> dict:
+    """Search current MYDIN Online selling prices by product/brand/pack size. Public catalogue only. Returns exact product links, iSKUs, MYR selling prices, stock and check time. Present alternatives for ambiguous requests; never substitute a bulk tier price for one pack. No shopping or finance records are changed."""
+    if get_settings().mydin_prices_enabled is not True:
+        raise ValueError("MYDIN live prices are disabled in Alex Configuration.")
+    return mydin_prices.search(query, limit, page, actor.timezone)
+
+
+@alex_tool()
+def get_mydin_product_price(sku: str, actor: Actor, quantity: int = 1) -> dict:
+    """Refresh one MYDIN product by the exact iSKU from search_mydin_prices. quantity means whole packs; apply only qualifying quantity tiers and show insufficient stock. A configurable product needs a variant selection, not a guessed exact price. This is a read-only quote, never a purchase."""
+    if get_settings().mydin_prices_enabled is not True:
+        raise ValueError("MYDIN live prices are disabled in Alex Configuration.")
+    return mydin_prices.product(sku, quantity, actor.timezone)
 
 
 @alex_tool()
