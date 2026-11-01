@@ -39,6 +39,24 @@ add items to shopping lists, record expenses or place orders. After installing
 0.5.47, smoke-test a generic search, a brand/size query and a quantity quote in
 WhatsApp. No database migration is involved.
 
+### Manjaku Online prices (unreleased bundle)
+
+Ask “Check Mimora diaper prices at Manjaku” or “Harga lampin di Manjaku?”.
+The read-only tools search Manjaku's top storefront suggestions and refresh
+the corresponding product pages. They return product handles, variant IDs,
+size/pack labels, MYR listed prices, online availability, links and check time.
+Use the exact returned handle and chosen variant ID for a quantity refresh.
+
+Manjaku explicitly says online and physical-store prices/availability may
+differ. Cart, member, voucher and bundle promotions are not verified; a listed
+subtotal is only arithmetic before those discounts and delivery. An ambiguous
+variant needs a choice; sold-out variants and quantity limits are stated.
+An empty search is not proof of absence from the whole catalogue or a store.
+Schema changes or source failures yield an unavailable error, never an old or
+invented price. `manjaku_prices_enabled: false` disables these network calls.
+No login/API key, API Anything, background polling, purchase or household
+record write is involved. This addition is held for a combined update.
+
 ### Local runtime
 
 - SQLite/WAL household records

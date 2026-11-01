@@ -1,0 +1,18 @@
+{
+  "ok": true,
+  "source": "Manjaku Online",
+  "source_kind": "live_first_party_storefront",
+  "currency": "MYR",
+  "cached": false,
+  "checked_at": "2026-11-01T11:05:28.184592+00:00",
+  "checked_at_local": "2026-11-01T19:05:28.184592+08:00",
+  "elapsed_ms": 6132,
+  "price_scope_note": "Manjaku Online listed prices only; physical-store prices/stock can differ. Cart, bundle, member and voucher discounts and delivery are not verified.",
+  "products": [],
+  "query": "Dutch Lady",
+  "source_candidates": 0,
+  "partial_matches_omitted": 0,
+  "search_scope": "Top storefront suggestions only; not a complete catalogue or physical-store inventory.",
+  "may_have_more_results": false,
+  "search_url": "https://www.manjaku.com/search?keyword=Dutch+Lady"
+}

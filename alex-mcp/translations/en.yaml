@@ -1,4 +1,7 @@
 configuration:
+  manjaku_prices_enabled:
+    name: Manjaku live prices
+    description: Read current Manjaku Online listed prices on request. Physical stores and cart discounts may differ. Disable to stop all Manjaku lookups.
   mydin_prices_enabled:
     name: MYDIN live prices
     description: Read current MYDIN Online prices on request. No login or API key required. Disable to stop all MYDIN lookups.

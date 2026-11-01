@@ -52,6 +52,7 @@ class Settings:
     ai_routing: str = "off"
     daily_brief_enabled: bool = True
     mydin_prices_enabled: bool = True
+    manjaku_prices_enabled: bool = True
     daily_brief_time: str = "04:30"
     dm_disappearing_seconds: int = 86400
     ha_notify_devices: list[dict] = field(default_factory=list)

@@ -1,0 +1,1014 @@
+{
+  "captured_at": "2026-11-01T11:04:18.324474+00:00",
+  "source": "Manjaku public product pages; selected literal JSON fields only",
+  "products": [
+    {
+      "handle": "mimora-chlorine-free-tape-diapers-nb64_30100324",
+      "title": "MIMORA TAPE NB64",
+      "schema": {
+        "@context": "http://schema.org/",
+        "@type": "Product",
+        "name": "MIMORA TAPE NB64",
+        "url": "https://www.manjaku.com/products/mimora-chlorine-free-tape-diapers-nb64_30100324",
+        "sku": "30100324-U",
+        "brand": {
+          "@type": "Brand",
+          "name": "MIMORA"
+        },
+        "offers": [
+          {
+            "@type": "Offer",
+            "gtin12": "735745050309",
+            "availability": "http://schema.org/InStock",
+            "price": "18.9",
+            "priceCurrency": "MYR",
+            "url": "https://www.manjaku.com/products/mimora-chlorine-free-tape-diapers-nb64_30100324?sku=18069021292755217356062080"
+          }
+        ]
+      },
+      "variants": [
+        {
+          "available": true,
+          "barcode": "735745050309",
+          "compare_at_price": 3490,
+          "id": "18069021292755217356062080",
+          "option1": "NB64",
+          "option2": null,
+          "option3": null,
+          "option4": null,
+          "option5": null,
+          "price": 1890,
+          "requires_selling_plan": false,
+          "requires_shipping": true,
+          "selected": false,
+          "sku": "30100324-U",
+          "taxable": true,
+          "title": "NB64",
+          "url": "/products/mimora-chlorine-free-tape-diapers-nb64_30100324?sku=18069021292755217356062080",
+          "weight_in_unit": "1.3",
+          "weight_unit": "kg",
+          "inventory_management": true,
+          "inventory_policy": "deny",
+          "inventory_quantity": 1104,
+          "selling_plan_allocations": [],
+          "options": [
+            "NB64"
+          ],
+          "quantity_rule": {
+            "increment": 1,
+            "min": 1,
+            "max": null
+          }
+        }
+      ]
+    },
+    {
+      "handle": "mimora-tape-nb64-s82-m72-l60-xl50",
+      "title": "MIMORA DIAPERS TAPE S82 / M72 / L60 / XL50",
+      "schema": {
+        "@context": "http://schema.org/",
+        "@type": "Product",
+        "name": "MIMORA DIAPERS TAPE S82 / M72 / L60 / XL50",
+        "url": "https://www.manjaku.com/products/mimora-tape-nb64-s82-m72-l60-xl50",
+        "sku": "30100325",
+        "brand": {
+          "@type": "Brand",
+          "name": ""
+        },
+        "offers": [
+          {
+            "@type": "Offer",
+            "gtin12": "735745050316",
+            "availability": "http://schema.org/InStock",
+            "price": "27.9",
+            "priceCurrency": "MYR",
+            "url": "https://www.manjaku.com/products/mimora-tape-nb64-s82-m72-l60-xl50?sku=18075648584615584122612080"
+          },
+          {
+            "@type": "Offer",
+            "gtin12": "735745050323",
+            "availability": "http://schema.org/InStock",
+            "price": "27.9",
+            "priceCurrency": "MYR",
+            "url": "https://www.manjaku.com/products/mimora-tape-nb64-s82-m72-l60-xl50?sku=18075648584615584122722080"
+          },
+          {
+            "@type": "Offer",
+            "gtin12": "735745050330",
+            "availability": "http://schema.org/OutOfStock",
+            "price": "27.9",
+            "priceCurrency": "MYR",
+            "url": "https://www.manjaku.com/products/mimora-tape-nb64-s82-m72-l60-xl50?sku=18075648584615584122832080"
+          },
+          {
+            "@type": "Offer",
+            "gtin12": "735745050347",
+            "availability": "http://schema.org/InStock",
+            "price": "27.9",
+            "priceCurrency": "MYR",
+            "url": "https://www.manjaku.com/products/mimora-tape-nb64-s82-m72-l60-xl50?sku=18075648584616087429192080"
+          }
+        ]
+      },
+      "variants": [
+        {
+          "available": true,
+          "barcode": "735745050316",
+          "compare_at_price": 0,
+          "id": "18075648584615584122612080",
+          "option1": "S82",
+          "option2": null,
+          "option3": null,
+          "option4": null,
+          "option5": null,
+          "price": 2790,
+          "requires_selling_plan": false,
+          "requires_shipping": true,
+          "selected": false,
+          "sku": "30100325",
+          "taxable": true,
+          "title": "S82",
+          "url": "/products/mimora-tape-nb64-s82-m72-l60-xl50?sku=18075648584615584122612080",
+          "weight_in_unit": "1.3",
+          "weight_unit": "kg",
+          "inventory_management": true,
+          "inventory_policy": "deny",
+          "inventory_quantity": 109,
+          "selling_plan_allocations": [],
+          "options": [
+            "S82"
+          ],
+          "quantity_rule": {
+            "increment": 1,
+            "min": 1,
+            "max": null
+          }
+        },
+        {
+          "available": true,
+          "barcode": "735745050323",
+          "compare_at_price": 0,
+          "id": "18075648584615584122722080",
+          "option1": "M72",
+          "option2": null,
+          "option3": null,
+          "option4": null,
+          "option5": null,
+          "price": 2790,
+          "requires_selling_plan": false,
+          "requires_shipping": true,
+          "selected": false,
+          "sku": "30100326",
+          "taxable": true,
+          "title": "M72",
+          "url": "/products/mimora-tape-nb64-s82-m72-l60-xl50?sku=18075648584615584122722080",
+          "weight_in_unit": "1.3",
+          "weight_unit": "kg",
+          "inventory_management": true,
+          "inventory_policy": "deny",
+          "inventory_quantity": 593,
+          "selling_plan_allocations": [],
+          "options": [
+            "M72"
+          ],
+          "quantity_rule": {
+            "increment": 1,
+            "min": 1,
+            "max": null
+          }
+        },
+        {
+          "available": false,
+          "barcode": "735745050330",
+          "compare_at_price": 0,
+          "id": "18075648584615584122832080",
+          "option1": "L60",
+          "option2": null,
+          "option3": null,
+          "option4": null,
+          "option5": null,
+          "price": 2790,
+          "requires_selling_plan": false,
+          "requires_shipping": true,
+          "selected": false,
+          "sku": "30100327",
+          "taxable": true,
+          "title": "L60",
+          "url": "/products/mimora-tape-nb64-s82-m72-l60-xl50?sku=18075648584615584122832080",
+          "weight_in_unit": "1.3",
+          "weight_unit": "kg",
+          "inventory_management": true,
+          "inventory_policy": "deny",
+          "inventory_quantity": 0,
+          "selling_plan_allocations": [],
+          "options": [
+            "L60"
+          ],
+          "quantity_rule": {
+            "increment": 1,
+            "min": 1,
+            "max": null
+          }
+        },
+        {
+          "available": true,
+          "barcode": "735745050347",
+          "compare_at_price": 0,
+          "id": "18075648584616087429192080",
+          "option1": "XL50",
+          "option2": null,
+          "option3": null,
+          "option4": null,
+          "option5": null,
+          "price": 2790,
+          "requires_selling_plan": false,
+          "requires_shipping": true,
+          "selected": false,
+          "sku": "30100328",
+          "taxable": true,
+          "title": "XL50",
+          "url": "/products/mimora-tape-nb64-s82-m72-l60-xl50?sku=18075648584616087429192080",
+          "weight_in_unit": "1.3",
+          "weight_unit": "kg",
+          "inventory_management": true,
+          "inventory_policy": "deny",
+          "inventory_quantity": 436,
+          "selling_plan_allocations": [],
+          "options": [
+            "XL50"
+          ],
+          "quantity_rule": {
+            "increment": 1,
+            "min": 1,
+            "max": null
+          }
+        }
+      ]
+    },
+    {
+      "handle": "mimora-luxe-comfort-pants-l40-xl38-xxl36-m44",
+      "title": "MIMORA LUXE COMFORT PANTS M44 / L40 / XL38 / XXL36",
+      "schema": {
+        "@context": "http://schema.org/",
+        "@type": "Product",
+        "name": "MIMORA LUXE COMFORT PANTS M44 / L40 / XL38 / XXL36",
+        "url": "https://www.manjaku.com/products/mimora-luxe-comfort-pants-l40-xl38-xxl36-m44",
+        "sku": "30200317",
+        "brand": {
+          "@type": "Brand",
+          "name": ""
+        },
+        "offers": [
+          {
+            "@type": "Offer",
+            "availability": "http://schema.org/OutOfStock",
+            "price": "41.9",
+            "priceCurrency": "MYR",
+            "url": "https://www.manjaku.com/products/mimora-luxe-comfort-pants-l40-xl38-xxl36-m44?sku=18075026964756433981162080"
+          },
+          {
+            "@type": "Offer",
+            "availability": "http://schema.org/InStock",
+            "price": "41.9",
+            "priceCurrency": "MYR",
+            "url": "https://www.manjaku.com/products/mimora-luxe-comfort-pants-l40-xl38-xxl36-m44?sku=18075026964756433981252080"
+          },
+          {
+            "@type": "Offer",
+            "availability": "http://schema.org/InStock",
+            "price": "41.9",
+            "priceCurrency": "MYR",
+            "url": "https://www.manjaku.com/products/mimora-luxe-comfort-pants-l40-xl38-xxl36-m44?sku=18075026964756433981322080"
+          },
+          {
+            "@type": "Offer",
+            "availability": "http://schema.org/InStock",
+            "price": "41.9",
+            "priceCurrency": "MYR",
+            "url": "https://www.manjaku.com/products/mimora-luxe-comfort-pants-l40-xl38-xxl36-m44?sku=18075026964756433981392080"
+          }
+        ]
+      },
+      "variants": [
+        {
+          "available": false,
+          "barcode": "",
+          "compare_at_price": 0,
+          "id": "18075026964756433981162080",
+          "option1": "M44",
+          "option2": null,
+          "option3": null,
+          "option4": null,
+          "option5": null,
+          "price": 4190,
+          "requires_selling_plan": false,
+          "requires_shipping": true,
+          "selected": false,
+          "sku": "30200316",
+          "taxable": true,
+          "title": "M44",
+          "url": "/products/mimora-luxe-comfort-pants-l40-xl38-xxl36-m44?sku=18075026964756433981162080",
+          "weight_in_unit": "1.3",
+          "weight_unit": "kg",
+          "inventory_management": true,
+          "inventory_policy": "deny",
+          "inventory_quantity": 0,
+          "selling_plan_allocations": [],
+          "options": [
+            "M44"
+          ],
+          "quantity_rule": {
+            "increment": 1,
+            "min": 1,
+            "max": null
+          }
+        },
+        {
+          "available": true,
+          "barcode": "",
+          "compare_at_price": 0,
+          "id": "18075026964756433981252080",
+          "option1": "L40",
+          "option2": null,
+          "option3": null,
+          "option4": null,
+          "option5": null,
+          "price": 4190,
+          "requires_selling_plan": false,
+          "requires_shipping": true,
+          "selected": false,
+          "sku": "30200317",
+          "taxable": true,
+          "title": "L40",
+          "url": "/products/mimora-luxe-comfort-pants-l40-xl38-xxl36-m44?sku=18075026964756433981252080",
+          "weight_in_unit": "1.3",
+          "weight_unit": "kg",
+          "inventory_management": true,
+          "inventory_policy": "deny",
+          "inventory_quantity": 92,
+          "selling_plan_allocations": [],
+          "options": [
+            "L40"
+          ],
+          "quantity_rule": {
+            "increment": 1,
+            "min": 1,
+            "max": null
+          }
+        },
+        {
+          "available": true,
+          "barcode": "",
+          "compare_at_price": 0,
+          "id": "18075026964756433981322080",
+          "option1": "XL38",
+          "option2": null,
+          "option3": null,
+          "option4": null,
+          "option5": null,
+          "price": 4190,
+          "requires_selling_plan": false,
+          "requires_shipping": true,
+          "selected": false,
+          "sku": "30200318",
+          "taxable": true,
+          "title": "XL38",
+          "url": "/products/mimora-luxe-comfort-pants-l40-xl38-xxl36-m44?sku=18075026964756433981322080",
+          "weight_in_unit": "1.3",
+          "weight_unit": "kg",
+          "inventory_management": true,
+          "inventory_policy": "deny",
+          "inventory_quantity": 76,
+          "selling_plan_allocations": [],
+          "options": [
+            "XL38"
+          ],
+          "quantity_rule": {
+            "increment": 1,
+            "min": 1,
+            "max": null
+          }
+        },
+        {
+          "available": true,
+          "barcode": "",
+          "compare_at_price": 0,
+          "id": "18075026964756433981392080",
+          "option1": "XXL36",
+          "option2": null,
+          "option3": null,
+          "option4": null,
+          "option5": null,
+          "price": 4190,
+          "requires_selling_plan": false,
+          "requires_shipping": true,
+          "selected": false,
+          "sku": "30200319",
+          "taxable": true,
+          "title": "XXL36",
+          "url": "/products/mimora-luxe-comfort-pants-l40-xl38-xxl36-m44?sku=18075026964756433981392080",
+          "weight_in_unit": "1.3",
+          "weight_unit": "kg",
+          "inventory_management": true,
+          "inventory_policy": "deny",
+          "inventory_quantity": 70,
+          "selling_plan_allocations": [],
+          "options": [
+            "XXL36"
+          ],
+          "quantity_rule": {
+            "increment": 1,
+            "min": 1,
+            "max": null
+          }
+        }
+      ]
+    },
+    {
+      "handle": "mimora-pants-diapers---m60-l48-xl42-xxl36-xxxl30",
+      "title": "Mimora Pants Diapers - M60/L48/XL42/XXL36/XXXL30",
+      "schema": {
+        "@context": "http://schema.org/",
+        "@type": "Product",
+        "name": "Mimora Pants Diapers - M60/L48/XL42/XXL36/XXXL30",
+        "url": "https://www.manjaku.com/products/mimora-pants-diapers---m60-l48-xl42-xxl36-xxxl30",
+        "sku": "30200341",
+        "brand": {
+          "@type": "Brand",
+          "name": ""
+        },
+        "offers": [
+          {
+            "@type": "Offer",
+            "availability": "http://schema.org/InStock",
+            "price": "35.9",
+            "priceCurrency": "MYR",
+            "url": "https://www.manjaku.com/products/mimora-pants-diapers---m60-l48-xl42-xxl36-xxxl30?sku=18076926003492367067182080"
+          },
+          {
+            "@type": "Offer",
+            "availability": "http://schema.org/InStock",
+            "price": "35.9",
+            "priceCurrency": "MYR",
+            "url": "https://www.manjaku.com/products/mimora-pants-diapers---m60-l48-xl42-xxl36-xxxl30?sku=18076926003492367067272080"
+          },
+          {
+            "@type": "Offer",
+            "availability": "http://schema.org/InStock",
+            "price": "35.9",
+            "priceCurrency": "MYR",
+            "url": "https://www.manjaku.com/products/mimora-pants-diapers---m60-l48-xl42-xxl36-xxxl30?sku=18076926003492367067342080"
+          },
+          {
+            "@type": "Offer",
+            "availability": "http://schema.org/InStock",
+            "price": "35.9",
+            "priceCurrency": "MYR",
+            "url": "https://www.manjaku.com/products/mimora-pants-diapers---m60-l48-xl42-xxl36-xxxl30?sku=18076926003492367067412080"
+          },
+          {
+            "@type": "Offer",
+            "availability": "http://schema.org/InStock",
+            "price": "35.9",
+            "priceCurrency": "MYR",
+            "url": "https://www.manjaku.com/products/mimora-pants-diapers---m60-l48-xl42-xxl36-xxxl30?sku=18076926003492367067482080"
+          }
+        ]
+      },
+      "variants": [
+        {
+          "available": true,
+          "barcode": null,
+          "compare_at_price": 0,
+          "id": "18076926003492367067182080",
+          "option1": "M",
+          "option2": null,
+          "option3": null,
+          "option4": null,
+          "option5": null,
+          "price": 3590,
+          "requires_selling_plan": false,
+          "requires_shipping": true,
+          "selected": false,
+          "sku": "30200341",
+          "taxable": true,
+          "title": "M",
+          "url": "/products/mimora-pants-diapers---m60-l48-xl42-xxl36-xxxl30?sku=18076926003492367067182080",
+          "weight_in_unit": null,
+          "weight_unit": null,
+          "inventory_management": true,
+          "inventory_policy": "deny",
+          "inventory_quantity": 357,
+          "selling_plan_allocations": [],
+          "options": [
+            "M"
+          ],
+          "quantity_rule": {
+            "increment": 1,
+            "min": 1,
+            "max": null
+          }
+        },
+        {
+          "available": true,
+          "barcode": null,
+          "compare_at_price": 0,
+          "id": "18076926003492367067272080",
+          "option1": "L",
+          "option2": null,
+          "option3": null,
+          "option4": null,
+          "option5": null,
+          "price": 3590,
+          "requires_selling_plan": false,
+          "requires_shipping": true,
+          "selected": false,
+          "sku": "30200342",
+          "taxable": true,
+          "title": "L",
+          "url": "/products/mimora-pants-diapers---m60-l48-xl42-xxl36-xxxl30?sku=18076926003492367067272080",
+          "weight_in_unit": null,
+          "weight_unit": null,
+          "inventory_management": true,
+          "inventory_policy": "deny",
+          "inventory_quantity": 272,
+          "selling_plan_allocations": [],
+          "options": [
+            "L"
+          ],
+          "quantity_rule": {
+            "increment": 1,
+            "min": 1,
+            "max": null
+          }
+        },
+        {
+          "available": true,
+          "barcode": null,
+          "compare_at_price": 0,
+          "id": "18076926003492367067342080",
+          "option1": "XL",
+          "option2": null,
+          "option3": null,
+          "option4": null,
+          "option5": null,
+          "price": 3590,
+          "requires_selling_plan": false,
+          "requires_shipping": true,
+          "selected": false,
+          "sku": "30200343",
+          "taxable": true,
+          "title": "XL",
+          "url": "/products/mimora-pants-diapers---m60-l48-xl42-xxl36-xxxl30?sku=18076926003492367067342080",
+          "weight_in_unit": null,
+          "weight_unit": null,
+          "inventory_management": true,
+          "inventory_policy": "deny",
+          "inventory_quantity": 129,
+          "selling_plan_allocations": [],
+          "options": [
+            "XL"
+          ],
+          "quantity_rule": {
+            "increment": 1,
+            "min": 1,
+            "max": null
+          }
+        },
+        {
+          "available": true,
+          "barcode": null,
+          "compare_at_price": 0,
+          "id": "18076926003492367067412080",
+          "option1": "XXL",
+          "option2": null,
+          "option3": null,
+          "option4": null,
+          "option5": null,
+          "price": 3590,
+          "requires_selling_plan": false,
+          "requires_shipping": true,
+          "selected": false,
+          "sku": "30200344",
+          "taxable": true,
+          "title": "XXL",
+          "url": "/products/mimora-pants-diapers---m60-l48-xl42-xxl36-xxxl30?sku=18076926003492367067412080",
+          "weight_in_unit": null,
+          "weight_unit": null,
+          "inventory_management": true,
+          "inventory_policy": "deny",
+          "inventory_quantity": 471,
+          "selling_plan_allocations": [],
+          "options": [
+            "XXL"
+          ],
+          "quantity_rule": {
+            "increment": 1,
+            "min": 1,
+            "max": null
+          }
+        },
+        {
+          "available": true,
+          "barcode": null,
+          "compare_at_price": 0,
+          "id": "18076926003492367067482080",
+          "option1": "XXXL",
+          "option2": null,
+          "option3": null,
+          "option4": null,
+          "option5": null,
+          "price": 3590,
+          "requires_selling_plan": false,
+          "requires_shipping": true,
+          "selected": false,
+          "sku": "30200332",
+          "taxable": true,
+          "title": "XXXL",
+          "url": "/products/mimora-pants-diapers---m60-l48-xl42-xxl36-xxxl30?sku=18076926003492367067482080",
+          "weight_in_unit": null,
+          "weight_unit": null,
+          "inventory_management": true,
+          "inventory_policy": "deny",
+          "inventory_quantity": 228,
+          "selling_plan_allocations": [],
+          "options": [
+            "XXXL"
+          ],
+          "quantity_rule": {
+            "increment": 1,
+            "min": 1,
+            "max": null
+          }
+        }
+      ]
+    },
+    {
+      "handle": "sofyroo-facial-tissue-80s-3ply",
+      "title": "[BIG SAVINGS ON BUNDLES] SOFYROO FACIAL TISSUE 80S-3PLY",
+      "schema": {
+        "@context": "http://schema.org/",
+        "@type": "Product",
+        "name": "[BIG SAVINGS ON BUNDLES] SOFYROO FACIAL TISSUE 80S-3PLY",
+        "url": "https://www.manjaku.com/products/sofyroo-facial-tissue-80s-3ply",
+        "sku": "30300531",
+        "brand": {
+          "@type": "Brand",
+          "name": ""
+        },
+        "offers": [
+          {
+            "@type": "Offer",
+            "availability": "http://schema.org/InStock",
+            "price": "2.9",
+            "priceCurrency": "MYR",
+            "url": "https://www.manjaku.com/products/sofyroo-facial-tissue-80s-3ply?sku=18076521175067318120972080"
+          }
+        ]
+      },
+      "variants": [
+        {
+          "available": true,
+          "barcode": null,
+          "compare_at_price": 0,
+          "id": "18076521175067318120972080",
+          "option1": null,
+          "option2": null,
+          "option3": null,
+          "option4": null,
+          "option5": null,
+          "options": null,
+          "price": 290,
+          "requires_selling_plan": false,
+          "requires_shipping": true,
+          "selected": false,
+          "sku": "30300531",
+          "taxable": true,
+          "title": null,
+          "url": "/products/sofyroo-facial-tissue-80s-3ply?sku=18076521175067318120972080",
+          "weight_in_unit": null,
+          "weight_unit": null,
+          "inventory_management": true,
+          "inventory_policy": "deny",
+          "inventory_quantity": 816,
+          "selling_plan_allocations": [],
+          "quantity_rule": {
+            "increment": 1,
+            "min": 1,
+            "max": null
+          }
+        }
+      ]
+    },
+    {
+      "handle": "30300412_30300412",
+      "title": "B.HIPPO BABY WIPES 3X30S MILK",
+      "schema": {
+        "@context": "http://schema.org/",
+        "@type": "Product",
+        "name": "B.HIPPO BABY WIPES 3X30S MILK",
+        "url": "https://www.manjaku.com/products/30300412_30300412",
+        "sku": "30300412",
+        "brand": {
+          "@type": "Brand",
+          "name": "BABY HIPPO"
+        },
+        "offers": [
+          {
+            "@type": "Offer",
+            "availability": "http://schema.org/InStock",
+            "price": "10.9",
+            "priceCurrency": "MYR",
+            "url": "https://www.manjaku.com/products/30300412_30300412?sku=18073929448249850664092080"
+          }
+        ]
+      },
+      "variants": [
+        {
+          "available": true,
+          "barcode": "",
+          "compare_at_price": 0,
+          "id": "18073929448249850664092080",
+          "option1": null,
+          "option2": null,
+          "option3": null,
+          "option4": null,
+          "option5": null,
+          "options": null,
+          "price": 1090,
+          "requires_selling_plan": false,
+          "requires_shipping": true,
+          "selected": false,
+          "sku": "30300412",
+          "taxable": true,
+          "title": null,
+          "url": "/products/30300412_30300412?sku=18073929448249850664092080",
+          "weight_in_unit": "0.5",
+          "weight_unit": "kg",
+          "inventory_management": true,
+          "inventory_policy": "deny",
+          "inventory_quantity": 372,
+          "selling_plan_allocations": [],
+          "quantity_rule": {
+            "increment": 1,
+            "min": 1,
+            "max": null
+          }
+        }
+      ]
+    },
+    {
+      "handle": "baby-hippo-head-to-toe-750ml-tutti-fruity_45100733",
+      "title": "BABY HIPPO HEAD TO TOE 750ML TUTTI FRUITY",
+      "schema": {
+        "@context": "http://schema.org/",
+        "@type": "Product",
+        "name": "BABY HIPPO HEAD TO TOE 750ML TUTTI FRUITY",
+        "url": "https://www.manjaku.com/products/baby-hippo-head-to-toe-750ml-tutti-fruity_45100733",
+        "sku": "45100733-U",
+        "brand": {
+          "@type": "Brand",
+          "name": "BABY HIPPO"
+        },
+        "offers": [
+          {
+            "@type": "Offer",
+            "availability": "http://schema.org/InStock",
+            "price": "12.9",
+            "priceCurrency": "MYR",
+            "url": "https://www.manjaku.com/products/baby-hippo-head-to-toe-750ml-tutti-fruity_45100733?sku=18069021109173383842342080"
+          }
+        ]
+      },
+      "variants": [
+        {
+          "available": true,
+          "barcode": "",
+          "compare_at_price": 1790,
+          "id": "18069021109173383842342080",
+          "option1": null,
+          "option2": null,
+          "option3": null,
+          "option4": null,
+          "option5": null,
+          "options": null,
+          "price": 1290,
+          "requires_selling_plan": false,
+          "requires_shipping": true,
+          "selected": false,
+          "sku": "45100733-U",
+          "taxable": true,
+          "title": null,
+          "url": "/products/baby-hippo-head-to-toe-750ml-tutti-fruity_45100733?sku=18069021109173383842342080",
+          "weight_in_unit": "0.8",
+          "weight_unit": "kg",
+          "inventory_management": true,
+          "inventory_policy": "deny",
+          "inventory_quantity": 137,
+          "selling_plan_allocations": [],
+          "quantity_rule": {
+            "increment": 1,
+            "min": 1,
+            "max": null
+          }
+        }
+      ]
+    },
+    {
+      "handle": "baby-hippo-laundry-detergent-4800ml_45300739",
+      "title": "BABY HIPPO LAUNDRY DETERGENT 4800ML",
+      "schema": {
+        "@context": "http://schema.org/",
+        "@type": "Product",
+        "name": "BABY HIPPO LAUNDRY DETERGENT 4800ML",
+        "url": "https://www.manjaku.com/products/baby-hippo-laundry-detergent-4800ml_45300739",
+        "sku": "45300739",
+        "brand": {
+          "@type": "Brand",
+          "name": "BABY HIPPO"
+        },
+        "offers": [
+          {
+            "@type": "Offer",
+            "availability": "http://schema.org/InStock",
+            "price": "29.9",
+            "priceCurrency": "MYR",
+            "url": "https://www.manjaku.com/products/baby-hippo-laundry-detergent-4800ml_45300739?sku=18069021268159650926992080"
+          }
+        ]
+      },
+      "variants": [
+        {
+          "available": true,
+          "barcode": "",
+          "compare_at_price": 3990,
+          "id": "18069021268159650926992080",
+          "option1": null,
+          "option2": null,
+          "option3": null,
+          "option4": null,
+          "option5": null,
+          "options": null,
+          "price": 2990,
+          "requires_selling_plan": false,
+          "requires_shipping": true,
+          "selected": false,
+          "sku": "45300739",
+          "taxable": true,
+          "title": null,
+          "url": "/products/baby-hippo-laundry-detergent-4800ml_45300739?sku=18069021268159650926992080",
+          "weight_in_unit": "5",
+          "weight_unit": "kg",
+          "inventory_management": true,
+          "inventory_policy": "deny",
+          "inventory_quantity": 207,
+          "selling_plan_allocations": [],
+          "quantity_rule": {
+            "increment": 1,
+            "min": 1,
+            "max": null
+          }
+        }
+      ]
+    },
+    {
+      "handle": "-carton-bundle-sale-sofyroo-tissue",
+      "title": "[CARTON BUNDLE SALE] SOFYROO TISSUE",
+      "schema": {
+        "@context": "http://schema.org/",
+        "@type": "Product",
+        "name": "[CARTON BUNDLE SALE] SOFYROO TISSUE",
+        "url": "https://www.manjaku.com/products/-carton-bundle-sale-sofyroo-tissue",
+        "sku": "30300530-C",
+        "brand": {
+          "@type": "Brand",
+          "name": ""
+        },
+        "offers": [
+          {
+            "@type": "Offer",
+            "availability": "http://schema.org/InStock",
+            "price": "140",
+            "priceCurrency": "MYR",
+            "url": "https://www.manjaku.com/products/-carton-bundle-sale-sofyroo-tissue?sku=18076521603504230930502080"
+          },
+          {
+            "@type": "Offer",
+            "availability": "http://schema.org/InStock",
+            "price": "290",
+            "priceCurrency": "MYR",
+            "url": "https://www.manjaku.com/products/-carton-bundle-sale-sofyroo-tissue?sku=18076521603504230930582080"
+          },
+          {
+            "@type": "Offer",
+            "availability": "http://schema.org/InStock",
+            "price": "50",
+            "priceCurrency": "MYR",
+            "url": "https://www.manjaku.com/products/-carton-bundle-sale-sofyroo-tissue?sku=18076521603504230930642080"
+          }
+        ]
+      },
+      "variants": [
+        {
+          "available": true,
+          "barcode": null,
+          "compare_at_price": 0,
+          "id": "18076521603504230930502080",
+          "option1": "FACIAL 250S X 24PCK",
+          "option2": null,
+          "option3": null,
+          "option4": null,
+          "option5": null,
+          "price": 14000,
+          "requires_selling_plan": false,
+          "requires_shipping": true,
+          "selected": false,
+          "sku": "30300530-C",
+          "taxable": true,
+          "title": "FACIAL 250S X 24PCK",
+          "url": "/products/-carton-bundle-sale-sofyroo-tissue?sku=18076521603504230930502080",
+          "weight_in_unit": null,
+          "weight_unit": null,
+          "inventory_management": true,
+          "inventory_policy": "deny",
+          "inventory_quantity": 578,
+          "selling_plan_allocations": [],
+          "options": [
+            "FACIAL 250S X 24PCK"
+          ],
+          "quantity_rule": {
+            "increment": 1,
+            "min": 1,
+            "max": null
+          }
+        },
+        {
+          "available": true,
+          "barcode": null,
+          "compare_at_price": 0,
+          "id": "18076521603504230930582080",
+          "option1": "FACIAL 80S X 100PCK",
+          "option2": null,
+          "option3": null,
+          "option4": null,
+          "option5": null,
+          "price": 29000,
+          "requires_selling_plan": false,
+          "requires_shipping": true,
+          "selected": false,
+          "sku": "30300531-C",
+          "taxable": true,
+          "title": "FACIAL 80S X 100PCK",
+          "url": "/products/-carton-bundle-sale-sofyroo-tissue?sku=18076521603504230930582080",
+          "weight_in_unit": null,
+          "weight_unit": null,
+          "inventory_management": true,
+          "inventory_policy": "deny",
+          "inventory_quantity": 834,
+          "selling_plan_allocations": [],
+          "options": [
+            "FACIAL 80S X 100PCK"
+          ],
+          "quantity_rule": {
+            "increment": 1,
+            "min": 1,
+            "max": null
+          }
+        },
+        {
+          "available": true,
+          "barcode": null,
+          "compare_at_price": 0,
+          "id": "18076521603504230930642080",
+          "option1": "POCKET 10X8S X 50PCK",
+          "option2": null,
+          "option3": null,
+          "option4": null,
+          "option5": null,
+          "price": 5000,
+          "requires_selling_plan": false,
+          "requires_shipping": true,
+          "selected": false,
+          "sku": "30300532-C",
+          "taxable": true,
+          "title": "POCKET 10X8S X 50PCK",
+          "url": "/products/-carton-bundle-sale-sofyroo-tissue?sku=18076521603504230930642080",
+          "weight_in_unit": null,
+          "weight_unit": null,
+          "inventory_management": true,
+          "inventory_policy": "deny",
+          "inventory_quantity": 485,
+          "selling_plan_allocations": [],
+          "options": [
+            "POCKET 10X8S X 50PCK"
+          ],
+          "quantity_rule": {
+            "increment": 1,
+            "min": 1,
+            "max": null
+          }
+        }
+      ]
+    }
+  ]
+}

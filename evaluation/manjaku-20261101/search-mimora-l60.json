@@ -1,0 +1,86 @@
+{
+  "ok": true,
+  "source": "Manjaku Online",
+  "source_kind": "live_first_party_storefront",
+  "currency": "MYR",
+  "cached": false,
+  "checked_at": "2026-11-01T11:05:15.445833+00:00",
+  "checked_at_local": "2026-11-01T19:05:15.445833+08:00",
+  "elapsed_ms": 10852,
+  "price_scope_note": "Manjaku Online listed prices only; physical-store prices/stock can differ. Cart, bundle, member and voucher discounts and delivery are not verified.",
+  "products": [
+    {
+      "handle": "mimora-tape-nb64-s82-m72-l60-xl50",
+      "title": "MIMORA DIAPERS TAPE S82 / M72 / L60 / XL50",
+      "url": "https://www.manjaku.com/products/mimora-tape-nb64-s82-m72-l60-xl50",
+      "currency": "MYR",
+      "price_min": "27.90",
+      "price_max": "27.90",
+      "requires_variant_selection": true,
+      "variants": [
+        {
+          "variant_id": "18075648584615584122612080",
+          "sku": "30100325",
+          "option": "S82",
+          "selling_price": "27.90",
+          "compare_at_price": null,
+          "available_online": true,
+          "stock_quantity": 109,
+          "allows_backorder": false,
+          "quantity_minimum": 1,
+          "quantity_increment": 1,
+          "quantity_maximum": null,
+          "url": "https://www.manjaku.com/products/mimora-tape-nb64-s82-m72-l60-xl50?sku=18075648584615584122612080"
+        },
+        {
+          "variant_id": "18075648584615584122722080",
+          "sku": "30100326",
+          "option": "M72",
+          "selling_price": "27.90",
+          "compare_at_price": null,
+          "available_online": true,
+          "stock_quantity": 593,
+          "allows_backorder": false,
+          "quantity_minimum": 1,
+          "quantity_increment": 1,
+          "quantity_maximum": null,
+          "url": "https://www.manjaku.com/products/mimora-tape-nb64-s82-m72-l60-xl50?sku=18075648584615584122722080"
+        },
+        {
+          "variant_id": "18075648584615584122832080",
+          "sku": "30100327",
+          "option": "L60",
+          "selling_price": "27.90",
+          "compare_at_price": null,
+          "available_online": false,
+          "stock_quantity": 0,
+          "allows_backorder": false,
+          "quantity_minimum": 1,
+          "quantity_increment": 1,
+          "quantity_maximum": null,
+          "url": "https://www.manjaku.com/products/mimora-tape-nb64-s82-m72-l60-xl50?sku=18075648584615584122832080"
+        },
+        {
+          "variant_id": "18075648584616087429192080",
+          "sku": "30100328",
+          "option": "XL50",
+          "selling_price": "27.90",
+          "compare_at_price": null,
+          "available_online": true,
+          "stock_quantity": 436,
+          "allows_backorder": false,
+          "quantity_minimum": 1,
+          "quantity_increment": 1,
+          "quantity_maximum": null,
+          "url": "https://www.manjaku.com/products/mimora-tape-nb64-s82-m72-l60-xl50?sku=18075648584616087429192080"
+        }
+      ]
+    }
+  ],
+  "query": "Mimora L60",
+  "source_candidates": 1,
+  "partial_matches_omitted": 0,
+  "search_scope": "Top storefront suggestions only; not a complete catalogue or physical-store inventory.",
+  "may_have_more_results": false,
+  "search_url": "https://www.manjaku.com/search?keyword=Mimora+L60"
+}

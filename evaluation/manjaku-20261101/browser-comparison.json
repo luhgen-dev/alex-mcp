@@ -1,0 +1,128 @@
+{
+  "date": "2026-11-01",
+  "source": "Live browser visible product panels compared with separately fetched public product-page JSON",
+  "products": 9,
+  "captured_variants": 21,
+  "browser_price_observations": 11,
+  "all_price_observations_matched": true,
+  "checks": [
+    {
+      "url": "https://www.manjaku.com/products/mimora-chlorine-free-tape-diapers-nb64_30100324",
+      "browser_title": "MIMORA TAPE NB64",
+      "browser_displayed_prices_myr": [
+        "18.90",
+        "34.90"
+      ],
+      "add_to_cart_visible": true,
+      "title_and_price_match": true
+    },
+    {
+      "url": "https://www.manjaku.com/products/sofyroo-facial-tissue-80s-3ply",
+      "browser_title": "[BIG SAVINGS ON BUNDLES] SOFYROO FACIAL TISSUE 80S-3PLY",
+      "browser_displayed_prices_myr": [
+        "2.90"
+      ],
+      "add_to_cart_visible": true,
+      "title_and_price_match": true
+    },
+    {
+      "url": "https://www.manjaku.com/products/30300412_30300412",
+      "browser_title": "B.HIPPO BABY WIPES 3X30S MILK",
+      "browser_displayed_prices_myr": [
+        "10.90"
+      ],
+      "add_to_cart_visible": true,
+      "title_and_price_match": true
+    },
+    {
+      "url": "https://www.manjaku.com/products/baby-hippo-head-to-toe-750ml-tutti-fruity_45100733",
+      "browser_title": "BABY HIPPO HEAD TO TOE 750ML TUTTI FRUITY",
+      "browser_displayed_prices_myr": [
+        "12.90",
+        "17.90"
+      ],
+      "add_to_cart_visible": true,
+      "title_and_price_match": true
+    },
+    {
+      "url": "https://www.manjaku.com/products/mimora-tape-nb64-s82-m72-l60-xl50",
+      "browser_title": "MIMORA DIAPERS TAPE S82 / M72 / L60 / XL50",
+      "browser_displayed_prices_myr": [
+        "27.90"
+      ],
+      "add_to_cart_visible": true,
+      "title_and_price_match": true
+    },
+    {
+      "url": "https://www.manjaku.com/products/mimora-luxe-comfort-pants-l40-xl38-xxl36-m44",
+      "browser_title": "MIMORA LUXE COMFORT PANTS M44 / L40 / XL38 / XXL36",
+      "browser_displayed_prices_myr": [
+        "41.90"
+      ],
+      "add_to_cart_visible": true,
+      "title_and_price_match": true
+    },
+    {
+      "url": "https://www.manjaku.com/products/mimora-pants-diapers---m60-l48-xl42-xxl36-xxxl30",
+      "browser_title": "Mimora Pants Diapers - M60/L48/XL42/XXL36/XXXL30",
+      "browser_displayed_prices_myr": [
+        "35.90"
+      ],
+      "add_to_cart_visible": true,
+      "title_and_price_match": true
+    },
+    {
+      "url": "https://www.manjaku.com/products/baby-hippo-laundry-detergent-4800ml_45300739",
+      "browser_title": "BABY HIPPO LAUNDRY DETERGENT 4800ML",
+      "browser_displayed_prices_myr": [
+        "29.90",
+        "39.90"
+      ],
+      "add_to_cart_visible": true,
+      "title_and_price_match": true
+    },
+    {
+      "url": "https://www.manjaku.com/products/-carton-bundle-sale-sofyroo-tissue",
+      "browser_title": "[CARTON BUNDLE SALE] SOFYROO TISSUE",
+      "browser_displayed_prices_myr": [
+        "140.00"
+      ],
+      "add_to_cart_visible": true,
+      "title_and_price_match": true
+    },
+    {
+      "url": "https://www.manjaku.com/products/-carton-bundle-sale-sofyroo-tissue?sku=18076521603504230930582080",
+      "browser_title": "[CARTON BUNDLE SALE] SOFYROO TISSUE",
+      "browser_displayed_prices_myr": [
+        "290.00"
+      ],
+      "add_to_cart_visible": true,
+      "title_and_price_match": true
+    },
+    {
+      "url": "https://www.manjaku.com/products/-carton-bundle-sale-sofyroo-tissue?sku=18076521603504230930642080",
+      "browser_title": "[CARTON BUNDLE SALE] SOFYROO TISSUE",
+      "browser_displayed_prices_myr": [
+        "50.00"
+      ],
+      "add_to_cart_visible": true,
+      "title_and_price_match": true
+    }
+  ],
+  "additional_checks": [
+    {
+      "url": "https://www.manjaku.com/products/mimora-tape-nb64-s82-m72-l60-xl50?sku=18075648584615584122832080",
+      "selected_option": "L60",
+      "browser_button": "SOLD OUT",
+      "source_available": false,
+      "match": true
+    },
+    {
+      "url": "https://www.manjaku.com/search?keyword=Dutch+Lady",
+      "browser_result_count": 0,
+      "adapter_products": 0,
+      "match": true
+    }
+  ],
+  "limits": "Not all 21 variants were selected in the browser; no cart discount, checkout or physical inventory verification."
+}

@@ -9,7 +9,7 @@ SECTIONS = {
     2: ("Money", (("expenses", "query_finances"), ("receipts", "find_receipts"), ("bills", "bills_list"), ("reports", "report_export"))),
     3: ("Reminders & Tasks", (("reminders", "create_reminder"), ("tasks", "list_tasks"), ("task history", "get_task_details"))),
     4: ("Diary & Plans", (("appointments", "add_diary_event"), ("availability", "check_my_availability"), ("plans", "list_plans"))),
-    5: ("Shopping", (("shopping lists", "list_shopping_items"), ("add items", "add_shopping_item"), ("update items", "update_shopping_item"), ("MYDIN online prices", "search_mydin_prices"))),
+    5: ("Shopping", (("shopping lists", "list_shopping_items"), ("add items", "add_shopping_item"), ("update items", "update_shopping_item"), ("MYDIN online prices", "search_mydin_prices"), ("Manjaku online prices", "search_manjaku_prices"))),
     6: ("Saved Things", (("save notes and original media", "save_item"), ("search saved items", "search_saved_items"), ("retrieve originals", "get_saved_item"))),
     7: ("Home", (("device states", "ha_get_state"), ("permitted device controls", "ha_control"))),
     8: ("Goals & Savings", (("goals", "planning_list_goals"), ("contributions", "planning_record_goal_contribution"), ("cash pools", "planning_list_cash_pools"))),

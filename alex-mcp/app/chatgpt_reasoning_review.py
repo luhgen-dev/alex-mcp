@@ -57,7 +57,11 @@ import human_ai_lab
 # tool: retrieve current catalogue prices, without ledger or shopping writes.
 # The exact delta is preserved in evaluation/mydin-20261101/oracle-delta.json.
 # This recertifies only this deterministic oracle, not the independent snapshot.
-REVIEWED_CORPUS_FINGERPRINT = "ad77d51401e78619e55114fa695036e16017c86d1218ef37ffa868321eff90ee"
+# 2026-11-01 held Manjaku bundle: all 446 existing public packets unchanged;
+# three new price requests require the supplied Manjaku catalogue search, not
+# MYDIN prices or household writes. Public delta: evaluation/manjaku-20261101.
+# This remains deterministic regression evidence, not an independent review.
+REVIEWED_CORPUS_FINGERPRINT = "8bc77474012cffdf7b8cb3bf986b8e2a01105b59a5686d08d1a841f658332529"
 
 
 def _low(value: str) -> str:
@@ -675,6 +679,13 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
         and "search_mydin_prices" in tools
     ):
         return result("tools", ["search_mydin_prices"])
+
+    if (
+        re.search(r"\bmanjaku\b", text)
+        and re.search(r"\b(?:prices?|cost|how much|harga)\b", text)
+        and "search_manjaku_prices" in tools
+    ):
+        return result("tools", ["search_manjaku_prices"])
 
     # Finance ledger.
     finance_signal = bool(

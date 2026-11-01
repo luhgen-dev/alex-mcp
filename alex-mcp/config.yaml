@@ -58,6 +58,7 @@ options:
   presence_mappings: []
   daily_brief_enabled: true
   mydin_prices_enabled: true
+  manjaku_prices_enabled: true
   daily_brief_time: "04:30"
   dm_disappearing_seconds: 86400
   ha_notify_devices: []
@@ -200,6 +201,7 @@ schema:
       active: bool
   daily_brief_enabled: bool
   mydin_prices_enabled: bool
+  manjaku_prices_enabled: bool
   daily_brief_time: str
   dm_disappearing_seconds: "int(0,7776000)"
   ha_notify_devices:

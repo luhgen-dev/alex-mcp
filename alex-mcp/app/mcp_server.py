@@ -33,6 +33,7 @@ import discussion_journal
 import custom_ledgers
 import scope_policy
 import mydin_prices
+import manjaku_prices
 from config import get_settings
 
 mcp = MCPServer(
@@ -796,6 +797,22 @@ def add_shopping_item(item: str, actor: Actor, quantity: str | None = None,
                       notes: str | None = None, shared: bool = True) -> dict:
     """Add an item to the shopping list. Shared household list is the default; use shared=false only when the user clearly asks for a private list."""
     return services.add_shopping_item(actor, item, quantity, notes, shared)
+
+
+@alex_tool()
+def search_manjaku_prices(query: str, actor: Actor, limit: int = 3) -> dict:
+    """Search current Manjaku Online listed prices using concise product/brand/pack keywords. Returns top matches, exact handles and variant IDs, MYR prices, online availability, links and local check time. Physical stores may differ. Cart/member/bundle discounts are unverified. An empty result is not proof of absence from the whole catalogue. No household records are changed."""
+    if get_settings().manjaku_prices_enabled is not True:
+        raise ValueError("Manjaku live prices are disabled in Alex Configuration.")
+    return manjaku_prices.search(query, limit, actor.timezone)
+
+
+@alex_tool()
+def get_manjaku_product_price(handle: str, actor: Actor, variant_id: str | None = None, quantity: int = 1) -> dict:
+    """Refresh one Manjaku Online product using its exact handle and chosen variant_id from search_manjaku_prices. Require a size/variant choice when ambiguous. quantity counts sale units/packs. Listed-price subtotal excludes unverified cart/bundle/member discounts and delivery; report unavailable variants and stock shortages. Read-only, never a purchase."""
+    if get_settings().manjaku_prices_enabled is not True:
+        raise ValueError("Manjaku live prices are disabled in Alex Configuration.")
+    return manjaku_prices.product(handle, variant_id, quantity, actor.timezone)
 
 
 @alex_tool()

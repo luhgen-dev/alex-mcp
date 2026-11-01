@@ -338,6 +338,18 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         unchanged_tables=("shopping_items", "financial_events"),
     ),
     PromptContract(
+        "p1.shopping.manjaku_prices", "phase1", "shopping",
+        "Manjaku price questions read the live online catalogue without household mutations or another retailer's prices.",
+        (
+            "How much are Mimora diapers at Manjaku?",
+            "Check Manjaku wipes prices.",
+            "Harga lampin di Manjaku?",
+        ),
+        _fs("search_manjaku_prices"), seed="core",
+        forbidden=_fs("search_mydin_prices", "add_shopping_item", "update_shopping_item", "log_expense"),
+        unchanged_tables=("shopping_items", "financial_events"),
+    ),
+    PromptContract(
         "p1.shopping.write", "phase1", "shopping",
         "Shopping adds must expose list mutation.",
         (

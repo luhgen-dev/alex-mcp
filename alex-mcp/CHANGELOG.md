@@ -1,3 +1,13 @@
+## Unreleased — Manjaku prices for the combined update
+
+- Add read-only Manjaku Online search and exact product/variant price refresh,
+  with local check times, source links, listed prices and online availability.
+- Cross-check embedded variant prices against MYR structured offers. Require
+  explicit variant choices and keep sold-out options and quantity limits clear.
+- Physical-store prices and cart/member/bundle discounts remain unverified.
+- Add `manjaku_prices_enabled`; no new dependency or database migration.
+- Held on the bundle branch: no HA update, restart or version bump yet.
+
 ## 0.5.47 — live MYDIN Online prices
 
 - Add authenticated, read-only MYDIN product search and exact-iSKU price tools,

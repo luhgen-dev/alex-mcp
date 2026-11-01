@@ -1,0 +1,122 @@
+{
+  "ok": true,
+  "source": "Manjaku Online",
+  "source_kind": "live_first_party_storefront",
+  "currency": "MYR",
+  "cached": false,
+  "checked_at": "2026-11-01T11:07:37.245608+00:00",
+  "checked_at_local": "2026-11-01T19:07:37.245608+08:00",
+  "elapsed_ms": 13788,
+  "price_scope_note": "Manjaku Online listed prices only; physical-store prices/stock can differ. Cart, bundle, member and voucher discounts and delivery are not verified.",
+  "products": [
+    {
+      "handle": "-carton-bundle-sale-sofyroo-tissue",
+      "title": "[CARTON BUNDLE SALE] SOFYROO TISSUE",
+      "url": "https://www.manjaku.com/products/-carton-bundle-sale-sofyroo-tissue",
+      "currency": "MYR",
+      "price_min": "50.00",
+      "price_max": "290.00",
+      "requires_variant_selection": true,
+      "variants": [
+        {
+          "variant_id": "18076521603504230930502080",
+          "sku": "30300530-C",
+          "option": "FACIAL 250S X 24PCK",
+          "selling_price": "140.00",
+          "compare_at_price": null,
+          "available_online": true,
+          "stock_quantity": 578,
+          "allows_backorder": false,
+          "quantity_minimum": 1,
+          "quantity_increment": 1,
+          "quantity_maximum": null,
+          "url": "https://www.manjaku.com/products/-carton-bundle-sale-sofyroo-tissue?sku=18076521603504230930502080"
+        },
+        {
+          "variant_id": "18076521603504230930582080",
+          "sku": "30300531-C",
+          "option": "FACIAL 80S X 100PCK",
+          "selling_price": "290.00",
+          "compare_at_price": null,
+          "available_online": true,
+          "stock_quantity": 834,
+          "allows_backorder": false,
+          "quantity_minimum": 1,
+          "quantity_increment": 1,
+          "quantity_maximum": null,
+          "url": "https://www.manjaku.com/products/-carton-bundle-sale-sofyroo-tissue?sku=18076521603504230930582080"
+        },
+        {
+          "variant_id": "18076521603504230930642080",
+          "sku": "30300532-C",
+          "option": "POCKET 10X8S X 50PCK",
+          "selling_price": "50.00",
+          "compare_at_price": null,
+          "available_online": true,
+          "stock_quantity": 485,
+          "allows_backorder": false,
+          "quantity_minimum": 1,
+          "quantity_increment": 1,
+          "quantity_maximum": null,
+          "url": "https://www.manjaku.com/products/-carton-bundle-sale-sofyroo-tissue?sku=18076521603504230930642080"
+        }
+      ]
+    },
+    {
+      "handle": "sofyroo-pocket-tissue-10x8s-3ply",
+      "title": "[BIG SAVINGS ON BUNDLES] SOFYROO POCKET TISSUE 10X8S-3PLY",
+      "url": "https://www.manjaku.com/products/sofyroo-pocket-tissue-10x8s-3ply",
+      "currency": "MYR",
+      "price_min": "5.90",
+      "price_max": "5.90",
+      "requires_variant_selection": false,
+      "variants": [
+        {
+          "variant_id": "18076521191711994096702080",
+          "sku": "30300532",
+          "option": "Default",
+          "selling_price": "5.90",
+          "compare_at_price": null,
+          "available_online": true,
+          "stock_quantity": 484,
+          "allows_backorder": false,
+          "quantity_minimum": 1,
+          "quantity_increment": 1,
+          "quantity_maximum": null,
+          "url": "https://www.manjaku.com/products/sofyroo-pocket-tissue-10x8s-3ply?sku=18076521191711994096702080"
+        }
+      ]
+    },
+    {
+      "handle": "sofyroo-hanging-facial-tissue-250s-4ply",
+      "title": "[BIG SAVINGS ON BUNDLES] SOFYROO HANGING FACIAL TISSUE 250S-4PLY",
+      "url": "https://www.manjaku.com/products/sofyroo-hanging-facial-tissue-250s-4ply",
+      "currency": "MYR",
+      "price_min": "5.90",
+      "price_max": "5.90",
+      "requires_variant_selection": false,
+      "variants": [
+        {
+          "variant_id": "18076520210233617358662080",
+          "sku": "30300530",
+          "option": "Default",
+          "selling_price": "5.90",
+          "compare_at_price": null,
+          "available_online": true,
+          "stock_quantity": 508,
+          "allows_backorder": false,
+          "quantity_minimum": 1,
+          "quantity_increment": 1,
+          "quantity_maximum": null,
+          "url": "https://www.manjaku.com/products/sofyroo-hanging-facial-tissue-250s-4ply?sku=18076520210233617358662080"
+        }
+      ]
+    }
+  ],
+  "query": "Sofyroo tissue",
+  "source_candidates": 3,
+  "partial_matches_omitted": 0,
+  "search_scope": "Top storefront suggestions only; not a complete catalogue or physical-store inventory.",
+  "may_have_more_results": true,
+  "search_url": "https://www.manjaku.com/search?keyword=Sofyroo+tissue"
+}
