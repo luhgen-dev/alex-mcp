@@ -52,7 +52,12 @@ import human_ai_lab
 # including user-turn continuity. The 443-packet corpus also contains the
 # repaired bounded tool surfaces and synthetic work fixtures. The rules remain
 # hand-authored regression checks; no independent snapshot was regenerated.
-REVIEWED_CORPUS_FINGERPRINT = "07613c4e4aecaf47b0f6cd4e8066af4a5114d7656bbe4142afa8c8a3712f178f"
+# 2026-11-01 MYDIN prices: all 443 existing public packets are unchanged.
+# Reviewed the three new price requests against their visible read-only search
+# tool: retrieve current catalogue prices, without ledger or shopping writes.
+# The exact delta is preserved in evaluation/mydin-20261101/oracle-delta.json.
+# This recertifies only this deterministic oracle, not the independent snapshot.
+REVIEWED_CORPUS_FINGERPRINT = "ad77d51401e78619e55114fa695036e16017c86d1218ef37ffa868321eff90ee"
 
 
 def _low(value: str) -> str:
@@ -661,6 +666,15 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
             return result("tools", ["report_export"])
         if "finance_report" in tools:
             return result("tools", ["finance_report"])
+
+    # A MYDIN catalogue price question needs the public product source. It is
+    # not a request to inspect household spending or change a shopping list.
+    if (
+        re.search(r"\bmydin\b", text)
+        and re.search(r"\b(?:prices?|cost|how much|harga)\b", text)
+        and "search_mydin_prices" in tools
+    ):
+        return result("tools", ["search_mydin_prices"])
 
     # Finance ledger.
     finance_signal = bool(

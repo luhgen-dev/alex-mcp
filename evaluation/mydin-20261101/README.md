@@ -75,12 +75,33 @@ shopping lists, arbitrary URL input, write endpoints or catalogue sharing are us
 - Existing deterministic stress harness: PASS (17 checks).
 - Structural self-test: 5/5. Behaviour catalogue: PASS. Python compile and
   undefined-name checks: PASS.
+- Full offline behaviour certification: 165 contracts, 1,314 variants,
+  no failures. WhatsApp JavaScript syntax and four bridge contracts: PASS.
+- Deterministic reasoning oracle: **446/446**. Comparison against main found
+  all 443 existing public packets unchanged and three new MYDIN price requests.
+  Their visible tool descriptions support catalogue search without household
+  ledger reads or writes. The reviewed delta and exact corpus fingerprint are
+  preserved in `oracle-delta.json` and `oracle-report.json`.
+- Final architecture audit: **109 checks passed**, using its existing
+  unavailable-reviewer fallback (`ALEX_EXTERNAL_REVIEW_DEFERRED=1`, reason
+  `github_actions_account_billing_lock`). See `final-audit-deferred.json`.
+  This is a deterministic check, **not a fresh independent-model review**.
+  The original independent snapshot is untouched and still fails closed on
+  corpus drift when review resumes.
 - Final multi-term live searches took approximately **5.2–5.9 seconds** each
   here. Generic storefront searches involved two calls and took roughly
   **11.6–12.6 seconds** in the sample. These are small-sample observations,
   not a 100-call latency benchmark or a seven-day reliability result.
 - Items-only quantity totals preserve the source's unrounded tier rate until
   final rounding. They exclude delivery and checkout-specific rounding.
+
+GitHub-hosted checks did not start. Run 41298939134 / check 124825655534
+reported: "The job was not started because your account is locked due to a
+billing issue." No hosted CI success or container build is claimed. Docker is
+unavailable in the local workspace. Resolve the account restriction and rerun
+CI to obtain the container and fresh independent-review evidence. The add-on
+has no prebuilt `image` configured; Home Assistant builds its Dockerfile from
+the repository on the device.
 
 ## Deployment acceptance still required
 
