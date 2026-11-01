@@ -1,0 +1,140 @@
+{
+  "ok": true,
+  "source": "MYDIN Online",
+  "source_kind": "first_party_live_api",
+  "checked_at": "2026-11-01T10:43:10.002855+00:00",
+  "checked_at_local": "01 Nov 2026, 06:43 PM +08",
+  "elapsed_ms": 5175,
+  "cached": false,
+  "currency": "MYR",
+  "reference": "MYDIN online selling prices, used as the Mutiara Rini shopping reference.",
+  "products": [
+    {
+      "sku": "10003250",
+      "title": "Buruh Cooking Oil (2kg)",
+      "currency": "MYR",
+      "selling_price": "12.90",
+      "maximum_price": "12.90",
+      "regular_price": "12.90",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 7,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "12.90",
+          "unit_price_unrounded": "12.9"
+        },
+        {
+          "minimum_quantity": 6,
+          "unit_price": "12.83",
+          "unit_price_unrounded": "12.833333"
+        }
+      ],
+      "url": "https://mydin.my/product/buruh-cooking-oil-2kg-10003250"
+    },
+    {
+      "sku": "10003244",
+      "title": "Buruh Cooking Oil (5kg)",
+      "currency": "MYR",
+      "selling_price": "30.90",
+      "maximum_price": "30.90",
+      "regular_price": "30.90",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 9,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "30.90",
+          "unit_price_unrounded": "30.9"
+        },
+        {
+          "minimum_quantity": 4,
+          "unit_price": "30.75",
+          "unit_price_unrounded": "30.75"
+        }
+      ],
+      "url": "https://mydin.my/product/buruh-cooking-oil-5kg-10003244"
+    },
+    {
+      "sku": "10009072",
+      "title": "Buruh Cooking Oil (1kg)",
+      "currency": "MYR",
+      "selling_price": "6.90",
+      "maximum_price": "6.90",
+      "regular_price": "6.90",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 16,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "6.90",
+          "unit_price_unrounded": "6.9"
+        },
+        {
+          "minimum_quantity": 12,
+          "unit_price": "6.90",
+          "unit_price_unrounded": "6.9"
+        }
+      ],
+      "url": "https://mydin.my/product/buruh-cooking-oil-1kg-10009072"
+    },
+    {
+      "sku": "10003254",
+      "title": "Knife Blended Cooking Oil (2kg)",
+      "currency": "MYR",
+      "selling_price": "16.00",
+      "maximum_price": "16.00",
+      "regular_price": "16.00",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 30,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "16.00",
+          "unit_price_unrounded": "16"
+        }
+      ],
+      "url": "https://mydin.my/product/knife-cooking-oil-blended-2kg-10003254"
+    },
+    {
+      "sku": "10003245",
+      "title": "Knife Blended Cooking Oil (5kg)",
+      "currency": "MYR",
+      "selling_price": "37.90",
+      "maximum_price": "37.90",
+      "regular_price": "37.90",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 39,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "37.90",
+          "unit_price_unrounded": "37.9"
+        },
+        {
+          "minimum_quantity": 4,
+          "unit_price": "37.90",
+          "unit_price_unrounded": "37.9"
+        }
+      ],
+      "url": "https://mydin.my/product/knife-cooking-oil-blended-5kg-10003245"
+    }
+  ],
+  "query": "cooking oil",
+  "page": 1,
+  "source_total_results": 672,
+  "matching_results_on_page": 5,
+  "more_results": true,
+  "partial_matches_omitted": 0,
+  "search_note": "All product-name/pack-size terms must match. No matches on this page does not prove catalogue-wide absence; use the next page or refine the product name."
+}

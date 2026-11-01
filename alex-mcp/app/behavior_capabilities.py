@@ -42,6 +42,7 @@ CAPABILITY_TO_TOOLS: dict[str, frozenset[str]] = {
     "reminder.claim.handoff": frozenset({"handoff_reminder_claim"}),
     "shopping.add": frozenset({"add_shopping_item"}),
     "shopping.read": frozenset({"list_shopping_items"}),
+    "shopping.prices": frozenset({"search_mydin_prices", "get_mydin_product_price"}),
     "shopping.update": frozenset({"update_shopping_item"}),
 
     # Diary / plans / availability

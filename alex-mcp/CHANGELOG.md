@@ -1,3 +1,19 @@
+## 0.5.47 — live MYDIN Online prices
+
+- Add authenticated, read-only MYDIN product search and exact-iSKU price tools,
+  with MYR selling prices, pack names, stock, product links and local check time.
+- Read the same first-party Magento price fields as MYDIN's website. Search
+  suggestions can contain bulk prices; those are never quoted as one-pack prices.
+- Require every brand/pack-size search term to match. Quantity discounts apply
+  only at their thresholds; stock shortages and configurable variants are explicit.
+- Keep shopping and finance data unchanged by price lookups. No MYDIN account,
+  API key, new dependency, background polling or database migration is required.
+- Add the `mydin_prices_enabled` configuration switch (on by default).
+
+Live source and MCP evidence: `evaluation/mydin-20261101/README.md`.
+Installing the HA update and verifying replies on the real WhatsApp account
+remain deployment acceptance steps; local MCP checks do not prove phone delivery.
+
 ## 0.5.46 — live-smoke repair, durable Ear journal and bounded correction teaching
 
 - Preserve exact goal identity for target edits/activation and freeze numbered goal

@@ -1,0 +1,305 @@
+{
+  "browser_observed_date": "2026-11-01",
+  "comparison": "Live browser-rendered catalogue cards and EcoBrown product page, compared with independently fetched API responses in this session.",
+  "products_checked": 33,
+  "matched": 33,
+  "rows": [
+    {
+      "sku": "10010691",
+      "browser_title": "PM Mahsuri Siam Fragrant Rice 10kg",
+      "browser_selling_price": "41.90",
+      "browser_stock": 9,
+      "url": "https://mydin.my/product/pm-mahsuri-siam-fragrant-rice-10kg-10010691",
+      "api_checked_at": "2026-11-01T10:37:31.893406+00:00",
+      "match": true
+    },
+    {
+      "sku": "10010687",
+      "browser_title": "Mahsuri Beras Siam Super (10kg)",
+      "browser_selling_price": "36.90",
+      "browser_stock": 7,
+      "url": "https://mydin.my/product/pm-mahsuri-siam-spr-rice-10kg-10010687",
+      "api_checked_at": "2026-11-01T10:37:31.893406+00:00",
+      "match": true
+    },
+    {
+      "sku": "10012824",
+      "browser_title": "Faiza Lagenda Fragrant Siam Rice AAA (10kg)",
+      "browser_selling_price": "52.90",
+      "browser_stock": 6,
+      "url": "https://mydin.my/product/lagenda-fragrant-rice-10kg-10012824",
+      "api_checked_at": "2026-11-01T10:37:31.893406+00:00",
+      "match": true
+    },
+    {
+      "sku": "10003282",
+      "browser_title": "Dragon Super Siam Rice (10kg)",
+      "browser_selling_price": "35.90",
+      "browser_stock": 4,
+      "url": "https://mydin.my/product/dragon-spr-siam-rice-10kg-10003282",
+      "api_checked_at": "2026-11-01T10:37:31.893406+00:00",
+      "match": true
+    },
+    {
+      "sku": "10010176",
+      "browser_title": "EcoBrown Unpolished Brown Rice Original (2kg)",
+      "browser_selling_price": "13.60",
+      "browser_stock": 2,
+      "url": "https://mydin.my/product/ecobrown-b-rice-2kg-10010176",
+      "api_checked_at": "2026-11-01T10:37:31.893406+00:00",
+      "match": true
+    },
+    {
+      "sku": "10010178",
+      "browser_title": "EcoBrown Unpolished Brown Rice Original (5kg)",
+      "browser_selling_price": "20.60",
+      "browser_stock": 4,
+      "url": "https://mydin.my/product/ecobrown-b-rice-5kg-10010178",
+      "api_checked_at": "2026-11-01T10:37:31.893406+00:00",
+      "match": true
+    },
+    {
+      "sku": "10003265",
+      "browser_title": "Sumo Calrose Rice (5kg)",
+      "browser_selling_price": "35.90",
+      "browser_stock": 28,
+      "url": "https://mydin.my/product/sumo-calrose-rice-5kg-10003265",
+      "api_checked_at": "2026-11-01T10:37:31.893406+00:00",
+      "match": true
+    },
+    {
+      "sku": "10003273",
+      "browser_title": "Dragon Mutiara Fragrant Rice (10kg)",
+      "browser_selling_price": "58.90",
+      "browser_stock": 7,
+      "url": "https://mydin.my/product/dragon-mutiara-fragrant-rice-10kg-10003273",
+      "api_checked_at": "2026-11-01T10:37:31.893406+00:00",
+      "match": true
+    },
+    {
+      "sku": "10003287",
+      "browser_title": "Floral Fragrant Rice (10kg)",
+      "browser_selling_price": "49.90",
+      "browser_stock": 3,
+      "url": "https://mydin.my/product/floral-fragrant-rice-10kg-10003287",
+      "api_checked_at": "2026-11-01T10:37:31.893406+00:00",
+      "match": true
+    },
+    {
+      "sku": "10003288",
+      "browser_title": "Floral Fragrant Rice (5kg)",
+      "browser_selling_price": "29.90",
+      "browser_stock": 5,
+      "url": "https://mydin.my/product/floral-fragrant-rice-5kg-10003288",
+      "api_checked_at": "2026-11-01T10:37:31.893406+00:00",
+      "match": true
+    },
+    {
+      "sku": "10003295",
+      "browser_title": "Floral Thai Fragrant Rice (1kg)",
+      "browser_selling_price": "7.90",
+      "browser_stock": 3,
+      "url": "https://mydin.my/product/floral-fragrant-rice-1kg-10003295",
+      "api_checked_at": "2026-11-01T10:37:31.893406+00:00",
+      "match": true
+    },
+    {
+      "sku": "10003296",
+      "browser_title": "Floral Glutinous Rice (1kg)",
+      "browser_selling_price": "7.90",
+      "browser_stock": 21,
+      "url": "https://mydin.my/product/floral-pulut-rice-1kg-10003296",
+      "api_checked_at": "2026-11-01T10:37:31.893406+00:00",
+      "match": true
+    },
+    {
+      "sku": "15189566",
+      "browser_title": "Al-Maheera Cooking Oil (5kg)",
+      "browser_selling_price": "30.90",
+      "browser_stock": 7,
+      "url": "https://mydin.my/product/al-maheera-cooking-oil-5kg-15189566",
+      "api_checked_at": "2026-11-01T10:37:32.013230+00:00",
+      "match": true
+    },
+    {
+      "sku": "10003245",
+      "browser_title": "Knife Blended Cooking Oil (5kg)",
+      "browser_selling_price": "37.90",
+      "browser_stock": 39,
+      "url": "https://mydin.my/product/knife-cooking-oil-blended-5kg-10003245",
+      "api_checked_at": "2026-11-01T10:37:32.013230+00:00",
+      "match": true
+    },
+    {
+      "sku": "10003254",
+      "browser_title": "Knife Blended Cooking Oil (2kg)",
+      "browser_selling_price": "16.00",
+      "browser_stock": 30,
+      "url": "https://mydin.my/product/knife-cooking-oil-blended-2kg-10003254",
+      "api_checked_at": "2026-11-01T10:37:32.013230+00:00",
+      "match": true
+    },
+    {
+      "sku": "15008549",
+      "browser_title": "Natural Forte DHA Cooking Oil (1Kg)",
+      "browser_selling_price": "19.35",
+      "browser_stock": 19,
+      "url": "https://mydin.my/product/natural-forte-dha-cooking-oil-1kg-15008549",
+      "api_checked_at": "2026-11-01T10:37:32.013230+00:00",
+      "match": true
+    },
+    {
+      "sku": "10003250",
+      "browser_title": "Buruh Cooking Oil (2kg)",
+      "browser_selling_price": "12.90",
+      "browser_stock": 7,
+      "url": "https://mydin.my/product/buruh-cooking-oil-2kg-10003250",
+      "api_checked_at": "2026-11-01T10:37:32.013230+00:00",
+      "match": true
+    },
+    {
+      "sku": "10009072",
+      "browser_title": "Buruh Cooking Oil (1kg)",
+      "browser_selling_price": "6.90",
+      "browser_stock": 16,
+      "url": "https://mydin.my/product/buruh-cooking-oil-1kg-10009072",
+      "api_checked_at": "2026-11-01T10:37:32.013230+00:00",
+      "match": true
+    },
+    {
+      "sku": "10003244",
+      "browser_title": "Buruh Cooking Oil (5kg)",
+      "browser_selling_price": "30.90",
+      "browser_stock": 9,
+      "url": "https://mydin.my/product/buruh-cooking-oil-5kg-10003244",
+      "api_checked_at": "2026-11-01T10:37:32.013230+00:00",
+      "match": true
+    },
+    {
+      "sku": "10003243",
+      "browser_title": "Daisy Pure Corn Oil (1 kg)",
+      "browser_selling_price": "17.95",
+      "browser_stock": 10,
+      "url": "https://mydin.my/product/daisy-corn-oil-1kg-10003243",
+      "api_checked_at": "2026-11-01T10:37:32.013230+00:00",
+      "match": true
+    },
+    {
+      "sku": "15182834",
+      "browser_title": "Farm Fresh Grow Susu Rumusan (4 x 125ml)",
+      "browser_selling_price": "6.00",
+      "browser_stock": 1,
+      "url": "https://mydin.my/product/farm-fresh-grw-formulated-milk-4sx125ml-15182834",
+      "api_checked_at": "2026-11-01T10:35:44.336719+00:00",
+      "match": true
+    },
+    {
+      "sku": "15177784",
+      "browser_title": "Rasa Enak Coconut Milk (200ml)",
+      "browser_selling_price": "3.30",
+      "browser_stock": 7,
+      "url": "https://mydin.my/product/rasa-enak-coconut-milk-200ml-15177784",
+      "api_checked_at": "2026-11-01T10:35:44.336719+00:00",
+      "match": true
+    },
+    {
+      "sku": "15011727",
+      "browser_title": "Fernleaf Family Milk Powder (850g)",
+      "browser_selling_price": "22.60",
+      "browser_stock": 5,
+      "url": "https://mydin.my/product/fleaf-family-milk-powder-850gm-15011727",
+      "api_checked_at": "2026-11-01T10:35:44.336719+00:00",
+      "match": true
+    },
+    {
+      "sku": "15082268",
+      "browser_title": "Insan Susu Kambing Kurma Zip Lock Pack 500g",
+      "browser_selling_price": "45.00",
+      "browser_stock": 8,
+      "url": "https://mydin.my/product/insan-susu-kambing-kurma-500g-15082268",
+      "api_checked_at": "2026-11-01T10:35:44.336719+00:00",
+      "match": true
+    },
+    {
+      "sku": "15116374",
+      "browser_title": "Dutch Baby Infant Milk Powder Step 2 (550g)",
+      "browser_selling_price": "18.10",
+      "browser_stock": 16,
+      "url": "https://mydin.my/product/dutch-baby-infant-milk-pwd-step2-550g-15116374",
+      "api_checked_at": "2026-11-01T10:35:44.336719+00:00",
+      "match": true
+    },
+    {
+      "sku": "15116529",
+      "browser_title": "Dutch Baby Infant Milk Powder Step 2 (850g)",
+      "browser_selling_price": "25.90",
+      "browser_stock": 14,
+      "url": "https://mydin.my/product/dutch-baby-infant-milk-pwd-step2-850g-15116529",
+      "api_checked_at": "2026-11-01T10:35:44.336719+00:00",
+      "match": true
+    },
+    {
+      "sku": "10125961001",
+      "browser_title": "Marigold UHT Milk Chocolate (1L)",
+      "browser_selling_price": "7.15",
+      "browser_stock": 4,
+      "url": "https://mydin.my/product/marigold-uht-flv-milk-1l-chclte-10125961001",
+      "api_checked_at": "2026-11-01T10:35:44.336719+00:00",
+      "match": true
+    },
+    {
+      "sku": "15072515002",
+      "browser_title": "Insan Susu Kambing - Chocolate (500g)",
+      "browser_selling_price": "23.90",
+      "browser_stock": 7,
+      "url": "https://mydin.my/product/insan-susu-kambing-500g-chclte-15072515002",
+      "api_checked_at": "2026-11-01T10:35:44.336719+00:00",
+      "match": true
+    },
+    {
+      "sku": "15177785",
+      "browser_title": "Rasa Enak Coconut Milk (1L)",
+      "browser_selling_price": "13.90",
+      "browser_stock": 7,
+      "url": "https://mydin.my/product/rasa-enak-coconut-milk-1l-15177785",
+      "api_checked_at": "2026-11-01T10:35:44.336719+00:00",
+      "match": true
+    },
+    {
+      "sku": "15116528",
+      "browser_title": "Dutch Baby Infant Milk Powder Step 1 (850g)",
+      "browser_selling_price": "25.90",
+      "browser_stock": 18,
+      "url": "https://mydin.my/product/dutch-baby-infant-milk-pwd-step1-850g-15116528",
+      "api_checked_at": "2026-11-01T10:35:44.336719+00:00",
+      "match": true
+    },
+    {
+      "sku": "15062913002",
+      "browser_title": "Magnolia UHT Full Cream Milk (1L)",
+      "browser_selling_price": "6.60",
+      "browser_stock": 1,
+      "url": "https://mydin.my/product/magnolia-uht-milk-1l-f-crm-15062913002",
+      "api_checked_at": "2026-11-01T10:35:44.336719+00:00",
+      "match": true
+    },
+    {
+      "sku": "15129837001",
+      "browser_title": "Al-Maheera Low Fat Pure Milk (1L)",
+      "browser_selling_price": "6.60",
+      "browser_stock": 14,
+      "url": "https://mydin.my/product/al-maheera-uht-pure-milk-1l-l-fat-15129837001",
+      "api_checked_at": "2026-11-01T10:35:44.336719+00:00",
+      "match": true
+    },
+    {
+      "sku": "15198065",
+      "browser_title": "Lava Tamu Crystal Hand Washing Pot with Tray TK34-25",
+      "browser_selling_price": "19.90",
+      "browser_stock": 46,
+      "url": "https://mydin.my/product/lava-tamu-as-washing-pot-tk34-25-15198065",
+      "api_checked_at": "2026-11-01T10:39:12.607527+00:00",
+      "match": true
+    }
+  ]
+}

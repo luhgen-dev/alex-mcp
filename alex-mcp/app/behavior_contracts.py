@@ -326,6 +326,18 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         _fs("list_shopping_items"), seed="core",
     ),
     PromptContract(
+        "p1.shopping.prices", "phase1", "shopping",
+        "Current MYDIN price questions use the read-only first-party catalogue, without shopping or expense writes.",
+        (
+            "How much is Myrasa 5kg at Mydin?",
+            "Check Mydin cooking oil price.",
+            "Harga susu di Mydin?",
+        ),
+        _fs("search_mydin_prices"), seed="core",
+        forbidden=_fs("add_shopping_item", "update_shopping_item", "log_expense"),
+        unchanged_tables=("shopping_items", "financial_events"),
+    ),
+    PromptContract(
         "p1.shopping.write", "phase1", "shopping",
         "Shopping adds must expose list mutation.",
         (

@@ -1,0 +1,278 @@
+{
+  "ok": true,
+  "source": "MYDIN Online",
+  "source_kind": "first_party_live_api",
+  "checked_at": "2026-11-01T10:37:31.893406+00:00",
+  "checked_at_local": "01 Nov 2026, 06:37 PM +08",
+  "elapsed_ms": 12516,
+  "cached": false,
+  "currency": "MYR",
+  "reference": "MYDIN online selling prices, used as the Mutiara Rini shopping reference.",
+  "products": [
+    {
+      "sku": "10010691",
+      "title": "PM Mahsuri Siam Fragrant Rice 10kg",
+      "currency": "MYR",
+      "selling_price": "41.90",
+      "maximum_price": "41.90",
+      "regular_price": "41.90",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 9,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "41.90",
+          "unit_price_unrounded": "41.9"
+        }
+      ],
+      "url": "https://mydin.my/product/pm-mahsuri-siam-fragrant-rice-10kg-10010691"
+    },
+    {
+      "sku": "10010687",
+      "title": "Mahsuri Beras Siam Super (10kg)",
+      "currency": "MYR",
+      "selling_price": "36.90",
+      "maximum_price": "36.90",
+      "regular_price": "36.90",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 7,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "36.90",
+          "unit_price_unrounded": "36.9"
+        }
+      ],
+      "url": "https://mydin.my/product/pm-mahsuri-siam-spr-rice-10kg-10010687"
+    },
+    {
+      "sku": "10012824",
+      "title": "Faiza Lagenda Fragrant Siam Rice AAA (10kg)",
+      "currency": "MYR",
+      "selling_price": "52.90",
+      "maximum_price": "52.90",
+      "regular_price": "52.90",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 6,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "52.90",
+          "unit_price_unrounded": "52.9"
+        }
+      ],
+      "url": "https://mydin.my/product/lagenda-fragrant-rice-10kg-10012824"
+    },
+    {
+      "sku": "10003282",
+      "title": "Dragon Super Siam Rice (10kg)",
+      "currency": "MYR",
+      "selling_price": "35.90",
+      "maximum_price": "35.90",
+      "regular_price": "35.90",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 4,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "35.90",
+          "unit_price_unrounded": "35.9"
+        }
+      ],
+      "url": "https://mydin.my/product/dragon-spr-siam-rice-10kg-10003282"
+    },
+    {
+      "sku": "10010176",
+      "title": "EcoBrown Unpolished Brown Rice Original (2kg)",
+      "currency": "MYR",
+      "selling_price": "13.60",
+      "maximum_price": "13.60",
+      "regular_price": "13.60",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 2,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "13.60",
+          "unit_price_unrounded": "13.6"
+        },
+        {
+          "minimum_quantity": 5,
+          "unit_price": "13.52",
+          "unit_price_unrounded": "13.52"
+        }
+      ],
+      "url": "https://mydin.my/product/ecobrown-b-rice-2kg-10010176"
+    },
+    {
+      "sku": "10010178",
+      "title": "EcoBrown Unpolished Brown Rice Original (5kg)",
+      "currency": "MYR",
+      "selling_price": "20.60",
+      "maximum_price": "20.60",
+      "regular_price": "20.60",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 4,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "20.60",
+          "unit_price_unrounded": "20.6"
+        },
+        {
+          "minimum_quantity": 4,
+          "unit_price": "20.50",
+          "unit_price_unrounded": "20.5"
+        }
+      ],
+      "url": "https://mydin.my/product/ecobrown-b-rice-5kg-10010178"
+    },
+    {
+      "sku": "10003265",
+      "title": "Sumo Calrose Rice (5kg)",
+      "currency": "MYR",
+      "selling_price": "35.90",
+      "maximum_price": "35.90",
+      "regular_price": "35.90",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 28,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "35.90",
+          "unit_price_unrounded": "35.9"
+        }
+      ],
+      "url": "https://mydin.my/product/sumo-calrose-rice-5kg-10003265"
+    },
+    {
+      "sku": "10003273",
+      "title": "Dragon Mutiara Fragrant Rice (10kg)",
+      "currency": "MYR",
+      "selling_price": "58.90",
+      "maximum_price": "58.90",
+      "regular_price": "58.90",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 7,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "58.90",
+          "unit_price_unrounded": "58.9"
+        }
+      ],
+      "url": "https://mydin.my/product/dragon-mutiara-fragrant-rice-10kg-10003273"
+    },
+    {
+      "sku": "10003287",
+      "title": "Floral Fragrant Rice (10kg)",
+      "currency": "MYR",
+      "selling_price": "49.90",
+      "maximum_price": "49.90",
+      "regular_price": "49.90",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 3,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "49.90",
+          "unit_price_unrounded": "49.9"
+        }
+      ],
+      "url": "https://mydin.my/product/floral-fragrant-rice-10kg-10003287"
+    },
+    {
+      "sku": "10003288",
+      "title": "Floral Fragrant Rice (5kg)",
+      "currency": "MYR",
+      "selling_price": "29.90",
+      "maximum_price": "29.90",
+      "regular_price": "29.90",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 5,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "29.90",
+          "unit_price_unrounded": "29.9"
+        }
+      ],
+      "url": "https://mydin.my/product/floral-fragrant-rice-5kg-10003288"
+    },
+    {
+      "sku": "10003295",
+      "title": "Floral Thai Fragrant Rice (1kg)",
+      "currency": "MYR",
+      "selling_price": "7.90",
+      "maximum_price": "7.90",
+      "regular_price": "7.90",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 3,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "7.90",
+          "unit_price_unrounded": "7.9"
+        },
+        {
+          "minimum_quantity": 12,
+          "unit_price": "7.90",
+          "unit_price_unrounded": "7.9"
+        }
+      ],
+      "url": "https://mydin.my/product/floral-fragrant-rice-1kg-10003295"
+    },
+    {
+      "sku": "10003296",
+      "title": "Floral Glutinous Rice (1kg)",
+      "currency": "MYR",
+      "selling_price": "7.90",
+      "maximum_price": "7.90",
+      "regular_price": "7.90",
+      "on_sale": false,
+      "requires_variant_selection": false,
+      "stock_quantity": 21,
+      "in_stock": true,
+      "quantity_tiers": [
+        {
+          "minimum_quantity": 1,
+          "unit_price": "7.90",
+          "unit_price_unrounded": "7.9"
+        },
+        {
+          "minimum_quantity": 12,
+          "unit_price": "7.83",
+          "unit_price_unrounded": "7.833333"
+        }
+      ],
+      "url": "https://mydin.my/product/floral-pulut-rice-1kg-10003296"
+    }
+  ],
+  "query": "rice",
+  "page": 1,
+  "total_results": 120,
+  "more_results": true,
+  "unavailable_skus": []
+}
