@@ -1,12 +1,13 @@
-## Unreleased — Manjaku prices for the combined update
+## 0.5.48 — grocery price records and household bills
 
-- Add read-only Manjaku Online search and exact product/variant price refresh,
-  with local check times, source links, listed prices and online availability.
-- Cross-check embedded variant prices against MYR structured offers. Require
-  explicit variant choices and keep sold-out options and quantity limits clear.
-- Physical-store prices and cart/member/bundle discounts remain unverified.
-- Add `manjaku_prices_enabled`; no new dependency or database migration.
-- Held on the bundle branch: no HA update, restart or version bump yet.
+- Include the held Manjaku Online connector alongside the MYDIN update in 0.5.47.
+- Queue grocery price enrichment quietly after list adds/edits, in a separate restart-safe worker. Preserve exact product/variant choices, quantities, source timestamps and price history; ambiguous products stay unpriced. Plain lists hide prices; priced lists and standalone searches remain available on request.
+- Add monthly grocery views that keep pending/purchased reference estimates separate from recorded actual expenses. Slow lookups cannot overwrite renamed items, and past purchases are not repriced.
+- Add bill observations with separate invoice, outstanding and payment fields. A readable Digi Check Bill Details screenshot can be captured for either of the two configured lines, with source evidence, idempotence and scope checks. No phone-screen or SMS access.
+- Prompt the configured owner once monthly from the 16th at 19:00 local time (configurable) for both Digi screenshots. This is the only new automatic WhatsApp message; utility bills/PDFs remain on demand.
+- Add disabled-by-default TNB/SAJ portal adapters with private HA credentials and exact account checks. TNB supports an on-demand PDF download/analysis path; SAJ amount/history parsing is implemented, while SAJ PDF remains unverified. Backend logins must be checked after private setup; the earlier cloud-browser test does not certify these adapters.
+- Update MCP tools, chat semantics, capability menu, health diagnostics and behavioural contracts together. Monthly payment views expose missing/stale data and avoid adding overlapping estimates/commitments blindly.
+- Add only new SQLite tables/indexes; preserve existing shopping, finance, reminder and authentication records. No changes to the running HA installation are performed by this release.
 
 ## 0.5.47 — live MYDIN Online prices
 

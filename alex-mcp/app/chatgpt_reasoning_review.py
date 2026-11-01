@@ -61,7 +61,7 @@ import human_ai_lab
 # three new price requests require the supplied Manjaku catalogue search, not
 # MYDIN prices or household writes. Public delta: evaluation/manjaku-20261101.
 # This remains deterministic regression evidence, not an independent review.
-REVIEWED_CORPUS_FINGERPRINT = "8bc77474012cffdf7b8cb3bf986b8e2a01105b59a5686d08d1a841f658332529"
+REVIEWED_CORPUS_FINGERPRINT = "fddfd018ba5e9cbbcddb8d674911d5750f7174c4c2bce22c0ded85e390f0485e"
 
 
 def _low(value: str) -> str:
@@ -120,6 +120,9 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
             "tools": selected,
             "reply_language": "en",
         }
+
+    if re.search(r"grocery|groceries", text) and "month" in text and "grocery_monthly_summary" in tools:
+        return result("tools", ["grocery_monthly_summary"])
 
     # Genuine ambiguity: possibility is not permission to mutate.
     if re.search(r"\b(?:might buy|maybe we need|thinking of getting) coffee\b", text):
@@ -670,6 +673,15 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
             return result("tools", ["report_export"])
         if "finance_report" in tools:
             return result("tools", ["finance_report"])
+
+    if re.search(r"\b(?:payments?|bills|commitments)\b", text) and re.search(r"month|consolidat", text) and "household_payments_summary" in tools:
+        return result("tools", ["household_payments_summary"])
+    if re.search(r"\b(?:choose|use|select)\b", text) and "sku" in text and "select_grocery_product" in tools:
+        return result("tools", ["select_grocery_product"])
+    if re.search(r"digi|celcom", text) and "screenshot" in text and "record_digi_bill" in tools:
+        return result("tools", ["record_digi_bill"])
+    if re.search(r"\b(?:tnb|saj|ranhill)\b", text) and not re.search(r"\b(?:paid|pay|unpaid|defer|move|postpone|confirm|mark|log|receipt|remind)\b", text) and "check_household_bill" in tools:
+        return result("tools", ["check_household_bill"])
 
     # A MYDIN catalogue price question needs the public product source. It is
     # not a request to inspect household spending or change a shopping list.

@@ -350,6 +350,46 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         unchanged_tables=("shopping_items", "financial_events"),
     ),
     PromptContract(
+        "p1.shopping.monthly", "phase1", "shopping",
+        "Monthly grocery costs distinguish list estimates from recorded actual spending.",
+        ("What's the grocery amount for this month?", "How much did we spend on groceries this month?", "Show the monthly grocery budget total."),
+        _fs("grocery_monthly_summary"), seed="core",
+        forbidden=_fs("log_expense", "add_shopping_item", "update_shopping_item"),
+        unchanged_tables=("shopping_items", "financial_events"),
+    ),
+    PromptContract(
+        "p1.shopping.product_choice", "phase1", "shopping",
+        "An explicit catalogue product choice exposes the binding tool and list resolver; it never records an expense.",
+        ("Choose MYDIN SKU 10010176 for the rice product in my grocery list.", "Use MYDIN product SKU 10010176 for my grocery rice brand and pack."),
+        _fs("select_grocery_product"), seed="core",
+        forbidden=_fs("log_expense"), unchanged_tables=("financial_events",),
+    ),
+    PromptContract(
+        "p2.bill.provider.read", "phase2", "finance",
+        "Named utility checks use the configured portal, reporting unavailable setup honestly and never recording a payment.",
+        ("Check my TNB bill amount.", "How much is the SAJ water bill?", "Check bil air Ranhill."),
+        _fs("check_household_bill"), seed="core",
+        forbidden=_fs("log_expense", "bills_record_payment"),
+        unchanged_tables=("financial_events",),
+    ),
+    PromptContract(
+        "p2.bill.monthly", "phase2", "finance",
+        "Month-end household payments use the consolidated view without treating estimates as expenses or assuming unpaid bills.",
+        ("What are this month's payments and commitments?", "Consolidate all my bills for this month.", "Show this month's payments including groceries and Digi."),
+        _fs("household_payments_summary"), seed="core",
+        forbidden=_fs("log_expense", "bills_record_payment"),
+        unchanged_tables=("financial_events",),
+    ),
+    PromptContract(
+        "p2.bill.digi.capture", "phase2", "finance",
+        "A Digi statement screenshot records invoice and outstanding separately, preserving source and avoiding an expense.",
+        ("Save my Digi Check Bill Details screenshot.", "This is my CelcomDigi bill screenshot for September; record it."),
+        _fs("record_digi_bill"), sources=("image",), media_fixture="digi_bill", seed="core",
+        forbidden=_fs("log_expense", "bills_record_payment"),
+        unchanged_tables=("financial_events",),
+        state_expectations=(StateExpectation("household_bill_records", where=(("source_message_id", "$MID"),), contains=(("payload_json", '"outstanding": "0.00"'),), count=1, delta=1),),
+    ),
+    PromptContract(
         "p1.shopping.write", "phase1", "shopping",
         "Shopping adds must expose list mutation.",
         (
@@ -2140,6 +2180,12 @@ CONVERSATION_CONTRACTS += (
 
 
 MANUAL_GATES: tuple[ManualGate, ...] = (
+    ManualGate(
+        "manual.utility.portals", "phase2", "bills",
+        "Verify TNB/SAJ backend login and selected-account amounts from the installed HA add-on; TNB PDF download/text extraction and requested WhatsApp delivery.",
+        "Portal parser/network fixtures do not prove current authenticated provider contracts. Credentials must be configured privately in HA. SAJ PDF remains unsupported until a download works.",
+    ),
+
     ManualGate(
         "manual.voice.transport", "phase1", "whatsapp",
         "Real WhatsApp voice upload/download, transcription handoff and text reply.",

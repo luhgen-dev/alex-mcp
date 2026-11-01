@@ -4852,6 +4852,8 @@ def add_shopping_item(actor: ActorContext, item: str, quantity: str | None = Non
             (item_id, actor.action_key, actor.user_id, space, clean_item[:200],
              (quantity or "")[:100] or None, (notes or "")[:500] or None),
         )
+        import grocery_prices
+        grocery_prices.changed(conn, item_id)
         conn.commit()
         return {"status": "added", "item_id": item_id, "item": clean_item[:200],
                 "quantity": quantity, "notes": notes, "space": space}
@@ -4860,18 +4862,27 @@ def add_shopping_item(actor: ActorContext, item: str, quantity: str | None = Non
 
 
 def list_shopping_items(actor: ActorContext, include_purchased: bool = False, limit: int = 50,
-                        scope: str | None = None) -> dict:
+                        scope: str | None = None, include_prices: bool = False) -> dict:
     marks, spaces = _spaces_sql(actor, scope)
-    status_clause = "" if include_purchased else " AND status='OPEN'"
+    status_clause = " AND status!='REMOVED'" if include_purchased else " AND status='OPEN'"
     conn = connect()
     try:
         rows = conn.execute(
             f"""SELECT item_id,item_name,quantity,notes,status,space_id,created_at_utc,updated_at_utc
                 FROM shopping_items WHERE space_id IN ({marks}) {status_clause}
                 ORDER BY status='OPEN' DESC,created_at_utc ASC LIMIT ?""",
-            spaces + [max(1, min(100, int(limit)))],
+            spaces + [max(1, min(100, int(limit))) + 1],
         ).fetchall()
-        return {"items": [dict(r) for r in rows]}
+        cap = max(1, min(100, int(limit)))
+        truncated = len(rows) > cap
+        items = [dict(r) for r in rows[:cap]]
+        if include_prices:
+            import grocery_prices
+            result = grocery_prices.attach_prices(actor, items)
+            result["list_truncated"] = truncated
+            result["complete"] = result["complete"] and not truncated
+            return result
+        return {"items": items}
     finally:
         conn.close()
 
@@ -4953,6 +4964,8 @@ def update_shopping_item(actor: ActorContext, item_id: str, status: str | None =
              quantity if quantity is not None else row["quantity"],
              notes if notes is not None else row["notes"], utc_now(), item_id),
         )
+        import grocery_prices
+        grocery_prices.changed(conn, item_id)
         conn.commit()
         return {
             "status": "updated", "item_id": item_id, "state": next_state,

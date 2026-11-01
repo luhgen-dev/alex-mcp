@@ -107,6 +107,10 @@ def initialize() -> None:
     conn = connect()
     try:
         conn.executescript(schema)
+        from grocery_prices import SCHEMA as grocery_schema
+        conn.executescript(grocery_schema)
+        from household_bills import SCHEMA as bill_schema
+        conn.executescript(bill_schema)
         from media_schema import ensure_original_media_types
         ensure_original_media_types(conn)
         from progressive_teaching import SCHEMA as teaching_schema

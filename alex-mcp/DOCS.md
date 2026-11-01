@@ -17,7 +17,7 @@ No API key, phone number, provider or pairing credential is stored in source cod
 
 ## What runs locally
 
-### MYDIN Online prices (0.5.47)
+### Grocery prices: MYDIN and Manjaku (0.5.48)
 
 Ask Alex: “What is the current price of Myrasa 5kg at MYDIN?”, “Harga susu di
 MYDIN?”, or “Check Buruh 5kg at MYDIN.” Alex searches the public catalogue and
@@ -36,10 +36,10 @@ No MYDIN login/API key or API Anything installation is needed. The adapter
 directly replays the read operations observed in MYDIN's public frontend.
 `mydin_prices_enabled: false` disables all MYDIN network calls. Lookups never
 add items to shopping lists, record expenses or place orders. After installing
-0.5.47, smoke-test a generic search, a brand/size query and a quantity quote in
-WhatsApp. No database migration is involved.
+0.5.48, smoke-test a generic search, a brand/size query and a quantity quote in
+WhatsApp. Grocery enrichment adds new tables; it does not rewrite existing expenses.
 
-### Manjaku Online prices (unreleased bundle)
+### Manjaku Online price source
 
 Ask “Check Mimora diaper prices at Manjaku” or “Harga lampin di Manjaku?”.
 The read-only tools search Manjaku's top storefront suggestions and refresh
@@ -54,8 +54,33 @@ variant needs a choice; sold-out variants and quantity limits are stated.
 An empty search is not proof of absence from the whole catalogue or a store.
 Schema changes or source failures yield an unavailable error, never an old or
 invented price. `manjaku_prices_enabled: false` disables these network calls.
-No login/API key, API Anything, background polling, purchase or household
-record write is involved. This addition is held for a combined update.
+No login/API key, API Anything or purchase is involved. Standalone source searches do not change household records. The grocery worker separately stores price references for existing list items.
+
+### Quiet grocery pricing and totals
+
+There are three entry points:
+
+1. Add/change a grocery item: Alex commits the list change immediately and queues a local durable price job. No price message is sent. A separate service fetches public references and refreshes open items after 24 hours. Disable all automatic lookups with `grocery_background_prices: false`; source-specific flags also apply.
+2. Ask “show the grocery list”: names/quantities only. Ask “with prices” or “what is the list total”: saved estimates with missing/stale entries labelled. An incomplete/truncated list never claims a complete total.
+3. Ask “check rice price” or a specific retailer/product: live standalone lookup, without adding an item or logging spending.
+
+An exact brand/pack/variant choice can be bound to the list item. Generic “rice” and ambiguous diaper sizes remain unpriced until chosen. Quantity means packs, not kilograms. “This month's grocery amount” returns pending-list estimates, purchase-time reference estimates and actual recorded groceries/kids-supplies spending separately. These figures must never be added together. Marking an item bought does not create an expense. Add a receipt/confirmed expense for actual spend.
+
+### Household bill setup and use
+
+Portal settings start disabled. After updating, enter each email/password and exact account ID **privately in Home Assistant → Alex MCP → Configuration**, then enable that provider. Credentials are not MCP arguments, tool output or source-code constants. This login is separate from a ChatGPT/browser session. Keep account letters/hyphens for SAJ.
+
+- TNB: `tnb_portal_enabled`, `tnb_email`, `tnb_password`, `tnb_account`. Initially supports a dashboard with one linked account. Ask “check TNB bill” to verify the backend connection. Ask “send my TNB bill PDF” to download/send it. A requested discrepancy review can download/extract the PDF without automatically sending it. The adapter uses the observed website login/SSO, dashboard and PDF controls; it is not an official supported API.
+- SAJ: `saj_portal_enabled`, `saj_email`, `saj_password`, `saj_account`. Ask “check SAJ bill” for the dashboard amount and bill history. SAJ PDF retrieval remains unsupported until verified. If login requires interactive verification, the adapter stops and reports that; it does not bypass the check.
+- Digi: set `digi_husband_line` and `digi_wife_line` to the **two Digi mobile lines**, which need not match WhatsApp numbers. Send the Check Bill Details screenshots. Alex records invoice amount/date, outstanding/due date when readable, and original-image provenance. Reply to the specific screenshot if Alex needs a clarification. No SMS, app/phone control, or additional supplementary lines are used.
+
+`digi_screenshot_reminder_enabled` defaults true for the requested monthly workflow. On/after the 16th at `digi_screenshot_reminder_time` (default `19:00`, configured timezone), Alex queues one request to the configured husband's DM for both bills. It catches up once after downtime, skips when both shared records are already present, and never contacts the spouse automatically. Disable this flag to stop it. No separate ChatGPT automation is needed.
+
+Ask “what are this month's payments?” for saved Digi records, configured on-demand utility refreshes, recurring commitments and a separate grocery view. The period is the invoice month. Missing data is unknown, not zero/unpaid. A statement amount is not the outstanding balance, and an old balance is not a live account check. Provider bills can overlap existing recurring commitments, so Alex must match them before giving a combined total; it never adds estimates to expenses.
+
+**Release verification boundary:** automated tests cover synthetic portal responses, redirects, parsing, provenance, queues, privacy and conversational routing. Actual HA-to-provider authentication and PDF delivery still require the first on-demand checks after setup. The previous browser login/PDF result does not prove this new server login works. A portal layout change fails closed and leaves prior records intact.
+
+**Update and acceptance:** make the normal HA add-on backup, update once to 0.5.48 (includes MYDIN 0.5.47), then configure the fields above. Check a plain/priced grocery list, a specific product quote, one Digi screenshot and each enabled utility. “Alex health” shows queue/configuration status without credentials. The update adds tables and a grocery worker; it does not restart or modify other add-ons. Do not create a second monthly Digi reminder for the same built-in prompt.
 
 ### Local runtime
 

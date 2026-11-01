@@ -590,6 +590,8 @@ def main():
             fire_due()
             run_delegated_monitors()
             queue_daily_briefs()
+            import household_bills
+            household_bills.queue_digi_prompt()
         except Exception as exc:
             print(f"[Alex MCP scheduler] {exc}", flush=True)
         time.sleep(15)
