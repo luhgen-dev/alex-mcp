@@ -1,0 +1,337 @@
+BASELINE
+test_climate_and_media_on_states_are_domain_specific (ha_readback_tests.HAControlReadbackTests.test_climate_and_media_on_states_are_domain_specific) ... 
+  test_climate_and_media_on_states_are_domain_specific (ha_readback_tests.HAControlReadbackTests.test_climate_and_media_on_states_are_domain_specific) (entity='climate.room') ... FAIL
+  test_climate_and_media_on_states_are_domain_specific (ha_readback_tests.HAControlReadbackTests.test_climate_and_media_on_states_are_domain_specific) (entity='media_player.room') ... FAIL
+test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) ... 
+  test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='light.room', action='turn_on', value=-1) ... FAIL
+  test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='light.room', action='turn_on', value=101) ... FAIL
+  test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='fan.room', action='set_percentage', value=-1) ... FAIL
+  test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='fan.room', action='set_percentage', value=101) ... FAIL
+  test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='media_player.room', action='volume_set', value=-0.1) ... FAIL
+  test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='media_player.room', action='volume_set', value=1.1) ... FAIL
+  test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='light.room', action='turn_on', value=inf) ... ERROR
+  test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='light.room', action='turn_on', value=-inf) ... ERROR
+  test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='light.room', action='turn_on', value=True) ... FAIL
+  test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='fan.room', action='set_percentage', value=inf) ... ERROR
+  test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='fan.room', action='set_percentage', value=-inf) ... ERROR
+  test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='fan.room', action='set_percentage', value=True) ... FAIL
+  test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='climate.room', action='set_temperature', value=nan) ... FAIL
+  test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='climate.room', action='set_temperature', value=inf) ... FAIL
+  test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='climate.room', action='set_temperature', value=-inf) ... FAIL
+  test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='climate.room', action='set_temperature', value=True) ... FAIL
+  test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='media_player.room', action='volume_set', value=nan) ... FAIL
+  test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='media_player.room', action='volume_set', value=inf) ... FAIL
+  test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='media_player.room', action='volume_set', value=-inf) ... FAIL
+  test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='media_player.room', action='volume_set', value=True) ... FAIL
+  test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='switch.room', action='turn_on', value=50) ... FAIL
+test_light_brightness_requires_matching_readback_and_zero_means_off (ha_readback_tests.HAControlReadbackTests.test_light_brightness_requires_matching_readback_and_zero_means_off) ... FAIL
+test_light_on_is_not_proof_of_requested_brightness (ha_readback_tests.HAControlReadbackTests.test_light_on_is_not_proof_of_requested_brightness) ... 
+  test_light_on_is_not_proof_of_requested_brightness (ha_readback_tests.HAControlReadbackTests.test_light_on_is_not_proof_of_requested_brightness) (attrs={}) ... FAIL
+  test_light_on_is_not_proof_of_requested_brightness (ha_readback_tests.HAControlReadbackTests.test_light_on_is_not_proof_of_requested_brightness) (attrs={'brightness': 255}) ... FAIL
+  test_light_on_is_not_proof_of_requested_brightness (ha_readback_tests.HAControlReadbackTests.test_light_on_is_not_proof_of_requested_brightness) (attrs={'brightness': 'invalid'}) ... FAIL
+  test_light_on_is_not_proof_of_requested_brightness (ha_readback_tests.HAControlReadbackTests.test_light_on_is_not_proof_of_requested_brightness) (attrs={'brightness': nan}) ... FAIL
+test_numeric_controls_verify_target_attribute_not_service_acceptance (ha_readback_tests.HAControlReadbackTests.test_numeric_controls_verify_target_attribute_not_service_acceptance) ... ok
+test_toggle_does_not_accept_an_arbitrary_changed_state (ha_readback_tests.HAControlReadbackTests.test_toggle_does_not_accept_an_arbitrary_changed_state) ... FAIL
+
+======================================================================
+ERROR: test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='light.room', action='turn_on', value=inf)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_ha_control_readback.py", line 51, in test_invalid_numeric_values_never_read_or_control_home_assistant
+    ha.control(entity, action, value)
+  File "/tmp/tmpx2jqz76_/ha.py", line 194, in control
+    payload["brightness_pct"] = max(0, min(100, int(round(value))))
+                                                    ^^^^^^^^^^^^
+OverflowError: cannot convert float infinity to integer
+
+======================================================================
+ERROR: test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='light.room', action='turn_on', value=-inf)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_ha_control_readback.py", line 51, in test_invalid_numeric_values_never_read_or_control_home_assistant
+    ha.control(entity, action, value)
+  File "/tmp/tmpx2jqz76_/ha.py", line 194, in control
+    payload["brightness_pct"] = max(0, min(100, int(round(value))))
+                                                    ^^^^^^^^^^^^
+OverflowError: cannot convert float infinity to integer
+
+======================================================================
+ERROR: test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='fan.room', action='set_percentage', value=inf)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_ha_control_readback.py", line 51, in test_invalid_numeric_values_never_read_or_control_home_assistant
+    ha.control(entity, action, value)
+  File "/tmp/tmpx2jqz76_/ha.py", line 198, in control
+    payload["percentage"] = max(0, min(100, int(round(value))))
+                                                ^^^^^^^^^^^^
+OverflowError: cannot convert float infinity to integer
+
+======================================================================
+ERROR: test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='fan.room', action='set_percentage', value=-inf)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_ha_control_readback.py", line 51, in test_invalid_numeric_values_never_read_or_control_home_assistant
+    ha.control(entity, action, value)
+  File "/tmp/tmpx2jqz76_/ha.py", line 198, in control
+    payload["percentage"] = max(0, min(100, int(round(value))))
+                                                ^^^^^^^^^^^^
+OverflowError: cannot convert float infinity to integer
+
+======================================================================
+FAIL: test_climate_and_media_on_states_are_domain_specific (ha_readback_tests.HAControlReadbackTests.test_climate_and_media_on_states_are_domain_specific) (entity='climate.room')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_ha_control_readback.py", line 70, in test_climate_and_media_on_states_are_domain_specific
+    self.assertEqual(result['status'], 'executed_and_verified')
+AssertionError: 'requested_unconfirmed' != 'executed_and_verified'
+- requested_unconfirmed
++ executed_and_verified
+
+
+======================================================================
+FAIL: test_climate_and_media_on_states_are_domain_specific (ha_readback_tests.HAControlReadbackTests.test_climate_and_media_on_states_are_domain_specific) (entity='media_player.room')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_ha_control_readback.py", line 70, in test_climate_and_media_on_states_are_domain_specific
+    self.assertEqual(result['status'], 'executed_and_verified')
+AssertionError: 'requested_unconfirmed' != 'executed_and_verified'
+- requested_unconfirmed
++ executed_and_verified
+
+
+======================================================================
+FAIL: test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='light.room', action='turn_on', value=-1)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_ha_control_readback.py", line 50, in test_invalid_numeric_values_never_read_or_control_home_assistant
+    with self.assertRaises(ValueError):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='light.room', action='turn_on', value=101)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_ha_control_readback.py", line 50, in test_invalid_numeric_values_never_read_or_control_home_assistant
+    with self.assertRaises(ValueError):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='fan.room', action='set_percentage', value=-1)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_ha_control_readback.py", line 50, in test_invalid_numeric_values_never_read_or_control_home_assistant
+    with self.assertRaises(ValueError):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='fan.room', action='set_percentage', value=101)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_ha_control_readback.py", line 50, in test_invalid_numeric_values_never_read_or_control_home_assistant
+    with self.assertRaises(ValueError):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='media_player.room', action='volume_set', value=-0.1)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_ha_control_readback.py", line 50, in test_invalid_numeric_values_never_read_or_control_home_assistant
+    with self.assertRaises(ValueError):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='media_player.room', action='volume_set', value=1.1)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_ha_control_readback.py", line 50, in test_invalid_numeric_values_never_read_or_control_home_assistant
+    with self.assertRaises(ValueError):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='light.room', action='turn_on', value=True)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_ha_control_readback.py", line 50, in test_invalid_numeric_values_never_read_or_control_home_assistant
+    with self.assertRaises(ValueError):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='fan.room', action='set_percentage', value=True)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_ha_control_readback.py", line 50, in test_invalid_numeric_values_never_read_or_control_home_assistant
+    with self.assertRaises(ValueError):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='climate.room', action='set_temperature', value=nan)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_ha_control_readback.py", line 50, in test_invalid_numeric_values_never_read_or_control_home_assistant
+    with self.assertRaises(ValueError):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='climate.room', action='set_temperature', value=inf)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_ha_control_readback.py", line 50, in test_invalid_numeric_values_never_read_or_control_home_assistant
+    with self.assertRaises(ValueError):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='climate.room', action='set_temperature', value=-inf)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_ha_control_readback.py", line 50, in test_invalid_numeric_values_never_read_or_control_home_assistant
+    with self.assertRaises(ValueError):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='climate.room', action='set_temperature', value=True)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_ha_control_readback.py", line 50, in test_invalid_numeric_values_never_read_or_control_home_assistant
+    with self.assertRaises(ValueError):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='media_player.room', action='volume_set', value=nan)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_ha_control_readback.py", line 50, in test_invalid_numeric_values_never_read_or_control_home_assistant
+    with self.assertRaises(ValueError):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='media_player.room', action='volume_set', value=inf)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_ha_control_readback.py", line 50, in test_invalid_numeric_values_never_read_or_control_home_assistant
+    with self.assertRaises(ValueError):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='media_player.room', action='volume_set', value=-inf)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_ha_control_readback.py", line 50, in test_invalid_numeric_values_never_read_or_control_home_assistant
+    with self.assertRaises(ValueError):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='media_player.room', action='volume_set', value=True)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_ha_control_readback.py", line 50, in test_invalid_numeric_values_never_read_or_control_home_assistant
+    with self.assertRaises(ValueError):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) (entity='switch.room', action='turn_on', value=50)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_ha_control_readback.py", line 50, in test_invalid_numeric_values_never_read_or_control_home_assistant
+    with self.assertRaises(ValueError):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_light_brightness_requires_matching_readback_and_zero_means_off (ha_readback_tests.HAControlReadbackTests.test_light_brightness_requires_matching_readback_and_zero_means_off)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_ha_control_readback.py", line 36, in test_light_brightness_requires_matching_readback_and_zero_means_off
+    self.assertEqual(result['status'], 'executed_and_verified')
+AssertionError: 'requested_unconfirmed' != 'executed_and_verified'
+- requested_unconfirmed
++ executed_and_verified
+
+
+======================================================================
+FAIL: test_light_on_is_not_proof_of_requested_brightness (ha_readback_tests.HAControlReadbackTests.test_light_on_is_not_proof_of_requested_brightness) (attrs={})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_ha_control_readback.py", line 27, in test_light_on_is_not_proof_of_requested_brightness
+    self.assertEqual(result['status'], 'requested_unconfirmed')
+AssertionError: 'executed_and_verified' != 'requested_unconfirmed'
+- executed_and_verified
++ requested_unconfirmed
+
+
+======================================================================
+FAIL: test_light_on_is_not_proof_of_requested_brightness (ha_readback_tests.HAControlReadbackTests.test_light_on_is_not_proof_of_requested_brightness) (attrs={'brightness': 255})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_ha_control_readback.py", line 27, in test_light_on_is_not_proof_of_requested_brightness
+    self.assertEqual(result['status'], 'requested_unconfirmed')
+AssertionError: 'executed_and_verified' != 'requested_unconfirmed'
+- executed_and_verified
++ requested_unconfirmed
+
+
+======================================================================
+FAIL: test_light_on_is_not_proof_of_requested_brightness (ha_readback_tests.HAControlReadbackTests.test_light_on_is_not_proof_of_requested_brightness) (attrs={'brightness': 'invalid'})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_ha_control_readback.py", line 27, in test_light_on_is_not_proof_of_requested_brightness
+    self.assertEqual(result['status'], 'requested_unconfirmed')
+AssertionError: 'executed_and_verified' != 'requested_unconfirmed'
+- executed_and_verified
++ requested_unconfirmed
+
+
+======================================================================
+FAIL: test_light_on_is_not_proof_of_requested_brightness (ha_readback_tests.HAControlReadbackTests.test_light_on_is_not_proof_of_requested_brightness) (attrs={'brightness': nan})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_ha_control_readback.py", line 27, in test_light_on_is_not_proof_of_requested_brightness
+    self.assertEqual(result['status'], 'requested_unconfirmed')
+AssertionError: 'executed_and_verified' != 'requested_unconfirmed'
+- executed_and_verified
++ requested_unconfirmed
+
+
+======================================================================
+FAIL: test_toggle_does_not_accept_an_arbitrary_changed_state (ha_readback_tests.HAControlReadbackTests.test_toggle_does_not_accept_an_arbitrary_changed_state)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_ha_control_readback.py", line 77, in test_toggle_does_not_accept_an_arbitrary_changed_state
+    self.assertEqual(result['status'], 'requested_unconfirmed')
+AssertionError: 'executed_and_verified' != 'requested_unconfirmed'
+- executed_and_verified
++ requested_unconfirmed
+
+
+----------------------------------------------------------------------
+Ran 6 tests in 14.812s
+
+FAILED (failures=25, errors=4)
+
+CANDIDATE
+test_climate_and_media_on_states_are_domain_specific (ha_readback_tests.HAControlReadbackTests.test_climate_and_media_on_states_are_domain_specific) ... ok
+test_invalid_numeric_values_never_read_or_control_home_assistant (ha_readback_tests.HAControlReadbackTests.test_invalid_numeric_values_never_read_or_control_home_assistant) ... ok
+test_light_brightness_requires_matching_readback_and_zero_means_off (ha_readback_tests.HAControlReadbackTests.test_light_brightness_requires_matching_readback_and_zero_means_off) ... ok
+test_light_on_is_not_proof_of_requested_brightness (ha_readback_tests.HAControlReadbackTests.test_light_on_is_not_proof_of_requested_brightness) ... ok
+test_numeric_controls_verify_target_attribute_not_service_acceptance (ha_readback_tests.HAControlReadbackTests.test_numeric_controls_verify_target_attribute_not_service_acceptance) ... ok
+test_toggle_does_not_accept_an_arbitrary_changed_state (ha_readback_tests.HAControlReadbackTests.test_toggle_does_not_accept_an_arbitrary_changed_state) ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.010s
+
+OK

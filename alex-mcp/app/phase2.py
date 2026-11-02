@@ -347,7 +347,8 @@ def create_plan(actor: ActorContext, title: str, start_local: str | None = None,
 
 
 def list_plans(actor: ActorContext, include_cancelled: bool = False, limit: int = 50) -> dict:
-    marks = ",".join("?" for _ in actor.allowed_spaces)
+    spaces = scope_policy.read_spaces(actor)
+    marks = ",".join("?" for _ in spaces)
     where = f"space_id IN ({marks})"
     if not include_cancelled:
         where += " AND status!='CANCELLED'"
@@ -356,7 +357,7 @@ def list_plans(actor: ActorContext, include_cancelled: bool = False, limit: int 
         rows = conn.execute(
             f"""SELECT plan_id,title,start_at_utc,end_at_utc,time_known,notes,status,space_id
                 FROM plans WHERE {where} ORDER BY COALESCE(start_at_utc,created_at_utc) LIMIT ?""",
-            list(actor.allowed_spaces) + [max(1, min(100, int(limit)))],
+            spaces + [max(1, min(100, int(limit)))],
         ).fetchall()
         return {"plans": [dict(r) for r in rows]}
     finally:

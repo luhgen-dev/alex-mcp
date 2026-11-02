@@ -1,0 +1,17 @@
+{
+  "baseline": {
+    "tests": 6,
+    "failed_assertions_including_subtests": 25,
+    "errors": 4,
+    "source_sha256": "ac364f3c66112810f933d1bf4660d820d38007f1359f3668f17d489506ed3a85"
+  },
+  "candidate": {
+    "tests": 6,
+    "failed_assertions_including_subtests": 0,
+    "errors": 0,
+    "source_sha256": "585c8bbf8be33fba092505b1de6c1516256df173753b463da7d1ce832c72acd1"
+  },
+  "test_sha256": "40246e6541d0731d5d36a46440ff0dc4c7b80418bd8cabc928f3366bcbbc6430",
+  "limits": "Real HA adapter code; all HTTP/state responses are mocked. No physical devices or pinned-dependency integration tested locally.",
+  "local_http_package": "pip-vendored requests 2.34.2"
+}

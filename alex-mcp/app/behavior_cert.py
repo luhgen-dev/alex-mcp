@@ -90,9 +90,9 @@ def media_fixture_text(fixture: str | None) -> str:
 
 
 _SECRET_PATTERNS = (
-    re.compile(r"(?i)bearer\\s+[A-Za-z0-9._-]+"),
-    re.compile(r"(?i)\\b(?:xai-|sk-)[A-Za-z0-9._-]{8,}"),
-    re.compile(r"(?i)(api[_-]?key[\\s=:]+)[^\\s,}\"]+"),
+    re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~-]+"),
+    re.compile(r"(?i)\b(?:xai-|sk-)[A-Za-z0-9._-]{8,}"),
+    re.compile(r"(?i)(api[\s_-]?key[\"']?\s*[:=]\s*[\"']?|api[\s_-]?key\s+)[^\s,}\"']+"),
 )
 
 
@@ -102,7 +102,7 @@ def _redact_scalar(value: Any) -> Any:
     text = value
     for pattern in _SECRET_PATTERNS:
         if "api" in pattern.pattern.casefold():
-            text = pattern.sub(r"\\1[redacted]", text)
+            text = pattern.sub(r"\1[redacted]", text)
         else:
             text = pattern.sub("[redacted]", text)
     return text
@@ -113,7 +113,7 @@ def _redact_report(value: Any) -> Any:
         return {
             str(k): (
                 "[redacted]"
-                if any(token in str(k).casefold() for token in ("api_key", "authorization", "token"))
+                if _secret_report_key(k, v)
                 else _redact_report(v)
             )
             for k, v in value.items()
@@ -123,6 +123,18 @@ def _redact_report(value: Any) -> Any:
     if isinstance(value, tuple):
         return tuple(_redact_report(item) for item in value)
     return _redact_scalar(value)
+
+
+def _secret_report_key(key: Any, value: Any) -> bool:
+    normalized = re.sub(r"[^a-z0-9]", "", str(key).casefold())
+    # Preserve known numeric usage counters, while keeping conservative
+    # redaction for token bundles, suffixes and unfamiliar credential fields.
+    if normalized in {"inputtokens", "outputtokens", "totaltokens", "cachedtokens",
+                      "cachedinputtokens", "reasoningtokens", "prompttokens", "completiontokens"}:
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return False
+    return any(part in normalized for part in
+               ("apikey", "password", "secret", "token", "authorization", "cookie"))
 
 
 def _emit(report: dict, report_path: str | None) -> dict:
@@ -753,7 +765,14 @@ def _credential_options(provider: str, source: dict) -> dict:
     }
 
 
-def _sandbox_options(provider: str, creds: dict) -> dict:
+def _sandbox_options(provider: str, creds: dict, source: dict | None = None) -> dict:
+    # Preserve the configured API model choices, not household identities,
+    # portal credentials, pairing or production data paths.
+    model_options = {
+        name: str((source or {})[name]) for name in
+        ('gemini_model', 'gemini_lite_model', 'grok_model', 'openai_model', 'reasoning_effort')
+        if (source or {}).get(name)
+    }
     return {
         "ai_provider": provider,
         **creds,
@@ -764,6 +783,7 @@ def _sandbox_options(provider: str, creds: dict) -> dict:
         "timezone": "Asia/Kuala_Lumpur",
         "context_turns": 8,
         "reasoning_effort": "low",
+        **model_options,
         "monthly_ai_budget_usd": 0,
         "auto_grok_fallback_budget_usd": 0.50,
         "budget_safety_multiplier": 2.0,
@@ -1138,9 +1158,10 @@ def _seed_core(private_memory: bool = False, pending_plan: bool = False):
     # Management fee with original receipt.
     mid = "seed-management"
     _claim(mid, "management fee receipt", conv)
+    receipt_bytes = b"CERTIFICATION management receipt RM593.62"
     media_id = media.save_media(
         mid, "IMAGE", "image/jpeg",
-        base64.b64encode(b"CERTIFICATION management receipt RM593.62").decode("ascii"),
+        base64.b64encode(receipt_bytes).decode("ascii"),
     )
     a = with_action_key(
         _actor(mid, conv, "management fee receipt", media_ids=[media_id]),
@@ -1156,6 +1177,10 @@ def _seed_core(private_memory: bool = False, pending_plan: bool = False):
         "management_media_id": media_id,
         "management_receipt_path": receipt_row["local_path"] if receipt_row else None,
     })
+    if receipt_row:
+        CERT_FIXTURES.setdefault("original_attachment_sha256", {})[
+            os.path.realpath(receipt_row["local_path"])
+        ] = hashlib.sha256(receipt_bytes).hexdigest()
 
     # Explicit memory and saved picture.
     mid = "seed-cobalt"
@@ -1170,9 +1195,10 @@ def _seed_core(private_memory: bool = False, pending_plan: bool = False):
 
     mid = "seed-vinyl"
     _claim(mid, "save this vinyl setup", conv)
+    vinyl_bytes = b"CERTIFICATION vinyl image"
     vinyl_media = media.save_media(
         mid, "IMAGE", "image/png",
-        base64.b64encode(b"CERTIFICATION vinyl image").decode("ascii"),
+        base64.b64encode(vinyl_bytes).decode("ascii"),
     )
     vinyl = services.save_item(
         with_action_key(
@@ -1189,6 +1215,10 @@ def _seed_core(private_memory: bool = False, pending_plan: bool = False):
         "private_vinyl_media_id": vinyl_media,
         "vinyl_path": vinyl_row["local_path"] if vinyl_row else None,
     })
+    if vinyl_row:
+        CERT_FIXTURES.setdefault("original_attachment_sha256", {})[
+            os.path.realpath(vinyl_row["local_path"])
+        ] = hashlib.sha256(vinyl_bytes).hexdigest()
 
     # Family shopping state.
     for idx, item in enumerate(("Diapers", "Bread"), 1):
@@ -1429,7 +1459,7 @@ def _reply_from_outbound(rows: list[dict[str, Any]]) -> str:
 
 
 def _attachment_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return [row for row in rows if row.get("kind") in {"IMAGE", "DOCUMENT"}]
+    return [row for row in rows if row.get("kind") in {"IMAGE", "DOCUMENT", "AUDIO", "VIDEO"}]
 
 
 def _fixture_attachment_path(name: str | None) -> str | None:
@@ -1501,6 +1531,16 @@ def _privacy_leak_problems(contract, reply: str, outbounds: list[dict], trace: d
 def _attachment_identity_problems(contract, outbounds: list[dict]) -> list[str]:
     attachments = _attachment_rows(outbounds)
     problems: list[str] = []
+    observed_digests = {}
+    for row in attachments:
+        path = str(row.get("local_path") or "")
+        try:
+            content = Path(path).read_bytes()
+            if not content:
+                problems.append("queued attachment file is empty")
+            observed_digests[os.path.realpath(path)] = hashlib.sha256(content).hexdigest()
+        except (OSError, ValueError):
+            problems.append("queued attachment file is missing or unreadable")
     if contract.expect_attachment and not attachments:
         problems.append("expected original attachment was not queued")
     if contract.expect_attachment_of:
@@ -1510,6 +1550,12 @@ def _attachment_identity_problems(contract, outbounds: list[dict]) -> list[str]:
                 f"fixture attachment {contract.expect_attachment_of!r} is unavailable"
             )
         else:
+            expected_path = os.path.realpath(expected)
+            expected_digest = CERT_FIXTURES.get("original_attachment_sha256", {}).get(expected_path)
+            if not expected_digest:
+                problems.append("fixture original attachment digest is unavailable")
+            elif observed_digests.get(expected_path) != expected_digest:
+                problems.append("queued attachment bytes do not match the frozen original fixture")
             matching = [
                 row for row in attachments
                 if os.path.realpath(str(row.get("local_path") or "")) == os.path.realpath(expected)
@@ -1525,6 +1571,37 @@ def _attachment_identity_problems(contract, outbounds: list[dict]) -> list[str]:
                     f"queued {len(attachments)}"
                 )
     return problems
+
+
+def _saved_selection_capabilities(calls: list[dict]) -> set[str]:
+    """Recognize an actual saved-item read via the public selection tool.
+
+    A selection tool name alone proves nothing about the selected domain or
+    identity. Bind its successful result to the preceding authorized saved-item
+    search. Original attachment identity/bytes are still checked by the judge.
+    """
+    choices = {}
+    observed = set()
+    for call in calls:
+        if str(call.get('status') or '').upper() not in {'OK', 'PASS', 'SUCCESS'}:
+            continue
+        result = call.get('result') or {}
+        if not isinstance(result, dict) or result.get('error'):
+            continue
+        if call.get('tool') == 'search_saved_items':
+            choices = {row['choice']: row['item_id'] for row in (result.get('matches') or [])
+                       if isinstance(row, dict) and type(row.get('choice')) is int
+                       and row.get('item_id')}
+        elif call.get('tool') == 'resolve_numbered_choice':
+            args = call.get('arguments') or {}
+            if not isinstance(args, dict):
+                continue
+            choice = args.get('choice')
+            if (args.get('selection_kind') == 'SAVED_ITEM' and type(choice) is int
+                    and result.get('status') == 'found' and result.get('item_id')
+                    and choices.get(choice) == result['item_id']):
+                observed.add('memory.get')
+    return observed
 
 
 def _judge_observation(
@@ -1557,6 +1634,9 @@ def _judge_observation(
                for pattern in getattr(contract, "allowed_tool_errors", ()))
     }
     successful_caps = set(capabilities_for_tools(successful_tools))
+    saved_selection_caps = _saved_selection_capabilities(calls)
+    successful_caps.update(saved_selection_caps)
+    called_caps.update(saved_selection_caps)
     if trace.get("scoped_memory_context_matches_expected"):
         successful_caps.add("memory.search")
     # Production ingress can resolve an exact persisted selection without MCP.
@@ -2005,6 +2085,8 @@ LIVE_BENCHMARK_PRIORITY = frozenset({
     "p3.typo.reminder", "p3.language.tamil.reminder",
     "p3.language.tamil.memory",
 })
+LIVE_AUDIT_PRIORITY = frozenset({'p3.audit.tamil.expense', 'p3.audit.tamil.reminder',
+                                'p3.audit.expense.category', 'p3.audit.expense.unknown_purpose'})
 
 
 def _benchmark_live_plan(
@@ -2060,7 +2142,8 @@ def _benchmark_live_plan(
         # Priority 0 = exact/manual-smoke regressions; 1 = cases where offline
         # routing explicitly says the model must prove discovery; 2 = remaining.
         priority = (
-            0 if contract.id in LIVE_BENCHMARK_PRIORITY
+            -1 if contract.id in LIVE_AUDIT_PRIORITY
+            else 0 if contract.id in LIVE_BENCHMARK_PRIORITY
             else 1 if contract.id in discovery_ids
             else 2
         )
@@ -2071,7 +2154,7 @@ def _benchmark_live_plan(
             adversarial_limit=live_adversarial_per_contract,
         )
 
-        if priority == 0:
+        if priority <= 0:
             # Two ordinary formulations + the bounded adversarial sample.
             catalog = [row for row in phrases if row[1] in {"catalog", "heldout"}][:2]
             adversarial = [row for row in phrases if row[1] == "adversarial"][
@@ -2115,6 +2198,19 @@ def _benchmark_live_plan(
     }
 
 
+def _live_acceptance_status(failures, budget_stopped, planned, executed, offline_failures=0):
+    """A diagnostic benchmark cannot certify skipped, impossible or empty work."""
+    if failures or offline_failures:
+        return 'FAIL'
+    if budget_stopped:
+        return 'INCOMPLETE_BUDGET'
+    if not planned:
+        return 'NOT_RUN'
+    if executed != planned:
+        return 'INCOMPLETE_EXECUTION'
+    return 'PASS'
+
+
 def live_certify(phase: str, provider: str, source_options: str | None,
                  hard_latency_ms: int, report_path: str | None,
                  max_live_cost_usd: float, heldout_path: str | None = None,
@@ -2129,7 +2225,7 @@ def live_certify(phase: str, provider: str, source_options: str | None,
     sandbox_dir = Path(sandbox.name)
     options_path = sandbox_dir / "options.json"
     options_path.write_text(
-        json.dumps(_sandbox_options(provider, creds), ensure_ascii=False),
+        json.dumps(_sandbox_options(provider, creds, source), ensure_ascii=False),
         encoding="utf-8",
     )
     try:
@@ -2251,9 +2347,9 @@ def live_certify(phase: str, provider: str, source_options: str | None,
     failures = [r for r in rows if r["status"] == "FAIL"]
     failures += [r for r in conversations if r["status"] == "FAIL"]
 
-    live_status = (
-        "FAIL" if failures else
-        ("INCOMPLETE_BUDGET" if budget_stopped else "PASS")
+    live_status = _live_acceptance_status(
+        failures, budget_stopped, len(prompt_plan) + len(conversation_plan),
+        len(rows) + len(conversations), plan_metadata.get('offline_failures') or 0,
     )
     domain_latency: dict[str, list[int]] = {}
     for row in rows:
@@ -2371,7 +2467,7 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--hard-latency-ms", type=int, default=20000)
     p.add_argument(
         "--max-live-cost-usd", type=float, default=0.25,
-        help="hard runner-level estimated provider spend cap for live certification; 0 disables",
+        help="estimated provider spend stop threshold checked between cases; an in-flight case can exceed it; 0 disables",
     )
     p.add_argument(
         "--heldout-corpus",

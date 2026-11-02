@@ -1,7 +1,7 @@
 ARG BUILD_FROM=ghcr.io/home-assistant/base:3.24
 FROM $BUILD_FROM
 
-ARG BUILD_VERSION=0.5.54
+ARG BUILD_VERSION=0.5.55
 ARG BUILD_ARCH=amd64
 ARG BUILD_COMMIT=unknown
 
@@ -61,4 +61,7 @@ ENV ALEX_APP_VERSION="$BUILD_VERSION"
 ENV ALEX_BUILD_COMMIT="$BUILD_COMMIT"
 ENV ALEX_DATA_DIR="/data"
 ENV PYTHONUNBUFFERED=1
+# s6 otherwise continues after a failed cont-init script. Invalid persisted
+# state must prevent the bridge and mutation workers from starting.
+ENV S6_BEHAVIOUR_IF_STAGE2_FAILS=2
 

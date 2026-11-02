@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import time
+import math
 
 import requests
 
@@ -189,13 +190,27 @@ def control(entity_id: str, action: str, value: float | None = None) -> dict:
     if service not in SAFE_ACTIONS[domain]:
         raise PermissionError(f"Action '{service}' is not allowed for Home Assistant domain '{domain}'")
 
+    if value is not None:
+        try:
+            if isinstance(value, bool):
+                raise ValueError()
+            value = float(value)
+        except (TypeError, ValueError, OverflowError):
+            raise ValueError("Home Assistant control value must be a finite number") from None
+        if not math.isfinite(value):
+            raise ValueError("Home Assistant control value must be a finite number")
+
     payload = {"entity_id": entity}
     if domain == "light" and service == "turn_on" and value is not None:
-        payload["brightness_pct"] = max(0, min(100, int(round(value))))
+        if not 0 <= value <= 100:
+            raise ValueError("light brightness must be from 0 to 100 percent")
+        payload["brightness_pct"] = int(round(value))
     elif domain == "fan" and service == "set_percentage":
         if value is None:
             raise ValueError("fan set_percentage requires value")
-        payload["percentage"] = max(0, min(100, int(round(value))))
+        if not 0 <= value <= 100:
+            raise ValueError("fan percentage must be from 0 to 100")
+        payload["percentage"] = int(round(value))
     elif domain == "climate" and service == "set_temperature":
         if value is None:
             raise ValueError("climate set_temperature requires value")
@@ -203,8 +218,10 @@ def control(entity_id: str, action: str, value: float | None = None) -> dict:
     elif domain == "media_player" and service == "volume_set":
         if value is None:
             raise ValueError("media volume_set requires value from 0 to 1")
-        payload["volume_level"] = max(0.0, min(1.0, float(value)))
-    elif value is not None and service not in {"turn_on"}:
+        if not 0 <= value <= 1:
+            raise ValueError("media volume_set requires value from 0 to 1")
+        payload["volume_level"] = value
+    elif value is not None:
         raise ValueError("value is not used by this Home Assistant action")
 
     before = get_state(entity)
@@ -216,15 +233,28 @@ def control(entity_id: str, action: str, value: float | None = None) -> dict:
             return False
         attrs = snapshot.get("attributes") or {}
         if service == "turn_on":
+            if domain == "light" and "brightness_pct" in payload:
+                if payload["brightness_pct"] == 0:
+                    return state == "off"
+                try:
+                    brightness = float(attrs.get("brightness"))
+                    return (state == "on" and math.isfinite(brightness)
+                            and abs(brightness * 100 / 255 - payload["brightness_pct"]) <= 1.0)
+                except (TypeError, ValueError):
+                    return False
+            if domain == "climate":
+                return state in {"heat", "cool", "heat_cool", "auto", "dry", "fan_only"}
+            if domain == "media_player":
+                return state in {"on", "idle", "playing", "paused", "buffering"}
             return state == "on"
         if service == "turn_off":
             return state == "off"
         if service == "toggle":
             before_state = str(before.get("state") or "").lower()
-            return before_state not in {"", "unknown", "unavailable"} and state != before_state
+            return before_state in {"on", "off"} and state == {"on": "off", "off": "on"}[before_state]
         if domain == "fan" and service == "set_percentage":
             try:
-                return abs(float(attrs.get("percentage")) - float(value)) <= 1.0
+                return abs(float(attrs.get("percentage")) - payload["percentage"]) <= 1.0
             except (TypeError, ValueError):
                 return False
         if domain == "climate" and service == "set_temperature":

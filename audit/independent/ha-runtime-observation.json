@@ -1,0 +1,314 @@
+{
+  "runs": [
+    {
+      "commit": "4cfbbcf24ea5e48abbad26daeb5a5343a1a3c706",
+      "evidence": "Operator terminal screenshots 315227.jpg, 315229.jpg, 315231.jpg and subsequent pasted error output; full raw logs not retrieved into this workspace",
+      "private_report": "/config/alex-audit/runtime-7f2195a3/summary.json",
+      "production_changed": false,
+      "jobs": 64,
+      "passed_jobs": 58,
+      "failed_jobs": 6,
+      "passed_test_modules": 54,
+      "test_modules": 60,
+      "test_execution_count": null,
+      "skipped_count": null,
+      "passed_other_jobs": [
+        "compile",
+        "selftest",
+        "stress",
+        "catalog"
+      ],
+      "failed_modules": [
+        "test_behavior_cert",
+        "test_multilingual_voice",
+        "test_v044",
+        "test_v0537_prelive_hardening",
+        "test_v0538_reminder_report_reliability",
+        "test_voice_feature_parity"
+      ],
+      "observed_errors": [
+        "Sender is not configured as an Alex household user (leading text partially clipped)",
+        "KeyError: 'quoted'",
+        "KeyError: 'voice_pending'",
+        "sqlite3.OperationalError: no such table: alex_phase2_asset_documents",
+        "FileNotFoundError: [Errno 2] No such file or directory: 'ffmpeg'"
+      ],
+      "error_attribution": "OCR aggregates do not map every occurrence to a test. Schema and identity diagnoses are based on inspected fixture code; the revised complete run is required to confirm all six failures are resolved.",
+      "pending": [
+        "Revised full SDK test run including actual FFmpeg setup",
+        "Container build",
+        "Live provider and production delivery verification",
+        "Comprehensive feature certification and deployment"
+      ]
+    },
+    {
+      "commit": "c1815adeb9f7ed0407d6a2a022de76db8969c67d",
+      "evidence": "Operator screenshots 315245.jpg, 315247.jpg, 315249.jpg; complete raw logs remain on HA",
+      "private_report": "Newest runtime directory under /config/alex-audit; screenshot basename is not transcribed with certainty",
+      "production_changed": false,
+      "jobs": 64,
+      "passed_jobs": 62,
+      "failed_jobs": 2,
+      "test_modules": 60,
+      "passed_test_modules": 58,
+      "test_execution_count": 1033,
+      "skipped_count": 2,
+      "failed_modules": [
+        "test_v0538_reminder_report_reliability",
+        "test_voice_feature_parity"
+      ],
+      "observed_errors": [
+        {
+          "test": "test_cached_export_refuses_visibility_change_and_repeat_exports_keep_records",
+          "error": "IndexError: list index out of range"
+        },
+        {
+          "test": "test_colloquial_reminder_creates_one_real_due_row",
+          "error": "AssertionError: not all scripted provider replies were consumed; create_reminder and final reply remained"
+        }
+      ],
+      "interpretation": "Seed actor lacked ingress trusted_text, reproducibly creating a private expense excluded from shared export. The voice script requested discovery although the recognized mutator is already exposed and fills the six-tool budget. Both fixtures are repaired; stricter scripted-provider assertions require a fresh full run.",
+      "pending": [
+        "Complete suite with repaired fixtures and stricter provider harness",
+        "Container/image-only checks",
+        "Live provider and phone delivery verification",
+        "Comprehensive feature certification and deployment"
+      ]
+    },
+    {
+      "commit": "c34ba271005baad79b86b59357432fb62691f787",
+      "evidence": "Operator screenshots 315261.jpg, 315263.jpg, 315265.jpg, 315267.jpg",
+      "production_alex_changed": false,
+      "terminal_restarted": true,
+      "terminal_python_restored": "3.14.10-r1",
+      "audio_tools": "PASS",
+      "jobs": 64,
+      "passed_jobs": 63,
+      "failed_jobs": 1,
+      "test_modules": 60,
+      "passed_test_modules": 59,
+      "test_execution_count": 1034,
+      "skipped_count": 2,
+      "failed_modules": [
+        "test_v0538_reminder_report_reliability"
+      ],
+      "observed_errors": [
+        {
+          "test": "test_cached_export_refuses_visibility_change_and_repeat_exports_keep_records",
+          "error": "ToolError: Financial visibility changed since that report. Request a fresh finance report before exporting it.",
+          "cause": "Expected ValueError is deliberately converted by alex_tool into SDK ToolError; assertion type was incorrect."
+        }
+      ],
+      "skipped_tests": [
+        {
+          "module": "test_dot_startup",
+          "test": "test_packaged_binary_executes_without_network_or_credentials",
+          "reason": "HA image-only binary execution"
+        },
+        {
+          "module": "test_dot_startup",
+          "test": "test_real_egress_and_dot_sockets_coexist",
+          "reason": "real HA image socket coexistence"
+        }
+      ],
+      "pending": [
+        "Targeted report/voice fixture rerun",
+        "Offline routing matrix and required live provider checks",
+        "Container/image-only checks",
+        "Production deployment and phone smoke"
+      ]
+    },
+    {
+      "commit": "39be0ec31939c275377617833ce129ca7e76761c",
+      "evidence": "Operator screenshot 315292.jpg",
+      "private_report": "/config/alex-audit/runtime-s2zt951h/summary.json",
+      "production_alex_changed": false,
+      "complete_unit_suite": false,
+      "jobs": 4,
+      "passed_jobs": 4,
+      "failed_jobs": 0,
+      "test_execution_count": 29,
+      "skipped_count": 0,
+      "passed_checks": [
+        "compile",
+        "test_v0538_reminder_report_reliability",
+        "test_voice_feature_parity",
+        "offline_routing"
+      ],
+      "routing": {
+        "status": "PASS",
+        "contracts": 174,
+        "prompt_contracts": 162,
+        "conversation_contracts": 12,
+        "conversation_step_checks": 33,
+        "variant_checks_passed": 1389,
+        "discovery_dependent_checks": 0,
+        "failures": 0,
+        "mcp_tool_count": 151,
+        "tool_exposure_cap": 6,
+        "heldout_contracts_loaded": 0
+      },
+      "limits": [
+        "Targeted rerun, not a new complete unit run",
+        "No live provider calls",
+        "No live ASR or WhatsApp delivery",
+        "Image-only skipped gates remain outstanding"
+      ]
+    },
+    {
+      "commit": "6a604e38aad4a986007688c9256a027c8387c96b",
+      "evidence": "Operator screenshots 315310.jpg, 315312.jpg, 315314.jpg, 315316.jpg, 315318.jpg; complete raw logs remain on HA",
+      "private_report": "/config/alex-audit/runtime-f4egas2m/summary.json",
+      "production_changed": false,
+      "complete_unit_suite": true,
+      "jobs": 68,
+      "passed_jobs": 68,
+      "failed_jobs": 0,
+      "test_modules": 63,
+      "passed_test_modules": 63,
+      "test_execution_count": 1047,
+      "skipped_count": 2,
+      "passed_other_jobs": [
+        "compile",
+        "selftest",
+        "stress",
+        "catalog",
+        "offline_routing"
+      ],
+      "failed_modules": [],
+      "skipped_tests": [
+        {
+          "module": "test_dot_startup",
+          "test": "test_packaged_binary_executes_without_network_or_credentials",
+          "reason": "HA image-only binary execution"
+        },
+        {
+          "module": "test_dot_startup",
+          "test": "test_real_egress_and_dot_sockets_coexist",
+          "reason": "real HA image socket coexistence"
+        }
+      ],
+      "routing": {
+        "status": "PASS",
+        "contracts": 176,
+        "prompt_contracts": 164,
+        "conversation_contracts": 12,
+        "conversation_step_checks": 33,
+        "variant_checks_passed": 1399,
+        "discovery_dependent_checks": 0,
+        "failures": 0,
+        "mcp_tool_count": 151,
+        "tool_exposure_cap": 6,
+        "heldout_contracts_loaded": 0
+      },
+      "live_provider": {
+        "status": "FAIL",
+        "provider": "auto",
+        "planned_prompts": 264,
+        "planned_conversations": 24,
+        "estimated_stop_threshold_usd": 1.0,
+        "limits": [
+          "Only API-provider path exercised; configured ChatGPT session routing remains unverified",
+          "Synthetic household, fake HA, no WhatsApp sending",
+          "Voice recognition uses transcript fixtures"
+        ],
+        "final_totals_verified": true,
+        "final_evidence": "Operator screenshots 315320 and 315328; final report status FAIL, all 264 prompts and 24 conversations completed, three failures, no budget stop.",
+        "observed_failures": [
+          {
+            "contract": "p3.audit.tamil.expense",
+            "source": "text",
+            "problems": [
+              "financial_events expected ACTIVE exact row count1/delta1, observed0"
+            ],
+            "reply": "OK, I have noted the Starbucks expense of56.90MYR. Could you let me know the category (e.g.food,drinks)?",
+            "interpretation": "315328 confirms log_expense received amount56.9 and descriptionStarbucks without category; returned needs_confirmation, categorynull, pending_reason purpose_or_category_unclear, shared scope. The expense was stored pending, not ACTIVE."
+          },
+          {
+            "contract": "p1.memory.picture",
+            "source": "text",
+            "problems": [
+              "required-all capability memory.get absent"
+            ],
+            "interpretation": "No attachment identity problem reported; inspect whether another valid retrieval tool supplied original."
+          },
+          {
+            "contract": "p1.memory.picture",
+            "source": "voice",
+            "problems": [
+              "required-all capability memory.get absent"
+            ],
+            "interpretation": "No attachment identity problem reported; inspect actual retrieval calls."
+          }
+        ],
+        "diagnostic_caveat": "Old helper reads routes from wrong nesting and printed empty arrays. Correct trace is turn.result.routes. New helper repairs display without changing recorded underlying traces.",
+        "selection_followup": {
+          "evidence": "Operator screenshot315326, final result of diagnostic query; contract/source header not visible in this crop",
+          "observed": "Successful search returned saved item, then successful resolve_numbered_choice(choice1,selection_kind SAVED_ITEM) returned found with the same item_id.",
+          "conclusion": "Confirmed valid saved-item retrieval path missing from judge capability attribution; exact attachment checks remain unchanged.",
+          "unverified": "Full source header of the pictured selection trace and the other picture case trace are still clipped; neither picture failure reported an attachment identity problem."
+        },
+        "last_observed_progress": {
+          "completed_prompts": 37,
+          "completed_conversations": 0,
+          "estimated_cost_usd": 0.04108425
+        },
+        "completed_prompts": 264,
+        "completed_conversations": 24,
+        "estimated_cost_usd": 0.32134125,
+        "failures": 3,
+        "budget_stopped": false,
+        "expense_repair": "General purchase categorization guidance added to brain prompt and log_expense description; unknown transfer purpose still requires review. No merchant keyword rule or backend confirmation bypass. Added clear-cafe and unknown-P2P live contracts; Tamil contract now also requires canonical food category. Targeted provider proof pending."
+      },
+      "pending": [
+        "Targeted judge and purchase categorization checks with real provider",
+        "Configured ChatGPT session routing",
+        "Packaged image build/startup/socket checks",
+        "Production deployment and phone acceptance"
+      ]
+    },
+    {
+      "commit": "8cb4a9aefa903dfa0435664ac571d8994e1e6c9f",
+      "evidence": "Operator screenshot 315330.jpg",
+      "private_report": "/config/alex-audit/runtime-h5kqo8sd/summary.json",
+      "production_changed": false,
+      "scope": "targeted",
+      "jobs": 5,
+      "failed_jobs": 0,
+      "test_execution_count": 53,
+      "skipped_count": 0,
+      "routing": {
+        "status": "PASS",
+        "contracts": 178,
+        "prompt_contracts": 166,
+        "conversation_contracts": 12,
+        "conversation_step_checks": 33,
+        "variant_checks_passed": 1423,
+        "failures": 0,
+        "mcp_tool_count": 151,
+        "tool_exposure_cap": 6
+      },
+      "live_provider": {
+        "status": "PASS",
+        "scope": "targeted",
+        "prompt_runs": 24,
+        "planned_prompt_runs": 24,
+        "conversation_runs": 0,
+        "failures": 0,
+        "budget_stopped": false,
+        "estimated_cost_usd": 0.02664775,
+        "contracts": [
+          "p3.audit.tamil.expense",
+          "p3.audit.expense.category",
+          "p3.audit.expense.unknown_purpose",
+          "p1.memory.picture"
+        ],
+        "limits": [
+          "Synthetic household and simulated HA; no WhatsApp sender",
+          "Voice transcript fixtures; actual ASR not certified",
+          "Configured ChatGPT session routing not exercised"
+        ]
+      }
+    }
+  ]
+}

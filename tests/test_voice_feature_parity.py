@@ -53,12 +53,23 @@ class VoiceParityPolicyTests(unittest.TestCase):
             self.assertEqual(result["canonical_text"],"tomorrow 09:00")
     def test_observed_capability_denials_trigger_recovery(self):
         for reply in (
+            "I cannot log new expenses directly as I do not have write access to your financial ledger.",
             "I cannot directly set a new reminder for you with the tools currently available.",
             "I cannot generate a PDF file, but I have listed the transactions below.",
             "I am unable to attach the receipt image.",
         ):
             with self.subTest(reply=reply):
                 self.assertTrue(core.brain._looks_like_false_capability_denial(reply))
+
+    def test_colloquial_actions_expose_the_actual_mutator(self):
+        for text, expected in (
+            ('எனக்கு ரெண்டு நிமிஷத்துல ரிமைண்ட் பண்ணி', 'create_reminder'),
+            ('நான் 56 ரூபாய் ஸ்பெண்ட் பண்ணேன் என் லெட்ஜர்ல லாக் பண்ணு', 'log_expense'),
+        ):
+            with self.subTest(text=text):
+                names = {s['function']['name'] for s in asyncio.run(core.brain._tool_specs(text))}
+                self.assertIn(expected, names)
+                self.assertTrue(core.brain._trusted_mutation_requested(text))
 
     def test_native_original_file_requests_authorize_delivery(self):
         for phrase in (
@@ -138,6 +149,30 @@ class VoiceParityIngressTests(unittest.TestCase):
         result = core.services.log_expense(actor, "Fixture purchase", 42.50, "food", "MYR",
                                           event_date_local="2026-11-01T10:00:00+08:00")
         return media_id, raw, result
+
+    def test_colloquial_voice_expense_persists_and_quoted_private_move_needs_no_model(self):
+        text = 'நான் 56.90 ரூபாய் ஸ்பெண்ட் பண்ணேன் என் லெட்ஜர்ல லாக் பண்ணு'
+        self.run_voice(text, [
+            {'tool': 'log_expense', 'args': {'description': 'Synthetic coffee', 'amount': 56.90, 'category': 'food'}},
+            {'content': 'Recorded the expense.'},
+        ], mid='colloquial-expense')
+        with core.db.connect() as conn:
+            transcript = conn.execute("SELECT transcript_text FROM media_objects WHERE source_message_id='colloquial-expense' AND media_type='AUDIO'").fetchone()[0]
+            self.assertEqual(transcript, text)
+            row = conn.execute("SELECT * FROM financial_events WHERE source_message_id='colloquial-expense'").fetchone()
+            self.assertEqual(row['amount_minor'], 5690)
+            self.assertEqual(row['space_id'], 'FAMILY_SHARED')
+            event_id = row['event_id']
+            conn.execute("UPDATE outbound_messages SET delivery_status='SENT',provider_message_id='quoted-coffee' WHERE source_message_id='colloquial-expense' AND kind='TEXT'")
+        payload = {'message_id': 'move-coffee', 'conversation_id': '60111111111@s.whatsapp.net',
+                   'conversation_type': 'DIRECT_DM', 'sender_phone': '+60111111111',
+                   'text': 'Actually save that to my private', 'quoted_message_id': 'quoted-coffee'}
+        with patch.object(core.brain, 'respond', side_effect=AssertionError('Move must use durable quote binding')):
+            result = core.ingress.process(payload)
+        self.assertTrue(result['expense_moved_private'])
+        with core.db.connect() as conn:
+            self.assertEqual(conn.execute('SELECT space_id FROM financial_events WHERE event_id=?', (event_id,)).fetchone()[0], 'HUSBAND_PVT')
+            self.assertEqual(conn.execute('SELECT COUNT(*) FROM financial_events').fetchone()[0], 1)
 
     def test_tamil_receipt_retrieval_delivers_original_once(self):
         mid, raw, _ = self.seed_receipt()
@@ -230,7 +265,8 @@ class VoiceParityIngressTests(unittest.TestCase):
         fixed = datetime(2026, 11, 2, 12, 0, tzinfo=timezone.utc)
         with patch.object(core.runtime_clock, "now_utc", return_value=fixed):
             result = self.run_voice(phrase, [
-                {"tool": "discover_alex_tools", "args": {"intent": "remind me to take medicine in five minutes"}},
+                # The recognized imperative now offers create_reminder in the
+                # initial six-tool set. Discovery is only a spare-slot fallback.
                 {"tool": "create_reminder", "args": {"task": "Take medicine", "due_local": "2026-11-02T20:05:00+08:00",
                     "time_interpretation": {"source_text": phrase, "kind": "RELATIVE", "reference": "CURRENT_MESSAGE",
                                             "relative_minutes": 5, "needs_clarification": False}}},

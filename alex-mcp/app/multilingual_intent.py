@@ -8,8 +8,9 @@ import re
 _TAMIL = re.compile(r"[\u0b80-\u0bff]")
 _ACTION = re.compile(
     r"(?:சேர்க்கவும்|சேர்த்துவிடு|சேர்த்திடு|சேர்த்து|சேர்|பதிவு\s*செய்|சேமித்து|சேமிக்கவும்|சேமி(?![\u0b80-\u0bff])|"
-    r"நினைவூட்டு|நினைவூட்ட|ஞாபகப்படுத்த|நியாபகப்படுத்த|ரிமைண்(?:ட்|டர்)\s*(?:பண்ணு|வை|போடு|செட்)|நினைவில்\s*(?:வை|வைத்துக்கொள்)|நீக்கவும்|நீக்கு|மாற்றவும்|மாற்று|"
-    r"ரத்து\s*செய்|அணைக்கவும்|அணை|இயக்கு|செலவு\s*செய்தேன்|வாங்கினேன்|கட்டினேன்)"
+    r"நினைவூட்டு|நினைவூட்ட|ஞாபகப்படுத்த|நியாபகப்படுத்த|ரிமைண்(?:ட்|டர்)\s*(?:பண்ணு(?:ங்க(?:ள்)?)?|பண்ணி(?:டு|டுங்க)?|வை|போடு|செட்)(?![\u0b80-\u0bff])|நினைவில்\s*(?:வை|வைத்துக்கொள்)|நீக்கவும்|நீக்கு|மாற்றவும்|மாற்று|"
+    r"ரத்து\s*செய்|அணைக்கவும்|அணை|இயக்கு|செலவு\s*(?:செய்தேன்|பண்ணினேன்|பண்ணேன்)|"
+    r"ஸ்பெ(?:ண்|ன்)ட்\s*பண்ண(?:ினேன்|ேன்)|லாக்\s*பண்ணு(?:ங்க(?:ள்)?)?(?![\u0b80-\u0bff])|வாங்கினேன்|கட்டினேன்)"
     r"|\b(?:serthu|serthidu|serthukko|sethudu|semichu|semichuko|nyabaga\s*paduthu|"
     r"nyabaga\s*paduth(?:u|unga)|gnabaga\s*paduth(?:u|unga)|ninaivootu|ninaivuttu|padhivu\s*sei|pannidu|pannunga|podu|podunga|vaanginen|"
     r"tambah(?:kan)?|masukkan|simpan(?:kan)?|ingatkan|padam(?:kan)?|batalkan|"
@@ -27,7 +28,7 @@ _VOCAB = re.compile(
     r"saya|susu|esok|berapa|tunjuk(?:kan)?|senarai|belanja|barang|tolong|peribadi|rahsia)\b", re.I,
 )
 _PRIVATE = re.compile(
-    r"(?:தனிப்பட்ட|தனியாக|எனக்கு\s*மட்டும்|என்னுடையது\s*மட்டும்)"
+    r"(?:தனிப்பட்ட|தனியாக|எனக்கு\s*மட்டும்|என்னுடையது\s*மட்டும்|பிரைவேட்|பிரைவேட்ல|ப்ரைவேட்)"
     r"|\b(?:enakku\s+mattum|thanipatta|peribadi|rahsia|untuk\s+saya\s+sahaja)\b", re.I,
 )
 
@@ -53,6 +54,23 @@ def requests_reminder(text: str) -> bool:
         r"நினைவூட்டு|நினைவூட்ட|ஞாபகப்படுத்த|நியாபகப்படுத்த|ரிமைண்(?:ட்|டர்)"
         r"|\b(?:ninaivootu|ninaivuttu|nyabaga\s*paduth(?:u|unga)|"
         r"gnabaga\s*paduth(?:u|unga)|ingatkan)\b", text or "", re.I))
+
+
+def required_tools(text: str) -> set[str]:
+    """Protect recognized current-language actions from the schema exposure cap.
+
+    This selects capabilities only. The model still interprets the original
+    words; normal amount/time/provenance/privacy validators still check writes.
+    """
+    value = text or ''
+    tools = set()
+    if requests_reminder(value):
+        tools.add('create_reminder')
+    if requests_action(value) and re.search(
+        r"செலவு\s*(?:செய்தேன்|பண்ணினேன்|பண்ணேன்)|ஸ்பெ(?:ண்|ன்)ட்\s*பண்ண(?:ினேன்|ேன்)"
+        r"|(?:லெட்ஜ|எக்ஸ்பென்ஸ்|செலவு|ரூபாய்|காசு).{0,120}லாக்\s*பண்ணு", value):
+        tools.add('log_expense')
+    return tools
 
 
 def explicit_private(text: str) -> bool:
@@ -107,7 +125,7 @@ def time_evidence(text: str) -> str:
         "நாளை": "tomorrow", "நாளைக்கு": "tomorrow", "நாளைக்கி": "tomorrow",
         "இன்று": "today", "இன்னைக்கு": "today", "காலை": "morning", "காலையில்": "morning",
         "மதியம்": "afternoon", "மாலை": "evening", "இரவு": "night",
-        "ஒன்று": "1", "இரண்டு": "2", "மூன்று": "3", "நான்கு": "4",
+        "ஒன்று": "1", "இரண்டு": "2", "ரெண்டு": "2", "மூன்று": "3", "நான்கு": "4",
         "ஐந்து": "5", "அஞ்சு": "5", "ஒரு அஞ்சு": "5", "ஒரு ஐந்து": "5",
         "ஆறு": "6", "ஏழு": "7", "எட்டு": "8",
         "ஒன்பது": "9", "பத்து": "10", "பதினொன்று": "11", "பன்னிரண்டு": "12",

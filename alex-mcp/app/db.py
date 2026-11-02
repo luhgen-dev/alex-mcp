@@ -769,8 +769,12 @@ def resolve_quoted_context(
                        FROM financial_events
                        WHERE source_message_id=?
                          AND status IN ('ACTIVE','PENDING_HUMAN_REVIEW')
+                         AND (space_id='FAMILY_SHARED' OR (? AND owner_id IN (
+                             SELECT user_id FROM user_phone_history
+                             WHERE phone_number=? AND valid_to_utc IS NULL)))
                        ORDER BY created_at_utc DESC""",
-                    (row["source_message_id"],),
+                    (row["source_message_id"], not str(conversation_id).endswith('@g.us'),
+                     normalize_phone(sender_phone or '')),
                 ).fetchall()
                 if len(events) == 1:
                     event = events[0]

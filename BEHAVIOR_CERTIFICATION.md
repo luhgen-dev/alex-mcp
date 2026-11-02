@@ -1,5 +1,10 @@
 # Alex Behaviour Certification Rig — Independent Review Handover
 
+This is historical documentation of the 0.4.4 certification design and repair
+plan. Counts and descriptions of missing capabilities below are not the current
+runtime inventory. Re-run the catalog and relevant tests against the exact
+candidate before using their results as release evidence.
+
 ## Purpose
 
 Alex already had a strong deterministic Phase-3 stress harness in

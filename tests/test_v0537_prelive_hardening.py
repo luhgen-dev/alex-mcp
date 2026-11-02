@@ -24,7 +24,9 @@ DM = "60111111111@s.whatsapp.net"
 class V0537Base(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        db.initialize()
+        # This module must also run alone, without another test creating the
+        # Phase-2 tables that the shared reset routine clears.
+        core.AlexCoreTests.setUpClass()
 
     def setUp(self):
         # Reuse the canonical fixture reset without inheriting its hundreds of

@@ -145,7 +145,10 @@ def log_expense(description: str, actor: Actor, amount: float | None = None,
                 category: str | None = None, currency: str | None = None,
                 event_date_local: str | None = None, reference: str | None = None,
                 event_type: str = "Expense") -> dict:
-    """Record an expense or income. MYR is the default when the user states no currency; explicit SGD/S$ overrides it. Use null category/amount when genuinely unclear. Omit event_date_local unless the user or the receipt states a date/time; Alex stamps the message time automatically and never needs an invented clock time."""
+    """Record an expense or income. MYR is the default when the user states no currency; explicit SGD/S$ overrides it.
+    Supply a broad category when an ordinary purchase's product, service or merchant type establishes its purpose, even without an explicit category label (e.g. a cafe purchase is food). Respect an explicit user category. Do not infer transfer/repayment/gift/salary purpose from a merchant or person's name alone. Use null category/amount when genuinely unclear; never invent an amount. A needs_confirmation result is pending, not a completed expense.
+    Omit event_date_local unless the user or the receipt states a date/time; Alex stamps the message time automatically and never needs an invented clock time.
+    """
     return services.log_expense(actor, description, amount, category, currency, event_date_local, reference, event_type)
 
 
@@ -2166,6 +2169,11 @@ def report_export(format: str, actor: Actor, period: str | None = None,
             ),
         }
 
+    if (active and active.get('_privacy_stale') and use_active_context
+            and not explicit_filter and not full_report and not period_changed
+            and report_kind == active_kind):
+        raise ValueError('Financial visibility changed since that report. Request a fresh finance report before exporting it.')
+
     reuse_active_exact = bool(
         active
         and use_active_context
@@ -2185,7 +2193,9 @@ def report_export(format: str, actor: Actor, period: str | None = None,
         if report_kind == "monthly_finance":
             canonical = active["payload"]
         elif report_kind == "finance_query":
-            ledger = active["payload"]
+            # A preceding export remembers the canonical report, while a
+            # query remembers just its ledger. Repeated exports use one ledger.
+            ledger = active["payload"].get("ledger", active["payload"])
             scope = spec.get("scope") or "all"
             if effective_period and re.fullmatch(r"\d{4}-\d{2}", str(effective_period)):
                 canonical = phase2_reports.build_monthly_finance_report(
@@ -2334,6 +2344,8 @@ def report_export(format: str, actor: Actor, period: str | None = None,
         "format": fmt,
         "period": effective_period,
         "source_report_kind": report_kind,
+        **({"_finance_privacy_version": (canonical.get("ledger") or {}).get("_finance_privacy_version", 0)}
+           if report_kind in {"finance_query", "monthly_finance"} else {}),
         "record_count": (
             int((canonical.get("ledger") or {}).get("count") or 0)
             if report_kind in {"finance_query", "monthly_finance"} else None

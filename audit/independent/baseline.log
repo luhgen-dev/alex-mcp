@@ -1,0 +1,515 @@
+test_audio_and_video_are_checked_as_attachments (test_attachment_judge_independent.AttachmentJudgeTests.test_audio_and_video_are_checked_as_attachments) ...
+  test_audio_and_video_are_checked_as_attachments (test_attachment_judge_independent.AttachmentJudgeTests.test_audio_and_video_are_checked_as_attachments) (kind='AUDIO') ... FAIL
+  test_audio_and_video_are_checked_as_attachments (test_attachment_judge_independent.AttachmentJudgeTests.test_audio_and_video_are_checked_as_attachments) (kind='VIDEO') ... FAIL
+test_empty_generated_attachment_fails (test_attachment_judge_independent.AttachmentJudgeTests.test_empty_generated_attachment_fails) ... FAIL
+test_missing_frozen_digest_is_not_success (test_attachment_judge_independent.AttachmentJudgeTests.test_missing_frozen_digest_is_not_success) ... FAIL
+test_original_exact_bytes_pass (test_attachment_judge_independent.AttachmentJudgeTests.test_original_exact_bytes_pass) ... ok
+test_same_path_missing_file_fails (test_attachment_judge_independent.AttachmentJudgeTests.test_same_path_missing_file_fails) ... FAIL
+test_same_path_wrong_bytes_fails (test_attachment_judge_independent.AttachmentJudgeTests.test_same_path_wrong_bytes_fails) ... FAIL
+test_bearer_credentials_in_error_text (test_audit_redaction_independent.ReportRedactionTests.test_bearer_credentials_in_error_text) ... FAIL
+test_inline_api_key_assignments (test_audit_redaction_independent.ReportRedactionTests.test_inline_api_key_assignments) ...
+  test_inline_api_key_assignments (test_audit_redaction_independent.ReportRedactionTests.test_inline_api_key_assignments) (separator='api_key=') ... FAIL
+  test_inline_api_key_assignments (test_audit_redaction_independent.ReportRedactionTests.test_inline_api_key_assignments) (separator='api-key:') ... FAIL
+  test_inline_api_key_assignments (test_audit_redaction_independent.ReportRedactionTests.test_inline_api_key_assignments) (separator='api key ') ... FAIL
+  test_inline_api_key_assignments (test_audit_redaction_independent.ReportRedactionTests.test_inline_api_key_assignments) (separator='"api_key') ... FAIL
+test_nested_secret_fields (test_audit_redaction_independent.ReportRedactionTests.test_nested_secret_fields) ...
+  test_nested_secret_fields (test_audit_redaction_independent.ReportRedactionTests.test_nested_secret_fields) (key='apiKey') ... FAIL
+  test_nested_secret_fields (test_audit_redaction_independent.ReportRedactionTests.test_nested_secret_fields) (key='api-key') ... FAIL
+  test_nested_secret_fields (test_audit_redaction_independent.ReportRedactionTests.test_nested_secret_fields) (key='tnb_password') ... FAIL
+  test_nested_secret_fields (test_audit_redaction_independent.ReportRedactionTests.test_nested_secret_fields) (key='client_secret') ... FAIL
+test_provider_keys_in_exception_text (test_audit_redaction_independent.ReportRedactionTests.test_provider_keys_in_exception_text) ...
+  test_provider_keys_in_exception_text (test_audit_redaction_independent.ReportRedactionTests.test_provider_keys_in_exception_text) (prefix='sk-') ... FAIL
+  test_provider_keys_in_exception_text (test_audit_redaction_independent.ReportRedactionTests.test_provider_keys_in_exception_text) (prefix='xai') ... FAIL
+test_sanitization_is_recursive_and_nonmutating (test_audit_redaction_independent.ReportRedactionTests.test_sanitization_is_recursive_and_nonmutating) ... ok
+test_usage_metrics_are_not_credentials (test_audit_redaction_independent.ReportRedactionTests.test_usage_metrics_are_not_credentials) ... FAIL
+test_confirmation_normalizes_category (test_finance_validation_independent.IndependentLedgerTests.test_confirmation_normalizes_category) ... FAIL
+test_correction_cannot_bypass_pending_confirmation (test_finance_validation_independent.IndependentLedgerTests.test_correction_cannot_bypass_pending_confirmation) ... FAIL
+test_correction_preserves_original_and_exact_total (test_finance_validation_independent.IndependentLedgerTests.test_correction_preserves_original_and_exact_total) ... ok
+test_correction_rejects_scope_as_category (test_finance_validation_independent.IndependentLedgerTests.test_correction_rejects_scope_as_category) ... FAIL
+test_default_write_is_shared_and_private_is_owner_only (test_finance_validation_independent.IndependentLedgerTests.test_default_write_is_shared_and_private_is_owner_only) ... ok
+test_egress_rechecks_original_bytes_after_retrieval (test_finance_validation_independent.IndependentLedgerTests.test_egress_rechecks_original_bytes_after_retrieval) ... FAIL
+test_invalid_confirmation_category_cannot_activate_pending_record (test_finance_validation_independent.IndependentLedgerTests.test_invalid_confirmation_category_cannot_activate_pending_record) ...
+  test_invalid_confirmation_category_cannot_activate_pending_record (test_finance_validation_independent.IndependentLedgerTests.test_invalid_confirmation_category_cannot_activate_pending_record) (category='private') ... FAIL
+  test_invalid_confirmation_category_cannot_activate_pending_record (test_finance_validation_independent.IndependentLedgerTests.test_invalid_confirmation_category_cannot_activate_pending_record) (category='general') ... FAIL
+  test_invalid_confirmation_category_cannot_activate_pending_record (test_finance_validation_independent.IndependentLedgerTests.test_invalid_confirmation_category_cannot_activate_pending_record) (category='   ') ... FAIL
+test_private_destination_does_not_authorize_shared_source_read (test_finance_validation_independent.IndependentLedgerTests.test_private_destination_does_not_authorize_shared_source_read) ... ok
+test_private_receipt_is_not_available_to_spouse_or_group (test_finance_validation_independent.IndependentLedgerTests.test_private_receipt_is_not_available_to_spouse_or_group) ... ok
+test_receipt_apis_reject_corrupt_or_missing_original (test_finance_validation_independent.IndependentLedgerTests.test_receipt_apis_reject_corrupt_or_missing_original) ...
+  test_receipt_apis_reject_corrupt_or_missing_original (test_finance_validation_independent.IndependentLedgerTests.test_receipt_apis_reject_corrupt_or_missing_original) (damaged='changed', api=0) ... FAIL
+  test_receipt_apis_reject_corrupt_or_missing_original (test_finance_validation_independent.IndependentLedgerTests.test_receipt_apis_reject_corrupt_or_missing_original) (damaged='changed', api=1) ... FAIL
+  test_receipt_apis_reject_corrupt_or_missing_original (test_finance_validation_independent.IndependentLedgerTests.test_receipt_apis_reject_corrupt_or_missing_original) (damaged='changed', api=2) ... FAIL
+  test_receipt_apis_reject_corrupt_or_missing_original (test_finance_validation_independent.IndependentLedgerTests.test_receipt_apis_reject_corrupt_or_missing_original) (damaged='missing', api=0) ... FAIL
+  test_receipt_apis_reject_corrupt_or_missing_original (test_finance_validation_independent.IndependentLedgerTests.test_receipt_apis_reject_corrupt_or_missing_original) (damaged='missing', api=1) ... FAIL
+  test_receipt_apis_reject_corrupt_or_missing_original (test_finance_validation_independent.IndependentLedgerTests.test_receipt_apis_reject_corrupt_or_missing_original) (damaged='missing', api=2) ... FAIL
+test_receipt_apis_return_exact_original_bytes (test_finance_validation_independent.IndependentLedgerTests.test_receipt_apis_return_exact_original_bytes) ... ok
+test_retry_has_one_exact_row (test_finance_validation_independent.IndependentLedgerTests.test_retry_has_one_exact_row) ... ok
+test_unsupported_currency_and_nonfinite_amount_leave_no_rows (test_finance_validation_independent.IndependentLedgerTests.test_unsupported_currency_and_nonfinite_amount_leave_no_rows) ... ok
+test_custom_ledger_large_data_is_valid_json_or_rejected_before_write (test_household_scopes_independent.HouseholdScopeTests.test_custom_ledger_large_data_is_valid_json_or_rejected_before_write) ... ERROR
+test_custom_ledger_money_needs_classification_without_writing (test_household_scopes_independent.HouseholdScopeTests.test_custom_ledger_money_needs_classification_without_writing) ... ok
+test_custom_ledger_rejects_nonfinite_amount_with_actionable_error (test_household_scopes_independent.HouseholdScopeTests.test_custom_ledger_rejects_nonfinite_amount_with_actionable_error) ...
+  test_custom_ledger_rejects_nonfinite_amount_with_actionable_error (test_household_scopes_independent.HouseholdScopeTests.test_custom_ledger_rejects_nonfinite_amount_with_actionable_error) (amount=nan) ... ERROR
+  test_custom_ledger_rejects_nonfinite_amount_with_actionable_error (test_household_scopes_independent.HouseholdScopeTests.test_custom_ledger_rejects_nonfinite_amount_with_actionable_error) (amount=inf) ... ERROR
+  test_custom_ledger_rejects_nonfinite_amount_with_actionable_error (test_household_scopes_independent.HouseholdScopeTests.test_custom_ledger_rejects_nonfinite_amount_with_actionable_error) (amount=1e+30) ... ERROR
+test_custom_ledger_scopes_and_idempotent_money_rows (test_household_scopes_independent.HouseholdScopeTests.test_custom_ledger_scopes_and_idempotent_money_rows) ... ok
+test_plan_reads_cannot_expose_owner_private_to_spouse_or_group (test_household_scopes_independent.HouseholdScopeTests.test_plan_reads_cannot_expose_owner_private_to_spouse_or_group) ... FAIL
+test_plan_reads_follow_current_scope (test_household_scopes_independent.HouseholdScopeTests.test_plan_reads_follow_current_scope) ...
+  test_plan_reads_follow_current_scope (test_household_scopes_independent.HouseholdScopeTests.test_plan_reads_follow_current_scope) (scope='family-read') ... FAIL
+  test_plan_reads_follow_current_scope (test_household_scopes_independent.HouseholdScopeTests.test_plan_reads_follow_current_scope) (scope='private-read') ... FAIL
+test_saved_notes_scope_and_emoji_not_stored_as_content (test_household_scopes_independent.HouseholdScopeTests.test_saved_notes_scope_and_emoji_not_stored_as_content) ... ok
+test_task_lifecycle_is_idempotent_and_preserves_audit_history (test_household_scopes_independent.HouseholdScopeTests.test_task_lifecycle_is_idempotent_and_preserves_audit_history) ... ok
+test_task_scope_and_spouse_edit_boundary (test_household_scopes_independent.HouseholdScopeTests.test_task_scope_and_spouse_edit_boundary) ... ok
+test_goal_reads_cannot_be_widened_by_tool_scope_argument (test_planning_assets_independent.PlanningAssetTests.test_goal_reads_cannot_be_widened_by_tool_scope_argument) ... ok
+test_group_actor_never_contains_private_memberships (test_planning_assets_independent.PlanningAssetTests.test_group_actor_never_contains_private_memberships) ... ok
+test_pool_spend_retry_and_overdraft_do_not_change_other_finances (test_planning_assets_independent.PlanningAssetTests.test_pool_spend_retry_and_overdraft_do_not_change_other_finances) ... ok
+test_private_asset_reads_and_edits_are_isolated (test_planning_assets_independent.PlanningAssetTests.test_private_asset_reads_and_edits_are_isolated) ... ok
+test_private_goal_is_denied_to_spouse_and_group_by_id (test_planning_assets_independent.PlanningAssetTests.test_private_goal_is_denied_to_spouse_and_group_by_id) ... ok
+test_unknown_sender_cannot_resolve_actor (test_planning_assets_independent.PlanningAssetTests.test_unknown_sender_cannot_resolve_actor) ... ok
+test_model_cannot_replace_two_with_twenty (test_voice_time_independent.TamilReminderTimeTests.test_model_cannot_replace_two_with_twenty) ... ok
+test_standard_and_colloquial_two_store_the_same_due_time (test_voice_time_independent.TamilReminderTimeTests.test_standard_and_colloquial_two_store_the_same_due_time) ...
+  test_standard_and_colloquial_two_store_the_same_due_time (test_voice_time_independent.TamilReminderTimeTests.test_standard_and_colloquial_two_store_the_same_due_time) (word='ரெண்டு') ... ERROR
+test_grocery_add_retry_does_not_duplicate_item_job_or_history (test_workers_independent.WorkerStateTests.test_grocery_add_retry_does_not_duplicate_item_job_or_history) ... ok
+test_grocery_completion_after_purchase_is_discarded (test_workers_independent.WorkerStateTests.test_grocery_completion_after_purchase_is_discarded) ... ok
+test_grocery_completion_after_rename_is_discarded (test_workers_independent.WorkerStateTests.test_grocery_completion_after_rename_is_discarded) ... ok
+test_grocery_network_failure_has_bounded_retries_and_no_exception_body (test_workers_independent.WorkerStateTests.test_grocery_network_failure_has_bounded_retries_and_no_exception_body) ... ok
+test_outbox_corrupt_original_is_failed_before_transport (test_workers_independent.WorkerStateTests.test_outbox_corrupt_original_is_failed_before_transport) ... FAIL
+test_outbox_transport_retry_preserves_message_identity (test_workers_independent.WorkerStateTests.test_outbox_transport_retry_preserves_message_identity) ... ok
+
+======================================================================
+ERROR: test_custom_ledger_large_data_is_valid_json_or_rejected_before_write (test_household_scopes_independent.HouseholdScopeTests.test_custom_ledger_large_data_is_valid_json_or_rejected_before_write)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_household_scopes_independent.py", line 112, in test_custom_ledger_large_data_is_valid_json_or_rejected_before_write
+    self.assertEqual(json.loads(row[0])['note'], 'x' * 21000)
+                     ^^^^^^^^^^^^^^^^^^
+  File "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/json/decoder.py", line 338, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/json/decoder.py", line 354, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ^^^^^^^^^^^^^^^^^^^^^^
+json.decoder.JSONDecodeError: Unterminated string starting at: line 1 column 10 (char 9)
+
+======================================================================
+ERROR: test_custom_ledger_rejects_nonfinite_amount_with_actionable_error (test_household_scopes_independent.HouseholdScopeTests.test_custom_ledger_rejects_nonfinite_amount_with_actionable_error) (amount=nan)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_household_scopes_independent.py", line 99, in test_custom_ledger_rejects_nonfinite_amount_with_actionable_error
+    custom_ledgers.add_entry(self.actor(f'bad-{i}'), ledger, 'Invalid money',
+  File "/tmp/alex-independent-runtime-8n9ot7mv/baseline-runtime/custom_ledgers.py", line 295, in add_entry
+    date_text, desc[:500], kind, _minor(amount), cur,
+                                 ^^^^^^^^^^^^^^
+  File "/tmp/alex-independent-runtime-8n9ot7mv/baseline-runtime/custom_ledgers.py", line 90, in _minor
+    if amount < 0:
+       ^^^^^^^^^^
+decimal.InvalidOperation: [<class 'decimal.InvalidOperation'>]
+
+======================================================================
+ERROR: test_custom_ledger_rejects_nonfinite_amount_with_actionable_error (test_household_scopes_independent.HouseholdScopeTests.test_custom_ledger_rejects_nonfinite_amount_with_actionable_error) (amount=inf)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_household_scopes_independent.py", line 99, in test_custom_ledger_rejects_nonfinite_amount_with_actionable_error
+    custom_ledgers.add_entry(self.actor(f'bad-{i}'), ledger, 'Invalid money',
+  File "/tmp/alex-independent-runtime-8n9ot7mv/baseline-runtime/custom_ledgers.py", line 295, in add_entry
+    date_text, desc[:500], kind, _minor(amount), cur,
+                                 ^^^^^^^^^^^^^^
+  File "/tmp/alex-independent-runtime-8n9ot7mv/baseline-runtime/custom_ledgers.py", line 92, in _minor
+    return int((amount * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+decimal.InvalidOperation: [<class 'decimal.InvalidOperation'>]
+
+======================================================================
+ERROR: test_custom_ledger_rejects_nonfinite_amount_with_actionable_error (test_household_scopes_independent.HouseholdScopeTests.test_custom_ledger_rejects_nonfinite_amount_with_actionable_error) (amount=1e+30)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_household_scopes_independent.py", line 99, in test_custom_ledger_rejects_nonfinite_amount_with_actionable_error
+    custom_ledgers.add_entry(self.actor(f'bad-{i}'), ledger, 'Invalid money',
+  File "/tmp/alex-independent-runtime-8n9ot7mv/baseline-runtime/custom_ledgers.py", line 295, in add_entry
+    date_text, desc[:500], kind, _minor(amount), cur,
+                                 ^^^^^^^^^^^^^^
+  File "/tmp/alex-independent-runtime-8n9ot7mv/baseline-runtime/custom_ledgers.py", line 92, in _minor
+    return int((amount * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+decimal.InvalidOperation: [<class 'decimal.InvalidOperation'>]
+
+======================================================================
+ERROR: test_standard_and_colloquial_two_store_the_same_due_time (test_voice_time_independent.TamilReminderTimeTests.test_standard_and_colloquial_two_store_the_same_due_time) (word='ரெண்டு')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_voice_time_independent.py", line 27, in test_standard_and_colloquial_two_store_the_same_due_time
+    result = services.create_reminder(actor, 'Synthetic task', '2000-01-01T00:00:00',
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/alex-independent-runtime-8n9ot7mv/baseline-runtime/services.py", line 3149, in create_reminder
+    due_utc = _resolve_reminder_due(actor, due_local, time_interpretation)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/alex-independent-runtime-8n9ot7mv/baseline-runtime/services.py", line 700, in _resolve_reminder_due
+    meaning = reminder_time.validate(
+              ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/alex-mcp/alex-mcp/app/reminder_time.py", line 298, in validate
+    _fail(message="restate the relative duration in the current message")
+  File "/workspace/alex-mcp/alex-mcp/app/reminder_time.py", line 57, in _fail
+    raise ValueError(f"{code}: {message}")
+ValueError: REMINDER_NEEDS_TIME: restate the relative duration in the current message
+
+======================================================================
+FAIL: test_audio_and_video_are_checked_as_attachments (test_attachment_judge_independent.AttachmentJudgeTests.test_audio_and_video_are_checked_as_attachments) (kind='AUDIO')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_attachment_judge_independent.py", line 54, in test_audio_and_video_are_checked_as_attachments
+    self.assertEqual(self.check(kind), [])
+AssertionError: Lists differ: ['expected original attachment was not que[126 chars]d 0"] != []
+
+First list contains 3 additional elements.
+First extra element 0:
+'expected original attachment was not queued'
+
++ []
+- ['expected original attachment was not queued',
+-  "expected attachment 'vinyl' exactly once; queued 0 matching files",
+-  "expected exactly one attachment for 'vinyl'; queued 0"]
+
+======================================================================
+FAIL: test_audio_and_video_are_checked_as_attachments (test_attachment_judge_independent.AttachmentJudgeTests.test_audio_and_video_are_checked_as_attachments) (kind='VIDEO')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_attachment_judge_independent.py", line 54, in test_audio_and_video_are_checked_as_attachments
+    self.assertEqual(self.check(kind), [])
+AssertionError: Lists differ: ['expected original attachment was not que[126 chars]d 0"] != []
+
+First list contains 3 additional elements.
+First extra element 0:
+'expected original attachment was not queued'
+
++ []
+- ['expected original attachment was not queued',
+-  "expected attachment 'vinyl' exactly once; queued 0 matching files",
+-  "expected exactly one attachment for 'vinyl'; queued 0"]
+
+======================================================================
+FAIL: test_empty_generated_attachment_fails (test_attachment_judge_independent.AttachmentJudgeTests.test_empty_generated_attachment_fails)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_attachment_judge_independent.py", line 45, in test_empty_generated_attachment_fails
+    self.assertTrue(self.check('DOCUMENT'))
+AssertionError: [] is not true
+
+======================================================================
+FAIL: test_missing_frozen_digest_is_not_success (test_attachment_judge_independent.AttachmentJudgeTests.test_missing_frozen_digest_is_not_success)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_attachment_judge_independent.py", line 49, in test_missing_frozen_digest_is_not_success
+    self.assertTrue(self.check())
+AssertionError: [] is not true
+
+======================================================================
+FAIL: test_same_path_missing_file_fails (test_attachment_judge_independent.AttachmentJudgeTests.test_same_path_missing_file_fails)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_attachment_judge_independent.py", line 40, in test_same_path_missing_file_fails
+    self.assertTrue(self.check())
+AssertionError: [] is not true
+
+======================================================================
+FAIL: test_same_path_wrong_bytes_fails (test_attachment_judge_independent.AttachmentJudgeTests.test_same_path_wrong_bytes_fails)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_attachment_judge_independent.py", line 36, in test_same_path_wrong_bytes_fails
+    self.assertTrue(self.check())
+AssertionError: [] is not true
+
+======================================================================
+FAIL: test_bearer_credentials_in_error_text (test_audit_redaction_independent.ReportRedactionTests.test_bearer_credentials_in_error_text)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_audit_redaction_independent.py", line 13, in test_bearer_credentials_in_error_text
+    self.assertNotIn('synthetic-secret-123', result['error'])
+AssertionError: 'synthetic-secret-123' unexpectedly found in 'Header: Bearer synthetic-secret-123'
+
+======================================================================
+FAIL: test_inline_api_key_assignments (test_audit_redaction_independent.ReportRedactionTests.test_inline_api_key_assignments) (separator='api_key=')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_audit_redaction_independent.py", line 27, in test_inline_api_key_assignments
+    self.assertNotIn('\\1', result)
+AssertionError: '\\1' unexpectedly found in '\\1[redacted]secret123'
+
+======================================================================
+FAIL: test_inline_api_key_assignments (test_audit_redaction_independent.ReportRedactionTests.test_inline_api_key_assignments) (separator='api-key:')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_audit_redaction_independent.py", line 26, in test_inline_api_key_assignments
+    self.assertNotIn('syntheticsecret123', result)
+AssertionError: 'syntheticsecret123' unexpectedly found in '\\1[redacted]syntheticsecret123'
+
+======================================================================
+FAIL: test_inline_api_key_assignments (test_audit_redaction_independent.ReportRedactionTests.test_inline_api_key_assignments) (separator='api key ')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_audit_redaction_independent.py", line 26, in test_inline_api_key_assignments
+    self.assertNotIn('syntheticsecret123', result)
+AssertionError: 'syntheticsecret123' unexpectedly found in 'api key syntheticsecret123'
+
+======================================================================
+FAIL: test_inline_api_key_assignments (test_audit_redaction_independent.ReportRedactionTests.test_inline_api_key_assignments) (separator='"api_key')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_audit_redaction_independent.py", line 26, in test_inline_api_key_assignments
+    self.assertNotIn('syntheticsecret123', result)
+AssertionError: 'syntheticsecret123' unexpectedly found in '"api_key": "syntheticsecret123"'
+
+======================================================================
+FAIL: test_nested_secret_fields (test_audit_redaction_independent.ReportRedactionTests.test_nested_secret_fields) (key='apiKey')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_audit_redaction_independent.py", line 35, in test_nested_secret_fields
+    self.assertEqual(result['nested'][0][key], '[redacted]')
+AssertionError: 'syntheticsecret123' != '[redacted]'
+- syntheticsecret123
++ [redacted]
+
+
+======================================================================
+FAIL: test_nested_secret_fields (test_audit_redaction_independent.ReportRedactionTests.test_nested_secret_fields) (key='api-key')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_audit_redaction_independent.py", line 35, in test_nested_secret_fields
+    self.assertEqual(result['nested'][0][key], '[redacted]')
+AssertionError: 'syntheticsecret123' != '[redacted]'
+- syntheticsecret123
++ [redacted]
+
+
+======================================================================
+FAIL: test_nested_secret_fields (test_audit_redaction_independent.ReportRedactionTests.test_nested_secret_fields) (key='tnb_password')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_audit_redaction_independent.py", line 35, in test_nested_secret_fields
+    self.assertEqual(result['nested'][0][key], '[redacted]')
+AssertionError: 'syntheticsecret123' != '[redacted]'
+- syntheticsecret123
++ [redacted]
+
+
+======================================================================
+FAIL: test_nested_secret_fields (test_audit_redaction_independent.ReportRedactionTests.test_nested_secret_fields) (key='client_secret')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_audit_redaction_independent.py", line 35, in test_nested_secret_fields
+    self.assertEqual(result['nested'][0][key], '[redacted]')
+AssertionError: 'syntheticsecret123' != '[redacted]'
+- syntheticsecret123
++ [redacted]
+
+
+======================================================================
+FAIL: test_provider_keys_in_exception_text (test_audit_redaction_independent.ReportRedactionTests.test_provider_keys_in_exception_text) (prefix='sk-')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_audit_redaction_independent.py", line 19, in test_provider_keys_in_exception_text
+    self.assertNotIn(key, behavior_cert._redact_scalar('upstream rejected ' + key))
+AssertionError: 'sk-proj-synthetic123456' unexpectedly found in 'upstream rejected sk-proj-synthetic123456'
+
+======================================================================
+FAIL: test_provider_keys_in_exception_text (test_audit_redaction_independent.ReportRedactionTests.test_provider_keys_in_exception_text) (prefix='xai')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_audit_redaction_independent.py", line 19, in test_provider_keys_in_exception_text
+    self.assertNotIn(key, behavior_cert._redact_scalar('upstream rejected ' + key))
+AssertionError: 'xai-synthetic123456' unexpectedly found in 'upstream rejected xai-synthetic123456'
+
+======================================================================
+FAIL: test_usage_metrics_are_not_credentials (test_audit_redaction_independent.ReportRedactionTests.test_usage_metrics_are_not_credentials)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_audit_redaction_independent.py", line 40, in test_usage_metrics_are_not_credentials
+    self.assertEqual(behavior_cert._redact_report(usage), usage)
+AssertionError: {'input_tokens': '[redacted]', 'output_tokens': '[redacted[115 chars]0.01} != {'input_tokens': 10, 'output_tokens': 4, 'cached_input_tok[72 chars]0.01}
+- {'cached_input_tokens': '[redacted]',
+?                         ^^^^^^^^^^^^
+
++ {'cached_input_tokens': 3,
+?                         ^
+
+   'estimated_cost_usd': 0.01,
+-  'input_tokens': '[redacted]',
++  'input_tokens': 10,
+   'model_calls': 2,
+-  'output_tokens': '[redacted]',
++  'output_tokens': 4,
+-  'reasoning_tokens': '[redacted]'}
+?                      ^^^^^^^^^^^^
+
++  'reasoning_tokens': 1}
+?                      ^
+
+
+======================================================================
+FAIL: test_confirmation_normalizes_category (test_finance_validation_independent.IndependentLedgerTests.test_confirmation_normalizes_category)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_finance_validation_independent.py", line 92, in test_confirmation_normalizes_category
+    self.assertEqual(self.row(pending['event_id'])['category'], 'food')
+AssertionError: 'food_drink' != 'food'
+- food_drink
++ food
+
+
+======================================================================
+FAIL: test_correction_cannot_bypass_pending_confirmation (test_finance_validation_independent.IndependentLedgerTests.test_correction_cannot_bypass_pending_confirmation)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_finance_validation_independent.py", line 96, in test_correction_cannot_bypass_pending_confirmation
+    with self.assertRaises(ValueError):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_correction_rejects_scope_as_category (test_finance_validation_independent.IndependentLedgerTests.test_correction_rejects_scope_as_category)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_finance_validation_independent.py", line 105, in test_correction_rejects_scope_as_category
+    with self.assertRaises(ValueError):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_egress_rechecks_original_bytes_after_retrieval (test_finance_validation_independent.IndependentLedgerTests.test_egress_rechecks_original_bytes_after_retrieval)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_finance_validation_independent.py", line 161, in test_egress_rechecks_original_bytes_after_retrieval
+    with self.assertRaises(ValueError):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_invalid_confirmation_category_cannot_activate_pending_record (test_finance_validation_independent.IndependentLedgerTests.test_invalid_confirmation_category_cannot_activate_pending_record) (category='private')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_finance_validation_independent.py", line 86, in test_invalid_confirmation_category_cannot_activate_pending_record
+    self.assertEqual(result['status'], 'still_needs_information')
+AssertionError: 'confirmed' != 'still_needs_information'
+- confirmed
++ still_needs_information
+
+
+======================================================================
+FAIL: test_invalid_confirmation_category_cannot_activate_pending_record (test_finance_validation_independent.IndependentLedgerTests.test_invalid_confirmation_category_cannot_activate_pending_record) (category='general')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_finance_validation_independent.py", line 86, in test_invalid_confirmation_category_cannot_activate_pending_record
+    self.assertEqual(result['status'], 'still_needs_information')
+AssertionError: 'confirmed' != 'still_needs_information'
+- confirmed
++ still_needs_information
+
+
+======================================================================
+FAIL: test_invalid_confirmation_category_cannot_activate_pending_record (test_finance_validation_independent.IndependentLedgerTests.test_invalid_confirmation_category_cannot_activate_pending_record) (category='   ')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_finance_validation_independent.py", line 86, in test_invalid_confirmation_category_cannot_activate_pending_record
+    self.assertEqual(result['status'], 'still_needs_information')
+AssertionError: 'confirmed' != 'still_needs_information'
+- confirmed
++ still_needs_information
+
+
+======================================================================
+FAIL: test_receipt_apis_reject_corrupt_or_missing_original (test_finance_validation_independent.IndependentLedgerTests.test_receipt_apis_reject_corrupt_or_missing_original) (damaged='changed', api=0)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_finance_validation_independent.py", line 135, in test_receipt_apis_reject_corrupt_or_missing_original
+    with self.subTest(damaged=damaged, api=i), self.assertRaises(ValueError):
+                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_receipt_apis_reject_corrupt_or_missing_original (test_finance_validation_independent.IndependentLedgerTests.test_receipt_apis_reject_corrupt_or_missing_original) (damaged='changed', api=1)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_finance_validation_independent.py", line 135, in test_receipt_apis_reject_corrupt_or_missing_original
+    with self.subTest(damaged=damaged, api=i), self.assertRaises(ValueError):
+                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_receipt_apis_reject_corrupt_or_missing_original (test_finance_validation_independent.IndependentLedgerTests.test_receipt_apis_reject_corrupt_or_missing_original) (damaged='changed', api=2)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_finance_validation_independent.py", line 135, in test_receipt_apis_reject_corrupt_or_missing_original
+    with self.subTest(damaged=damaged, api=i), self.assertRaises(ValueError):
+                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_receipt_apis_reject_corrupt_or_missing_original (test_finance_validation_independent.IndependentLedgerTests.test_receipt_apis_reject_corrupt_or_missing_original) (damaged='missing', api=0)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_finance_validation_independent.py", line 135, in test_receipt_apis_reject_corrupt_or_missing_original
+    with self.subTest(damaged=damaged, api=i), self.assertRaises(ValueError):
+                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_receipt_apis_reject_corrupt_or_missing_original (test_finance_validation_independent.IndependentLedgerTests.test_receipt_apis_reject_corrupt_or_missing_original) (damaged='missing', api=1)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_finance_validation_independent.py", line 135, in test_receipt_apis_reject_corrupt_or_missing_original
+    with self.subTest(damaged=damaged, api=i), self.assertRaises(ValueError):
+                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_receipt_apis_reject_corrupt_or_missing_original (test_finance_validation_independent.IndependentLedgerTests.test_receipt_apis_reject_corrupt_or_missing_original) (damaged='missing', api=2)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_finance_validation_independent.py", line 135, in test_receipt_apis_reject_corrupt_or_missing_original
+    with self.subTest(damaged=damaged, api=i), self.assertRaises(ValueError):
+                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_plan_reads_cannot_expose_owner_private_to_spouse_or_group (test_household_scopes_independent.HouseholdScopeTests.test_plan_reads_cannot_expose_owner_private_to_spouse_or_group)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_household_scopes_independent.py", line 34, in test_plan_reads_cannot_expose_owner_private_to_spouse_or_group
+    with self.assertRaises(PermissionError):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: PermissionError not raised
+
+======================================================================
+FAIL: test_plan_reads_follow_current_scope (test_household_scopes_independent.HouseholdScopeTests.test_plan_reads_follow_current_scope) (scope='family-read')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_household_scopes_independent.py", line 27, in test_plan_reads_follow_current_scope
+    self.assertEqual({x['plan_id'] for x in rows}, expected)
+AssertionError: Items in the first set but not the second:
+'6c0c4e94-0db7-4797-9911-8556f80087a1'
+
+======================================================================
+FAIL: test_plan_reads_follow_current_scope (test_household_scopes_independent.HouseholdScopeTests.test_plan_reads_follow_current_scope) (scope='private-read')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_household_scopes_independent.py", line 27, in test_plan_reads_follow_current_scope
+    self.assertEqual({x['plan_id'] for x in rows}, expected)
+AssertionError: Items in the first set but not the second:
+'f30c8e2b-d044-45cf-9fa1-8ee907482286'
+
+======================================================================
+FAIL: test_outbox_corrupt_original_is_failed_before_transport (test_workers_independent.WorkerStateTests.test_outbox_corrupt_original_is_failed_before_transport)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/alex-mcp/tests/test_workers_independent.py", line 122, in test_outbox_corrupt_original_is_failed_before_transport
+    send.assert_not_called()
+  File "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/unittest/mock.py", line 910, in assert_not_called
+    raise AssertionError(msg)
+AssertionError: Expected '_send' to not have been called. Called 1 times.
+Calls: [call({'to': 'synthetic@s.whatsapp.net', 'message_id': 'ALEXFED5E6C7D987981B00E0C8CE3F8B', 'reply_to_message_id': None, 'reply_to_participant_jid': None, 'reply_to_text': None, 'kind': 'document', 'file_b64': 'Y2hhbmdlZCBieXRlcw==', 'mimetype': 'application/octet-stream', 'filename': 'receipt.pdf', 'caption': 'Synthetic message'}),
+ call().__iter__()].
+
+----------------------------------------------------------------------
+Ran 48 tests in 0.757s
+
+FAILED (failures=35, errors=5)

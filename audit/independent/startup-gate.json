@@ -1,0 +1,16 @@
+{
+  "baseline": {
+    "tests": 3,
+    "failures": 2,
+    "errors": 0,
+    "script_sha256": "8fc1f448282c0e174dd97163fd6bb4f7f543c073ef868aabec2a93a016ea3d76"
+  },
+  "candidate": {
+    "tests": 3,
+    "failures": 0,
+    "errors": 0,
+    "script_sha256": "6228ba7df651f0c0b928a8f622fb14ce61dde9ef206bc1093a845b4ca6120179"
+  },
+  "test_sha256": "294bbf4d2ab390875e94ba6c79cb0f247e1bf0404e4cdf44ff0c4a2a94531991",
+  "limits": "Shell subprocess behavior only. Container includes S6_BEHAVIOUR_IF_STAGE2_FAILS=2; packaged s6 shutdown still requires image execution."
+}

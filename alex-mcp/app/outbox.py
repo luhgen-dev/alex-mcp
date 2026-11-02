@@ -9,6 +9,7 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 
 import runtime_clock
+import finance_privacy
 
 from db import connect
 
@@ -17,6 +18,10 @@ DOCUMENT_NOTICE_ATTEMPTS = 3
 CONTROL_MAX_ATTEMPTS = 5
 CONTROL_BACKOFF_SECONDS = (5, 15, 60, 300, 900)
 _STARTUP_MANAGED_JOB_RECONCILED = False
+
+
+class AttachmentIntegrityError(ValueError):
+    """Archived bytes changed; retrying this file cannot repair the original."""
 
 # These outbounds are generated later by schedulers/recovery workers. Quoting
 # the original command hours later would be misleading. Immediate replies use
@@ -69,6 +74,8 @@ def _row_value(row, key, default=None):
 
 
 def _payload(row) -> dict:
+    with connect() as conn:
+        finance_privacy.validate_outbound(conn, row)
     kind = row["kind"]
     message_id = _whatsapp_message_id(row["outbound_id"])
     source_message_id = _row_value(row, "source_message_id")
@@ -109,7 +116,22 @@ def _payload(row) -> dict:
     if not path or not os.path.isfile(path):
         raise FileNotFoundError(path or "missing attachment path")
     with open(path, "rb") as handle:
-        data = base64.b64encode(handle.read()).decode("ascii")
+        original_bytes = handle.read()
+    # Recheck archived originals at the final boundary, after any queue delay.
+    # Hash the same bytes we encode and send, so changing a file after tool
+    # retrieval cannot silently deliver different evidence. Generated reports
+    # have no media_objects row and continue through their existing path.
+    conn = connect()
+    try:
+        originals = conn.execute(
+            "SELECT sha256 FROM media_objects WHERE local_path=?", (path,)
+        ).fetchall()
+    finally:
+        conn.close()
+    digest = hashlib.sha256(original_bytes).hexdigest()
+    if any(original["sha256"] != digest for original in originals):
+        raise AttachmentIntegrityError("Original attachment failed its integrity check; delivery stopped.")
+    data = base64.b64encode(original_bytes).decode("ascii")
     mime = row["mime_type"] or (
         "image/jpeg" if kind == "IMAGE" else "application/octet-stream"
     )
@@ -670,7 +692,7 @@ def _queue_document_notice(conn, row, permanent: bool = False) -> None:
     if not permanent and attempts < DOCUMENT_NOTICE_ATTEMPTS:
         return
     text = (
-        "I couldn't deliver that document because the generated file is unavailable. "
+        "I couldn't deliver that document because the file is unavailable or failed its integrity check. "
         "The request is still unresolved."
         if permanent
         else "That document has not delivered yet. The original request remains marked as unresolved while delivery retries continue."
@@ -761,6 +783,7 @@ def sweep():
 
         for row in rows:
             permanent_error = False
+            privacy_error = False
             if row["context_kind"] in (
                 "REMINDER_INITIAL", "REMINDER_FOLLOWUP",
                 "REMINDER_CLAIMANT_FOLLOWUP", "REMINDER_FAMILY_RESURFACE",
@@ -785,10 +808,15 @@ def sweep():
                 row = _joined_row(conn, row["outbound_id"])
 
             try:
-                payload = _payload(row)
-                ok, detail = _send(payload)
-            except FileNotFoundError as exc:
+                # Match the visibility operation's lock order: file lock,
+                # then database. Do not wait on it with a SQLite write held.
+                conn.commit()
+                with finance_privacy.delivery_guard():
+                    payload = _payload(row)
+                    ok, detail = _send(payload)
+            except (FileNotFoundError, AttachmentIntegrityError, finance_privacy.PrivacyDeliveryError) as exc:
                 ok, detail, permanent_error = False, str(exc), True
+                privacy_error = isinstance(exc, finance_privacy.PrivacyDeliveryError)
             except Exception as exc:
                 ok, detail = False, str(exc)
 
@@ -876,9 +904,15 @@ def sweep():
                        last_error=?,next_attempt_at_utc=NULL WHERE outbound_id=?""",
                     (attempts, detail[:1000], row["outbound_id"]),
                 )
+                if privacy_error:
+                    import uuid
+                    conn.execute('''INSERT INTO outbound_messages(outbound_id,source_message_id,
+                        conversation_id,kind,text_body,context_kind)
+                        VALUES(?,?,?,'TEXT',?,'PRIVACY_DELIVERY_NOTICE')''',
+                        (str(uuid.uuid4()), row['source_message_id'], row['conversation_id'], finance_privacy.EXPIRED_NOTICE))
                 conn.commit()
                 refreshed = _joined_row(conn, row["outbound_id"])
-                if refreshed and refreshed["kind"] == "DOCUMENT":
+                if refreshed and refreshed["kind"] == "DOCUMENT" and not privacy_error:
                     _ensure_unresolved_markers(conn, refreshed)
                     _queue_document_notice(
                         conn, _joined_row(conn, row["outbound_id"]), permanent=True

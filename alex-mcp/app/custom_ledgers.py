@@ -87,9 +87,15 @@ def _minor(value):
         amount = Decimal(str(value))
     except (InvalidOperation, TypeError, ValueError):
         raise ValueError("amount must be numeric")
-    if amount < 0:
-        raise ValueError("amount cannot be negative")
-    return int((amount * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    if not amount.is_finite() or amount < 0:
+        raise ValueError("amount must be finite and nonnegative")
+    try:
+        minor = int((amount * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    except (InvalidOperation, OverflowError):
+        raise ValueError("amount is outside the supported range") from None
+    if minor > 2**63 - 1:
+        raise ValueError("amount is outside the supported range")
+    return minor
 
 
 def _norm(value):
@@ -270,6 +276,14 @@ def add_entry(actor: ActorContext, ledger_id: str, description: str,
     action_key = str(actor.action_key or "")
     if not action_key:
         raise RuntimeError("missing deterministic action key")
+    # Truncating encoded JSON can persist an unreadable entry. Validate the
+    # entire document before opening the write transaction.
+    try:
+        encoded_data = json.dumps(data or {}, ensure_ascii=False, sort_keys=True, allow_nan=False)
+    except (TypeError, ValueError):
+        raise ValueError("ledger data must contain valid JSON values") from None
+    if len(encoded_data) > 20000:
+        raise ValueError("ledger data must fit within 20000 characters; shorten the note")
     media_id = str(actor.media_ids[0]) if actor.media_ids else None
     conn = db.connect()
     try:
@@ -293,7 +307,7 @@ def add_entry(actor: ActorContext, ledger_id: str, description: str,
             (
                 ident, action_key, ledger_id, actor.source_message_id, actor.user_id,
                 date_text, desc[:500], kind, _minor(amount), cur,
-                json.dumps(data or {}, ensure_ascii=False, sort_keys=True)[:20000],
+                encoded_data,
                 media_id,
             ),
         )

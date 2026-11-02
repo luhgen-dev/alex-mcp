@@ -1,3 +1,13 @@
+## 0.5.55 — audited voice, finance privacy and original-file repairs
+
+- Retain required tools for colloquial Tamil expense/reminder requests and classify clear purchases without unnecessary category questions; unknown transfer purposes remain pending.
+- Move an owner’s explicitly quoted expense and correction history to private storage atomically. Preserve IDs, amounts and originals; reject conflicting shared-file dependencies.
+- Recheck financial visibility and original-file bytes at delivery, invalidate stale reports, and preserve repeated export data.
+- Validate expense corrections/confirmations, plan scope and custom-ledger values. Verify HA brightness/toggle readback and reject invalid numeric controls.
+- Stop startup on schema/self-test errors. Additive privacy metadata preserves existing household records; voice decoding, credentials, settings and pairing are retained.
+- Correct certification fixtures, saved-selection judging and incomplete-run status. Full isolated HA suite passed before the final prompt/judge changes; the final targeted run passed 53 test executions and 24 real-provider prompts. Release helper reruns the complete suite before backup/update.
+- Hosted CI did not obtain a runner. Separate packaged-image tests, configured ChatGPT session routing, actual audio and phone/physical delivery remain unverified; see audit/independent/README.md. This is not a claim that every integration is certified.
+
 ## 0.5.54 — voice feature parity and cross-feature repairs
 
 - Restore Tamil, Tanglish and Malay reminder creation, source-checked colloquial times, and follow-up clarification without replacing the original user words.

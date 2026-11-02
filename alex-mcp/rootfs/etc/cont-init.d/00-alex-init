@@ -1,5 +1,6 @@
 #!/usr/bin/with-contenv bashio
+set -e
 cd /app
 python3 init_db.py
-python3 selftest.py || bashio::log.warning "Alex MCP structural self-test reported a failure; see logs."
+python3 selftest.py
 bashio::log.info "Alex MCP persistent core initialized."
