@@ -1,0 +1,25 @@
+{
+  "scope": "isolated SQLite/files; mocked worker network adapters; no live integration",
+  "baseline_module_ref": null,
+  "tests_run": 46,
+  "failure_assertions_including_subtests": 0,
+  "errors_including_subtests": 0,
+  "distinct_failing_test_methods": 0,
+  "skipped": 0,
+  "successful": true,
+  "failures": [],
+  "sha256": {
+    "alex-mcp/app/services.py": "844c42c294542daadcb95b7c5b09852fb5f3ddd29f6991a9362a41ea3cb04800",
+    "alex-mcp/app/outbox.py": "2aa93519e654bae4e183a35890f667dae17bc703a42fe9a8d5267ce2b2df848c",
+    "alex-mcp/app/behavior_cert.py": "17db758c66c16f0c9e18eae59600988d439145e2ee19d894cb6558f67953fe0a",
+    "alex-mcp/app/phase2.py": "b6b0c3505339641f270d9c14a86b772117fa84cb5d390e3cd75e9b19825cc92b",
+    "alex-mcp/app/custom_ledgers.py": "3c245c1f47b6708dd3786aef1fe4cfc0d00afbe85518d3c6b90af655273830da",
+    "tests/independent_fixture.py": "47595f593b4b903e4b0bf0b25b6d877190dc613cd8a1e7a40fc980b3a37521bc",
+    "tests/test_attachment_judge_independent.py": "de2b7bfe35f814bffa8c0bb0bced5eaee8ff90875e13426ffea306f81aafa297",
+    "tests/test_audit_redaction_independent.py": "e38b320d7f1bea413bd230eec7a174823c823ae8f44230012b40777056359835",
+    "tests/test_finance_validation_independent.py": "70ec66fbbbc7c4f1558f8620b34f71d358eba67395694d691fd73eacf45184aa",
+    "tests/test_household_scopes_independent.py": "e9651e8e29f9a6b940d645aa09fce651c313b90c233c2d48b271c4794d4bf938",
+    "tests/test_planning_assets_independent.py": "2f03718751cf17837f96c90c99a513bf2a9030d88f98e144566005e8d251b2ad",
+    "tests/test_workers_independent.py": "b6cb4d93ff787b535941c9c411aecab300d470afdf54dd145e3987434d3aebaa"
+  }
+}

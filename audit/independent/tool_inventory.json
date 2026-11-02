@@ -1,0 +1,1064 @@
+{
+  "baseline_upstream_commit": "17b37cd998b58b926e3ca00fd8f13d8a8bbcb070",
+  "inventory_method": "AST enumeration of @alex_tool registrations; inventory is not behavioral coverage",
+  "registered_tools": 151,
+  "tools": [
+    {
+      "name": "log_expense",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 144,
+      "description": "Record an expense or income. MYR is the default when the user states no currency; explicit SGD/S$ overrides it. Use null category/amount when genuinely unclear. Omit event_date_local unless the user or the receipt states a date/time; Alex stamps the message time automatically and never needs an invented clock time.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "confirm_expense",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 153,
+      "description": "Confirm or reject a pending money record after the user supplies missing information or approval.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "query_finances",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 204,
+      "description": "Read true ledger totals and matching transactions. Use ISO dates YYYY-MM-DD. scope may be all/family/private. source may be all/voice/receipt/text. For today/tomorrow/yesterday, resolve the runtime date and set both start_date and end_date. Natural drill-downs inherit the active canonical report period unless the current turn names a different period.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "list_pending_expenses",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 286,
+      "description": "List unresolved money records when the user is answering a previous clarification.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "correct_expense",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 292,
+      "description": "Correct an existing transaction append-only; the original remains auditable and is superseded.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "find_receipts",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 300,
+      "description": "Find original receipts by merchant/bank/reference, amount or date. scope may be all/family/private and is enforced by the backend.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "get_receipt",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 314,
+      "description": "Retrieve one original receipt previously found by find_receipts so Alex can send the actual image/document back.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "get_transaction_receipt",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 320,
+      "description": "Retrieve receipt evidence linked to one exact transaction. Never substitute a different/latest receipt when the transaction has no linked evidence.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "find_media",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 326,
+      "description": "Browse preserved original voice notes, images or documents the authenticated user is allowed to retrieve. Results are numbered for follow-up retrieval.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "get_media_original",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 334,
+      "description": "Retrieve one authorized original media object, including the original voice-note audio.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "list_pending_items",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 340,
+      "description": "List this owner's unresolved deferred items. Use kind=VOICE for unresolved voice notes. Results are numbered and use local time; internal IDs are intentionally hidden.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "resolve_pending_item",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 362,
+      "description": "Explicitly mark one owner's pending item resolved. Prefer the numbered choice from the latest pending list; item_id is used only for trusted quoted context.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "cancel_pending_item",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 388,
+      "description": "Explicitly cancel one owner's pending item without deleting its preserved provenance.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "save_item",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 414,
+      "description": "Explicitly remember something the user asked Alex to save. This is separate from automatic receipt retention.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "remember_knowledge",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 421,
+      "description": "Teach a persistent household fact or preference from an explicit remember/save/update request (typed or authorized current voice). Reuse the exact subject to update it; previous versions remain inspectable. Subject identifies the person/product/topic; topics specify when a preference applies (groceries, meals, replies). Relevant knowledge is recalled automatically across chats/restarts within current privacy scope. For an explicit grocery pricing preference, price_fallback=true enables remembered estimates when online prices are missing; false restricts automatic estimates to online data. Omit it for other preferences. This never changes permissions or creates reminders/actions. Use remember_product_price for a reusable per-pack estimate. Saved attachments still use save_item.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "remember_product_price",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 431,
+      "description": "Remember/update a user-provided MYR price PER PACK for later estimates, never an expense. Requires explicit typed remember/save/update intent and stated price or current receipt evidence. Preserve brand/range, size and pack count in product/pack_description; ask if unspecified, never invent. aliases are only shorthand the user explicitly teaches. Same product+pack+retailer updates history. observed_on is YYYY-MM-DD, omitted means today. Reused when online search has no verified match and in background grocery estimates; never claim it is live or in stock.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "recall_knowledge",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 441,
+      "description": "Read facts/preferences/product prices taught in chat, including existing saved text notes. Search by subject or browse without query; include_history shows previous taught versions. Scope is authenticated. For correction reuse the returned exact subject/product+pack+retailer; to forget use remove_saved_item with its returned item_id. No lookup of live store prices or expense records.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "search_saved_items",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 448,
+      "description": "Search or browse things the user explicitly asked Alex to save/remember within the authorized scope. Results contain metadata and exact item_ids, but no original attachments. For a request to find/show a specific saved picture or document, follow a unique matching result with get_saved_item in the same turn to retrieve the original. If matches are ambiguous, show the numbered choices and ask which one. Leave query empty to browse everything saved (newest first); kind may be picture, document or note (e.g. \"what pictures did I save\" -> kind=picture, no query). The user can follow a browsed list with \"show 2\".",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "get_saved_item",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 455,
+      "description": "Retrieve one explicitly saved item, including its original attachment when it had one. Use the exact item_id returned by an authorized search or trusted selection; never invent an id. A unique result for a requested saved picture/document can be retrieved immediately after search_saved_items in the same turn.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "remove_saved_item",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 461,
+      "description": "Soft-remove an explicit saved-memory index while retaining original archived media evidence.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "resolve_numbered_choice",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 467,
+      "description": "Retrieve the exact original item from a numbered receipt, saved-item, media or pending-item list. This call also retrieves the original attachment when present; Alex sends it automatically, so no separate retrieval or discovery call is needed for that item. Reading a pending voice note does not resolve or cancel it. Use a supplied conversation-state selection_id and selection_kind when available; otherwise use the newest unexpired list.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "create_reminder",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 477,
+      "description": "Create a durable reminder. Include time_interpretation for natural date/time wording so the backend can validate its meaning and calculate the due time. Its source_text must quote original user wording; use ACTIVE_DRAFT only for the displayed pending reminder. An ISO due_local alone cannot supply a missing date or AM/PM. recipient accepts me/spouse/husband/wife/both or the configured household names. An explicitly named assignee is a DM reminder regardless of where the command was typed unless the user explicitly asks for the group. destination=group sends one Family Shared claimable group reminder.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "list_reminders",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 494,
+      "description": "List reminders with human-readable local times/states. Internal IDs are supplied only so a subsequent reminder action can target the exact record; never show them to the user.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "update_reminder",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 555,
+      "description": "Complete/cancel/acknowledge/defer/reschedule/reopen a reminder. Use reminder_reference with the user's natural task words (for example 'balcony reminder') when no opaque reminder_id is already known. For 'reopen' use status='open'. For relative snooze pass snooze_minutes. For a naturally worded new_due_local, include a grounded time_interpretation with CURRENT_MESSAGE reference; preserve unresolved AM/PM or weekday ambiguity.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "reminder_history",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 571,
+      "description": "Read user-facing reminder history with local times and no database/provider internals.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "claim_reminder",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 599,
+      "description": "Explicitly take responsibility for one existing Family reminder. Prefer the authenticated quoted reminder ID; a unique natural name is allowed. Never creates a new reminder or changes its due time.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "handoff_reminder_claim",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 608,
+      "description": "Ask a household member such as Priya/spouse to accept your claimed Family Shared reminder. You remain claimant until they react to the DM request.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "release_reminder_claim",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 614,
+      "description": "Release/return a claimed Family reminder to the family group when the claimant says they cannot do it, wants to unclaim it, or wants to push/send/put it back to MCP Home/the group. Use reminder_reference when the task is named; if omitted, the backend acts only when this user has one unambiguous current claim. A fresh claimable group card is posted.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "nudge_reminder_claimant",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 623,
+      "description": "Privately remind the current claimant again when the original initiator explicitly asks. Ownership and unresolved state remain unchanged.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "create_task",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 629,
+      "description": "Create a first-class task with OPEN lifecycle state. A natural plan_name may be supplied instead of an opaque plan_id; Alex resolves exactly one accessible plan internally, so do not list plans first merely to obtain an id. New-write scope is resolved from the trusted user command. A reminder is never created implicitly.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "create_task_reminder",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 645,
+      "description": "Create a reminder linked to one existing task. For a date-only task, reminder_mode must be heads_up or task_time; omit it to get a clarification instead of guessing. heads_up leaves the task due date unchanged; task_time also gives the task that exact due time.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "list_tasks",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 735,
+      "description": "List authorized tasks. Results are numbered and frozen for exact Show N follow-ups. status may be open, done, cancelled, or all.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "get_task_details",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 755,
+      "description": "Show one exact task's provenance, original instruction, due date/time, links and history using an exact id or natural task name.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "update_task",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 763,
+      "description": "Edit one task by exact id or natural name without changing lifecycle state. This never creates a reminder or rewrites the linked plan.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "complete_task",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 776,
+      "description": "Mark one OPEN task DONE by exact id or natural name while preserving history and linked records.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "reopen_task",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 784,
+      "description": "Explicitly reopen one DONE task by exact id or natural name.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "cancel_task",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 792,
+      "description": "Cancel one task by exact id or natural name without deleting linked plan/reminder records.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "set_goal",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 800,
+      "description": "Create or update a savings/planning goal using only values the user actually supplied.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "list_goals",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 809,
+      "description": "Read active goals available to the authenticated user.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "get_leave_balance",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 815,
+      "description": "Read the user's stored leave balance and as-of date. Never invent a balance when unknown.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "set_leave_balance",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 821,
+      "description": "Store/update leave balance only when the user explicitly provides the value.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "add_shopping_item",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 828,
+      "description": "Add an item to the shopping list. Shared household list is the default; use shared=false only when the user clearly asks for a private list.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "search_manjaku_prices",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 835,
+      "description": "Search current Manjaku Online listed prices using concise product/brand/pack keywords. Returns top matches, exact handles and variant IDs, MYR prices, online availability, links and local check time. Physical stores may differ. Cart/member/bundle discounts are unverified. An empty result is not proof of absence from the whole catalogue. No household records are changed.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "get_manjaku_product_price",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 843,
+      "description": "Refresh one Manjaku Online product using its exact handle and chosen variant_id from search_manjaku_prices. Require a size/variant choice when ambiguous. quantity counts sale units/packs. Listed-price subtotal excludes unverified cart/bundle/member discounts and delivery; report unavailable variants and stock shortages. Read-only, never a purchase.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "search_mydin_prices",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 851,
+      "description": "Search current MYDIN Online selling prices by product/brand/pack size. Public catalogue only. Returns exact product links, iSKUs, MYR selling prices, stock and check time. Present alternatives for ambiguous requests; never substitute a bulk tier price for one pack. No shopping or finance records are changed.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "get_mydin_product_price",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 859,
+      "description": "Refresh one MYDIN product by the exact iSKU from search_mydin_prices. quantity means whole packs; apply only qualifying quantity tiers and show insufficient stock. A configurable product needs a variant selection, not a guessed exact price. This is a read-only quote, never a purchase.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "list_shopping_items",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 867,
+      "description": "List groceries. Default items/quantities only; include_prices=true ONLY for a price/total request. Saved reference estimates label pending, ambiguous and stale prices. Scope is enforced by authenticated context. List adds/edits already queue quiet background pricing.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "grocery_monthly_summary",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 874,
+      "description": "Monthly grocery overview (YYYY-MM, defaults current local month). Returns historical list estimates separately from recorded actual groceries/kids-supplies spending. Never add estimates to actual expenses. Unknown prices remain unknown.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "select_grocery_product",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 881,
+      "description": "Bind an existing grocery item to the user's chosen exact MYDIN iSKU or Manjaku handle/variant from catalogue results. Use only after an explicit product/size choice; never guess for generic rice/milk/diapers. Refreshes and remembers that reference for background quantity updates; never records a purchase.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "update_shopping_item",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 889,
+      "description": "Rename/update one shopping item by exact id or natural item_name. Omitted status preserves state; explicit bought/purchased wording marks it purchased.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "ha_find_entities",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 900,
+      "description": "Find actual Home Assistant entity IDs by friendly name/entity id before answering or acting. Read-only.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "ha_get_state",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 907,
+      "description": "Read the current state and attributes of one exact Home Assistant entity.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "ha_home_summary",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 914,
+      "description": "Read Home Assistant states and produce a deterministic privacy-safe whole-home status summary.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "ha_home_report",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 922,
+      "description": "Render a deterministic local PNG whole-home status card and return it as a WhatsApp image attachment.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "ha_draft_automation",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 942,
+      "description": "Return a draft Home Assistant automation proposal only. It never deploys or edits HA configuration.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "ha_control",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 950,
+      "description": "Perform an explicitly requested low-risk Home Assistant action on lights, switches, fans, climate or media players, then verify state. Sensitive domains are rejected by the backend.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "set_work_roster",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 957,
+      "description": "Store the user's work roster. Roster means work schedule, not personal diary.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "list_work_roster",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 965,
+      "description": "Read only the authenticated user's work roster.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "set_leave_record",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 972,
+      "description": "Store or cancel ALEX's personal leave ledger. This is not an employer/HR submission. Use status=CANCELLED when the user asks to delete/cancel/remove a leave record. PLANNED/CONFIRMED do not count as historical absence; TAKEN materializes dated annual/medical leave into the work engine.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "list_leave_records",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 983,
+      "description": "Read the authenticated user's planned/confirmed/taken leave records.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "create_plan",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 990,
+      "description": "Create a draft life plan. New-write scope is resolved from the trusted user command; edits never move scope. If a date has no clock time, set time_known=false.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "list_plans",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1001,
+      "description": "List accessible draft/locked plans.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "update_plan",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1007,
+      "description": "Update/cancel a plan by exact id or natural plan_name. Existing scope is preserved.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "confirm_plan",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1017,
+      "description": "Confirm/finalise a plan by exact id or natural plan_name. Finalising alone keeps it in Plans; set add_to_diary=true only when the user explicitly asks to put it in the diary.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "share_plan",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1029,
+      "description": "Publish a private plan as a separate FAMILY_SHARED copy. Private notes are never copied automatically; provide shared_notes only when the owner explicitly wants those family-safe notes shared.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "add_diary_event",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1035,
+      "description": "Add a real-life diary commitment. If user supplied only a date, set time_known=false so same-day items become a heads-up rather than an invented midnight conflict. Exact work/Diary overlaps require user choice.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "resolve_diary_conflict",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1048,
+      "description": "Resolve a diary-vs-work conflict: 1=add event + PLANNED leave, 2=add event and keep clash, 3=cancel.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "resolve_latest_diary_conflict",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1055,
+      "description": "Resolve the latest unexpired owner-scoped diary conflict ticket. This is the safe handler for a later bare '1', '2' or '3' reply.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "update_diary_event",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1062,
+      "description": "Reschedule/cancel a diary event by exact id or natural title/date. If linked reminders exist, keep/shift/cancel must be explicit.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "get_agenda",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1077,
+      "description": "Combined read-only agenda. Use returned start_local/end_local/due_local fields for user-facing times; stored *_utc fields are internal evidence.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "get_agenda_range",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1084,
+      "description": "Resolve natural dates/ranges deterministically and return the combined agenda. Use returned local-time fields for replies.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "check_my_availability",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1091,
+      "description": "Check the owner's work-roster and Diary overlaps for a specific local interval, returning busy or no_conflict_found. start_local and end_local are ISO local datetimes; omitting end_local checks one hour from the start. Do not invent clock boundaries for vague periods such as 'evening'; ask for the interval when needed. Agenda tools list records and do not perform this interval conflict check. Owner-only private check, rejected in the family group and never publishable there.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "check_spouse_availability",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1098,
+      "description": "Check only shared spouse commitments. Private spouse roster/Diary is never read; if no shared clash exists, returns private_check_required.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "set_cashflow_baseline",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1105,
+      "description": "Store only the user's explicit guaranteed-income baseline. OT/variable/extra cash is excluded and stays unallocated unless instructed.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "get_cashflow_baseline",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1114,
+      "description": "Read the user's deterministic cash-flow baseline without recommending allowance changes.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "system_health",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1120,
+      "description": "Read sanitized Alex health/diagnostic facts: DB, failed messages, outbound queue, tool errors and usage. No secrets.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "recent_failures",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1126,
+      "description": "Explain recent observed Alex failures using local human timestamps and observed facts only.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "planning_create_goal",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1143,
+      "description": "Create an unlocked draft goal. baseline_monthly is optional and defaults to zero; never invent a contribution.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "planning_update_goal_target",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1156,
+      "description": "Change only an existing goal's target amount after explicit user instruction. This never creates a deadline or recurring contribution.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "planning_lock_goal",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1169,
+      "description": "Lock/activate one draft goal after explicit owner approval. Provide either goal_id from a prior result or its natural goal_name; Alex resolves names conservatively.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "planning_reopen_goal",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1181,
+      "description": "Reopen one eligible goal only after explicit owner instruction. goal_name may be used instead of an opaque id.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "planning_cancel_goal",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1193,
+      "description": "Cancel one goal while preserving target, funding and contribution history. Use the natural goal name when supplied; never ask the user to create a replacement goal.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "planning_set_period_target",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1205,
+      "description": "Set a one-period goal target such as 'RM100 is enough this month' without changing future recurring baseline. Natural goal_name is supported; omitted period means the current local month.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "planning_change_goal_baseline",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1221,
+      "description": "Change a recurring goal baseline prospectively. Natural goal_name is supported; earlier periods remain unchanged.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "planning_record_goal_contribution",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1235,
+      "description": "Record an actual goal contribution without changing its recurring plan. goal_name is accepted and omitted contribution_date means today locally.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "planning_goal_progress",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1271,
+      "description": "Read goal target, actual funding, remaining amount and recurring baseline. A scoped miss is returned as normal data so privacy-safe private search can be offered deterministically.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "planning_goal_deviation",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1288,
+      "description": "Compare actual contribution with the approved period plan. If actual_amount is omitted Alex computes actual contributions from stored records; omitted period means current local month.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "planning_record_cash",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1303,
+      "description": "Record salary/OT/bonus/refund/other cash. Variable cash starts UNALLOCATED. Omit event_date only when the user means the current local day.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "planning_compare_salary",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1318,
+      "description": "Compare an actual recorded salary payment with configured fixed salary. Omit cash_event_id to use the unique matching salary, or the latest salary when asking about the latest payment.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "planning_match_goal_alias",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1333,
+      "description": "Conservatively resolve a configured non-sensitive account alias to one authorized goal.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "planning_cash_status",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1341,
+      "description": "Read how much of one cash event is still unallocated. Natural event type/date/amount may be used instead of an opaque cash_event_id; ambiguous matches are never guessed.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "planning_allocate_cash_to_goal",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1358,
+      "description": "Allocate explicit extra cash to a goal only after the user instructs Alex. Natural cash-event and goal references are supported; ambiguous cash is never guessed.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "planning_create_cash_pool",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1381,
+      "description": "Create a stash/cash pool in the space selected by the current trusted command. Plain DM/group wording follows Family Shared; explicit private wording or emoji selects owner-private. Without opening_balance, a new pool is an empty zero-balance container using the built-in MYR currency default unless the user requests SGD; this records no funding or money movement. For creation with funding, pass the user's stated amount as opening_balance and require reliable evidence for MYR versus SGD; ask when that currency is missing. Creation + an explicitly requested opening balance are one atomic action.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "planning_list_cash_pools",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1397,
+      "description": "List active stash/cash pools visible in the current trusted read scope. Model scope arguments may narrow but never widen that boundary.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "planning_cash_pool_balance",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1408,
+      "description": "Read one authorized stash/cash-pool balance. A scoped miss is normal data, never a privacy-leaking tool error.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "planning_declare_cash_pool_balance",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1429,
+      "description": "Set a user-declared stash/cash-pool balance exactly. This is a balance fact, not income and not an automatic goal allocation.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "planning_record_cash_pool_spend",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1447,
+      "description": "Record spending from a stash/cash pool with optional category and funding-source note. This reduces the pool balance and does not create a second income record.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "planning_allocate_cash_to_pool",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1485,
+      "description": "Allocate explicit extra cash to a stash/pool after user instruction. Natural cash-event and pool references are supported; ambiguous matches are never guessed.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "planning_add_reserve",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1509,
+      "description": "Add an explicit monthly reserve/allowance to the baseline only because the user asked to reserve it.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "planning_update_reserve",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1520,
+      "description": "Change, enable or disable a reserve only after explicit owner instruction. Natural reserve_name is accepted instead of an opaque id.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "planning_list_reserves",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1536,
+      "description": "List authorized explicit planning reserves/allowances.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "planning_baseline",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1544,
+      "description": "Read deterministic baseline capacity. Raw private income is included in output only when the owner explicitly asks to reveal it.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "planning_income_outlook",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1553,
+      "description": "Read confirmed/expected/possible income. Omitted period means the current local month. OT remains possible/unknown until observed.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "planning_goal_projection",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1566,
+      "description": "Project a goal using its approved baseline only; natural goal_name is accepted and one-off extra contributions do not rewrite future baseline.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "planning_cash_outflow",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1577,
+      "description": "Read actual monthly cash outflow in separate sections: consumption/expenses, goal-savings contributions, and internal stash movements. Internal stash allocations are shown but excluded from the outflow total to prevent double counting.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "planning_cashflow",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1612,
+      "description": "Read a dated monthly forecast. Omitted period means the current local month. OT/variable income remains separate from guaranteed baseline.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "planning_brief",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1623,
+      "description": "Read a privacy-scoped baseline planning brief. Does not recommend allowance changes.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "planning_list_goals",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1631,
+      "description": "List authorized advanced goals and their current plan state.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "check_household_bill",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1637,
+      "description": "On-demand live home bill check. provider must be tnb or saj; call once for EACH requested provider. Stores a timestamped observation; no payment or expense is created. include_pdf=true ONLY when the user requests the PDF/original bill; TNB supports it, SAJ download remains unverified. analyse_pdf=true downloads and extracts untrusted statement text for a requested discrepancy review; it does not send a PDF unless include_pdf=true. Credentials/account must be configured privately in HA. Digi is screenshot-only; never use phone control or SMS. A failed source returns unavailable, not zero; bills_list only reads saved records and cannot replace a failed live check.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "record_digi_bill",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1645,
+      "description": "Save a readable current/quoted Digi Check Bill Details screenshot for husband or wife only. Read invoice_date (YYYY-MM-DD), invoice_amount (Current bill), outstanding (Total due), and due_date separately. Null for unreadable/absent balance/date; never guess. Verify whose number is shown against configured lines. This is a bill observation, NOT payment proof or an expense. Duplicate images do not duplicate bills. Do not ingest SMS.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "household_payments_summary",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1655,
+      "description": "Consolidate a local month (YYYY-MM) of TNB, SAJ, both Digi screenshots and recurring commitments, plus a separate grocery budget view. Refresh configured utilities on demand for the current month only, never send PDFs. Unknown or stale balances remain labelled. Do not add grocery estimates to actual expenses, or duplicate a provider bill as a recurring commitment.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "bills_list",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1679,
+      "description": "List recurring obligations. If period is omitted, materialize the current and next local month so 'coming up' does not falsely return empty.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "bills_match_payment",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1717,
+      "description": "Conservatively match payment/receipt evidence to exactly one recurring obligation. Amount alone never identifies a commitment; configured payee aliases, reference patterns or account fingerprint must match.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "bills_record_payment",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1728,
+      "description": "Record an actual payment against one exact obligation instance; supports partial payment.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "bills_defer",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1737,
+      "description": "Defer one exact obligation; history remains intact.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "bills_confirm_unpaid",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1746,
+      "description": "Mark one obligation explicitly confirmed unpaid. Missing evidence alone never means unpaid.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "work_import_profile",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1754,
+      "description": "Import this owner's explicit permanent private roster/overtime/leave profile from user-authored JSON. Values are validated and versioned locally; nothing is published to source control.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "work_schedule",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1760,
+      "description": "Read repeating roster and shift exceptions. OT is included only when its separate policy is configured.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "work_day",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1775,
+      "description": "Read a natural historical/current work-day brief without inventing attendance.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "work_record_event",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1781,
+      "description": "Record leave/MC/shift-swap or OT offered/pending/planned/worked/unavailable as a dated fact.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "work_ot_status",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1797,
+      "description": "Read explicit/default OT state; offered/pending are never treated as worked income.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "work_leave_balance",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1803,
+      "description": "Read a configured leave balance. Annual/medical reconcile later recorded leave events; childcare, wellness, hospitalisation and DOIL use the authoritative snapshot until updated.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "work_departure_plan",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1811,
+      "description": "Calculate leave-home/alarm candidates from real roster plus supplied travel duration. When travel_minutes is missing, return NEEDS_TRAVEL_ESTIMATE before reading the roster; no shift details are returned. Use work_schedule as well when the user also asks which shift they have. Never invent route time or create an alarm.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "asset_create",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1821,
+      "description": "Create household asset metadata such as appliance/warranty records.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "asset_update",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1835,
+      "description": "Edit an authorized asset, including warranty expiry, without replacing its linked receipt/manual/photo evidence.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "asset_link_document",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1854,
+      "description": "Link preserved receipt/warranty/manual/photo evidence to an authorized asset. Use asset_name instead of inventing an asset UUID. When linking the attachment on this exact message, omit evidence_ref and Alex binds the single preserved current media object automatically.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "asset_list",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1880,
+      "description": "List/filter authorized assets by natural name, brand, model, serial or note without widening the trusted privacy scope.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "warranty_expiring",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1892,
+      "description": "Find warranties expiring in a deterministic window. Omitted as_of_date means today locally; a vague 'warranties I should know about' uses the next 90 days.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "monitor_home_state",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1903,
+      "description": "Create a one-shot Home Assistant state monitor after an explicit request such as 'tell me when Hall AC turns on'. Resolve the exact entity first; this tool does not control the device.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "monitor_delegate",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1947,
+      "description": "Enable one explicitly requested monitor. Use GOAL_MONITOR for a savings goal, BILL_MONITOR for bills, OT_GOAL_TRACK for overtime savings, PRESENCE_REMINDER for presence, CUSTOM otherwise. Quiet by default.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "monitor_list",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1959,
+      "description": "List active user-authorized proactive monitoring delegations.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "monitor_cancel",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1967,
+      "description": "Cancel one explicit monitoring delegation.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "finance_report",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 1975,
+      "description": "Build a monthly finance report from actual ledger activity.\n\ncategory/search are optional explicit filters. Omit both for the full\nmonthly report. Privacy scope is bounded by the trusted current command.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "report_snapshot",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 2024,
+      "description": "Build the broader household/planning overview (goals, obligations, assets and leave). Use finance_report for actual monthly ledger activity.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "report_export",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 2041,
+      "description": "Export PDF/CSV/JSON from the active canonical report.\n\nreport_type may be finance or snapshot when the user explicitly names the\nreport. category/search/scope express explicit finance filters. Explicit\nfilters override active context; full_report clears active finance filters.\nSupplying only a period preserves a matching active report context.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "report_payload",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 2349,
+      "description": "Return a privacy-safe structured payload for a future Google Sheets or TV handoff; this tool never uploads externally.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "create_custom_ledger",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 2364,
+      "description": "Create a custom private/shared tracker only when no specialist Alex engine (goal, stash, bill, task, etc.) fits better.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "list_custom_ledgers",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 2372,
+      "description": "List custom trackers in the current privacy scope.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "add_custom_ledger_entry",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 2378,
+      "description": "Add a custom-ledger entry. Money entries require explicit semantic kind: SPENDING, SAVINGS, TRANSFER or REFERENCE_ONLY; ambiguity returns a clarification and writes nothing.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "query_custom_ledger",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 2394,
+      "description": "Read one custom ledger. Results are numbered and frozen for exact Show N follow-ups.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "close_custom_ledger",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 2408,
+      "description": "Close one custom ledger while preserving all history.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "recall_discussion",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 2418,
+      "description": "Recall a previously captured Family Shared Listening Mode discussion by natural topic words. Read-only; never turns discussion into a plan, task, reminder, diary entry or saved item automatically.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "list_discussions",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 2424,
+      "description": "List genuine durable Ear discussions by topic, latest or pending actions. Freeze numbered order; never search unrelated saved notes.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "get_discussion",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 2431,
+      "description": "Read one authorized Ear discussion: original capture, summary, decisions, action owners/status and audit history. No action is created.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "update_discussion",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 2437,
+      "description": "Record explicit discussion decisions or status with history. Status: IDEA, DECISION_PENDING, ACTION_PENDING, IN_PROGRESS, ON_HOLD, DONE, CANCELLED. Read/acknowledged is NOT done. Never create a Task/Diary/Reminder without separate permission.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "update_discussion_action",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 2448,
+      "description": "Create/update a discussion action ONLY from the user's explicit instruction. Use grounded action/owner IDs from returned records; clarify ambiguous action/owner. Never invent a deadline. Status DONE means actual completion, not acknowledgement. Does not create reminders/tasks/diary.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "link_discussion_action",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 2459,
+      "description": "Link an existing same-scope task/diary/plan/reminder to an Ear action ONLY with explicit promotion consent. Does not create or schedule anything. Read both exact records first.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "get_daily_brief",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 2466,
+      "description": "Build the owner's deterministic private Daily Brief for a local date. Combines Family Shared plus this owner's private records; never exposes a spouse's private records. This is read-only.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "calculate",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 2472,
+      "description": "Perform exact local arithmetic instead of estimating in language.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "set_money_bucket",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 2478,
+      "description": "Set a named allowance, allocation, stash or planning bucket to the exact amount the user supplied. Never invent or increase it without instruction.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    },
+    {
+      "name": "list_money_buckets",
+      "source": "alex-mcp/app/mcp_server.py",
+      "line": 2485,
+      "description": "Read the user's current named allowances, allocations and stash amounts for planning.",
+      "mcp_execution_in_this_audit": "NOT_RUN"
+    }
+  ]
+}

@@ -332,15 +332,16 @@ Changing Auto ↔ Grok ↔ Gemini ↔ OpenAI is an app setting. The MCP tools an
 
 ## Voice notes
 
-As of **0.5.6**, voice notes are a safe deferred-review inbox, not a trusted command interface.
+In **0.5.54**, enabled voice notes use the authenticated sender's current
+transcript as the request, then follow the normal scoped tools. See
+[Multilingual voice notes](#multilingual-voice-notes-0554) for configuration.
+Original audio and provenance are retained. Quoted or retrieved recordings do
+not become new commands merely because Alex can retrieve their transcripts.
 
-When Alex receives a voice note it:
-
-- preserves the original audio and WhatsApp provenance locally;
-- acknowledges the message without executing finance/reminder/diary/task/home actions from speech;
-- creates a private pending item for the authenticated sender;
-- keeps the item visibly unresolved with the managed ⏳/pin lifecycle;
-- asks the user to type the intended instruction when convenient.
+When voice is disabled, unavailable, over budget, or unclear, Alex preserves
+the original and creates an owner-bound pending item for typed clarification.
+That deferred path acknowledges receipt without performing the spoken action
+and keeps the item unresolved through the managed ⏳/pin lifecycle.
 
 You can later swipe-reply to the original voice note or Alex's pending acknowledgement and type the clarification. Alex binds that typed instruction to the saved voice item, processes the typed request normally, marks the pending item resolved, and clears the managed unresolved markers. The original audio remains retrievable for provenance.
 
@@ -353,7 +354,10 @@ You can also ask naturally:
 
 Typed language remains fully model-assisted: English, Malay, Tamil, Tanglish/transliteration and natural mixtures are still accepted. Alex continues to reply in English unless another output language is explicitly requested.
 
-Legacy STT configuration fields remain accepted for upgrade compatibility, but normal 0.5.6 voice-note command execution does not depend on transcription and does not upload the audio to an AI provider.
+Legacy STT configuration fields remain accepted for upgrade compatibility.
+With voice enabled, the current audio is sent to the configured OpenAI
+transcription endpoint. With voice disabled, the deferred inbox does not upload
+audio for transcription. Installing an update alone does not enable voice.
 
 Alex replies in text only.
 

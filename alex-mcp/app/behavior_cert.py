@@ -90,9 +90,9 @@ def media_fixture_text(fixture: str | None) -> str:
 
 
 _SECRET_PATTERNS = (
-    re.compile(r"(?i)bearer\\s+[A-Za-z0-9._-]+"),
-    re.compile(r"(?i)\\b(?:xai-|sk-)[A-Za-z0-9._-]{8,}"),
-    re.compile(r"(?i)(api[_-]?key[\\s=:]+)[^\\s,}\"]+"),
+    re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~-]+"),
+    re.compile(r"(?i)\b(?:xai-|sk-)[A-Za-z0-9._-]{8,}"),
+    re.compile(r"(?i)(api[\s_-]?key[\"']?\s*[:=]\s*[\"']?|api[\s_-]?key\s+)[^\s,}\"']+"),
 )
 
 
@@ -102,7 +102,7 @@ def _redact_scalar(value: Any) -> Any:
     text = value
     for pattern in _SECRET_PATTERNS:
         if "api" in pattern.pattern.casefold():
-            text = pattern.sub(r"\\1[redacted]", text)
+            text = pattern.sub(r"\1[redacted]", text)
         else:
             text = pattern.sub("[redacted]", text)
     return text
@@ -113,7 +113,7 @@ def _redact_report(value: Any) -> Any:
         return {
             str(k): (
                 "[redacted]"
-                if any(token in str(k).casefold() for token in ("api_key", "authorization", "token"))
+                if _secret_report_key(k, v)
                 else _redact_report(v)
             )
             for k, v in value.items()
@@ -123,6 +123,18 @@ def _redact_report(value: Any) -> Any:
     if isinstance(value, tuple):
         return tuple(_redact_report(item) for item in value)
     return _redact_scalar(value)
+
+
+def _secret_report_key(key: Any, value: Any) -> bool:
+    normalized = re.sub(r"[^a-z0-9]", "", str(key).casefold())
+    # Preserve known numeric usage counters, while keeping conservative
+    # redaction for token bundles, suffixes and unfamiliar credential fields.
+    if normalized in {"inputtokens", "outputtokens", "totaltokens", "cachedtokens",
+                      "cachedinputtokens", "reasoningtokens", "prompttokens", "completiontokens"}:
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return False
+    return any(part in normalized for part in
+               ("apikey", "password", "secret", "token", "authorization", "cookie"))
 
 
 def _emit(report: dict, report_path: str | None) -> dict:
@@ -1138,9 +1150,10 @@ def _seed_core(private_memory: bool = False, pending_plan: bool = False):
     # Management fee with original receipt.
     mid = "seed-management"
     _claim(mid, "management fee receipt", conv)
+    receipt_bytes = b"CERTIFICATION management receipt RM593.62"
     media_id = media.save_media(
         mid, "IMAGE", "image/jpeg",
-        base64.b64encode(b"CERTIFICATION management receipt RM593.62").decode("ascii"),
+        base64.b64encode(receipt_bytes).decode("ascii"),
     )
     a = with_action_key(
         _actor(mid, conv, "management fee receipt", media_ids=[media_id]),
@@ -1156,6 +1169,10 @@ def _seed_core(private_memory: bool = False, pending_plan: bool = False):
         "management_media_id": media_id,
         "management_receipt_path": receipt_row["local_path"] if receipt_row else None,
     })
+    if receipt_row:
+        CERT_FIXTURES.setdefault("original_attachment_sha256", {})[
+            os.path.realpath(receipt_row["local_path"])
+        ] = hashlib.sha256(receipt_bytes).hexdigest()
 
     # Explicit memory and saved picture.
     mid = "seed-cobalt"
@@ -1170,9 +1187,10 @@ def _seed_core(private_memory: bool = False, pending_plan: bool = False):
 
     mid = "seed-vinyl"
     _claim(mid, "save this vinyl setup", conv)
+    vinyl_bytes = b"CERTIFICATION vinyl image"
     vinyl_media = media.save_media(
         mid, "IMAGE", "image/png",
-        base64.b64encode(b"CERTIFICATION vinyl image").decode("ascii"),
+        base64.b64encode(vinyl_bytes).decode("ascii"),
     )
     vinyl = services.save_item(
         with_action_key(
@@ -1189,6 +1207,10 @@ def _seed_core(private_memory: bool = False, pending_plan: bool = False):
         "private_vinyl_media_id": vinyl_media,
         "vinyl_path": vinyl_row["local_path"] if vinyl_row else None,
     })
+    if vinyl_row:
+        CERT_FIXTURES.setdefault("original_attachment_sha256", {})[
+            os.path.realpath(vinyl_row["local_path"])
+        ] = hashlib.sha256(vinyl_bytes).hexdigest()
 
     # Family shopping state.
     for idx, item in enumerate(("Diapers", "Bread"), 1):
@@ -1429,7 +1451,7 @@ def _reply_from_outbound(rows: list[dict[str, Any]]) -> str:
 
 
 def _attachment_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return [row for row in rows if row.get("kind") in {"IMAGE", "DOCUMENT"}]
+    return [row for row in rows if row.get("kind") in {"IMAGE", "DOCUMENT", "AUDIO", "VIDEO"}]
 
 
 def _fixture_attachment_path(name: str | None) -> str | None:
@@ -1501,6 +1523,16 @@ def _privacy_leak_problems(contract, reply: str, outbounds: list[dict], trace: d
 def _attachment_identity_problems(contract, outbounds: list[dict]) -> list[str]:
     attachments = _attachment_rows(outbounds)
     problems: list[str] = []
+    observed_digests = {}
+    for row in attachments:
+        path = str(row.get("local_path") or "")
+        try:
+            content = Path(path).read_bytes()
+            if not content:
+                problems.append("queued attachment file is empty")
+            observed_digests[os.path.realpath(path)] = hashlib.sha256(content).hexdigest()
+        except (OSError, ValueError):
+            problems.append("queued attachment file is missing or unreadable")
     if contract.expect_attachment and not attachments:
         problems.append("expected original attachment was not queued")
     if contract.expect_attachment_of:
@@ -1510,6 +1542,12 @@ def _attachment_identity_problems(contract, outbounds: list[dict]) -> list[str]:
                 f"fixture attachment {contract.expect_attachment_of!r} is unavailable"
             )
         else:
+            expected_path = os.path.realpath(expected)
+            expected_digest = CERT_FIXTURES.get("original_attachment_sha256", {}).get(expected_path)
+            if not expected_digest:
+                problems.append("fixture original attachment digest is unavailable")
+            elif observed_digests.get(expected_path) != expected_digest:
+                problems.append("queued attachment bytes do not match the frozen original fixture")
             matching = [
                 row for row in attachments
                 if os.path.realpath(str(row.get("local_path") or "")) == os.path.realpath(expected)

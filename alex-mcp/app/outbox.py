@@ -18,6 +18,10 @@ CONTROL_MAX_ATTEMPTS = 5
 CONTROL_BACKOFF_SECONDS = (5, 15, 60, 300, 900)
 _STARTUP_MANAGED_JOB_RECONCILED = False
 
+
+class AttachmentIntegrityError(ValueError):
+    """Archived bytes changed; retrying this file cannot repair the original."""
+
 # These outbounds are generated later by schedulers/recovery workers. Quoting
 # the original command hours later would be misleading. Immediate replies use
 # the exact inbound message whenever they stay in the same WhatsApp chat.
@@ -109,7 +113,22 @@ def _payload(row) -> dict:
     if not path or not os.path.isfile(path):
         raise FileNotFoundError(path or "missing attachment path")
     with open(path, "rb") as handle:
-        data = base64.b64encode(handle.read()).decode("ascii")
+        original_bytes = handle.read()
+    # Recheck archived originals at the final boundary, after any queue delay.
+    # Hash the same bytes we encode and send, so changing a file after tool
+    # retrieval cannot silently deliver different evidence. Generated reports
+    # have no media_objects row and continue through their existing path.
+    conn = connect()
+    try:
+        originals = conn.execute(
+            "SELECT sha256 FROM media_objects WHERE local_path=?", (path,)
+        ).fetchall()
+    finally:
+        conn.close()
+    digest = hashlib.sha256(original_bytes).hexdigest()
+    if any(original["sha256"] != digest for original in originals):
+        raise AttachmentIntegrityError("Original attachment failed its integrity check; delivery stopped.")
+    data = base64.b64encode(original_bytes).decode("ascii")
     mime = row["mime_type"] or (
         "image/jpeg" if kind == "IMAGE" else "application/octet-stream"
     )
@@ -670,7 +689,7 @@ def _queue_document_notice(conn, row, permanent: bool = False) -> None:
     if not permanent and attempts < DOCUMENT_NOTICE_ATTEMPTS:
         return
     text = (
-        "I couldn't deliver that document because the generated file is unavailable. "
+        "I couldn't deliver that document because the file is unavailable or failed its integrity check. "
         "The request is still unresolved."
         if permanent
         else "That document has not delivered yet. The original request remains marked as unresolved while delivery retries continue."
@@ -787,7 +806,7 @@ def sweep():
             try:
                 payload = _payload(row)
                 ok, detail = _send(payload)
-            except FileNotFoundError as exc:
+            except (FileNotFoundError, AttachmentIntegrityError) as exc:
                 ok, detail, permanent_error = False, str(exc), True
             except Exception as exc:
                 ok, detail = False, str(exc)

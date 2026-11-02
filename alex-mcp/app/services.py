@@ -1008,10 +1008,11 @@ def confirm_expense(actor: ActorContext, event_id: str, approve: bool = True,
             conn.commit()
             return {"status": "ignored", "event_id": event_id}
         new_amount = _minor(amount) if amount is not None else row["amount_minor"]
-        new_category = category or row["category"]
+        new_category = _clean_category(category if category is not None else row["category"])
         if new_amount is None or not new_category:
             return {"status": "still_needs_information", "event_id": event_id,
-                    "missing": ["amount" if new_amount is None else None, "category" if not new_category else None]}
+                    "missing": (["amount"] if new_amount is None else [])
+                               + (["category"] if not new_category else [])}
         conn.execute(
             "UPDATE financial_events SET amount_minor=?,category=?,status='ACTIVE' WHERE event_id=?",
             (new_amount, new_category, event_id),
@@ -1234,6 +1235,14 @@ def correct_expense(actor: ActorContext, event_id: str, amount: float | None = N
         ).fetchone()
         if not parent:
             raise PermissionError("event not found in your accessible spaces")
+        # Corrections supersede a completed ledger record. They must not bypass
+        # the confirmation path or resurrect ignored/superseded records.
+        if parent["status"] != "ACTIVE":
+            raise ValueError("Only an active expense can be corrected. Confirm a pending expense first.")
+        new_category = _clean_category(category if category is not None else parent["category"])
+        new_amount = _minor(amount) if amount is not None else parent["amount_minor"]
+        if not new_category or new_amount is None or new_amount <= 0:
+            raise ValueError("A correction needs a valid amount and spending category; privacy is not a category.")
         child_id = str(uuid.uuid4())
         conn.execute("BEGIN")
         conn.execute(
@@ -1243,8 +1252,8 @@ def correct_expense(actor: ActorContext, event_id: str, amount: float | None = N
                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'ACTIVE')""",
             (
                 child_id, actor.action_key, actor.source_message_id, parent["space_id"], actor.user_id,
-                parent["owner_id"], parent["event_type"], category or parent["category"],
-                _minor(amount) if amount is not None else parent["amount_minor"], parent["currency"],
+                parent["owner_id"], parent["event_type"], new_category,
+                new_amount, parent["currency"],
                 (
                     _resolve_new_event_time(actor, event_date_local)
                     if event_date_local and _user_requested_event_time_change(
@@ -1593,7 +1602,7 @@ def get_receipt_for_event(actor: ActorContext, event_id: str) -> dict:
         if not event:
             raise PermissionError("financial event not found in your accessible data")
         rows = conn.execute(
-            """SELECT m.media_id,m.media_type,m.mime_type,m.local_path
+            """SELECT m.media_id,m.media_type,m.mime_type,m.local_path,m.sha256
                FROM event_media_links l
                JOIN media_objects m ON m.media_id=l.media_id
                WHERE l.event_id=? AND m.media_type IN ('IMAGE','PDF','DOCUMENT')
@@ -1608,6 +1617,8 @@ def get_receipt_for_event(actor: ActorContext, event_id: str) -> dict:
                 "amount": (event["amount_minor"] / 100 if event["amount_minor"] is not None else None),
                 "currency": event["currency"],
             }
+        for original in rows:
+            _verified_original_media_path(original)
         return {
             "status": "found",
             "event_id": event_id,
@@ -1644,6 +1655,7 @@ def get_receipt(actor: ActorContext, media_id: str) -> dict:
             [media_id] + spaces,
         ).fetchone()
         if row:
+            _verified_original_media_path(row)
             return {
                 "status": "found", "media_id": media_id, "event_id": row["event_id"],
                 "description": row["description"],
@@ -1672,6 +1684,7 @@ def get_receipt(actor: ActorContext, media_id: str) -> dict:
             [media_id] + spaces,
         ).fetchone()
         if saved:
+            _verified_original_media_path(saved)
             return {
                 "status": "found_saved_receipt", "media_id": media_id, "event_id": None,
                 "description": saved["title"] or "Saved receipt",
@@ -1696,6 +1709,7 @@ def get_receipt(actor: ActorContext, media_id: str) -> dict:
         ).fetchone()
         if not orphan:
             raise PermissionError("receipt not found in your accessible data")
+        _verified_original_media_path(orphan)
         return {
             "status": "found_unlinked", "media_id": media_id, "event_id": None,
             "description": "Saved receipt/media awaiting ledger linkage",
@@ -1879,6 +1893,7 @@ def get_media_original(actor: ActorContext, media_id: str) -> dict:
         ).fetchone()
         if not row:
             raise PermissionError("media not found in your accessible data")
+        _verified_original_media_path(row)
         kind = "IMAGE" if row["media_type"] == "IMAGE" else "DOCUMENT"
         return {
             "status": "found",
