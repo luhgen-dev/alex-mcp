@@ -70,7 +70,11 @@ import human_ai_lab
 # 0.5.52: 462 existing packets unchanged; nine new explicit teach/recall/price-reference
 # packets reviewed against the three scoped tools. Public delta: evaluation/persistent-learning-0552.
 # This remains a deterministic oracle; fresh independent review is deferred.
-REVIEWED_CORPUS_FINGERPRINT = "0292017fc029a974c586a54970cdc6ae2506cdc9595766fe19223b92867051ee"
+# 0.5.53: 465/471 public packets unchanged. Six typed teaching packets differ
+# only in remember_knowledge's description allowing authorized current voice.
+# Their typed capability decisions remain unchanged; the exact public delta is
+# evaluation/multilingual-voice-0553. This is not fresh independent-model evidence.
+REVIEWED_CORPUS_FINGERPRINT = "b9cb6f2cafc4d18763e96d369174d5027428bb3fa17d78f3d58e222024dd4782"
 
 
 def _low(value: str) -> str:

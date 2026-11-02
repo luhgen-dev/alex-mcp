@@ -75,5 +75,8 @@ This workspace has not connected the credited API key, accessed the running HA i
 - Stress harness and capability catalog: PASS.
 - Offline behavior certification: 174 contracts, 1,389 variant checks, 0 failures and 0 new failure signatures.
 - Human-AI corpus self-test: 471 packets, no routing gaps or forbidden tool exposure.
+- Deterministic reasoning review: 471/471 decisions passed. 465 public packets are unchanged from 0.5.52; six typed teaching packets only gain the updated voice-capable tool description. The exact reviewed delta is stored in `evaluation/multilingual-voice-0553/public-corpus-delta.json`; this is not independent model evidence.
+- Final architecture audit: 109 checks passed with the independent review explicitly deferred for the infrastructure reason below. The voice architecture check now covers the current opt-in, durable single-upload path instead of the dormant local Whisper/rescue chain.
+- GitHub Actions did not start the release jobs: its annotation reports the account is locked due to a billing issue. The hosted container build and fresh independent model review are therefore unverified; existing workflows are retained.
 - Python compilation, new-file lint, JavaScript syntax and whitespace checks passed.
 - Real provider requests, Priya recordings, deployed HA behavior and GitHub-hosted independent AI review are not included in these local results.

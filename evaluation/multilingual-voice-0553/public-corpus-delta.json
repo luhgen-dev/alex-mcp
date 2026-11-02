@@ -1,0 +1,83 @@
+{
+  "classification": "deterministic regression review; not independent model evidence",
+  "baseline_commit": "ee92037f0de3d2fd96391582491aa304aeba80a1",
+  "baseline_corpus_fingerprint": "0292017fc029a974c586a54970cdc6ae2506cdc9595766fe19223b92867051ee",
+  "current_corpus_fingerprint": "b9cb6f2cafc4d18763e96d369174d5027428bb3fa17d78f3d58e222024dd4782",
+  "unchanged_packets": 465,
+  "changed_packets": [
+    {
+      "packet_id": "hai-c11b70837bf39e9ee3",
+      "prompt": "Remember my usual coffee is decaf.",
+      "source": "text",
+      "changes": [
+        {
+          "path": "/available_tools/0/description",
+          "before": "Teach a persistent household fact or preference from an explicit typed remember/save/update request. Reuse the exact subject to update it; previous versions remain inspectable. Subject identifies the person/product/topic; topics specify when a preference applies (groceries, meals, replies). Relevant knowledge is recalled automatically across chats/restarts within current privacy scope. For an explicit grocery pricing preference, price_fallback=true enables remembered estimates when online prices are missing; false restricts automatic estimates to online data. Omit it for other preferences. This never changes permissions or creates reminders/actions. Use remember_product_price for a reusable per-pack estimate. Saved attachments still use save_item.",
+          "after": "Teach a persistent household fact or preference from an explicit remember/save/update request (typed or authorized current voice). Reuse the exact subject to update it; previous versions remain inspectable. Subject identifies the person/product/topic; topics specify when a preference applies (groceries, meals, replies). Relevant knowledge is recalled automatically across chats/restarts within current privacy scope. For an explicit grocery pricing preference, price_fallback=true enables remembered estimates when online prices are missing; false restricts automatic estimates to online data. Omit it for other preferences. This never changes permissions or creates reminders/actions. Use remember_product_price for a reusable per-pack estimate. Saved attachments still use save_item."
+        }
+      ]
+    },
+    {
+      "packet_id": "hai-0ce036d922e640257d",
+      "prompt": "Remember I always prefer short bullet replies.",
+      "source": "text",
+      "changes": [
+        {
+          "path": "/available_tools/0/description",
+          "before": "Teach a persistent household fact or preference from an explicit typed remember/save/update request. Reuse the exact subject to update it; previous versions remain inspectable. Subject identifies the person/product/topic; topics specify when a preference applies (groceries, meals, replies). Relevant knowledge is recalled automatically across chats/restarts within current privacy scope. For an explicit grocery pricing preference, price_fallback=true enables remembered estimates when online prices are missing; false restricts automatic estimates to online data. Omit it for other preferences. This never changes permissions or creates reminders/actions. Use remember_product_price for a reusable per-pack estimate. Saved attachments still use save_item.",
+          "after": "Teach a persistent household fact or preference from an explicit remember/save/update request (typed or authorized current voice). Reuse the exact subject to update it; previous versions remain inspectable. Subject identifies the person/product/topic; topics specify when a preference applies (groceries, meals, replies). Relevant knowledge is recalled automatically across chats/restarts within current privacy scope. For an explicit grocery pricing preference, price_fallback=true enables remembered estimates when online prices are missing; false restricts automatic estimates to online data. Omit it for other preferences. This never changes permissions or creates reminders/actions. Use remember_product_price for a reusable per-pack estimate. Saved attachments still use save_item."
+        }
+      ]
+    },
+    {
+      "packet_id": "hai-2d9b267b73e3f3c3f1",
+      "prompt": "Teach Alex this fact: my usual rice is Brand A 5kg.",
+      "source": "text",
+      "changes": [
+        {
+          "path": "/available_tools/0/description",
+          "before": "Teach a persistent household fact or preference from an explicit typed remember/save/update request. Reuse the exact subject to update it; previous versions remain inspectable. Subject identifies the person/product/topic; topics specify when a preference applies (groceries, meals, replies). Relevant knowledge is recalled automatically across chats/restarts within current privacy scope. For an explicit grocery pricing preference, price_fallback=true enables remembered estimates when online prices are missing; false restricts automatic estimates to online data. Omit it for other preferences. This never changes permissions or creates reminders/actions. Use remember_product_price for a reusable per-pack estimate. Saved attachments still use save_item.",
+          "after": "Teach a persistent household fact or preference from an explicit remember/save/update request (typed or authorized current voice). Reuse the exact subject to update it; previous versions remain inspectable. Subject identifies the person/product/topic; topics specify when a preference applies (groceries, meals, replies). Relevant knowledge is recalled automatically across chats/restarts within current privacy scope. For an explicit grocery pricing preference, price_fallback=true enables remembered estimates when online prices are missing; false restricts automatic estimates to online data. Omit it for other preferences. This never changes permissions or creates reminders/actions. Use remember_product_price for a reusable per-pack estimate. Saved attachments still use save_item."
+        }
+      ]
+    },
+    {
+      "packet_id": "hai-38e388b8d507958de3",
+      "prompt": "Remember Huggies diaper L 52 pcs at Manjaku is RM45 per pack.",
+      "source": "text",
+      "changes": [
+        {
+          "path": "/available_tools/0/description",
+          "before": "Teach a persistent household fact or preference from an explicit typed remember/save/update request. Reuse the exact subject to update it; previous versions remain inspectable. Subject identifies the person/product/topic; topics specify when a preference applies (groceries, meals, replies). Relevant knowledge is recalled automatically across chats/restarts within current privacy scope. For an explicit grocery pricing preference, price_fallback=true enables remembered estimates when online prices are missing; false restricts automatic estimates to online data. Omit it for other preferences. This never changes permissions or creates reminders/actions. Use remember_product_price for a reusable per-pack estimate. Saved attachments still use save_item.",
+          "after": "Teach a persistent household fact or preference from an explicit remember/save/update request (typed or authorized current voice). Reuse the exact subject to update it; previous versions remain inspectable. Subject identifies the person/product/topic; topics specify when a preference applies (groceries, meals, replies). Relevant knowledge is recalled automatically across chats/restarts within current privacy scope. For an explicit grocery pricing preference, price_fallback=true enables remembered estimates when online prices are missing; false restricts automatic estimates to online data. Omit it for other preferences. This never changes permissions or creates reminders/actions. Use remember_product_price for a reusable per-pack estimate. Saved attachments still use save_item."
+        }
+      ]
+    },
+    {
+      "packet_id": "hai-02fd9f3b5cbbc7d1fb",
+      "prompt": "Save a price reference: Brand A rice 5kg is RM22 per bag at Mydin.",
+      "source": "text",
+      "changes": [
+        {
+          "path": "/available_tools/0/description",
+          "before": "Teach a persistent household fact or preference from an explicit typed remember/save/update request. Reuse the exact subject to update it; previous versions remain inspectable. Subject identifies the person/product/topic; topics specify when a preference applies (groceries, meals, replies). Relevant knowledge is recalled automatically across chats/restarts within current privacy scope. For an explicit grocery pricing preference, price_fallback=true enables remembered estimates when online prices are missing; false restricts automatic estimates to online data. Omit it for other preferences. This never changes permissions or creates reminders/actions. Use remember_product_price for a reusable per-pack estimate. Saved attachments still use save_item.",
+          "after": "Teach a persistent household fact or preference from an explicit remember/save/update request (typed or authorized current voice). Reuse the exact subject to update it; previous versions remain inspectable. Subject identifies the person/product/topic; topics specify when a preference applies (groceries, meals, replies). Relevant knowledge is recalled automatically across chats/restarts within current privacy scope. For an explicit grocery pricing preference, price_fallback=true enables remembered estimates when online prices are missing; false restricts automatic estimates to online data. Omit it for other preferences. This never changes permissions or creates reminders/actions. Use remember_product_price for a reusable per-pack estimate. Saved attachments still use save_item."
+        }
+      ]
+    },
+    {
+      "packet_id": "hai-9188e9f625e3398f39",
+      "prompt": "Remember Baby wipes 80 pcs cost RM8 per pack.",
+      "source": "text",
+      "changes": [
+        {
+          "path": "/available_tools/0/description",
+          "before": "Teach a persistent household fact or preference from an explicit typed remember/save/update request. Reuse the exact subject to update it; previous versions remain inspectable. Subject identifies the person/product/topic; topics specify when a preference applies (groceries, meals, replies). Relevant knowledge is recalled automatically across chats/restarts within current privacy scope. For an explicit grocery pricing preference, price_fallback=true enables remembered estimates when online prices are missing; false restricts automatic estimates to online data. Omit it for other preferences. This never changes permissions or creates reminders/actions. Use remember_product_price for a reusable per-pack estimate. Saved attachments still use save_item.",
+          "after": "Teach a persistent household fact or preference from an explicit remember/save/update request (typed or authorized current voice). Reuse the exact subject to update it; previous versions remain inspectable. Subject identifies the person/product/topic; topics specify when a preference applies (groceries, meals, replies). Relevant knowledge is recalled automatically across chats/restarts within current privacy scope. For an explicit grocery pricing preference, price_fallback=true enables remembered estimates when online prices are missing; false restricts automatic estimates to online data. Omit it for other preferences. This never changes permissions or creates reminders/actions. Use remember_product_price for a reusable per-pack estimate. Saved attachments still use save_item."
+        }
+      ]
+    }
+  ],
+  "removed_packets": [],
+  "review_conclusion": "All six differences only extend remember_knowledge description to authorized current voice. All six prompts remain typed explicit teaching requests; their expected capabilities are unchanged. No oracle decision rules or independent model snapshot were changed."
+}
