@@ -1,3 +1,13 @@
+## 0.5.50 — utility replies and reliable retailer follow-ups
+
+- Advertise the supported TNB/SAJ provider values in the MCP schema and accept harmless case/whitespace differences. Unsupported providers fail closed with a relevant error.
+- Keep both utility results in a deterministic reply when AI synthesis is empty or date-only. Preserve failed lookups alongside successful ones; saved-list fallbacks cannot hide a failed live check or imply zero owed.
+- Connect explicitly requested utility PDFs to the existing WhatsApp attachment path. Block an unrequested PDF download/send even if the model supplies include_pdf=true; statement analysis remains a separate option.
+- Keep MYDIN/Manjaku product follow-ups in the current retailer catalogue, require a fresh lookup and render prices from verified product results with source links and local check times. Explicit store switches and new household topics remain separate; plain list/add/monthly grocery behavior is preserved.
+- Normalize common catalogue plurals and omit unrelated scented toiletries, containers and diaper bags. Treat empty pages as limited search results, never proof of catalogue-wide absence.
+- Preserve verified Manjaku selling prices when a stale comparison price is lower; do not claim a discount. One unverifiable product no longer discards verified siblings.
+- Cover the reported WhatsApp request through real ingress, MCP calls, bill storage and outbox using synthetic portal/AI responses. No configuration or database migrations.
+
 ## 0.5.49 — SAJ bill-history compatibility
 
 - Read SAJ bill-history rows that repeat column labels inside responsive table cells. Keep invoice charges separate from payment entries and the dashboard outstanding balance.

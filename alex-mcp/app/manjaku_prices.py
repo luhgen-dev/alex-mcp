@@ -17,6 +17,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 from zoneinfo import ZoneInfo
+import catalog_keywords
 
 BASE = "https://www.manjaku.com"
 MAX_BYTES = 2_000_000
@@ -189,12 +190,15 @@ def _read_product(handle: str) -> dict:
             maximum = _integer(rule["max"], minimum, 10000) if rule["max"] is not None else None
             compare = row["compare_at_price"]
             compare_price = Decimal(_integer(compare)) / 100 if compare is not None else Decimal(0)
-            if compare_price and compare_price < price:
-                raise ValueError("Invalid comparison price")
+            # Selling price is independently verified against structured offers.
+            # A stale lower comparison price cannot establish a discount, but
+            # does not invalidate that verified current selling price.
+            invalid_compare = bool(compare_price and compare_price < price)
             variants.append({"variant_id": variant_id, "sku": _text(row["sku"], 100) if row["sku"] else None,
                              "option": _text(row["title"]) if row["title"] else "Default",
                              "selling_price": f"{price:.2f}",
-                             "compare_at_price": f"{compare_price:.2f}" if compare_price else None,
+                             "compare_at_price": f"{compare_price:.2f}" if compare_price and not invalid_compare else None,
+                             "comparison_price_unverified": invalid_compare,
                              "available_online": available, "stock_quantity": stock,
                              "allows_backorder": row["inventory_policy"] == "continue",
                              "quantity_minimum": minimum, "quantity_increment": increment,
@@ -215,11 +219,12 @@ def _envelope(products: list, started: float, local_timezone: str) -> dict:
         local = now.astimezone(ZoneInfo("Asia/Kuala_Lumpur"))
     return {"ok": True, "source": "Manjaku Online", "source_kind": "live_first_party_storefront",
             "currency": "MYR", "cached": False, "checked_at": now.isoformat(),
-            "checked_at_local": local.isoformat(), "elapsed_ms": round((time.monotonic() - started) * 1000),
+            "checked_at_local": local.strftime('%d %b %Y, %I:%M %p %Z'), "elapsed_ms": round((time.monotonic() - started) * 1000),
             "price_scope_note": NOTICE, "products": products}
 
 
 def _terms(text: str) -> set[str]:
+    text = catalog_keywords.normalize(text)
     text = re.sub(r"(\d)\s+(kg|g|ml|l)\b", r"\1\2", text.casefold())
     aliases = {"lampin": "diaper", "diapers": "diaper", "wipes": "wipe", "tisu": "tissue", "tissues": "tissue"}
     return {aliases.get(t, t) for t in re.findall(r"[a-z0-9]+", text)}
@@ -231,7 +236,7 @@ def search(query: str, limit: int = 3, local_timezone: str = "Asia/Kuala_Lumpur"
         raise ValueError("Use 2–120 characters of product, brand or pack-size keywords.")
     if type(limit) is not int or not 1 <= limit <= 5:
         raise ValueError("Limit must be from 1 to 5.")
-    query = query.strip()
+    query = catalog_keywords.normalize(query)
     started = time.monotonic()
     params = {"q": query, "field": "title", "resource_type": "product", "limit": limit,
               "available_type": "show", "section_id": "predictive-search"}
@@ -252,11 +257,19 @@ def search(query: str, limit: int = 3, local_timezone: str = "Asia/Kuala_Lumpur"
             raise SourceUnavailable("Manjaku returned duplicate products.")
         handles.append(handle)
     # A small bounded group of public GETs; preserve the storefront result order.
+    def read_candidate(handle):
+        try:
+            return _read_product(handle)
+        except SourceUnavailable:
+            return None
     with ThreadPoolExecutor(max_workers=3) as pool:
-        products = list(pool.map(_read_product, handles))
-    matching = [p for p in products if _terms(query) <= _terms(p["title"])]
+        candidates = list(pool.map(read_candidate, handles))
+    products = [p for p in candidates if p is not None]
+    matching = [p for p in products if _terms(query) <= _terms(p["title"])
+                and catalog_keywords.relevant(query, p['title'])]
     result = _envelope(matching, started, local_timezone)
     result.update(query=query, source_candidates=len(handles), partial_matches_omitted=len(products) - len(matching),
+                  unavailable_products=sum(p is None for p in candidates),
                   search_scope="Top storefront suggestions only; not a complete catalogue or physical-store inventory.",
                   may_have_more_results=len(handles) == limit, search_url=BASE + "/search?" + urlencode({"keyword": query}))
     return result

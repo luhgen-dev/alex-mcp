@@ -1,0 +1,277 @@
+{
+  "classification": "Deterministic regression review only; independent model review deferred due GitHub billing lock",
+  "before_fingerprint": "fddfd018ba5e9cbbcddb8d674911d5750f7174c4c2bce22c0ded85e390f0485e",
+  "after_fingerprint": "5b38fa00714cd4965088c84d99442d3c3f9e4c643ea827b15237fa1f67e56437",
+  "changed_packets": [
+    {
+      "packet_id": "hai-6bf3fad57760059eec",
+      "prompt": "How much is Myrasa 5kg at Mydin?",
+      "removed_tools": [
+        "calculate",
+        "find_receipts",
+        "get_receipt",
+        "query_finances"
+      ],
+      "added_tools": [
+        "discover_alex_tools"
+      ],
+      "changed_tool_schemas": []
+    },
+    {
+      "packet_id": "hai-93a79ff5498a78b898",
+      "prompt": "How much are Mimora diapers at Manjaku?",
+      "removed_tools": [
+        "calculate",
+        "find_receipts",
+        "get_receipt",
+        "query_finances"
+      ],
+      "added_tools": [
+        "discover_alex_tools"
+      ],
+      "changed_tool_schemas": []
+    },
+    {
+      "packet_id": "hai-e5f1a8e8941649bbfb",
+      "prompt": "Check my TNB bill amount.",
+      "removed_tools": [],
+      "added_tools": [],
+      "changed_tool_schemas": [
+        "check_household_bill"
+      ]
+    },
+    {
+      "packet_id": "hai-8ae8f00539c08b0b4f",
+      "prompt": "How much is the SAJ water bill?",
+      "removed_tools": [],
+      "added_tools": [],
+      "changed_tool_schemas": [
+        "check_household_bill"
+      ]
+    },
+    {
+      "packet_id": "hai-4b9ae34d482c8aaf20",
+      "prompt": "Check bil air Ranhill.",
+      "removed_tools": [],
+      "added_tools": [],
+      "changed_tool_schemas": [
+        "check_household_bill"
+      ]
+    },
+    {
+      "packet_id": "hai-c36b16a06fb8d2ef24",
+      "prompt": "What are this month's payments and commitments?",
+      "removed_tools": [],
+      "added_tools": [],
+      "changed_tool_schemas": [
+        "check_household_bill"
+      ]
+    },
+    {
+      "packet_id": "hai-c5f25cae4cde8f4a90",
+      "prompt": "Consolidate all my bills for this month.",
+      "removed_tools": [],
+      "added_tools": [],
+      "changed_tool_schemas": [
+        "check_household_bill"
+      ]
+    },
+    {
+      "packet_id": "hai-8ab0d8296df60b3cae",
+      "prompt": "What bills do I have coming up?",
+      "removed_tools": [],
+      "added_tools": [],
+      "changed_tool_schemas": [
+        "check_household_bill"
+      ]
+    },
+    {
+      "packet_id": "hai-3a7427492f609c59b4",
+      "prompt": "Anything due soon?",
+      "removed_tools": [],
+      "added_tools": [],
+      "changed_tool_schemas": [
+        "check_household_bill"
+      ]
+    },
+    {
+      "packet_id": "hai-33b6478c3dd76605bf",
+      "prompt": "Do I have an electricity bill coming up?",
+      "removed_tools": [],
+      "added_tools": [],
+      "changed_tool_schemas": [
+        "check_household_bill"
+      ]
+    },
+    {
+      "packet_id": "hai-bee52ef2eb5398c873",
+      "prompt": "What's due for TNB?",
+      "removed_tools": [],
+      "added_tools": [],
+      "changed_tool_schemas": [
+        "check_household_bill"
+      ]
+    },
+    {
+      "packet_id": "hai-0a142a5304231bfe63",
+      "prompt": "Match this TNB payment to the electricity bill.",
+      "removed_tools": [],
+      "added_tools": [],
+      "changed_tool_schemas": [
+        "check_household_bill"
+      ]
+    },
+    {
+      "packet_id": "hai-fd00304542de38c578",
+      "prompt": "Which bill does this electricity payment belong to?",
+      "removed_tools": [],
+      "added_tools": [],
+      "changed_tool_schemas": [
+        "check_household_bill"
+      ]
+    },
+    {
+      "packet_id": "hai-00b590b93bff4ca178",
+      "prompt": "Record RM120 paid toward the TNB electricity bill.",
+      "removed_tools": [],
+      "added_tools": [],
+      "changed_tool_schemas": [
+        "check_household_bill"
+      ]
+    },
+    {
+      "packet_id": "hai-566682355d91679f7f",
+      "prompt": "I paid RM120 toward the electricity bill; record the payment.",
+      "removed_tools": [],
+      "added_tools": [],
+      "changed_tool_schemas": [
+        "check_household_bill"
+      ]
+    },
+    {
+      "packet_id": "hai-6cf6ab177330b2b7a2",
+      "prompt": "Defer the TNB bill to 5 October.",
+      "removed_tools": [],
+      "added_tools": [],
+      "changed_tool_schemas": [
+        "check_household_bill"
+      ]
+    },
+    {
+      "packet_id": "hai-d2068df48478c2e39e",
+      "prompt": "Move the electricity bill due date to 5 October.",
+      "removed_tools": [],
+      "added_tools": [],
+      "changed_tool_schemas": [
+        "check_household_bill"
+      ]
+    },
+    {
+      "packet_id": "hai-d876fba6e5c73e48c2",
+      "prompt": "I did not pay the TNB bill; mark it unpaid.",
+      "removed_tools": [],
+      "added_tools": [],
+      "changed_tool_schemas": [
+        "check_household_bill"
+      ]
+    },
+    {
+      "packet_id": "hai-320b6d6f3c56a590ae",
+      "prompt": "Confirm the electricity bill is unpaid.",
+      "removed_tools": [],
+      "added_tools": [],
+      "changed_tool_schemas": [
+        "check_household_bill"
+      ]
+    },
+    {
+      "packet_id": "hai-18b590778f7c5ab028",
+      "prompt": "alex set remnder tmr 9am electricity",
+      "removed_tools": [],
+      "added_tools": [],
+      "changed_tool_schemas": [
+        "check_household_bill"
+      ]
+    },
+    {
+      "packet_id": "hai-01e3905668816eae2b",
+      "prompt": "alex set remnder tmr 9 electricity",
+      "removed_tools": [],
+      "added_tools": [],
+      "changed_tool_schemas": [
+        "check_household_bill"
+      ]
+    },
+    {
+      "packet_id": "hai-c1fb4a8f0c22485969",
+      "prompt": "Remind me tomorrow at 9am to pay electricity.",
+      "removed_tools": [],
+      "added_tools": [],
+      "changed_tool_schemas": [
+        "check_household_bill"
+      ]
+    }
+  ],
+  "unique_tool_changes": {
+    "check_household_bill": {
+      "before": {
+        "name": "check_household_bill",
+        "description": "On-demand live TNB or SAJ home bill check. Stores a timestamped observation; no payment or expense is created. include_pdf=true ONLY when the user requests the PDF/original bill; TNB supports it, SAJ download remains unverified. analyse_pdf=true downloads and extracts untrusted statement text for a requested discrepancy review; it does not send a PDF unless include_pdf=true. Credentials/account must be configured privately in HA. Digi is screenshot-only; never use phone control or SMS. A failed source returns unavailable, not zero.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "provider": {
+              "title": "Provider",
+              "type": "string"
+            },
+            "include_pdf": {
+              "default": false,
+              "title": "Include Pdf",
+              "type": "boolean"
+            },
+            "analyse_pdf": {
+              "default": false,
+              "title": "Analyse Pdf",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "provider"
+          ],
+          "title": "check_household_billArguments"
+        }
+      },
+      "after": {
+        "name": "check_household_bill",
+        "description": "On-demand live home bill check. provider must be tnb or saj; call once for EACH requested provider. Stores a timestamped observation; no payment or expense is created. include_pdf=true ONLY when the user requests the PDF/original bill; TNB supports it, SAJ download remains unverified. analyse_pdf=true downloads and extracts untrusted statement text for a requested discrepancy review; it does not send a PDF unless include_pdf=true. Credentials/account must be configured privately in HA. Digi is screenshot-only; never use phone control or SMS. A failed source returns unavailable, not zero; bills_list only reads saved records and cannot replace a failed live check.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "provider": {
+              "enum": [
+                "tnb",
+                "saj"
+              ],
+              "title": "Provider",
+              "type": "string"
+            },
+            "include_pdf": {
+              "default": false,
+              "title": "Include Pdf",
+              "type": "boolean"
+            },
+            "analyse_pdf": {
+              "default": false,
+              "title": "Analyse Pdf",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "provider"
+          ],
+          "title": "check_household_billArguments"
+        }
+      }
+    }
+  }
+}

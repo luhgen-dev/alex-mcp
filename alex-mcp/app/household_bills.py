@@ -134,7 +134,11 @@ def list_records(actor, period=None, provider=None):
 
 
 def refresh(actor, provider, include_pdf=False, analyse_pdf=False):
-    if provider not in {'tnb','saj'}: raise ValueError('Digi uses screenshots; there is no phone-screen or SMS retrieval.')
+    provider = provider.strip().casefold() if isinstance(provider, str) else None
+    if provider == 'digi':
+        raise ValueError('Digi uses screenshots; there is no phone-screen or SMS retrieval.')
+    if provider not in {'tnb','saj'}:
+        raise ValueError('Choose tnb or saj for a live bill check. Call once for each provider when both are requested.')
     # Household connectors cannot be retargeted or used to widen an explicit private read.
     if 'FAMILY_SHARED' not in scope_policy.read_spaces(actor):
         raise PermissionError('This connector reads the configured shared home account. Ask for the shared bill.')
@@ -150,7 +154,9 @@ def refresh(actor, provider, include_pdf=False, analyse_pdf=False):
         payload, html = portal.read(account)
         payload['account_last4'] = account[-4:]
         rid = _save(actor,provider,'home',account,payload)
-        result = {'status':'refreshed','record_id':rid,'provider':provider,'checked_at':db.utc_now(),'live':True,**payload}
+        result = {'status':'refreshed','record_id':rid,'provider':provider,'checked_at':db.utc_now(),
+                  'checked_at_local':runtime_clock.now_in(actor.timezone).strftime('%d %b %Y, %I:%M %p %Z'),
+                  'live':True,**payload}
         if include_pdf or analyse_pdf:
             try:
                 content = portal.pdf(html)

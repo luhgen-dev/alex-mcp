@@ -1,0 +1,1011 @@
+[
+  {
+    "source": "mydin",
+    "query": "fernleaf milk",
+    "result": {
+      "ok": true,
+      "source": "MYDIN Online",
+      "source_kind": "first_party_live_api",
+      "checked_at": "2026-11-02T02:44:42.464267+00:00",
+      "checked_at_local": "02 Nov 2026, 10:44 AM +08",
+      "elapsed_ms": 6261,
+      "cached": false,
+      "currency": "MYR",
+      "reference": "MYDIN online selling prices, used as the Mutiara Rini shopping reference.",
+      "products": [
+        {
+          "sku": "15011727",
+          "title": "Fernleaf Family Milk Powder (850g)",
+          "currency": "MYR",
+          "selling_price": "22.60",
+          "maximum_price": "22.60",
+          "regular_price": "22.60",
+          "on_sale": false,
+          "requires_variant_selection": false,
+          "stock_quantity": 5,
+          "in_stock": true,
+          "quantity_tiers": [
+            {
+              "minimum_quantity": 1,
+              "unit_price": "22.60",
+              "unit_price_unrounded": "22.6"
+            },
+            {
+              "minimum_quantity": 12,
+              "unit_price": "22.60",
+              "unit_price_unrounded": "22.6"
+            }
+          ],
+          "url": "https://mydin.my/product/fleaf-family-milk-powder-850gm-15011727"
+        },
+        {
+          "sku": "10039075",
+          "title": "Fernleaf Family Milk Powder (1.65kg)",
+          "currency": "MYR",
+          "selling_price": "44.50",
+          "maximum_price": "44.50",
+          "regular_price": "44.50",
+          "on_sale": false,
+          "requires_variant_selection": false,
+          "stock_quantity": 21,
+          "in_stock": true,
+          "quantity_tiers": [
+            {
+              "minimum_quantity": 1,
+              "unit_price": "44.50",
+              "unit_price_unrounded": "44.5"
+            },
+            {
+              "minimum_quantity": 8,
+              "unit_price": "44.50",
+              "unit_price_unrounded": "44.5"
+            }
+          ],
+          "url": "https://mydin.my/product/fleaf-family-mlk-pwd-1-65kg-10039075"
+        },
+        {
+          "sku": "15164857",
+          "title": "Fernleaf Family Milk Powder - Chocolate (850g)",
+          "currency": "MYR",
+          "selling_price": "24.90",
+          "maximum_price": "24.90",
+          "regular_price": "24.90",
+          "on_sale": false,
+          "requires_variant_selection": false,
+          "stock_quantity": 10,
+          "in_stock": true,
+          "quantity_tiers": [
+            {
+              "minimum_quantity": 1,
+              "unit_price": "24.90",
+              "unit_price_unrounded": "24.9"
+            },
+            {
+              "minimum_quantity": 12,
+              "unit_price": "24.70",
+              "unit_price_unrounded": "24.7"
+            }
+          ],
+          "url": "https://mydin.my/product/fleaf-family-chocolate-850g-15164857"
+        }
+      ],
+      "query": "fernleaf milk",
+      "page": 1,
+      "source_total_results": 265,
+      "matching_results_on_page": 3,
+      "more_results": true,
+      "partial_matches_omitted": 0,
+      "search_note": "All product-name/pack-size terms must match. No matches on this page does not prove catalogue-wide absence; use the next page or refine the product name."
+    }
+  },
+  {
+    "source": "mydin",
+    "query": "rice 10kg",
+    "result": {
+      "ok": true,
+      "source": "MYDIN Online",
+      "source_kind": "first_party_live_api",
+      "checked_at": "2026-11-02T02:44:42.562979+00:00",
+      "checked_at_local": "02 Nov 2026, 10:44 AM +08",
+      "elapsed_ms": 6359,
+      "cached": false,
+      "currency": "MYR",
+      "reference": "MYDIN online selling prices, used as the Mutiara Rini shopping reference.",
+      "products": [
+        {
+          "sku": "10014189",
+          "title": "Thai Majesty Siam Rice (10kg)",
+          "currency": "MYR",
+          "selling_price": "35.90",
+          "maximum_price": "35.90",
+          "regular_price": "35.90",
+          "on_sale": false,
+          "requires_variant_selection": false,
+          "stock_quantity": 6,
+          "in_stock": true,
+          "quantity_tiers": [
+            {
+              "minimum_quantity": 1,
+              "unit_price": "35.90",
+              "unit_price_unrounded": "35.9"
+            }
+          ],
+          "url": "https://mydin.my/product/thai-majesty-siam-rice-10kg-10014189"
+        },
+        {
+          "sku": "10003282",
+          "title": "Dragon Super Siam Rice (10kg)",
+          "currency": "MYR",
+          "selling_price": "35.90",
+          "maximum_price": "35.90",
+          "regular_price": "35.90",
+          "on_sale": false,
+          "requires_variant_selection": false,
+          "stock_quantity": 4,
+          "in_stock": true,
+          "quantity_tiers": [
+            {
+              "minimum_quantity": 1,
+              "unit_price": "35.90",
+              "unit_price_unrounded": "35.9"
+            }
+          ],
+          "url": "https://mydin.my/product/dragon-spr-siam-rice-10kg-10003282"
+        },
+        {
+          "sku": "10010184",
+          "title": "Jati Parboiled Rice (10kg)",
+          "currency": "MYR",
+          "selling_price": "43.90",
+          "maximum_price": "43.90",
+          "regular_price": "43.90",
+          "on_sale": false,
+          "requires_variant_selection": false,
+          "stock_quantity": 3,
+          "in_stock": true,
+          "quantity_tiers": [
+            {
+              "minimum_quantity": 1,
+              "unit_price": "43.90",
+              "unit_price_unrounded": "43.9"
+            }
+          ],
+          "url": "https://mydin.my/product/jati-parboiled-rice-10kg-10010184"
+        }
+      ],
+      "query": "rice 10kg",
+      "page": 1,
+      "source_total_results": 211,
+      "matching_results_on_page": 3,
+      "more_results": true,
+      "partial_matches_omitted": 0,
+      "search_note": "All product-name/pack-size terms must match. No matches on this page does not prove catalogue-wide absence; use the next page or refine the product name."
+    }
+  },
+  {
+    "source": "mydin",
+    "query": "apple rice",
+    "result": {
+      "ok": true,
+      "source": "MYDIN Online",
+      "source_kind": "first_party_live_api",
+      "checked_at": "2026-11-02T02:44:42.439233+00:00",
+      "checked_at_local": "02 Nov 2026, 10:44 AM +08",
+      "elapsed_ms": 6235,
+      "cached": false,
+      "currency": "MYR",
+      "reference": "MYDIN online selling prices, used as the Mutiara Rini shopping reference.",
+      "products": [],
+      "query": "apple rice",
+      "page": 1,
+      "source_total_results": 226,
+      "matching_results_on_page": 0,
+      "more_results": true,
+      "partial_matches_omitted": 3,
+      "search_note": "All product-name/pack-size terms must match. No matches on this page does not prove catalogue-wide absence; use the next page or refine the product name."
+    }
+  },
+  {
+    "source": "mydin",
+    "query": "yogurts",
+    "result": {
+      "ok": true,
+      "source": "MYDIN Online",
+      "source_kind": "first_party_live_api",
+      "checked_at": "2026-11-02T02:44:53.851611+00:00",
+      "checked_at_local": "02 Nov 2026, 10:44 AM +08",
+      "elapsed_ms": 11412,
+      "cached": false,
+      "currency": "MYR",
+      "reference": "MYDIN online selling prices, used as the Mutiara Rini shopping reference.",
+      "products": [],
+      "query": "yogurt",
+      "page": 1,
+      "total_results": 10,
+      "more_results": true,
+      "partial_matches_omitted": 3,
+      "unavailable_skus": []
+    }
+  },
+  {
+    "source": "mydin",
+    "query": "sardine",
+    "result": {
+      "ok": true,
+      "source": "MYDIN Online",
+      "source_kind": "first_party_live_api",
+      "checked_at": "2026-11-02T02:44:53.807541+00:00",
+      "checked_at_local": "02 Nov 2026, 10:44 AM +08",
+      "elapsed_ms": 11343,
+      "cached": false,
+      "currency": "MYR",
+      "reference": "MYDIN online selling prices, used as the Mutiara Rini shopping reference.",
+      "products": [
+        {
+          "sku": "10001505",
+          "title": "Ayam Brand Sardines in Tomato Sauce (155g)",
+          "currency": "MYR",
+          "selling_price": "5.60",
+          "maximum_price": "5.60",
+          "regular_price": "5.60",
+          "on_sale": false,
+          "requires_variant_selection": false,
+          "stock_quantity": 1354,
+          "in_stock": true,
+          "quantity_tiers": [
+            {
+              "minimum_quantity": 1,
+              "unit_price": "5.60",
+              "unit_price_unrounded": "5.6"
+            },
+            {
+              "minimum_quantity": 10,
+              "unit_price": "5.18",
+              "unit_price_unrounded": "5.18"
+            },
+            {
+              "minimum_quantity": 100,
+              "unit_price": "5.07",
+              "unit_price_unrounded": "5.07"
+            },
+            {
+              "minimum_quantity": 4200,
+              "unit_price": "5.05",
+              "unit_price_unrounded": "5.05"
+            }
+          ],
+          "url": "https://mydin.my/product/ayam-brand-sardine-in-tmto-sce-155gm-10001505"
+        },
+        {
+          "sku": "10001524",
+          "title": "King Cup Sardine in Tomato Sauce 155g",
+          "currency": "MYR",
+          "selling_price": "4.65",
+          "maximum_price": "4.65",
+          "regular_price": "4.65",
+          "on_sale": false,
+          "requires_variant_selection": false,
+          "stock_quantity": 102,
+          "in_stock": true,
+          "quantity_tiers": [
+            {
+              "minimum_quantity": 1,
+              "unit_price": "4.65",
+              "unit_price_unrounded": "4.65"
+            },
+            {
+              "minimum_quantity": 100,
+              "unit_price": "4.40",
+              "unit_price_unrounded": "4.4"
+            }
+          ],
+          "url": "https://mydin.my/product/king-cup-sardine-in-tmto-sce-155gm-10001524"
+        },
+        {
+          "sku": "10001526",
+          "title": "King Cup Sardines in Tomato Sauce (425g)",
+          "currency": "MYR",
+          "selling_price": "9.65",
+          "maximum_price": "9.65",
+          "regular_price": "9.65",
+          "on_sale": false,
+          "requires_variant_selection": false,
+          "stock_quantity": 61,
+          "in_stock": true,
+          "quantity_tiers": [
+            {
+              "minimum_quantity": 1,
+              "unit_price": "9.65",
+              "unit_price_unrounded": "9.65"
+            },
+            {
+              "minimum_quantity": 48,
+              "unit_price": "9.35",
+              "unit_price_unrounded": "9.35"
+            }
+          ],
+          "url": "https://mydin.my/product/king-cup-sardine-in-tmto-sce-425gm-10001526"
+        }
+      ],
+      "query": "sardine",
+      "page": 1,
+      "total_results": 21,
+      "more_results": true,
+      "partial_matches_omitted": 0,
+      "unavailable_skus": []
+    }
+  },
+  {
+    "source": "mydin",
+    "query": "cooking oils",
+    "result": {
+      "ok": true,
+      "source": "MYDIN Online",
+      "source_kind": "first_party_live_api",
+      "checked_at": "2026-11-02T02:44:47.216990+00:00",
+      "checked_at_local": "02 Nov 2026, 10:44 AM +08",
+      "elapsed_ms": 4654,
+      "cached": false,
+      "currency": "MYR",
+      "reference": "MYDIN online selling prices, used as the Mutiara Rini shopping reference.",
+      "products": [
+        {
+          "sku": "10003250",
+          "title": "Buruh Cooking Oil (2kg)",
+          "currency": "MYR",
+          "selling_price": "12.90",
+          "maximum_price": "12.90",
+          "regular_price": "12.90",
+          "on_sale": false,
+          "requires_variant_selection": false,
+          "stock_quantity": 7,
+          "in_stock": true,
+          "quantity_tiers": [
+            {
+              "minimum_quantity": 1,
+              "unit_price": "12.90",
+              "unit_price_unrounded": "12.9"
+            },
+            {
+              "minimum_quantity": 6,
+              "unit_price": "12.83",
+              "unit_price_unrounded": "12.833333"
+            }
+          ],
+          "url": "https://mydin.my/product/buruh-cooking-oil-2kg-10003250"
+        },
+        {
+          "sku": "10003244",
+          "title": "Buruh Cooking Oil (5kg)",
+          "currency": "MYR",
+          "selling_price": "30.90",
+          "maximum_price": "30.90",
+          "regular_price": "30.90",
+          "on_sale": false,
+          "requires_variant_selection": false,
+          "stock_quantity": 9,
+          "in_stock": true,
+          "quantity_tiers": [
+            {
+              "minimum_quantity": 1,
+              "unit_price": "30.90",
+              "unit_price_unrounded": "30.9"
+            },
+            {
+              "minimum_quantity": 4,
+              "unit_price": "30.75",
+              "unit_price_unrounded": "30.75"
+            }
+          ],
+          "url": "https://mydin.my/product/buruh-cooking-oil-5kg-10003244"
+        },
+        {
+          "sku": "10009072",
+          "title": "Buruh Cooking Oil (1kg)",
+          "currency": "MYR",
+          "selling_price": "6.90",
+          "maximum_price": "6.90",
+          "regular_price": "6.90",
+          "on_sale": false,
+          "requires_variant_selection": false,
+          "stock_quantity": 16,
+          "in_stock": true,
+          "quantity_tiers": [
+            {
+              "minimum_quantity": 1,
+              "unit_price": "6.90",
+              "unit_price_unrounded": "6.9"
+            },
+            {
+              "minimum_quantity": 12,
+              "unit_price": "6.90",
+              "unit_price_unrounded": "6.9"
+            }
+          ],
+          "url": "https://mydin.my/product/buruh-cooking-oil-1kg-10009072"
+        }
+      ],
+      "query": "cooking oil",
+      "page": 1,
+      "source_total_results": 681,
+      "matching_results_on_page": 3,
+      "more_results": true,
+      "partial_matches_omitted": 0,
+      "search_note": "All product-name/pack-size terms must match. No matches on this page does not prove catalogue-wide absence; use the next page or refine the product name."
+    }
+  },
+  {
+    "source": "mydin",
+    "query": "detergents",
+    "result": {
+      "ok": true,
+      "source": "MYDIN Online",
+      "source_kind": "first_party_live_api",
+      "checked_at": "2026-11-02T02:44:58.650756+00:00",
+      "checked_at_local": "02 Nov 2026, 10:44 AM +08",
+      "elapsed_ms": 11434,
+      "cached": false,
+      "currency": "MYR",
+      "reference": "MYDIN online selling prices, used as the Mutiara Rini shopping reference.",
+      "products": [
+        {
+          "sku": "15155444005",
+          "title": "Hero 99 Mystic Forest Liquid Laundry Detergent Refill (3.2kg)",
+          "currency": "MYR",
+          "selling_price": "17.90",
+          "maximum_price": "17.90",
+          "regular_price": "17.90",
+          "on_sale": false,
+          "requires_variant_selection": false,
+          "stock_quantity": 24,
+          "in_stock": true,
+          "quantity_tiers": [
+            {
+              "minimum_quantity": 1,
+              "unit_price": "17.90",
+              "unit_price_unrounded": "17.9"
+            },
+            {
+              "minimum_quantity": 4,
+              "unit_price": "16.50",
+              "unit_price_unrounded": "16.5"
+            }
+          ],
+          "url": "https://mydin.my/product/hero-99-deterg-liq-re-3-2kg-mystc-frst-15155444005"
+        },
+        {
+          "sku": "10010515",
+          "title": "Max Kleen 9 Super Enzyme Power Concentrated Detergent Triple Action Power (3kg)",
+          "currency": "MYR",
+          "selling_price": "34.20",
+          "maximum_price": "34.20",
+          "regular_price": "34.20",
+          "on_sale": false,
+          "requires_variant_selection": false,
+          "stock_quantity": 16,
+          "in_stock": true,
+          "quantity_tiers": [
+            {
+              "minimum_quantity": 1,
+              "unit_price": "34.20",
+              "unit_price_unrounded": "34.2"
+            },
+            {
+              "minimum_quantity": 6,
+              "unit_price": "32.50",
+              "unit_price_unrounded": "32.5"
+            }
+          ],
+          "url": "https://mydin.my/product/max-k9-deterg-pwd-box-3kg-super-enzyme-10010515"
+        },
+        {
+          "sku": "10010891",
+          "title": "Max Kleen 9 Concentrated Super Enzyme UV Shield Detergent (3kg)",
+          "currency": "MYR",
+          "selling_price": "34.20",
+          "maximum_price": "34.20",
+          "regular_price": "34.20",
+          "on_sale": false,
+          "requires_variant_selection": false,
+          "stock_quantity": 14,
+          "in_stock": true,
+          "quantity_tiers": [
+            {
+              "minimum_quantity": 1,
+              "unit_price": "34.20",
+              "unit_price_unrounded": "34.2"
+            },
+            {
+              "minimum_quantity": 6,
+              "unit_price": "32.50",
+              "unit_price_unrounded": "32.5"
+            }
+          ],
+          "url": "https://mydin.my/product/max-k9-deterg-pwd-3kg-uv-shld-10010891"
+        }
+      ],
+      "query": "detergent",
+      "page": 1,
+      "total_results": 70,
+      "more_results": true,
+      "partial_matches_omitted": 0,
+      "unavailable_skus": []
+    }
+  },
+  {
+    "source": "manjaku",
+    "query": "mimora",
+    "result": {
+      "ok": true,
+      "source": "Manjaku Online",
+      "source_kind": "live_first_party_storefront",
+      "currency": "MYR",
+      "cached": false,
+      "checked_at": "2026-11-02T02:45:06.302604+00:00",
+      "checked_at_local": "2026-11-02T10:45:06.302604+08:00",
+      "elapsed_ms": 12495,
+      "price_scope_note": "Manjaku Online listed prices only; physical-store prices/stock can differ. Cart, bundle, member and voucher discounts and delivery are not verified.",
+      "products": [
+        {
+          "handle": "mimora-chlorine-free-tape-diapers-nb64_30100324",
+          "title": "MIMORA TAPE NB64",
+          "url": "https://www.manjaku.com/products/mimora-chlorine-free-tape-diapers-nb64_30100324",
+          "currency": "MYR",
+          "price_min": "18.90",
+          "price_max": "18.90",
+          "requires_variant_selection": false,
+          "variants": [
+            {
+              "variant_id": "18069021292755217356062080",
+              "sku": "30100324-U",
+              "option": "NB64",
+              "selling_price": "18.90",
+              "compare_at_price": "34.90",
+              "comparison_price_unverified": false,
+              "available_online": true,
+              "stock_quantity": 1099,
+              "allows_backorder": false,
+              "quantity_minimum": 1,
+              "quantity_increment": 1,
+              "quantity_maximum": null,
+              "url": "https://www.manjaku.com/products/mimora-chlorine-free-tape-diapers-nb64_30100324?sku=18069021292755217356062080"
+            }
+          ]
+        },
+        {
+          "handle": "mimora-luxe-comfort-tape-nb40",
+          "title": "MIMORA LUXE COMFORT TAPE NB40",
+          "url": "https://www.manjaku.com/products/mimora-luxe-comfort-tape-nb40",
+          "currency": "MYR",
+          "price_min": "31.90",
+          "price_max": "31.90",
+          "requires_variant_selection": false,
+          "variants": [
+            {
+              "variant_id": "18073592095004046173022080",
+              "sku": "30100373",
+              "option": "Default",
+              "selling_price": "31.90",
+              "compare_at_price": null,
+              "comparison_price_unverified": true,
+              "available_online": true,
+              "stock_quantity": 64,
+              "allows_backorder": false,
+              "quantity_minimum": 1,
+              "quantity_increment": 1,
+              "quantity_maximum": null,
+              "url": "https://www.manjaku.com/products/mimora-luxe-comfort-tape-nb40?sku=18073592095004046173022080"
+            }
+          ]
+        },
+        {
+          "handle": "mimora-tape-nb64-s82-m72-l60-xl50",
+          "title": "MIMORA DIAPERS TAPE S82 / M72 / L60 / XL50",
+          "url": "https://www.manjaku.com/products/mimora-tape-nb64-s82-m72-l60-xl50",
+          "currency": "MYR",
+          "price_min": "27.90",
+          "price_max": "27.90",
+          "requires_variant_selection": true,
+          "variants": [
+            {
+              "variant_id": "18075648584615584122612080",
+              "sku": "30100325",
+              "option": "S82",
+              "selling_price": "27.90",
+              "compare_at_price": null,
+              "comparison_price_unverified": false,
+              "available_online": true,
+              "stock_quantity": 103,
+              "allows_backorder": false,
+              "quantity_minimum": 1,
+              "quantity_increment": 1,
+              "quantity_maximum": null,
+              "url": "https://www.manjaku.com/products/mimora-tape-nb64-s82-m72-l60-xl50?sku=18075648584615584122612080"
+            },
+            {
+              "variant_id": "18075648584615584122722080",
+              "sku": "30100326",
+              "option": "M72",
+              "selling_price": "27.90",
+              "compare_at_price": null,
+              "comparison_price_unverified": false,
+              "available_online": true,
+              "stock_quantity": 565,
+              "allows_backorder": false,
+              "quantity_minimum": 1,
+              "quantity_increment": 1,
+              "quantity_maximum": null,
+              "url": "https://www.manjaku.com/products/mimora-tape-nb64-s82-m72-l60-xl50?sku=18075648584615584122722080"
+            },
+            {
+              "variant_id": "18075648584615584122832080",
+              "sku": "30100327",
+              "option": "L60",
+              "selling_price": "27.90",
+              "compare_at_price": null,
+              "comparison_price_unverified": false,
+              "available_online": true,
+              "stock_quantity": 100,
+              "allows_backorder": false,
+              "quantity_minimum": 1,
+              "quantity_increment": 1,
+              "quantity_maximum": null,
+              "url": "https://www.manjaku.com/products/mimora-tape-nb64-s82-m72-l60-xl50?sku=18075648584615584122832080"
+            },
+            {
+              "variant_id": "18075648584616087429192080",
+              "sku": "30100328",
+              "option": "XL50",
+              "selling_price": "27.90",
+              "compare_at_price": null,
+              "comparison_price_unverified": false,
+              "available_online": true,
+              "stock_quantity": 418,
+              "allows_backorder": false,
+              "quantity_minimum": 1,
+              "quantity_increment": 1,
+              "quantity_maximum": null,
+              "url": "https://www.manjaku.com/products/mimora-tape-nb64-s82-m72-l60-xl50?sku=18075648584616087429192080"
+            }
+          ]
+        }
+      ],
+      "query": "mimora",
+      "source_candidates": 3,
+      "partial_matches_omitted": 0,
+      "unavailable_products": 0,
+      "search_scope": "Top storefront suggestions only; not a complete catalogue or physical-store inventory.",
+      "may_have_more_results": true,
+      "search_url": "https://www.manjaku.com/search?keyword=mimora"
+    }
+  },
+  {
+    "source": "manjaku",
+    "query": "baby wipes",
+    "result": {
+      "ok": true,
+      "source": "Manjaku Online",
+      "source_kind": "live_first_party_storefront",
+      "currency": "MYR",
+      "cached": false,
+      "checked_at": "2026-11-02T02:45:06.365049+00:00",
+      "checked_at_local": "2026-11-02T10:45:06.365049+08:00",
+      "elapsed_ms": 12513,
+      "price_scope_note": "Manjaku Online listed prices only; physical-store prices/stock can differ. Cart, bundle, member and voucher discounts and delivery are not verified.",
+      "products": [
+        {
+          "handle": "baby-hippo-baby-wipes-3x30s-green-tea",
+          "title": "BABY HIPPO BABY WIPES 3X30S GREEN TEA",
+          "url": "https://www.manjaku.com/products/baby-hippo-baby-wipes-3x30s-green-tea",
+          "currency": "MYR",
+          "price_min": "10.90",
+          "price_max": "10.90",
+          "requires_variant_selection": false,
+          "variants": [
+            {
+              "variant_id": "18077333205547029698252080",
+              "sku": "30300433",
+              "option": "Default",
+              "selling_price": "10.90",
+              "compare_at_price": null,
+              "comparison_price_unverified": false,
+              "available_online": true,
+              "stock_quantity": 74,
+              "allows_backorder": false,
+              "quantity_minimum": 1,
+              "quantity_increment": 1,
+              "quantity_maximum": null,
+              "url": "https://www.manjaku.com/products/baby-hippo-baby-wipes-3x30s-green-tea?sku=18077333205547029698252080"
+            }
+          ]
+        },
+        {
+          "handle": "30300412_30300412",
+          "title": "B.HIPPO BABY WIPES 3X30S MILK",
+          "url": "https://www.manjaku.com/products/30300412_30300412",
+          "currency": "MYR",
+          "price_min": "10.90",
+          "price_max": "10.90",
+          "requires_variant_selection": false,
+          "variants": [
+            {
+              "variant_id": "18073929448249850664092080",
+              "sku": "30300412",
+              "option": "Default",
+              "selling_price": "10.90",
+              "compare_at_price": null,
+              "comparison_price_unverified": false,
+              "available_online": true,
+              "stock_quantity": 372,
+              "allows_backorder": false,
+              "quantity_minimum": 1,
+              "quantity_increment": 1,
+              "quantity_maximum": null,
+              "url": "https://www.manjaku.com/products/30300412_30300412?sku=18073929448249850664092080"
+            }
+          ]
+        },
+        {
+          "handle": "baby-hippo-baby-wipes-2x80s-green-tea",
+          "title": "BABY HIPPO BABY WIPES 2X80S GREEN TEA",
+          "url": "https://www.manjaku.com/products/baby-hippo-baby-wipes-2x80s-green-tea",
+          "currency": "MYR",
+          "price_min": "14.90",
+          "price_max": "14.90",
+          "requires_variant_selection": false,
+          "variants": [
+            {
+              "variant_id": "18077246685511729906802080",
+              "sku": "30300434",
+              "option": "Default",
+              "selling_price": "14.90",
+              "compare_at_price": null,
+              "comparison_price_unverified": false,
+              "available_online": true,
+              "stock_quantity": 157,
+              "allows_backorder": false,
+              "quantity_minimum": 1,
+              "quantity_increment": 1,
+              "quantity_maximum": null,
+              "url": "https://www.manjaku.com/products/baby-hippo-baby-wipes-2x80s-green-tea?sku=18077246685511729906802080"
+            }
+          ]
+        }
+      ],
+      "query": "baby wipe",
+      "source_candidates": 3,
+      "partial_matches_omitted": 0,
+      "unavailable_products": 0,
+      "search_scope": "Top storefront suggestions only; not a complete catalogue or physical-store inventory.",
+      "may_have_more_results": true,
+      "search_url": "https://www.manjaku.com/search?keyword=baby+wipe"
+    }
+  },
+  {
+    "source": "manjaku",
+    "query": "diapers",
+    "result": {
+      "ok": true,
+      "source": "Manjaku Online",
+      "source_kind": "live_first_party_storefront",
+      "currency": "MYR",
+      "cached": false,
+      "checked_at": "2026-11-02T02:45:11.640503+00:00",
+      "checked_at_local": "2026-11-02T10:45:11.640503+08:00",
+      "elapsed_ms": 12990,
+      "price_scope_note": "Manjaku Online listed prices only; physical-store prices/stock can differ. Cart, bundle, member and voucher discounts and delivery are not verified.",
+      "products": [
+        {
+          "handle": "mimora-pants-diapers---m60-l48-xl42-xxl36-xxxl30",
+          "title": "Mimora Pants Diapers - M60/L48/XL42/XXL36/XXXL30",
+          "url": "https://www.manjaku.com/products/mimora-pants-diapers---m60-l48-xl42-xxl36-xxxl30",
+          "currency": "MYR",
+          "price_min": "35.90",
+          "price_max": "35.90",
+          "requires_variant_selection": true,
+          "variants": [
+            {
+              "variant_id": "18076926003492367067182080",
+              "sku": "30200341",
+              "option": "M",
+              "selling_price": "35.90",
+              "compare_at_price": null,
+              "comparison_price_unverified": false,
+              "available_online": true,
+              "stock_quantity": 241,
+              "allows_backorder": false,
+              "quantity_minimum": 1,
+              "quantity_increment": 1,
+              "quantity_maximum": null,
+              "url": "https://www.manjaku.com/products/mimora-pants-diapers---m60-l48-xl42-xxl36-xxxl30?sku=18076926003492367067182080"
+            },
+            {
+              "variant_id": "18076926003492367067272080",
+              "sku": "30200342",
+              "option": "L",
+              "selling_price": "35.90",
+              "compare_at_price": null,
+              "comparison_price_unverified": false,
+              "available_online": true,
+              "stock_quantity": 67,
+              "allows_backorder": false,
+              "quantity_minimum": 1,
+              "quantity_increment": 1,
+              "quantity_maximum": null,
+              "url": "https://www.manjaku.com/products/mimora-pants-diapers---m60-l48-xl42-xxl36-xxxl30?sku=18076926003492367067272080"
+            },
+            {
+              "variant_id": "18076926003492367067342080",
+              "sku": "30200343",
+              "option": "XL",
+              "selling_price": "35.90",
+              "compare_at_price": null,
+              "comparison_price_unverified": false,
+              "available_online": true,
+              "stock_quantity": 89,
+              "allows_backorder": false,
+              "quantity_minimum": 1,
+              "quantity_increment": 1,
+              "quantity_maximum": null,
+              "url": "https://www.manjaku.com/products/mimora-pants-diapers---m60-l48-xl42-xxl36-xxxl30?sku=18076926003492367067342080"
+            },
+            {
+              "variant_id": "18076926003492367067412080",
+              "sku": "30200344",
+              "option": "XXL",
+              "selling_price": "35.90",
+              "compare_at_price": null,
+              "comparison_price_unverified": false,
+              "available_online": true,
+              "stock_quantity": 426,
+              "allows_backorder": false,
+              "quantity_minimum": 1,
+              "quantity_increment": 1,
+              "quantity_maximum": null,
+              "url": "https://www.manjaku.com/products/mimora-pants-diapers---m60-l48-xl42-xxl36-xxxl30?sku=18076926003492367067412080"
+            },
+            {
+              "variant_id": "18076926003492367067482080",
+              "sku": "30200332",
+              "option": "XXXL",
+              "selling_price": "35.90",
+              "compare_at_price": null,
+              "comparison_price_unverified": false,
+              "available_online": true,
+              "stock_quantity": 216,
+              "allows_backorder": false,
+              "quantity_minimum": 1,
+              "quantity_increment": 1,
+              "quantity_maximum": null,
+              "url": "https://www.manjaku.com/products/mimora-pants-diapers---m60-l48-xl42-xxl36-xxxl30?sku=18076926003492367067482080"
+            }
+          ]
+        },
+        {
+          "handle": "mimora-tape-nb64-s82-m72-l60-xl50",
+          "title": "MIMORA DIAPERS TAPE S82 / M72 / L60 / XL50",
+          "url": "https://www.manjaku.com/products/mimora-tape-nb64-s82-m72-l60-xl50",
+          "currency": "MYR",
+          "price_min": "27.90",
+          "price_max": "27.90",
+          "requires_variant_selection": true,
+          "variants": [
+            {
+              "variant_id": "18075648584615584122612080",
+              "sku": "30100325",
+              "option": "S82",
+              "selling_price": "27.90",
+              "compare_at_price": null,
+              "comparison_price_unverified": false,
+              "available_online": true,
+              "stock_quantity": 103,
+              "allows_backorder": false,
+              "quantity_minimum": 1,
+              "quantity_increment": 1,
+              "quantity_maximum": null,
+              "url": "https://www.manjaku.com/products/mimora-tape-nb64-s82-m72-l60-xl50?sku=18075648584615584122612080"
+            },
+            {
+              "variant_id": "18075648584615584122722080",
+              "sku": "30100326",
+              "option": "M72",
+              "selling_price": "27.90",
+              "compare_at_price": null,
+              "comparison_price_unverified": false,
+              "available_online": true,
+              "stock_quantity": 565,
+              "allows_backorder": false,
+              "quantity_minimum": 1,
+              "quantity_increment": 1,
+              "quantity_maximum": null,
+              "url": "https://www.manjaku.com/products/mimora-tape-nb64-s82-m72-l60-xl50?sku=18075648584615584122722080"
+            },
+            {
+              "variant_id": "18075648584615584122832080",
+              "sku": "30100327",
+              "option": "L60",
+              "selling_price": "27.90",
+              "compare_at_price": null,
+              "comparison_price_unverified": false,
+              "available_online": true,
+              "stock_quantity": 100,
+              "allows_backorder": false,
+              "quantity_minimum": 1,
+              "quantity_increment": 1,
+              "quantity_maximum": null,
+              "url": "https://www.manjaku.com/products/mimora-tape-nb64-s82-m72-l60-xl50?sku=18075648584615584122832080"
+            },
+            {
+              "variant_id": "18075648584616087429192080",
+              "sku": "30100328",
+              "option": "XL50",
+              "selling_price": "27.90",
+              "compare_at_price": null,
+              "comparison_price_unverified": false,
+              "available_online": true,
+              "stock_quantity": 418,
+              "allows_backorder": false,
+              "quantity_minimum": 1,
+              "quantity_increment": 1,
+              "quantity_maximum": null,
+              "url": "https://www.manjaku.com/products/mimora-tape-nb64-s82-m72-l60-xl50?sku=18075648584616087429192080"
+            }
+          ]
+        }
+      ],
+      "query": "diaper",
+      "source_candidates": 3,
+      "partial_matches_omitted": 1,
+      "unavailable_products": 0,
+      "search_scope": "Top storefront suggestions only; not a complete catalogue or physical-store inventory.",
+      "may_have_more_results": true,
+      "search_url": "https://www.manjaku.com/search?keyword=diaper"
+    }
+  },
+  {
+    "source": "manjaku",
+    "query": "milk",
+    "result": {
+      "ok": true,
+      "source": "Manjaku Online",
+      "source_kind": "live_first_party_storefront",
+      "currency": "MYR",
+      "cached": false,
+      "checked_at": "2026-11-02T02:45:17.191301+00:00",
+      "checked_at_local": "2026-11-02T10:45:17.191301+08:00",
+      "elapsed_ms": 10889,
+      "price_scope_note": "Manjaku Online listed prices only; physical-store prices/stock can differ. Cart, bundle, member and voucher discounts and delivery are not verified.",
+      "products": [],
+      "query": "milk",
+      "source_candidates": 3,
+      "partial_matches_omitted": 3,
+      "unavailable_products": 0,
+      "search_scope": "Top storefront suggestions only; not a complete catalogue or physical-store inventory.",
+      "may_have_more_results": true,
+      "search_url": "https://www.manjaku.com/search?keyword=milk"
+    }
+  },
+  {
+    "source": "manjaku",
+    "query": "drypers",
+    "result": {
+      "ok": true,
+      "source": "Manjaku Online",
+      "source_kind": "live_first_party_storefront",
+      "currency": "MYR",
+      "cached": false,
+      "checked_at": "2026-11-02T02:45:11.721055+00:00",
+      "checked_at_local": "2026-11-02T10:45:11.721055+08:00",
+      "elapsed_ms": 5355,
+      "price_scope_note": "Manjaku Online listed prices only; physical-store prices/stock can differ. Cart, bundle, member and voucher discounts and delivery are not verified.",
+      "products": [],
+      "query": "drypers",
+      "source_candidates": 0,
+      "partial_matches_omitted": 0,
+      "unavailable_products": 0,
+      "search_scope": "Top storefront suggestions only; not a complete catalogue or physical-store inventory.",
+      "may_have_more_results": false,
+      "search_url": "https://www.manjaku.com/search?keyword=drypers"
+    }
+  }
+]
