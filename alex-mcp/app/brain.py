@@ -1782,6 +1782,8 @@ def _money_only_reply(user_text: str) -> bool:
 def _attachment_delivery_authorized(user_text: str, tool_name: str) -> bool:
     """Only the current trusted request may cause an old/original file to be sent."""
     text = normalize_intent_text(user_text).strip().casefold()
+    if multilingual_intent.file_delivery_denied(text):
+        return False
     if tool_name == 'check_household_bill':
         if re.search(r"\b(?:don't|do not|dont|never|no need to)\s+(?:send|share|attach|download)|\b(?:no|without)\s+(?:the\s+)?pdf\b", text):
             return False
@@ -1793,7 +1795,8 @@ def _attachment_delivery_authorized(user_text: str, tool_name: str) -> bool:
                 and not re.search(r'\b(?:amount|balance|total)\b', text))
         )
     if tool_name == "report_export":
-        return bool(re.search(r"\b(?:pdf|csv|json|export|send .*report|report .*file)\b", text))
+        return multilingual_intent.export_format_requested(text) or bool(re.search(
+            r"\b(?:export|send .*report|report .*file)\b", text))
     if tool_name not in {
         "get_receipt", "get_transaction_receipt", "get_saved_item",
         "get_media_original", "resolve_numbered_choice",
@@ -1804,7 +1807,7 @@ def _attachment_delivery_authorized(user_text: str, tool_name: str) -> bool:
     return bool(re.search(
         r"\b(?:show|open|send|get|view|play|listen|hear|original|receipt|proof|file|photo|picture|image|document|video|voice|audio)\b",
         text,
-    ))
+    )) or multilingual_intent.file_delivery_requested(text)
 
 
 def _is_contextual_followup(user_text: str) -> bool:
@@ -2022,11 +2025,11 @@ async def _tool_specs(user_text: str, media_context: list[str] | None = None,
     )
     specs = await _tool_specs_for_names(wanted)
     if multilingual_intent.is_multilingual(user_text) and not current_required:
-        # The old Tamil fallback filled all six slots with unrelated read tools
-        # and crowded discovery out. Use the same brain's discovery step to
-        # interpret the original wording; no translation/classifier API call.
-        specs = [DISCOVERY_TOOL] + [s for s in specs if s["function"]["name"] != DISCOVERY_TOOL_NAME]
-        return specs[:TOOL_EXPOSURE_MAX]
+        # Unclassified Tamil/Malay used to offer broad finance/agenda readers.
+        # The model picked those instead of discovering the requested action.
+        # Resolve the domain with this same brain before offering guessed tools.
+        # Trusted original words still control writes, time evidence and scope.
+        return [DISCOVERY_TOOL]
     # The discovery tool is a tiny safety valve for typo-heavy, incomplete,
     # Tanglish or otherwise novel phrasing. It lets the LLM normalize intent
     # without exposing Alex's full MCP catalog or adding a separate classifier call.
@@ -3348,7 +3351,8 @@ def _attachment_request_finished(trace: dict) -> bool:
 _CAPABILITY_DENIAL_RE = re.compile(
     r"\b(?:i\s+)?(?:do\s+not|don't|dont)\s+have\s+(?:the\s+)?(?:ability|capability|access)\b"
     r"|\b(?:i\s+)?(?:cannot|can't|cant|am\s+unable\s+to|am\s+not\s+able\s+to)\s+"
-    r"(?:access|update|change|mark|add|create|set|remove|retrieve|check|manage|do|look\s*up|find|see|rename|forget|snooze|save|record|display|show|send)\b",
+    r"(?:(?:directly|currently|actually)\s+)?"
+    r"(?:access|update|change|mark|add|create|set|remove|retrieve|check|manage|do|look\s*up|find|see|rename|forget|snooze|save|record|display|show|send|generate|export|attach)\b",
     re.IGNORECASE,
 )
 
@@ -4479,7 +4483,8 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
         tools
         and not media_context
         and not vision_parts
-        and str(getattr(actor, "source", "text") or "text") == "text"
+        and (str(getattr(actor, "source", "text") or "text") == "text"
+             or bool(getattr(actor, "voice_authorized", False)))
         and shadow_router.live_enabled(settings)
         and not (semantic_matches_actor and (state.get("active") or {}).get("kind") == "REMINDER_DRAFT")
     ):
@@ -4811,13 +4816,15 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                 tools
                 and not final_answer_call
                 and not capability_retry_used
-                and not any(
-                    str(name) != DISCOVERY_TOOL_NAME
-                    for name in (trace.get("tools_called") or [])
-                )
+                and not any(x.get("committed") for x in mutation_ledger)
+                and not any(str(name).endswith(":error") for name in trace["tools_called"])
                 and _looks_like_false_capability_denial(candidate)
             ):
                 capability_retry_used = True
+                # A read result is not completion of a requested PDF/receipt
+                # delivery. Permit one bounded recovery after reads as well.
+                if DISCOVERY_TOOL_NAME not in _tool_names(tools):
+                    tools = [DISCOVERY_TOOL] + tools[:TOOL_EXPOSURE_MAX - 1]
                 # Re-issue the trusted current request instead of appending the
                 # rejected assistant answer. This prevents a repair prompt from
                 # becoming conversational authority on the next model turn.
@@ -5055,7 +5062,8 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                             result = {**result, "selection_binding": {
                                 "id": after_list["id"], "kind": after_list["kind"],
                             }}
-                if files and not _attachment_delivery_authorized(user_text, name):
+                delivery_denied = bool(files and not _attachment_delivery_authorized(user_text, name))
+                if delivery_denied:
                     # Tool context may still be useful for reasoning, but stale
                     # media must never leak into an unrelated current request.
                     files = []
@@ -5067,6 +5075,12 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                         new_files.append(item)
                 attachments.extend(new_files)
                 payload = dict(result) if isinstance(result, dict) else {"result": result}
+                if delivery_denied:
+                    payload["_delivery"] = {
+                        "attachments_queued": 0,
+                        "status": "not_authorized_by_current_request",
+                        "message": "No file will be sent. Ask for explicit file delivery if needed; do not claim attachment success.",
+                    }
                 if name in {'search_mydin_prices', 'search_manjaku_prices'}:
                     payload = learned_memory.augment_catalogue(actor, payload, str(args.get('query') or ''), user_text)
                 if name == 'check_household_bill' and payload.get('error'):

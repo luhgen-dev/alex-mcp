@@ -1633,11 +1633,27 @@ def _run_ingress_turn(
         "sent_at_ms": int(runtime_clock.now_utc().timestamp() * 1000),
     }
     if source == "voice":
+        # Exercise the CURRENT opt-in voice path. The old transcribe_audio mock
+        # was unreachable after voice became a deferred inbox, so live voice
+        # rows never reached the brain. Stub recognition only; retain ingress,
+        # server-side authority, provenance, routing, MCP, and outbound writes.
+        import voice_notes
+        voice_settings = replace(ingress.get_settings(), voice_notes_enabled=True)
+
+        def transcribe_fixture(media_id):
+            media._update_transcript(media_id, prompt, {
+                "mode": "certification_transcript_fixture", "command_execution": True,
+                "authoritative": True, "status": "DONE", "recognition_tested": False,
+            })
+            return prompt
+
         payload.update({
             "audio_data": base64.b64encode(b"CERTIFICATION VOICE FIXTURE").decode("ascii"),
             "audio_mime_type": "audio/ogg",
         })
-        with patch.object(media, "transcribe_audio", return_value=prompt):
+        with patch.object(ingress, "get_settings", return_value=voice_settings), \
+             patch.object(media, "get_settings", return_value=voice_settings), \
+             patch.object(voice_notes, "transcribe", side_effect=transcribe_fixture):
             return ingress.process(payload)
 
     if source == "image":
