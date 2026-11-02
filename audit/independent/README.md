@@ -2,7 +2,9 @@
 
 Baseline: upstream `17b37cd998b58b926e3ca00fd8f13d8a8bbcb070` (0.5.54, PR #70).
 Evidence collected 2026-11-02. This branch is a **draft repair candidate**. It has
-not been merged, installed, restarted, or verified on Home Assistant or WhatsApp.
+not been merged, installed, restarted, or verified as the running Alex app.
+An operator-assisted isolated SDK test run on HA Terminal has now completed;
+its partial result and limitations are recorded below.
 No household database, credentials, pairing files, or unrelated HA services were
 changed. No provider calls were made. The speech/transcription implementation and
 provider configuration are unchanged.
@@ -38,7 +40,9 @@ for "private" also selects owner-private storage; a real SQLite test checks it.
 The false-denial detector
 also recognizes "cannot log" and "write access", and an exhausted recovery may
 not repeat an unsupported lack-of-capability claim. New SDK/ingress tests are
-written but remain **NOT_RUN** here because dependencies cannot be installed.
+written. The operator's first isolated SDK run reached the voice ingress module
+but its class setup failed because Terminal lacked FFmpeg, so that run does not
+certify voice ingress. Full rerun and actual phone acceptance remain pending.
 
 **Quoted expense moved to private:** both captured corrections failed with
 "event not found in your accessible spaces". An explicit English move/save-to-private
@@ -59,6 +63,18 @@ WhatsApp messages cannot be erased by this operation. Correction/confirmation
 authorization now occurs inside a write transaction to prevent stale shared-scope
 decisions across a concurrent move. Full ingress, migration, provider, report-cache
 and production acceptance remain pending; this is not a deployed fix.
+
+**Cached finance privacy and repeated exports:** a cached shared ledger could
+survive a move to private. Finance queries now read their totals, records and
+privacy generation in one SQLite snapshot. Cached finance payloads from an older
+generation are withheld and an exact cached export asks for a fresh report.
+The final delivery check also rejects old generations when a tool audit was
+written after the move, closing the read/commit/audit race. Large audit results
+retain valid JSON and the privacy generation rather than truncating that evidence.
+Real SQLite checks cover the interleaved commit, old and new cache formats,
+fresh scoped reads, and delayed delivery. An SDK regression also checks repeated
+exports: a remembered canonical report must not be nested as its own ledger.
+That SDK regression has not yet run; it is included in the pending HA rerun.
 
 ## Feature-by-feature status
 
@@ -107,8 +123,8 @@ fails. A running service is therefore not evidence that structural checks passed
 
 ## Exact automated evidence and its limits
 
-- [candidate.json](candidate.json), [candidate.log](candidate.log): **59 tests,
-  zero failures/errors/skips**. SHA-256 values bind seven tested runtime modules,
+- [candidate.json](candidate.json), [candidate.log](candidate.log): **64 tests,
+  zero failures/errors/skips**. SHA-256 values bind eight tested runtime modules,
   the independent fixture/test files, and the additional wiring/schema sources.
   The latter hashes do not certify execution of the SDK-dependent ingress/brain.
 - [baseline.json](baseline.json), [baseline.log](baseline.log): the earlier 48 tests
@@ -121,7 +137,7 @@ fails. A running service is therefore not evidence that structural checks passed
   functions in baseline dependants and initially masked the new time regression.
   Those historical baseline logs remain tied to their recorded test hashes at
   commit `959d419b843ab58974ff71c610fa653ab513fc3a`; they are not a comparison
-  of the expanded 59-test suite. The current runner refuses a baseline missing
+  of the expanded 64-test suite. The current runner refuses a baseline missing
   the new privacy module instead of silently importing candidate code.
 - Local Python 3.12.14. Python compilation passed. Four existing Node contracts
   and bridge syntax passed. These are not a container build or a paired session.
@@ -130,11 +146,31 @@ fails. A running service is therefore not evidence that structural checks passed
   `requests`; another encountered incompatible installed MCP APIs. Passing
   modules accounted for 54 test methods (52 passed, two packaged-runtime skips),
   including nine earlier independent tests. **Do not add this overlapping,
-  earlier count to the current 59-test result.**
+  earlier count to the current 64-test result.**
 - The installed MCP package is 1.29.0; the app pins 2.2.0. `requests`, `openai`,
   and `websocket-client` are unavailable. Dependency installation could not reach
-  the package index. The full suite, structural/stress checks, current routing
+  the package index in this executor. The subsequent HA Terminal run below used
+  the pinned dependencies successfully. The full suite, current routing
   certification and container build are not passed or waived.
+- Operator-assisted HA Terminal run of `4cfbbcf24ea5e48abbad26daeb5a5343a1a3c706`:
+  **58/64 jobs passed; six modules failed**. Compile, selftest, stress and tool
+  catalog passed; 54/60 test modules passed. These are job counts, not test-case
+  counts. The old runner did not report skips, so passed modules may include
+  skipped cases. Evidence is user-provided terminal screenshots and error output;
+  full logs remain at `/config/alex-audit/runtime-7f2195a3` on HA.
+  [ha-runtime-observation.json](ha-runtime-observation.json) records the failures.
+  The missing Phase 2 tables were traced to two fixtures calling only
+  `db.initialize()` before using the broader core reset. They now initialize the
+  complete core fixture. Empty injected options suppressed the synthetic phone
+  configuration in older tests, explaining unauthorized ingress and missing
+  `quoted`/`voice_pending` results; the runner now supplies synthetic identities.
+  FFmpeg is present in the app Dockerfile but absent from Terminal. The revised
+  runner installs signed Alpine packages into a private test sysroot and verifies
+  actual Opus encoding. That package installation has not yet run on HA.
+- Four local runner-mechanics tests pass (including mocked private APK setup),
+  and eight earlier backup-probe tests passed. Neither count certifies the app.
+  No application assertion, schema requirement, or release gate was removed to
+  address the six module failures. The revised complete SDK run remains pending.
 - Upstream CI run `41451020384` was observed failed with zero job steps executed.
   The prior release records a billing lock; this session has not independently
   verified the account-level billing cause.
@@ -224,14 +260,17 @@ the reported voice refusal. Those remain open production checks.
 `ha_runtime_checks.py --commit <full-published-SHA>` supplies an operator-assisted
 test route when this workspace cannot install the pinned SDKs. It downloads only
 that public source snapshot and public dependencies, creates a private isolated
-venv and empty data/options under `/config/alex-audit/runtime-*`, and runs each
+venv, empty data and synthetic household options under `/config/alex-audit/runtime-*`, and runs each
 test module in a separate bounded subprocess. Inherited Supervisor/provider
 credentials are excluded. Provider HTTP destinations are blocked by the test
 environment proxy; localhost remains available for local HTTP contract tests.
 The script does not access production Alex data or restart/update an HA app.
 It preserves private logs and a summary for failures; it does not claim a Docker
-build or actual provider/phone delivery. Locally, compilation and synthetic ZIP
-path validation were checked. Running the SDK suite on HA remains outstanding.
+build or actual provider/phone delivery. `--reuse` can reuse the prior SDK venv
+only if installation succeeded and pinned requirement bytes are unchanged.
+All source, data, audio packages and logs for the new run use a new directory.
+The revised runner reports actual test exceptions, execution counts and skips
+directly. Its local mechanics checks do not replace the pending SDK rerun.
 
 The current shell cannot reach its network proxy; requests do not reach HA.
 Permission requests stall without an approval control visible to the user. The

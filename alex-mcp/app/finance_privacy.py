@@ -49,6 +49,28 @@ def requested(text):
                 and re.search(r"\b(?:that|this|it|expense|transaction|record)\b", value))
 
 
+def snapshot_version(payload):
+    if not isinstance(payload, dict):
+        return None
+    value = payload.get('_finance_privacy_version')
+    if value is None and isinstance(payload.get('ledger'), dict):
+        value = payload['ledger'].get('_finance_privacy_version')
+    return value if type(value) is int and value >= 0 else None
+
+
+def audit_result_json(result, limit=30000):
+    """Keep audit JSON valid, including privacy provenance for large reports."""
+    encoded = json.dumps(result, ensure_ascii=False, sort_keys=True)
+    if len(encoded) <= limit:
+        return encoded
+    # Encoding the preview can at most double these already-serialized bytes.
+    summary = {'_audit_truncated': True, 'preview': encoded[:(limit-200)//2]}
+    version = snapshot_version(result)
+    if version is not None:
+        summary['_finance_privacy_version'] = version
+    return json.dumps(summary, ensure_ascii=False, sort_keys=True)
+
+
 def _own_destination(conn, owner_id, destination):
     if not destination or str(destination).endswith('@g.us'):
         return False
@@ -148,7 +170,15 @@ def validate_outbound(conn, row):
     if (row['context_kind'] == 'PRIVACY_DELIVERY_NOTICE' and row['kind'] == 'TEXT'
             and row['text_body'] == EXPIRED_NOTICE and not row['local_path']):
         return
-    changes = conn.execute('SELECT * FROM financial_visibility_changes').fetchall()
+    changes = conn.execute('SELECT rowid AS privacy_version,* FROM financial_visibility_changes').fetchall()
+    if not changes:
+        return
+    source_message_id = dict(row).get('source_message_id')
+    audits = conn.execute('''SELECT tool_name,result_json,created_at_utc FROM tool_audit
+        WHERE source_message_id=? AND status='OK'
+          AND (tool_name IN ('query_finances','get_transaction_receipt','get_receipt','find_receipts','report_export')
+               OR tool_name LIKE '%finance%report%' OR tool_name LIKE '%financial%report%')''',
+        (source_message_id,)).fetchall() if source_message_id else []
     for change in changes:
         if _own_destination(conn, change['owner_id'], row['conversation_id']):
             continue
@@ -161,9 +191,16 @@ def validate_outbound(conn, row):
         if row['context_kind'] == 'FINANCIAL_EVENT' and row['context_id'] in ids:
             raise PrivacyDeliveryError('This expense is now private; delivery stopped.')
         # Covers generated reports/aggregates whose files contain an old view.
-        if row['source_message_id'] and conn.execute('''SELECT 1 FROM tool_audit
-            WHERE source_message_id=? AND julianday(created_at_utc)<=julianday(?)
-            AND (tool_name IN ('query_finances','get_transaction_receipt','get_receipt','find_receipts')
-                 OR tool_name LIKE '%finance%report%' OR tool_name LIKE '%financial%report%') LIMIT 1''',
-                (row['source_message_id'], change['changed_at_utc'])).fetchone():
-            raise PrivacyDeliveryError('Financial visibility changed after this result was prepared. Request a fresh report.')
+        for audit in audits:
+            try:
+                payload = json.loads(audit['result_json'] or '{}')
+            except (ValueError, TypeError):
+                payload = {}  # Old truncated audit JSON has no reliable provenance.
+            if audit['tool_name'] == 'report_export' and isinstance(payload, dict) and payload.get('source_report_kind') == 'snapshot':
+                continue
+            version = snapshot_version(payload)
+            stale = (version < change['privacy_version']) if version is not None else conn.execute(
+                'SELECT julianday(?)<=julianday(?)', (audit['created_at_utc'], change['changed_at_utc'])
+            ).fetchone()[0]
+            if stale:
+                raise PrivacyDeliveryError('Financial visibility changed after this result was prepared. Request a fresh report.')

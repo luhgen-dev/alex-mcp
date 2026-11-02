@@ -13,6 +13,9 @@ services = core.services
 mcp_server = core.mcp_server
 phase2_reports = core.phase2_reports
 from context import with_action_key
+import finance_privacy
+from pathlib import Path
+import json
 
 PHONE = "+60111111111"
 DM = "60111111111@s.whatsapp.net"
@@ -21,7 +24,7 @@ DM = "60111111111@s.whatsapp.net"
 class V0538ReliabilityTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        db.initialize()
+        core.AlexCoreTests.setUpClass()
 
     def setUp(self):
         core.AlexCoreTests.setUp(self)
@@ -31,6 +34,35 @@ class V0538ReliabilityTests(unittest.TestCase):
 
     def actor(self, mid):
         return core.AlexCoreTests.actor(self, mid, PHONE)
+
+    def test_cached_export_refuses_visibility_change_and_repeat_exports_keep_records(self):
+        self.claim('export-expense', 'I spent 56.90 in Starbucks')
+        owner = with_action_key(self.actor('export-expense'), 'export-expense')
+        event = services.log_expense(owner, 'Export fixture coffee', 56.90, 'food')['event_id']
+        self.claim('query-finance', 'Show shared expenses')
+        reader = self.actor('query-finance')
+        mcp_server.query_finances(actor=reader, scope='family')
+        exports = [mcp_server.report_export(actor=reader, format='json') for _ in range(2)]
+        for exported in exports:
+            data = json.loads(Path(exported['_attachments'][0]['path']).read_text())
+            self.assertEqual(data['ledger']['records'][0]['event_id'], event)
+            self.assertEqual(exported['record_count'], 1)
+        db.queue_outbound(DM, 'TEXT', text='Recorded', source_message_id='export-expense',
+                          context_kind='FINANCIAL_EVENT', context_id=event)
+        with db.connect() as conn:
+            conn.execute("UPDATE outbound_messages SET delivery_status='SENT',provider_message_id='expense-quote' WHERE source_message_id='export-expense'")
+        self.claim('move-private', 'Actually save that to my private')
+        with db.connect() as conn:
+            conn.execute("UPDATE inbound_messages SET quoted_message_id='expense-quote' WHERE message_id='move-private'")
+        mover = replace(self.actor('move-private'), trusted_text='Actually save that to my private')
+        finance_privacy.move_quoted_expense(mover)
+        with self.assertRaisesRegex(ValueError, 'Financial visibility changed'):
+            mcp_server.report_export(actor=reader, format='json')
+        mcp_server.query_finances(actor=reader, scope='family')
+        fresh = mcp_server.report_export(actor=reader, format='json')
+        data = json.loads(Path(fresh['_attachments'][0]['path']).read_text())
+        self.assertEqual(data['ledger']['records'], [])
+        self.assertEqual(fresh['record_count'], 0)
 
     def test_reminder_pin_is_not_blocked_by_hourglass_failure(self):
         self.claim("v0538-rem-pin", "remind me to test pin")

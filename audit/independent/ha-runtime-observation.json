@@ -1,0 +1,41 @@
+{
+  "commit": "4cfbbcf24ea5e48abbad26daeb5a5343a1a3c706",
+  "evidence": "Operator terminal screenshots 315227.jpg, 315229.jpg, 315231.jpg and subsequent pasted error output; full raw logs not retrieved into this workspace",
+  "private_report": "/config/alex-audit/runtime-7f2195a3/summary.json",
+  "production_changed": false,
+  "jobs": 64,
+  "passed_jobs": 58,
+  "failed_jobs": 6,
+  "passed_test_modules": 54,
+  "test_modules": 60,
+  "test_execution_count": null,
+  "skipped_count": null,
+  "passed_other_jobs": [
+    "compile",
+    "selftest",
+    "stress",
+    "catalog"
+  ],
+  "failed_modules": [
+    "test_behavior_cert",
+    "test_multilingual_voice",
+    "test_v044",
+    "test_v0537_prelive_hardening",
+    "test_v0538_reminder_report_reliability",
+    "test_voice_feature_parity"
+  ],
+  "observed_errors": [
+    "Sender is not configured as an Alex household user (leading text partially clipped)",
+    "KeyError: 'quoted'",
+    "KeyError: 'voice_pending'",
+    "sqlite3.OperationalError: no such table: alex_phase2_asset_documents",
+    "FileNotFoundError: [Errno 2] No such file or directory: 'ffmpeg'"
+  ],
+  "error_attribution": "OCR aggregates do not map every occurrence to a test. Schema and identity diagnoses are based on inspected fixture code; the revised complete run is required to confirm all six failures are resolved.",
+  "pending": [
+    "Revised full SDK test run including actual FFmpeg setup",
+    "Container build",
+    "Live provider and production delivery verification",
+    "Comprehensive feature certification and deployment"
+  ]
+}

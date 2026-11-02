@@ -1087,6 +1087,12 @@ def query_finances(actor: ActorContext, start_date: str | None = None, end_date:
 
     conn = connect()
     try:
+        # All aggregates and the privacy generation must describe one snapshot.
+        # Delivery can then reject it even if a move commits before tool audit.
+        conn.execute('BEGIN')
+        privacy_version = conn.execute(
+            'SELECT COALESCE(MAX(rowid),0) FROM financial_visibility_changes'
+        ).fetchone()[0]
         aggregate_rows = conn.execute(
             f"""SELECT event_type,currency,COALESCE(SUM(amount_minor),0) AS total_minor,COUNT(*) AS n
                 FROM financial_events WHERE {where}
@@ -1208,6 +1214,7 @@ def query_finances(actor: ActorContext, start_date: str | None = None, end_date:
             row["has_receipt"] = row["event_id"] in linked
 
     return {
+        "_finance_privacy_version": privacy_version,
         "spending_totals": spending_totals,
         "income_totals": income_totals,
         "net_outflow": net_outflow,

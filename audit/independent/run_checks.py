@@ -15,7 +15,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
-MODULES = ('services', 'outbox', 'behavior_cert', 'phase2', 'custom_ledgers', 'multilingual_intent', 'finance_privacy')
+MODULES = ('services', 'outbox', 'behavior_cert', 'phase2', 'custom_ledgers', 'multilingual_intent', 'finance_privacy', 'phase2_reports')
 
 
 def main():
@@ -60,7 +60,7 @@ def main():
                 module = importlib.import_module(name)
                 if Path(module.__file__).resolve() != overlay / (name + '.py'):
                     raise RuntimeError('baseline import did not use the selected module: ' + name)
-        for path in ('alex-mcp/app/brain.py', 'alex-mcp/app/ingress.py', 'alex-mcp/app/db.py', 'alex-mcp/app/schema.sql'):
+        for path in ('alex-mcp/app/brain.py', 'alex-mcp/app/ingress.py', 'alex-mcp/app/mcp_server.py', 'alex-mcp/app/db.py', 'alex-mcp/app/schema.sql'):
             hashes[path] = hashlib.sha256((ROOT / path).read_bytes()).hexdigest()
         for path in sorted((ROOT / 'tests').glob('*independent*.py')):
             hashes[str(path.relative_to(ROOT))] = hashlib.sha256(path.read_bytes()).hexdigest()

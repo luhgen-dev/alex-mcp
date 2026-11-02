@@ -56,7 +56,7 @@ class V044Base(unittest.TestCase):
                 "tool_audit", "tool_execution_claims", "ai_usage", "outbound_messages",
                 "conversation_turns", "selection_sets", "media_selection_sets", "task_reminder_links",
                 "task_events", "tasks", "event_media_links",
-                "financial_event_corrections", "financial_events", "saved_items",
+                "financial_visibility_changes", "financial_event_corrections", "financial_events", "saved_items",
                 "pending_items", "media_objects", "inbound_messages",
             ):
                 conn.execute(f"DELETE FROM {table}")

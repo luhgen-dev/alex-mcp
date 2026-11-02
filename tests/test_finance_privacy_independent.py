@@ -9,6 +9,7 @@ import db
 import finance_privacy
 import services
 import outbox
+import phase2_reports
 from unittest.mock import patch
 import select
 import subprocess
@@ -16,6 +17,102 @@ import sys
 
 
 class ExpensePrivacyTests(independent_fixture.HouseholdFixture):
+    def test_finance_read_keeps_one_snapshot_during_a_visibility_commit(self):
+        self.expense()
+        reader = self.actor('reader', 'Show shared finances', wife=True)
+        mover = self.mover()
+        connections = []
+        moved = []
+
+        class InterleavedConnection:
+            def __init__(self):
+                self.conn = db.connect()
+                connections.append(self.conn)
+
+            def execute(self, sql, *args):
+                if 'SELECT event_type,currency' in sql and not moved:
+                    # A real second SQLite connection commits the move after
+                    # version selection, but before aggregate/record reads.
+                    moved.append(finance_privacy.move_quoted_expense(mover))
+                return self.conn.execute(sql, *args)
+
+            def close(self):
+                self.conn.close()
+
+        with patch.object(services, 'connect', InterleavedConnection):
+            old = services.query_finances(reader)
+        self.assertEqual(moved[0]['status'], 'moved')
+        self.assertEqual(old['_finance_privacy_version'], 0)
+        self.assertEqual(old['count'], 1)
+        self.assertEqual(old['spending_totals'], {'MYR': 56.90})
+        self.assertEqual(len(old['records']), 1)
+        fresh = services.query_finances(reader)
+        self.assertEqual(fresh['_finance_privacy_version'], 1)
+        self.assertEqual(fresh['count'], 0)
+
+    def test_cached_finance_payload_is_removed_after_move_and_fresh_read_is_scoped(self):
+        self.expense()
+        reader = self.actor('reader', 'Show shared finances', wife=True)
+        ledger = services.query_finances(reader)
+        self.assertEqual(ledger['count'], 1)
+        self.assertEqual(ledger['_finance_privacy_version'], 0)
+        for kind, payload in [('finance_query', ledger), ('monthly_finance', {'ledger': ledger})]:
+            with self.subTest(kind=kind):
+                phase2_reports.remember_active_report(reader.user_id, kind, kind, payload, spec={'scope': 'family'})
+                self.assertEqual(phase2_reports.load_active_report(reader.user_id, kind)['payload'], payload)
+        finance_privacy.move_quoted_expense(self.mover())
+        for kind in ('finance_query', 'monthly_finance'):
+            cached = phase2_reports.load_active_report(reader.user_id, kind)
+            self.assertTrue(cached['_privacy_stale'])
+            self.assertIsNone(cached['payload'])
+            self.assertEqual(cached['spec'], {'scope': 'family'})
+        fresh = services.query_finances(reader)
+        self.assertEqual(fresh['count'], 0)
+        self.assertEqual(fresh['records'], [])
+        self.assertEqual(fresh['_finance_privacy_version'], 1)
+        phase2_reports.remember_active_report(reader.user_id, reader.conversation_id, 'finance_query', fresh)
+        self.assertEqual(phase2_reports.load_active_report(reader.user_id, reader.conversation_id)['payload'], fresh)
+
+    def test_old_unversioned_finance_cache_invalidates_but_other_report_survives(self):
+        self.expense()
+        reader = self.actor('reader', wife=True)
+        for kind in ('finance_query', 'snapshot'):
+            phase2_reports.remember_active_report(reader.user_id, kind, kind, {'count': 1})
+        finance_privacy.move_quoted_expense(self.mover())
+        self.assertIsNone(phase2_reports.load_active_report(reader.user_id, 'finance_query')['payload'])
+        self.assertEqual(phase2_reports.load_active_report(reader.user_id, 'snapshot')['payload'], {'count': 1})
+
+    def test_report_read_before_move_but_audited_after_move_is_blocked(self):
+        self.expense()
+        reader = self.actor('reader', 'Show shared finances', wife=True)
+        old = services.query_finances(reader)
+        finance_privacy.move_quoted_expense(self.mover())
+        base = dict(source_message_id='reader', conversation_id=reader.conversation_id,
+                    kind='TEXT', text_body='Old totals', context_kind=None, context_id=None, local_path=None)
+        for name, payload in [('query_finances', old), ('finance_report', {'ledger': old}),
+                              ('report_export', {'source_report_kind': 'finance_query', '_finance_privacy_version': 0})]:
+            with self.subTest(tool=name), db.connect() as conn:
+                conn.execute('DELETE FROM tool_audit')
+                conn.execute('''INSERT INTO tool_audit(audit_id,action_key,source_message_id,user_id,tool_name,
+                    arguments_json,result_json,status,created_at_utc) VALUES('read','read','reader',?,?,'{}',?,'OK','2099-01-01')''',
+                    (reader.user_id, name, finance_privacy.audit_result_json(payload)))
+                with self.assertRaises(finance_privacy.PrivacyDeliveryError):
+                    finance_privacy.validate_outbound(conn, base)
+                # A read of the current generation remains deliverable, even
+                # with the same second timestamp as the visibility change.
+                conn.execute("UPDATE tool_audit SET result_json=?,created_at_utc='2000-01-01'",
+                             (json.dumps({'_finance_privacy_version': 1}),))
+                finance_privacy.validate_outbound(conn, base)
+
+    def test_large_audit_keeps_valid_json_and_privacy_generation(self):
+        for payload in ({'_finance_privacy_version': 12, 'records': ['\\\"தமிழ்'] * 20000},
+                        {'ledger': {'_finance_privacy_version': 13, 'records': ['x'] * 20000}}):
+            encoded = finance_privacy.audit_result_json(payload)
+            self.assertLessEqual(len(encoded), 30000)
+            decoded = json.loads(encoded)
+            self.assertTrue(decoded['_audit_truncated'])
+            self.assertEqual(finance_privacy.snapshot_version(decoded), finance_privacy.snapshot_version(payload))
+
     def test_visibility_guard_blocks_a_separate_delivery_process(self):
         code = '''import sys
 sys.path.insert(0, sys.argv[1])

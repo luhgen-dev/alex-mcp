@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import finance_privacy
 import re
 import threading
 import time
@@ -2914,7 +2915,7 @@ def _audit(actor: ActorContext, tool_name: str, args: dict, result: dict,
             (
                 str(uuid.uuid4()), action_key, actor.source_message_id, actor.user_id, tool_name,
                 json.dumps(args, ensure_ascii=False, sort_keys=True)[:20000],
-                json.dumps(result, ensure_ascii=False, sort_keys=True)[:30000],
+                finance_privacy.audit_result_json(result),
                 "OK" if ok else "ERROR", latency_ms,
             ),
         )

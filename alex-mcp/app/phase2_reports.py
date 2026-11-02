@@ -10,6 +10,7 @@ import phase2_finance
 import phase2_library
 import phase2_work
 import compat_tools as tools
+import finance_privacy
 
 
 def remember_active_report(user_id, conversation_id, report_kind, payload,
@@ -42,6 +43,7 @@ def load_active_report(user_id, conversation_id, max_age_hours=6):
     """Return only the report context from this exact user + conversation."""
     conn = tools.get_db()
     try:
+        conn.execute('BEGIN')
         row = conn.execute(
             """SELECT * FROM active_report_contexts
                WHERE user_id=? AND conversation_id=?
@@ -51,10 +53,18 @@ def load_active_report(user_id, conversation_id, max_age_hours=6):
         ).fetchone()
         if not row:
             return None
+        payload = json.loads(row['payload_json'])
+        stale = False
+        if row['report_kind'] in {'finance_query', 'monthly_finance'}:
+            current_version = conn.execute(
+                'SELECT COALESCE(MAX(rowid),0) FROM financial_visibility_changes'
+            ).fetchone()[0]
+            stale = (finance_privacy.snapshot_version(payload) or 0) < current_version
         return {
             "kind": row["report_kind"],
             "period": row["period"],
-            "payload": json.loads(row["payload_json"]),
+            "payload": None if stale else payload,
+            "_privacy_stale": stale,
             "spec": json.loads(row["spec_json"] or "{}"),
             "created_at_utc": row["created_at_utc"],
         }
