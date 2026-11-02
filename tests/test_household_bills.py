@@ -36,6 +36,29 @@ class PortalContractTests(unittest.TestCase):
     def test_saj_does_not_mix_accounts_or_accept_empty_history(self):
         for history in ('',SAJ_HISTORY.replace('12345678-N1234567','other')):
             with self.assertRaises(portals.PortalUnavailable): portals.parse_saj(SAJ_HTML,history,'12345678-N1234567')
+    def test_saj_responsive_cell_labels_keep_bill_and_payment_separate(self):
+        history = '''<main><div class="bill-account-id">12345678-N1234567</div>
+        <table><tr><td><span>Date</span>23/10/2026</td>
+        <td><span>Type of Transaction</span>Payment</td>
+        <td><span>Bill No.</span>-</td><td><span>Reference No.</span>R001</td>
+        <td><span>Amount</span>RM 66.40</td></tr>
+        <tr><td><span>Date</span>06/10/2026</td>
+        <td><span>Type of Transaction</span>Bill</td>
+        <td><span>Bill No.</span>N26102</td><td><span>Reference No.</span>-</td>
+        <td><span>Amount</span>RM 66.40</td></tr>
+        <tr><td><span>Date</span>05/09/2026</td>
+        <td><span>Type of Transaction</span>Bill</td>
+        <td><span>Bill No.</span>N26091</td><td><span>Reference No.</span>-</td>
+        <td><span>Amount</span>RM 70.55</td></tr></table></main>'''
+        result = portals.parse_saj(SAJ_HTML, history, SETTINGS.saj_account)
+        self.assertEqual(result['invoice_date'], '2026-10-06')
+        self.assertEqual(result['invoice_amount'], '66.40')
+        self.assertEqual(result['bill_reference'], 'N26102')
+        self.assertEqual(result['outstanding'], '0.00')
+        self.assertEqual(len(result['history']), 2)
+        # A payment-only table must not create a bill from its amount/date.
+        with self.assertRaises(portals.PortalUnavailable):
+            portals.parse_saj(SAJ_HTML, history.replace('>Bill</td>', '>Payment</td>'), SETTINGS.saj_account)
     def test_redirect_cannot_exfiltrate_credentials(self):
         p = portals.Portal('saj'); r = Mock(status_code=307,headers={'Location':'https://attacker.invalid/steal'})
         with patch.object(p.session,'request',return_value=r) as request:
