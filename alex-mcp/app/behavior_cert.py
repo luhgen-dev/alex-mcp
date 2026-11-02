@@ -1564,6 +1564,8 @@ def _judge_observation(
     if (ingress_result or {}).get("ok") and any((ingress_result or {}).get(k)
             for k in ("numbered_selection", "selection_followup")):
         successful_caps.add("selection.resolve")
+    if (ingress_result or {}).get("ok") and (ingress_result or {}).get("reminder_claimed"):
+        successful_caps.add("reminder.claim.take")
     required_caps = set(contract.required_any) - {"routing.discovery"}
     required_all_caps = set(getattr(contract, "required_all", frozenset())) - {"routing.discovery"}
     forbidden_caps = set(contract.forbidden) - {"routing.discovery"}
@@ -1876,6 +1878,7 @@ def _live_one(contract: PromptContract, prompt: str, source: str,
         "latency": _latency_breakdown(mid, observed["trace"], observed["elapsed_ms"]),
         "estimated_cost_usd": cost_usd,
         "durable_state_diff": observed["durable_state_diff"],
+        "ingress_result": observed["ingress_result"],
         "trace": observed["trace"],
         "status": "PASS" if not problems else "FAIL",
         "problems": problems,
@@ -1970,6 +1973,7 @@ def _live_conversation(contract, source: str, hard_latency_ms: int) -> dict:
             "latency": _latency_breakdown(mid, observed["trace"], observed["elapsed_ms"]),
             "estimated_cost_usd": _turn_cost_usd(mid),
             "durable_state_diff": observed["durable_state_diff"],
+            "ingress_result": observed["ingress_result"],
             "trace": observed["trace"],
             "status": "PASS" if not problems else "FAIL",
             "problems": problems,
