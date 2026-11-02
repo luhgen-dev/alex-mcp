@@ -1,0 +1,938 @@
+[
+  {
+    "source": "mydin",
+    "query": "fernleaf milk",
+    "result": {
+      "ok": true,
+      "source": "MYDIN Online",
+      "source_kind": "first_party_live_api",
+      "checked_at": "2026-11-02T02:36:56.674241+00:00",
+      "checked_at_local": "02 Nov 2026, 10:36 AM +08",
+      "elapsed_ms": 6291,
+      "cached": false,
+      "currency": "MYR",
+      "reference": "MYDIN online selling prices, used as the Mutiara Rini shopping reference.",
+      "products": [
+        {
+          "sku": "15011727",
+          "title": "Fernleaf Family Milk Powder (850g)",
+          "currency": "MYR",
+          "selling_price": "22.60",
+          "maximum_price": "22.60",
+          "regular_price": "22.60",
+          "on_sale": false,
+          "requires_variant_selection": false,
+          "stock_quantity": 5,
+          "in_stock": true,
+          "quantity_tiers": [
+            {
+              "minimum_quantity": 1,
+              "unit_price": "22.60",
+              "unit_price_unrounded": "22.6"
+            },
+            {
+              "minimum_quantity": 12,
+              "unit_price": "22.60",
+              "unit_price_unrounded": "22.6"
+            }
+          ],
+          "url": "https://mydin.my/product/fleaf-family-milk-powder-850gm-15011727"
+        },
+        {
+          "sku": "10039075",
+          "title": "Fernleaf Family Milk Powder (1.65kg)",
+          "currency": "MYR",
+          "selling_price": "44.50",
+          "maximum_price": "44.50",
+          "regular_price": "44.50",
+          "on_sale": false,
+          "requires_variant_selection": false,
+          "stock_quantity": 21,
+          "in_stock": true,
+          "quantity_tiers": [
+            {
+              "minimum_quantity": 1,
+              "unit_price": "44.50",
+              "unit_price_unrounded": "44.5"
+            },
+            {
+              "minimum_quantity": 8,
+              "unit_price": "44.50",
+              "unit_price_unrounded": "44.5"
+            }
+          ],
+          "url": "https://mydin.my/product/fleaf-family-mlk-pwd-1-65kg-10039075"
+        },
+        {
+          "sku": "15164857",
+          "title": "Fernleaf Family Milk Powder - Chocolate (850g)",
+          "currency": "MYR",
+          "selling_price": "24.90",
+          "maximum_price": "24.90",
+          "regular_price": "24.90",
+          "on_sale": false,
+          "requires_variant_selection": false,
+          "stock_quantity": 10,
+          "in_stock": true,
+          "quantity_tiers": [
+            {
+              "minimum_quantity": 1,
+              "unit_price": "24.90",
+              "unit_price_unrounded": "24.9"
+            },
+            {
+              "minimum_quantity": 12,
+              "unit_price": "24.70",
+              "unit_price_unrounded": "24.7"
+            }
+          ],
+          "url": "https://mydin.my/product/fleaf-family-chocolate-850g-15164857"
+        }
+      ],
+      "query": "fernleaf milk",
+      "page": 1,
+      "source_total_results": 266,
+      "matching_results_on_page": 3,
+      "more_results": true,
+      "partial_matches_omitted": 0,
+      "search_note": "All product-name/pack-size terms must match. No matches on this page does not prove catalogue-wide absence; use the next page or refine the product name."
+    }
+  },
+  {
+    "source": "mydin",
+    "query": "rice 10kg",
+    "result": {
+      "ok": true,
+      "source": "MYDIN Online",
+      "source_kind": "first_party_live_api",
+      "checked_at": "2026-11-02T02:36:56.270786+00:00",
+      "checked_at_local": "02 Nov 2026, 10:36 AM +08",
+      "elapsed_ms": 5886,
+      "cached": false,
+      "currency": "MYR",
+      "reference": "MYDIN online selling prices, used as the Mutiara Rini shopping reference.",
+      "products": [
+        {
+          "sku": "10014189",
+          "title": "Thai Majesty Siam Rice (10kg)",
+          "currency": "MYR",
+          "selling_price": "35.90",
+          "maximum_price": "35.90",
+          "regular_price": "35.90",
+          "on_sale": false,
+          "requires_variant_selection": false,
+          "stock_quantity": 6,
+          "in_stock": true,
+          "quantity_tiers": [
+            {
+              "minimum_quantity": 1,
+              "unit_price": "35.90",
+              "unit_price_unrounded": "35.9"
+            }
+          ],
+          "url": "https://mydin.my/product/thai-majesty-siam-rice-10kg-10014189"
+        },
+        {
+          "sku": "10003282",
+          "title": "Dragon Super Siam Rice (10kg)",
+          "currency": "MYR",
+          "selling_price": "35.90",
+          "maximum_price": "35.90",
+          "regular_price": "35.90",
+          "on_sale": false,
+          "requires_variant_selection": false,
+          "stock_quantity": 4,
+          "in_stock": true,
+          "quantity_tiers": [
+            {
+              "minimum_quantity": 1,
+              "unit_price": "35.90",
+              "unit_price_unrounded": "35.9"
+            }
+          ],
+          "url": "https://mydin.my/product/dragon-spr-siam-rice-10kg-10003282"
+        },
+        {
+          "sku": "10010184",
+          "title": "Jati Parboiled Rice (10kg)",
+          "currency": "MYR",
+          "selling_price": "43.90",
+          "maximum_price": "43.90",
+          "regular_price": "43.90",
+          "on_sale": false,
+          "requires_variant_selection": false,
+          "stock_quantity": 3,
+          "in_stock": true,
+          "quantity_tiers": [
+            {
+              "minimum_quantity": 1,
+              "unit_price": "43.90",
+              "unit_price_unrounded": "43.9"
+            }
+          ],
+          "url": "https://mydin.my/product/jati-parboiled-rice-10kg-10010184"
+        }
+      ],
+      "query": "rice 10kg",
+      "page": 1,
+      "source_total_results": 209,
+      "matching_results_on_page": 3,
+      "more_results": true,
+      "partial_matches_omitted": 0,
+      "search_note": "All product-name/pack-size terms must match. No matches on this page does not prove catalogue-wide absence; use the next page or refine the product name."
+    }
+  },
+  {
+    "source": "mydin",
+    "query": "apple rice",
+    "result": {
+      "ok": true,
+      "source": "MYDIN Online",
+      "source_kind": "first_party_live_api",
+      "checked_at": "2026-11-02T02:36:56.779024+00:00",
+      "checked_at_local": "02 Nov 2026, 10:36 AM +08",
+      "elapsed_ms": 6394,
+      "cached": false,
+      "currency": "MYR",
+      "reference": "MYDIN online selling prices, used as the Mutiara Rini shopping reference.",
+      "products": [],
+      "query": "apple rice",
+      "page": 1,
+      "source_total_results": 225,
+      "matching_results_on_page": 0,
+      "more_results": true,
+      "partial_matches_omitted": 3,
+      "search_note": "All product-name/pack-size terms must match. No matches on this page does not prove catalogue-wide absence; use the next page or refine the product name."
+    }
+  },
+  {
+    "source": "mydin",
+    "query": "yogurt",
+    "result": {
+      "ok": true,
+      "source": "MYDIN Online",
+      "source_kind": "first_party_live_api",
+      "checked_at": "2026-11-02T02:37:08.287466+00:00",
+      "checked_at_local": "02 Nov 2026, 10:37 AM +08",
+      "elapsed_ms": 12017,
+      "cached": false,
+      "currency": "MYR",
+      "reference": "MYDIN online selling prices, used as the Mutiara Rini shopping reference.",
+      "products": [
+        {
+          "sku": "15008962",
+          "title": "Pureen Kids Head to Toe Wash - Yogurt Raspberry (750ml)",
+          "currency": "MYR",
+          "selling_price": "14.90",
+          "maximum_price": "14.90",
+          "regular_price": "14.90",
+          "on_sale": false,
+          "requires_variant_selection": false,
+          "stock_quantity": 9,
+          "in_stock": true,
+          "quantity_tiers": [
+            {
+              "minimum_quantity": 1,
+              "unit_price": "14.90",
+              "unit_price_unrounded": "14.9"
+            },
+            {
+              "minimum_quantity": 3,
+              "unit_price": "14.60",
+              "unit_price_unrounded": "14.6"
+            },
+            {
+              "minimum_quantity": 12,
+              "unit_price": "14.50",
+              "unit_price_unrounded": "14.5"
+            }
+          ],
+          "url": "https://mydin.my/product/pureen-kids-htt-wash-750ml-yogurt-rberry-15008962"
+        },
+        {
+          "sku": "10014591",
+          "title": "Pureen Kids Shampoo - Yogurt Strawberry (750ml)",
+          "currency": "MYR",
+          "selling_price": "14.50",
+          "maximum_price": "14.50",
+          "regular_price": "14.50",
+          "on_sale": false,
+          "requires_variant_selection": false,
+          "stock_quantity": 35,
+          "in_stock": true,
+          "quantity_tiers": [
+            {
+              "minimum_quantity": 1,
+              "unit_price": "14.50",
+              "unit_price_unrounded": "14.5"
+            },
+            {
+              "minimum_quantity": 3,
+              "unit_price": "14.20",
+              "unit_price_unrounded": "14.2"
+            },
+            {
+              "minimum_quantity": 12,
+              "unit_price": "14.00",
+              "unit_price_unrounded": "14"
+            }
+          ],
+          "url": "https://mydin.my/product/pureen-kids-yog-shmp-750ml-strawberry-10014591"
+        },
+        {
+          "sku": "10127573001",
+          "title": "Cocoaland Koko Jelly Chocolate 750g",
+          "currency": "MYR",
+          "selling_price": "19.40",
+          "maximum_price": "19.40",
+          "regular_price": "19.40",
+          "on_sale": false,
+          "requires_variant_selection": false,
+          "stock_quantity": 5,
+          "in_stock": true,
+          "quantity_tiers": [
+            {
+              "minimum_quantity": 1,
+              "unit_price": "19.40",
+              "unit_price_unrounded": "19.4"
+            },
+            {
+              "minimum_quantity": 12,
+              "unit_price": "19.20",
+              "unit_price_unrounded": "19.2"
+            }
+          ],
+          "url": "https://mydin.my/product/koko-jelly-choc-720g-nut-10127573001"
+        }
+      ],
+      "query": "yogurt",
+      "page": 1,
+      "total_results": 10,
+      "more_results": true,
+      "unavailable_skus": []
+    }
+  },
+  {
+    "source": "mydin",
+    "query": "yogurts",
+    "result": {
+      "ok": true,
+      "source": "MYDIN Online",
+      "source_kind": "first_party_live_api",
+      "checked_at": "2026-11-02T02:37:02.998111+00:00",
+      "checked_at_local": "02 Nov 2026, 10:37 AM +08",
+      "elapsed_ms": 6324,
+      "cached": false,
+      "currency": "MYR",
+      "reference": "MYDIN online selling prices, used as the Mutiara Rini shopping reference.",
+      "products": [],
+      "query": "yogurts",
+      "page": 1,
+      "total_results": 0,
+      "more_results": false,
+      "unavailable_skus": []
+    }
+  },
+  {
+    "source": "mydin",
+    "query": "sardine",
+    "result": {
+      "ok": true,
+      "source": "MYDIN Online",
+      "source_kind": "first_party_live_api",
+      "checked_at": "2026-11-02T02:37:08.264169+00:00",
+      "checked_at_local": "02 Nov 2026, 10:37 AM +08",
+      "elapsed_ms": 11485,
+      "cached": false,
+      "currency": "MYR",
+      "reference": "MYDIN online selling prices, used as the Mutiara Rini shopping reference.",
+      "products": [
+        {
+          "sku": "10001505",
+          "title": "Ayam Brand Sardines in Tomato Sauce (155g)",
+          "currency": "MYR",
+          "selling_price": "5.60",
+          "maximum_price": "5.60",
+          "regular_price": "5.60",
+          "on_sale": false,
+          "requires_variant_selection": false,
+          "stock_quantity": 1354,
+          "in_stock": true,
+          "quantity_tiers": [
+            {
+              "minimum_quantity": 1,
+              "unit_price": "5.60",
+              "unit_price_unrounded": "5.6"
+            },
+            {
+              "minimum_quantity": 10,
+              "unit_price": "5.18",
+              "unit_price_unrounded": "5.18"
+            },
+            {
+              "minimum_quantity": 100,
+              "unit_price": "5.07",
+              "unit_price_unrounded": "5.07"
+            },
+            {
+              "minimum_quantity": 4200,
+              "unit_price": "5.05",
+              "unit_price_unrounded": "5.05"
+            }
+          ],
+          "url": "https://mydin.my/product/ayam-brand-sardine-in-tmto-sce-155gm-10001505"
+        },
+        {
+          "sku": "10001524",
+          "title": "King Cup Sardine in Tomato Sauce 155g",
+          "currency": "MYR",
+          "selling_price": "4.65",
+          "maximum_price": "4.65",
+          "regular_price": "4.65",
+          "on_sale": false,
+          "requires_variant_selection": false,
+          "stock_quantity": 102,
+          "in_stock": true,
+          "quantity_tiers": [
+            {
+              "minimum_quantity": 1,
+              "unit_price": "4.65",
+              "unit_price_unrounded": "4.65"
+            },
+            {
+              "minimum_quantity": 100,
+              "unit_price": "4.40",
+              "unit_price_unrounded": "4.4"
+            }
+          ],
+          "url": "https://mydin.my/product/king-cup-sardine-in-tmto-sce-155gm-10001524"
+        },
+        {
+          "sku": "10001526",
+          "title": "King Cup Sardines in Tomato Sauce (425g)",
+          "currency": "MYR",
+          "selling_price": "9.65",
+          "maximum_price": "9.65",
+          "regular_price": "9.65",
+          "on_sale": false,
+          "requires_variant_selection": false,
+          "stock_quantity": 61,
+          "in_stock": true,
+          "quantity_tiers": [
+            {
+              "minimum_quantity": 1,
+              "unit_price": "9.65",
+              "unit_price_unrounded": "9.65"
+            },
+            {
+              "minimum_quantity": 48,
+              "unit_price": "9.35",
+              "unit_price_unrounded": "9.35"
+            }
+          ],
+          "url": "https://mydin.my/product/king-cup-sardine-in-tmto-sce-425gm-10001526"
+        }
+      ],
+      "query": "sardine",
+      "page": 1,
+      "total_results": 21,
+      "more_results": true,
+      "unavailable_skus": []
+    }
+  },
+  {
+    "source": "mydin",
+    "query": "cooking oil",
+    "result": {
+      "ok": true,
+      "source": "MYDIN Online",
+      "source_kind": "first_party_live_api",
+      "checked_at": "2026-11-02T02:37:08.266716+00:00",
+      "checked_at_local": "02 Nov 2026, 10:37 AM +08",
+      "elapsed_ms": 5268,
+      "cached": false,
+      "currency": "MYR",
+      "reference": "MYDIN online selling prices, used as the Mutiara Rini shopping reference.",
+      "products": [
+        {
+          "sku": "10003250",
+          "title": "Buruh Cooking Oil (2kg)",
+          "currency": "MYR",
+          "selling_price": "12.90",
+          "maximum_price": "12.90",
+          "regular_price": "12.90",
+          "on_sale": false,
+          "requires_variant_selection": false,
+          "stock_quantity": 7,
+          "in_stock": true,
+          "quantity_tiers": [
+            {
+              "minimum_quantity": 1,
+              "unit_price": "12.90",
+              "unit_price_unrounded": "12.9"
+            },
+            {
+              "minimum_quantity": 6,
+              "unit_price": "12.83",
+              "unit_price_unrounded": "12.833333"
+            }
+          ],
+          "url": "https://mydin.my/product/buruh-cooking-oil-2kg-10003250"
+        },
+        {
+          "sku": "10003244",
+          "title": "Buruh Cooking Oil (5kg)",
+          "currency": "MYR",
+          "selling_price": "30.90",
+          "maximum_price": "30.90",
+          "regular_price": "30.90",
+          "on_sale": false,
+          "requires_variant_selection": false,
+          "stock_quantity": 9,
+          "in_stock": true,
+          "quantity_tiers": [
+            {
+              "minimum_quantity": 1,
+              "unit_price": "30.90",
+              "unit_price_unrounded": "30.9"
+            },
+            {
+              "minimum_quantity": 4,
+              "unit_price": "30.75",
+              "unit_price_unrounded": "30.75"
+            }
+          ],
+          "url": "https://mydin.my/product/buruh-cooking-oil-5kg-10003244"
+        },
+        {
+          "sku": "10009072",
+          "title": "Buruh Cooking Oil (1kg)",
+          "currency": "MYR",
+          "selling_price": "6.90",
+          "maximum_price": "6.90",
+          "regular_price": "6.90",
+          "on_sale": false,
+          "requires_variant_selection": false,
+          "stock_quantity": 16,
+          "in_stock": true,
+          "quantity_tiers": [
+            {
+              "minimum_quantity": 1,
+              "unit_price": "6.90",
+              "unit_price_unrounded": "6.9"
+            },
+            {
+              "minimum_quantity": 12,
+              "unit_price": "6.90",
+              "unit_price_unrounded": "6.9"
+            }
+          ],
+          "url": "https://mydin.my/product/buruh-cooking-oil-1kg-10009072"
+        }
+      ],
+      "query": "cooking oil",
+      "page": 1,
+      "source_total_results": 670,
+      "matching_results_on_page": 3,
+      "more_results": true,
+      "partial_matches_omitted": 0,
+      "search_note": "All product-name/pack-size terms must match. No matches on this page does not prove catalogue-wide absence; use the next page or refine the product name."
+    }
+  },
+  {
+    "source": "mydin",
+    "query": "cooking oils",
+    "result": {
+      "ok": true,
+      "source": "MYDIN Online",
+      "source_kind": "first_party_live_api",
+      "checked_at": "2026-11-02T02:37:13.919227+00:00",
+      "checked_at_local": "02 Nov 2026, 10:37 AM +08",
+      "elapsed_ms": 5655,
+      "cached": false,
+      "currency": "MYR",
+      "reference": "MYDIN online selling prices, used as the Mutiara Rini shopping reference.",
+      "products": [],
+      "query": "cooking oils",
+      "page": 1,
+      "source_total_results": 670,
+      "matching_results_on_page": 0,
+      "more_results": true,
+      "partial_matches_omitted": 3,
+      "search_note": "All product-name/pack-size terms must match. No matches on this page does not prove catalogue-wide absence; use the next page or refine the product name."
+    }
+  },
+  {
+    "source": "mydin",
+    "query": "detergent",
+    "result": {
+      "ok": true,
+      "source": "MYDIN Online",
+      "source_kind": "first_party_live_api",
+      "checked_at": "2026-11-02T02:37:18.083907+00:00",
+      "checked_at_local": "02 Nov 2026, 10:37 AM +08",
+      "elapsed_ms": 9817,
+      "cached": false,
+      "currency": "MYR",
+      "reference": "MYDIN online selling prices, used as the Mutiara Rini shopping reference.",
+      "products": [
+        {
+          "sku": "15155444005",
+          "title": "Hero 99 Mystic Forest Liquid Laundry Detergent Refill (3.2kg)",
+          "currency": "MYR",
+          "selling_price": "17.90",
+          "maximum_price": "17.90",
+          "regular_price": "17.90",
+          "on_sale": false,
+          "requires_variant_selection": false,
+          "stock_quantity": 24,
+          "in_stock": true,
+          "quantity_tiers": [
+            {
+              "minimum_quantity": 1,
+              "unit_price": "17.90",
+              "unit_price_unrounded": "17.9"
+            },
+            {
+              "minimum_quantity": 4,
+              "unit_price": "16.50",
+              "unit_price_unrounded": "16.5"
+            }
+          ],
+          "url": "https://mydin.my/product/hero-99-deterg-liq-re-3-2kg-mystc-frst-15155444005"
+        },
+        {
+          "sku": "10010515",
+          "title": "Max Kleen 9 Super Enzyme Power Concentrated Detergent Triple Action Power (3kg)",
+          "currency": "MYR",
+          "selling_price": "34.20",
+          "maximum_price": "34.20",
+          "regular_price": "34.20",
+          "on_sale": false,
+          "requires_variant_selection": false,
+          "stock_quantity": 16,
+          "in_stock": true,
+          "quantity_tiers": [
+            {
+              "minimum_quantity": 1,
+              "unit_price": "34.20",
+              "unit_price_unrounded": "34.2"
+            },
+            {
+              "minimum_quantity": 6,
+              "unit_price": "32.50",
+              "unit_price_unrounded": "32.5"
+            }
+          ],
+          "url": "https://mydin.my/product/max-k9-deterg-pwd-box-3kg-super-enzyme-10010515"
+        },
+        {
+          "sku": "10010891",
+          "title": "Max Kleen 9 Concentrated Super Enzyme UV Shield Detergent (3kg)",
+          "currency": "MYR",
+          "selling_price": "34.20",
+          "maximum_price": "34.20",
+          "regular_price": "34.20",
+          "on_sale": false,
+          "requires_variant_selection": false,
+          "stock_quantity": 14,
+          "in_stock": true,
+          "quantity_tiers": [
+            {
+              "minimum_quantity": 1,
+              "unit_price": "34.20",
+              "unit_price_unrounded": "34.2"
+            },
+            {
+              "minimum_quantity": 6,
+              "unit_price": "32.50",
+              "unit_price_unrounded": "32.5"
+            }
+          ],
+          "url": "https://mydin.my/product/max-k9-deterg-pwd-3kg-uv-shld-10010891"
+        }
+      ],
+      "query": "detergent",
+      "page": 1,
+      "total_results": 70,
+      "more_results": true,
+      "unavailable_skus": []
+    }
+  },
+  {
+    "source": "manjaku",
+    "query": "drypers",
+    "result": {
+      "ok": true,
+      "source": "Manjaku Online",
+      "source_kind": "live_first_party_storefront",
+      "currency": "MYR",
+      "cached": false,
+      "checked_at": "2026-11-02T02:37:13.023743+00:00",
+      "checked_at_local": "2026-11-02T10:37:13.023743+08:00",
+      "elapsed_ms": 4735,
+      "price_scope_note": "Manjaku Online listed prices only; physical-store prices/stock can differ. Cart, bundle, member and voucher discounts and delivery are not verified.",
+      "products": [],
+      "query": "drypers",
+      "source_candidates": 0,
+      "partial_matches_omitted": 0,
+      "search_scope": "Top storefront suggestions only; not a complete catalogue or physical-store inventory.",
+      "may_have_more_results": false,
+      "search_url": "https://www.manjaku.com/search?keyword=drypers"
+    }
+  },
+  {
+    "source": "manjaku",
+    "query": "mamy poko",
+    "result": {
+      "ok": true,
+      "source": "Manjaku Online",
+      "source_kind": "live_first_party_storefront",
+      "currency": "MYR",
+      "cached": false,
+      "checked_at": "2026-11-02T02:37:18.408265+00:00",
+      "checked_at_local": "2026-11-02T10:37:18.408265+08:00",
+      "elapsed_ms": 5385,
+      "price_scope_note": "Manjaku Online listed prices only; physical-store prices/stock can differ. Cart, bundle, member and voucher discounts and delivery are not verified.",
+      "products": [],
+      "query": "mamy poko",
+      "source_candidates": 0,
+      "partial_matches_omitted": 0,
+      "search_scope": "Top storefront suggestions only; not a complete catalogue or physical-store inventory.",
+      "may_have_more_results": false,
+      "search_url": "https://www.manjaku.com/search?keyword=mamy+poko"
+    }
+  },
+  {
+    "source": "manjaku",
+    "query": "baby wipes",
+    "result": {
+      "ok": true,
+      "source": "Manjaku Online",
+      "source_kind": "live_first_party_storefront",
+      "currency": "MYR",
+      "cached": false,
+      "checked_at": "2026-11-02T02:37:24.795168+00:00",
+      "checked_at_local": "2026-11-02T10:37:24.795168+08:00",
+      "elapsed_ms": 10876,
+      "price_scope_note": "Manjaku Online listed prices only; physical-store prices/stock can differ. Cart, bundle, member and voucher discounts and delivery are not verified.",
+      "products": [
+        {
+          "handle": "30300412_30300412",
+          "title": "B.HIPPO BABY WIPES 3X30S MILK",
+          "url": "https://www.manjaku.com/products/30300412_30300412",
+          "currency": "MYR",
+          "price_min": "10.90",
+          "price_max": "10.90",
+          "requires_variant_selection": false,
+          "variants": [
+            {
+              "variant_id": "18073929448249850664092080",
+              "sku": "30300412",
+              "option": "Default",
+              "selling_price": "10.90",
+              "compare_at_price": null,
+              "available_online": true,
+              "stock_quantity": 372,
+              "allows_backorder": false,
+              "quantity_minimum": 1,
+              "quantity_increment": 1,
+              "quantity_maximum": null,
+              "url": "https://www.manjaku.com/products/30300412_30300412?sku=18073929448249850664092080"
+            }
+          ]
+        },
+        {
+          "handle": "baby-hippo-baby-wipes-3x30s-green-tea",
+          "title": "BABY HIPPO BABY WIPES 3X30S GREEN TEA",
+          "url": "https://www.manjaku.com/products/baby-hippo-baby-wipes-3x30s-green-tea",
+          "currency": "MYR",
+          "price_min": "10.90",
+          "price_max": "10.90",
+          "requires_variant_selection": false,
+          "variants": [
+            {
+              "variant_id": "18077333205547029698252080",
+              "sku": "30300433",
+              "option": "Default",
+              "selling_price": "10.90",
+              "compare_at_price": null,
+              "available_online": true,
+              "stock_quantity": 74,
+              "allows_backorder": false,
+              "quantity_minimum": 1,
+              "quantity_increment": 1,
+              "quantity_maximum": null,
+              "url": "https://www.manjaku.com/products/baby-hippo-baby-wipes-3x30s-green-tea?sku=18077333205547029698252080"
+            }
+          ]
+        },
+        {
+          "handle": "baby-hippo-baby-wipes-2x80s-green-tea",
+          "title": "BABY HIPPO BABY WIPES 2X80S GREEN TEA",
+          "url": "https://www.manjaku.com/products/baby-hippo-baby-wipes-2x80s-green-tea",
+          "currency": "MYR",
+          "price_min": "14.90",
+          "price_max": "14.90",
+          "requires_variant_selection": false,
+          "variants": [
+            {
+              "variant_id": "18077246685511729906802080",
+              "sku": "30300434",
+              "option": "Default",
+              "selling_price": "14.90",
+              "compare_at_price": null,
+              "available_online": true,
+              "stock_quantity": 157,
+              "allows_backorder": false,
+              "quantity_minimum": 1,
+              "quantity_increment": 1,
+              "quantity_maximum": null,
+              "url": "https://www.manjaku.com/products/baby-hippo-baby-wipes-2x80s-green-tea?sku=18077246685511729906802080"
+            }
+          ]
+        }
+      ],
+      "query": "baby wipes",
+      "source_candidates": 3,
+      "partial_matches_omitted": 0,
+      "search_scope": "Top storefront suggestions only; not a complete catalogue or physical-store inventory.",
+      "may_have_more_results": true,
+      "search_url": "https://www.manjaku.com/search?keyword=baby+wipes"
+    }
+  },
+  {
+    "source": "manjaku",
+    "query": "milk",
+    "result": {
+      "ok": true,
+      "source": "Manjaku Online",
+      "source_kind": "live_first_party_storefront",
+      "currency": "MYR",
+      "cached": false,
+      "checked_at": "2026-11-02T02:37:29.275416+00:00",
+      "checked_at_local": "2026-11-02T10:37:29.275416+08:00",
+      "elapsed_ms": 11191,
+      "price_scope_note": "Manjaku Online listed prices only; physical-store prices/stock can differ. Cart, bundle, member and voucher discounts and delivery are not verified.",
+      "products": [
+        {
+          "handle": "baby-hippo-head-to-toe-250ml-oat-milk-rice-yllw",
+          "title": "BABY HIPPO HEAD TO TOE 250ML OAT MILK &amp; RICE-YLLW *(NEW FORMULA FROM BABY HIPPO HEAD TO TOES 250ML MILK)",
+          "url": "https://www.manjaku.com/products/baby-hippo-head-to-toe-250ml-oat-milk-rice-yllw",
+          "currency": "MYR",
+          "price_min": "9.90",
+          "price_max": "9.90",
+          "requires_variant_selection": false,
+          "variants": [
+            {
+              "variant_id": "18074345435506270622642080",
+              "sku": "45100824",
+              "option": "Default",
+              "selling_price": "9.90",
+              "compare_at_price": null,
+              "available_online": true,
+              "stock_quantity": 266,
+              "allows_backorder": false,
+              "quantity_minimum": 1,
+              "quantity_increment": 1,
+              "quantity_maximum": null,
+              "url": "https://www.manjaku.com/products/baby-hippo-head-to-toe-250ml-oat-milk-rice-yllw?sku=18074345435506270622642080"
+            }
+          ]
+        },
+        {
+          "handle": "baby-hippo-head-to-toe-750ml-oat-milk-rice-yllw",
+          "title": "BABY HIPPO HEAD TO TOE 750ML OAT MILK &amp; RICE-YLLW *(NEW FORMULA FROM BABY HIPPO HEAD TO TOES 750ML MILK)",
+          "url": "https://www.manjaku.com/products/baby-hippo-head-to-toe-750ml-oat-milk-rice-yllw",
+          "currency": "MYR",
+          "price_min": "17.90",
+          "price_max": "17.90",
+          "requires_variant_selection": false,
+          "variants": [
+            {
+              "variant_id": "18074336317429281009992080",
+              "sku": "45100823",
+              "option": "Default",
+              "selling_price": "17.90",
+              "compare_at_price": null,
+              "available_online": true,
+              "stock_quantity": 45,
+              "allows_backorder": false,
+              "quantity_minimum": 1,
+              "quantity_increment": 1,
+              "quantity_maximum": null,
+              "url": "https://www.manjaku.com/products/baby-hippo-head-to-toe-750ml-oat-milk-rice-yllw?sku=18074336317429281009992080"
+            }
+          ]
+        },
+        {
+          "handle": "mommymora-milk-powder-case-large",
+          "title": "MOMMYMORA MILK POWDER CASE LARGE",
+          "url": "https://www.manjaku.com/products/mommymora-milk-powder-case-large",
+          "currency": "MYR",
+          "price_min": "15.00",
+          "price_max": "15.00",
+          "requires_variant_selection": true,
+          "variants": [
+            {
+              "variant_id": "18076331641459449552822080",
+              "sku": "60402864",
+              "option": "PINK",
+              "selling_price": "15.00",
+              "compare_at_price": null,
+              "available_online": true,
+              "stock_quantity": 26,
+              "allows_backorder": false,
+              "quantity_minimum": 1,
+              "quantity_increment": 1,
+              "quantity_maximum": null,
+              "url": "https://www.manjaku.com/products/mommymora-milk-powder-case-large?sku=18076331641459449552822080"
+            },
+            {
+              "variant_id": "18076331641459449552902080",
+              "sku": "60402865",
+              "option": "GREEN",
+              "selling_price": "15.00",
+              "compare_at_price": null,
+              "available_online": true,
+              "stock_quantity": 22,
+              "allows_backorder": false,
+              "quantity_minimum": 1,
+              "quantity_increment": 1,
+              "quantity_maximum": null,
+              "url": "https://www.manjaku.com/products/mommymora-milk-powder-case-large?sku=18076331641459449552902080"
+            }
+          ]
+        }
+      ],
+      "query": "milk",
+      "source_candidates": 3,
+      "partial_matches_omitted": 0,
+      "search_scope": "Top storefront suggestions only; not a complete catalogue or physical-store inventory.",
+      "may_have_more_results": true,
+      "search_url": "https://www.manjaku.com/search?keyword=milk"
+    }
+  },
+  {
+    "source": "manjaku",
+    "query": "fernleaf",
+    "result": {
+      "ok": true,
+      "source": "Manjaku Online",
+      "source_kind": "live_first_party_storefront",
+      "currency": "MYR",
+      "cached": false,
+      "checked_at": "2026-11-02T02:37:23.453746+00:00",
+      "checked_at_local": "2026-11-02T10:37:23.453746+08:00",
+      "elapsed_ms": 5045,
+      "price_scope_note": "Manjaku Online listed prices only; physical-store prices/stock can differ. Cart, bundle, member and voucher discounts and delivery are not verified.",
+      "products": [],
+      "query": "fernleaf",
+      "source_candidates": 0,
+      "partial_matches_omitted": 0,
+      "search_scope": "Top storefront suggestions only; not a complete catalogue or physical-store inventory.",
+      "may_have_more_results": false,
+      "search_url": "https://www.manjaku.com/search?keyword=fernleaf"
+    }
+  }
+]

@@ -61,7 +61,13 @@ import human_ai_lab
 # three new price requests require the supplied Manjaku catalogue search, not
 # MYDIN prices or household writes. Public delta: evaluation/manjaku-20261101.
 # This remains deterministic regression evidence, not an independent review.
-REVIEWED_CORPUS_FINGERPRINT = "fddfd018ba5e9cbbcddb8d674911d5750f7174c4c2bce22c0ded85e390f0485e"
+# 2026-11-02 utility/retailer repair: 440/462 public packets unchanged.
+# Twenty packets expose the same utility tool with its explicit normalized
+# provider enum; two retailer questions lose unrelated finance/receipt tools.
+# All expected capability decisions remain unchanged. The exact public delta
+# is evaluation/utility-grocery-0550/oracle-delta.json. Fresh independent-model
+# review is deferred because GitHub Actions is billing-blocked, not claimed here.
+REVIEWED_CORPUS_FINGERPRINT = "5b38fa00714cd4965088c84d99442d3c3f9e4c643ea827b15237fa1f67e56437"
 
 
 def _low(value: str) -> str:

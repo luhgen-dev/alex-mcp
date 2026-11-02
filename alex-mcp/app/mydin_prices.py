@@ -15,6 +15,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 from zoneinfo import ZoneInfo
+import catalog_keywords
 
 SEARCH_BASE = "https://mymgtbe.mydin.my/rest/V1/vsf/getSearchSkusPaged/"
 PRODUCTS_URL = "https://myapi.mydin.my/magento/products"
@@ -182,6 +183,7 @@ def _envelope(products, started, local_timezone):
 
 
 def _terms(text: str) -> set[str]:
+    text = catalog_keywords.normalize(text)
     text = re.sub(r"(\d+(?:\.\d+)?)\s*(kg|gm|g|ml|litres?|liters?|l)\b", r"\1\2", text.casefold())
     aliases = {"beras": "rice", "susu": "milk", "minyak": "oil", "masak": "cooking"}
     return {aliases.get(t, t) for t in re.findall(r"\d+(?:\.\d+)?(?:kg|gm|g|ml|l)\b|[^\W_]+", text)}
@@ -210,7 +212,8 @@ def _specific_search(query, limit, page, started, local_timezone):
             raise ValueError("duplicate SKU")
         wanted = _terms(query)
         matches = [p for p, row in zip(normalised, rows)
-                   if wanted <= _terms(p["title"] + " " + row.get("name", ""))]
+                   if wanted <= _terms(p["title"] + " " + row.get("name", ""))
+                   and catalog_keywords.relevant(query, p['title'])]
     except (KeyError, TypeError, ValueError) as exc:
         raise SourceUnavailable("MYDIN search response could not be verified.") from exc
     response = _envelope(matches, started, local_timezone)
@@ -230,7 +233,7 @@ def search(query: str, limit: int = 5, page: int = 1,
     if type(limit) is not int or not 1 <= limit <= 20 or type(page) is not int or not 1 <= page <= 100:
         raise ValueError("limit must be 1–20 and page must be 1–100.")
     started = time.monotonic()
-    query = query.strip()
+    query = catalog_keywords.normalize(query)
     if len(_terms(query)) > 1:
         return _specific_search(query, limit, page, started, local_timezone)
     result = _get_json(SEARCH_BASE + quote(query, safe="") + "?" + urlencode({"page": page, "pageSize": limit}))
@@ -248,11 +251,14 @@ def search(query: str, limit: int = 5, page: int = 1,
             _sku(sku)
     except (KeyError, TypeError, ValueError) as exc:
         raise SourceUnavailable("MYDIN search response could not be verified.") from exc
-    products = _products(skus)
+    verified_products = _products(skus)
+    products = [p for p in verified_products if _terms(query) <= _terms(p['title'])
+                and catalog_keywords.relevant(query, p['title'])]
     response = _envelope(products, started, local_timezone)
     response.update(query=query, page=page, total_results=total,
                     more_results=page * limit < total,
-                    unavailable_skus=[sku for sku in skus if sku not in {p["sku"] for p in products}])
+                    partial_matches_omitted=len(verified_products)-len(products),
+                    unavailable_skus=[sku for sku in skus if sku not in {p["sku"] for p in verified_products}])
     return response
 
 

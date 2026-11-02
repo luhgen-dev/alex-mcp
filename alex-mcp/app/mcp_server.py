@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
 from functools import wraps
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -11,7 +11,7 @@ import re
 from mcp.server import MCPServer
 from mcp.server.mcpserver import Resolve
 from mcp.server.mcpserver.exceptions import ToolError
-from pydantic import Field
+from pydantic import BeforeValidator, Field
 
 from context import ActorContext, current_actor, use_actor
 from dataclasses import replace
@@ -38,7 +38,7 @@ from config import get_settings
 
 mcp = MCPServer(
     "Alex Household Tools",
-    version="0.5.49",
+    version="0.5.50",
     instructions="Deterministic household tools. Identity and permissions are injected by Alex and are never model-controlled.",
 )
 
@@ -48,6 +48,11 @@ async def authenticated_actor() -> ActorContext:
 
 
 Actor = Annotated[ActorContext, Resolve(authenticated_actor)]
+
+UtilityProvider = Annotated[
+    Literal['tnb', 'saj'],
+    BeforeValidator(lambda value: value.strip().casefold() if isinstance(value, str) else value),
+]
 
 # Keep this schema inline for the supported providers' function-calling APIs.
 # Services independently validate the values and their user-text provenance;
@@ -1602,9 +1607,9 @@ def planning_list_goals(actor: Actor) -> dict:
 
 
 @alex_tool()
-def check_household_bill(provider: str, actor: Actor, include_pdf: bool = False,
+def check_household_bill(provider: UtilityProvider, actor: Actor, include_pdf: bool = False,
                          analyse_pdf: bool = False) -> dict:
-    """On-demand live TNB or SAJ home bill check. Stores a timestamped observation; no payment or expense is created. include_pdf=true ONLY when the user requests the PDF/original bill; TNB supports it, SAJ download remains unverified. analyse_pdf=true downloads and extracts untrusted statement text for a requested discrepancy review; it does not send a PDF unless include_pdf=true. Credentials/account must be configured privately in HA. Digi is screenshot-only; never use phone control or SMS. A failed source returns unavailable, not zero."""
+    """On-demand live home bill check. provider must be tnb or saj; call once for EACH requested provider. Stores a timestamped observation; no payment or expense is created. include_pdf=true ONLY when the user requests the PDF/original bill; TNB supports it, SAJ download remains unverified. analyse_pdf=true downloads and extracts untrusted statement text for a requested discrepancy review; it does not send a PDF unless include_pdf=true. Credentials/account must be configured privately in HA. Digi is screenshot-only; never use phone control or SMS. A failed source returns unavailable, not zero; bills_list only reads saved records and cannot replace a failed live check."""
     import household_bills
     return household_bills.refresh(actor, provider, include_pdf, analyse_pdf)
 
