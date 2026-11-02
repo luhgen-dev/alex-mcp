@@ -30,6 +30,8 @@ written. The requested comprehensive audit and deployment are **not complete**.
 | Attachment judge can falsely pass | Correct pathname with wrong/missing bytes passes baseline; audio/video are not treated as attachments. | Freeze independent fixture digests; check queued file readability/content/hash as well as identity and count. Include audio/video. | Six judge mutation probes: positive original, wrong bytes, missing file, empty file, missing digest, and audio/video. |
 | Product documentation contradicts current voice implementation | The voice section still describes voice as never executable. Historical certification counts can be mistaken for current acceptance. | Document 0.5.54 transcript authority/fallback and explicitly label historical certification. | Source/document review; no claim of live speech verification. |
 | Startup reports success after initialization failure | A nonzero database initializer is ignored; a failed structural self-test is reduced to a warning before the success log. | Exit the initialization script on either failure and explicitly configure s6 to stop the container when initialization fails. | Three subprocess checks execute the real shell script with controlled initializer/self-test failures and success. Packaged s6 behavior still requires image verification. |
+| HA control readback can falsely verify a brightness change | A light remaining on at 100% passes a request for 50%; arbitrary changed toggle state also passes. Climate/media active states can instead be falsely reported unconfirmed. | Verify brightness against the returned attribute and interpret active states by domain; require the expected on/off transition for toggle. | Six adapter tests cover matching/missing/wrong readback and active states; HTTP responses are mocked. |
+| HA numeric controls silently change invalid requests | Out-of-range percentages/volume are clamped, some nonfinite values reach HA, and an unused value on switch turn-on is ignored. | Validate finite numbers and supported ranges/arguments before any HA read or service call. | Invalid-value subtests assert zero reads and zero control calls. |
 
 ## Screenshot repairs awaiting production acceptance
 
@@ -113,7 +115,7 @@ argument generation, conversational understanding, or phone delivery.
 | Daily brief | Work/brief and task/reminder modules pass: local date/DST, exact task counts, private group guard, regeneration and shared acknowledgement identity. | Current household facts, worker timing, once-per-day delivery, pin cleanup and device readback. |
 | Ear/listening and journal | `test_discussion_journal` passes: restart persistence, scoped summaries/actions, retry, quote/selection ownership, deadline grounding and rejection of summary-provider action requests. | Real start/stop/resume/capture conversations, spontaneous summary accuracy and original evidence delivery. |
 | Assets and monitoring | Independent asset scope tests and core monitor tests pass with synthetic HA states, including explicit delegation and one-shot candidates. | Warranty/date originals, configured entity transitions, cancellation/deduplication across real worker restarts and delivery. |
-| HA tools and custom ledgers | Custom-ledger exact cents, scope, classification gate, retry, no accidental main-ledger entries, numeric/JSON repairs pass. | Live entity reads/control, automation drafts, physical state readback, custom-ledger attachments/lifecycle and integration tests. |
+| HA tools and custom ledgers | Custom-ledger exact cents/scope/retry and numeric/JSON repairs pass. Six new HA adapter tests prove numeric rejection before calls and correct brightness/toggle/domain readback with mocked transport. | Pinned-dependency adapter run, live entity reads/control, automation drafts, physical state readback and custom-ledger attachments/lifecycle. |
 | Operations, upgrades and recovery | Source blobs verified; Alex-only backup readable; copied SQLite integrity/FKs pass. Pinned SDK suite passed 63/64 jobs, and the sole failing module passed its targeted follow-up. Migration, selftest, stress and catalog checks pass in isolation. | Final candidate full suite, packaged image build/two image-only tests, production migration/restart/rollback, pairing preservation and phone smoke. |
 
 ## Worker inventory
@@ -139,7 +141,7 @@ A running service alone is not evidence that structural checks passed.
 
 ## Exact automated evidence and its limits
 
-- [candidate.json](candidate.json), [candidate.log](candidate.log): **68 tests,
+- [candidate.json](candidate.json), [candidate.log](candidate.log): **71 tests,
   zero failures/errors/skips**. SHA-256 values bind eight tested runtime modules,
   the independent fixture/test files, and the additional wiring/schema sources.
   The latter hashes do not certify execution of the SDK-dependent ingress/brain.
@@ -153,7 +155,7 @@ A running service alone is not evidence that structural checks passed.
   functions in baseline dependants and initially masked the new time regression.
   Those historical baseline logs remain tied to their recorded test hashes at
   commit `959d419b843ab58974ff71c610fa653ab513fc3a`; they are not a comparison
-  of the expanded 68-test suite. The current runner refuses a baseline missing
+  of the expanded 71-test suite. The current runner refuses a baseline missing
   the new privacy module instead of silently importing candidate code.
 - Local Python 3.12.14. Python compilation passed. Four existing Node contracts
   and bridge syntax passed. These are not a container build or a paired session.
@@ -162,7 +164,16 @@ A running service alone is not evidence that structural checks passed.
   `requests`; another encountered incompatible installed MCP APIs. Passing
   modules accounted for 54 test methods (52 passed, two packaged-runtime skips),
   including nine earlier independent tests. **Do not add this overlapping,
-  earlier count to the current 68-test result.**
+  earlier count to the current 71-test result.**
+- [startup-gate.json](startup-gate.json) and its log compare three shell tests:
+  the old script fails two; the repaired script passes all three. These three
+  tests are included in the 71-test focused count, not additional to it.
+- [ha-control-readback.json](ha-control-readback.json) and its log compare six
+  HA adapter tests: baseline produces 25 failed assertions (including subtests)
+  and four numeric-conversion errors; candidate passes all six. These are
+  separate from the focused count. Local import uses pip-vendored `requests`
+  2.34.2; all HTTP/state responses are mocked. Pinned-dependency execution and
+  actual device state changes are still required.
 - The installed MCP package is 1.29.0; the app pins 2.2.0. `requests`, `openai`,
   and `websocket-client` are unavailable. Dependency installation could not reach
   the package index in this executor. The subsequent HA Terminal run below used
@@ -323,7 +334,7 @@ python -m unittest discover -s audit/independent -p test_ha_snapshot_probe.py -v
 The second command passes **eight additional standalone tests**, including copied
 WAL replay, source/archive preservation, scope of exported conversation data,
 credential filtering, permissions, path traversal and symlink rejection. These
-are separate from the 68-test repair suite above. They use synthetic archives.
+are separate from the 71-test repair suite above. They use synthetic archives.
 The collector retains redacted tool errors and routing decisions, hashes input
 event IDs, and preserves zero/false values instead of converting them to blanks.
 

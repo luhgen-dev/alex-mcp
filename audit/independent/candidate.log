@@ -56,6 +56,9 @@ test_pool_spend_retry_and_overdraft_do_not_change_other_finances (test_planning_
 test_private_asset_reads_and_edits_are_isolated (test_planning_assets_independent.PlanningAssetTests.test_private_asset_reads_and_edits_are_isolated) ... ok
 test_private_goal_is_denied_to_spouse_and_group_by_id (test_planning_assets_independent.PlanningAssetTests.test_private_goal_is_denied_to_spouse_and_group_by_id) ... ok
 test_unknown_sender_cannot_resolve_actor (test_planning_assets_independent.PlanningAssetTests.test_unknown_sender_cannot_resolve_actor) ... ok
+test_database_initialization_failure_stops_before_selftest_and_success_log (test_startup_gate_independent.StartupGateTests.test_database_initialization_failure_stops_before_selftest_and_success_log) ... ok
+test_structural_failure_is_fatal_and_never_claims_initialized (test_startup_gate_independent.StartupGateTests.test_structural_failure_is_fatal_and_never_claims_initialized) ... ok
+test_success_runs_both_checks_before_success_log (test_startup_gate_independent.StartupGateTests.test_success_runs_both_checks_before_success_log) ... ok
 test_colloquial_action_routes_keep_writes_and_reject_negation (test_voice_time_independent.TamilReminderTimeTests.test_colloquial_action_routes_keep_writes_and_reject_negation) ... ok
 test_model_cannot_replace_two_with_twenty (test_voice_time_independent.TamilReminderTimeTests.test_model_cannot_replace_two_with_twenty) ... ok
 test_spoken_private_loanword_keeps_the_actual_expense_private (test_voice_time_independent.TamilReminderTimeTests.test_spoken_private_loanword_keeps_the_actual_expense_private) ... ok
@@ -68,6 +71,6 @@ test_outbox_corrupt_original_is_failed_before_transport (test_workers_independen
 test_outbox_transport_retry_preserves_message_identity (test_workers_independent.WorkerStateTests.test_outbox_transport_retry_preserves_message_identity) ... ok
 
 ----------------------------------------------------------------------
-Ran 68 tests in 1.128s
+Ran 71 tests in 1.019s
 
 OK

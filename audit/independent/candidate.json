@@ -1,7 +1,7 @@
 {
   "scope": "isolated SQLite/files; mocked worker network adapters; no live integration",
   "baseline_module_ref": null,
-  "tests_run": 68,
+  "tests_run": 71,
   "failure_assertions_including_subtests": 0,
   "errors_including_subtests": 0,
   "distinct_failing_test_methods": 0,
@@ -31,6 +31,7 @@
     "tests/test_finance_validation_independent.py": "70ec66fbbbc7c4f1558f8620b34f71d358eba67395694d691fd73eacf45184aa",
     "tests/test_household_scopes_independent.py": "e9651e8e29f9a6b940d645aa09fce651c313b90c233c2d48b271c4794d4bf938",
     "tests/test_planning_assets_independent.py": "2f03718751cf17837f96c90c99a513bf2a9030d88f98e144566005e8d251b2ad",
+    "tests/test_startup_gate_independent.py": "294bbf4d2ab390875e94ba6c79cb0f247e1bf0404e4cdf44ff0c4a2a94531991",
     "tests/test_voice_time_independent.py": "80fd13b67550966d820c3ebebfb472b770bae7feacc7c06e28f77433eedcc7fe",
     "tests/test_workers_independent.py": "b6cb4d93ff787b535941c9c411aecab300d470afdf54dd145e3987434d3aebaa"
   }
