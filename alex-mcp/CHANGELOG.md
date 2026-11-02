@@ -1,3 +1,9 @@
+## 0.5.51 — retain the retailer through longer product conversations
+
+- Preserve the actual retailer across generic price follow-ups and after the original store-naming message leaves bounded recent history. Use the source heading of the verified prior reply as public catalogue context, never as price evidence or write authorization.
+- Continue to fetch each new product live and stop carrying catalogue context when the user changes topic. Add an eight-turn Manjaku ingress/MCP/outbox regression.
+- Includes all utility, PDF and grocery repairs from 0.5.50. No configuration or data migrations.
+
 ## 0.5.50 — utility replies and reliable retailer follow-ups
 
 - Advertise the supported TNB/SAJ provider values in the MCP schema and accept harmless case/whitespace differences. Unsupported providers fail closed with a relevant error.
