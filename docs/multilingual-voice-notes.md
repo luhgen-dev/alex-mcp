@@ -41,7 +41,7 @@ Silence, invalid audio, missing configuration, budget limits, blank/explicitly u
 
 The usage panel shows the monthly voice reservation separately from text/vision estimates. Health diagnostics include voice attempt count, reserved estimate, total audio duration and average completed latency. These are local operational estimates, not the API credit balance. No credentials or transcripts are included in that summary.
 
-## Where credits can help
+## Where credits can help (initial assessment)
 
 | Area | Repo finding | Decision |
 | --- | --- | --- |
@@ -65,9 +65,9 @@ Automated tests use real ffmpeg conversion, SQLite, ingress, MCP services and ou
 
 Before claiming the feature works for Priya, test real recordings through the installed WhatsApp path: Tamil, Tanglish and Malay, quiet and everyday background noise, amounts such as RM15/RM50, product/pack distinctions, dates, private instructions, negations, follow-up corrections and compound requests. Record transcript accuracy on critical values, correct persisted action, clarification rate, median/p95 end-to-end latency and actual usage. Wrong private disclosure, a wrong critical value or a duplicated action is a failed pilot case. Compare the current brain and a stronger model only on failures where interpretation is the cause.
 
-This workspace has not connected the credited API key, accessed the running HA installation, or received Priya's recordings. Live recognition, account/model access, production latency and deployment remain unverified. Disable `voice_notes_enabled` to restore the deferred inbox; existing records and audio are retained.
+At the initial 0.5.53 handoff, live deployment and recognition were unverified. The subsequent 0.5.54 audit accessed HA, confirmed the existing voice configuration and reviewed the owner's successful recognition examples. See `evaluation/voice-parity-0554/README.md` for the later action/file parity audit. Priya's own recordings and final WhatsApp acceptance remain separate manual checks. Disable `voice_notes_enabled` to restore the deferred inbox; existing records and audio are retained.
 
-## Local verification result
+## Initial 0.5.53 verification result
 
 - Python suite: 942 tests run, 940 passed, 2 existing skips; includes 24 new voice integration tests.
 - WhatsApp Node contracts: 4 passed.

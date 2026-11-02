@@ -959,7 +959,10 @@ def _state_fingerprint() -> dict[str, dict[str, Any]]:
         ]
         out: dict[str, dict[str, Any]] = {}
         for table in tables:
-            rows = conn.execute(f'SELECT * FROM "{table}"').fetchall()
+            # Consent offers are conversation control state, not a household
+            # write. Retain all other pending records in mutation checks.
+            where = " WHERE kind!='PRIVATE_SEARCH_OFFER'" if table == "pending_items" else ""
+            rows = conn.execute(f'SELECT * FROM "{table}"{where}').fetchall()
             encoded = sorted(
                 json.dumps(dict(row), ensure_ascii=False, sort_keys=True, default=str)
                 for row in rows
@@ -1554,6 +1557,8 @@ def _judge_observation(
                for pattern in getattr(contract, "allowed_tool_errors", ()))
     }
     successful_caps = set(capabilities_for_tools(successful_tools))
+    if trace.get("scoped_memory_context_matches_expected"):
+        successful_caps.add("memory.search")
     # Production ingress can resolve an exact persisted selection without MCP.
     # Count only an observed successful fast path, retaining file identity checks.
     if (ingress_result or {}).get("ok") and any((ingress_result or {}).get(k)
@@ -1774,13 +1779,28 @@ def _observe_ingress_turn(
     outbound_before = _outbound_rows(mid)
     ha_before = _ha_snapshot()
     started = time.monotonic()
-    ingress_result = _run_ingress_turn(
-        mid=mid, conv=conv, prompt=prompt, source=source, phone=phone,
-        conversation_type=conversation_type, quoted_message_id=quoted_message_id,
-        media_fixture=getattr(contract, "media_fixture", None),
-    )
+    # Scoped persistent-memory preload is a real database lookup even when no
+    # MCP call follows. Observe it; accept only exact expected facts, not any
+    # unrelated context or a model assertion that it remembered something.
+    import learned_memory
+    context_payloads = []
+    original_context = learned_memory.context_for_turn
+    def observe_context(*args, **kwargs):
+        value = original_context(*args, **kwargs)
+        context_payloads.append(value)
+        return value
+    with patch.object(learned_memory, "context_for_turn", side_effect=observe_context):
+        ingress_result = _run_ingress_turn(
+            mid=mid, conv=conv, prompt=prompt, source=source, phone=phone,
+            conversation_type=conversation_type, quoted_message_id=quoted_message_id,
+            media_fixture=getattr(contract, "media_fixture", None),
+        )
     elapsed_ms = int((time.monotonic() - started) * 1000)
     trace = _trace(mid)
+    expected = tuple(getattr(contract, "expected_terms", ()))
+    context_text = json.dumps(context_payloads, ensure_ascii=False).casefold()
+    trace["scoped_memory_context_matches_expected"] = bool(expected) and all(
+        term.casefold() in context_text for term in expected)
     outbounds = _outbound_rows(mid)
     reply = _reply_from_outbound(outbounds)
     state_after = _state_fingerprint()

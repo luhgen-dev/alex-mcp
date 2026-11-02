@@ -286,6 +286,12 @@ with tempfile.TemporaryDirectory() as tmp:
     db.add_turn(actor.user_id, actor.conversation_id, "user", "hello", read_scope="family")
     assert len(conversation_state.recent_turns(actor)) == 1
     assert b.CERT_FIXTURES["dentist_diary_id"]
+    b._claim("clock-check", "hello", "clock-chat")
+    before = b._state_fingerprint()
+    db.create_pending_item(actor, "PRIVATE_SEARCH_OFFER", note="synthetic offer")
+    assert b._state_diff(before, b._state_fingerprint()) == {}
+    db.create_pending_item(actor, "REMINDER_DRAFT", note="synthetic draft")
+    assert "pending_items" in b._state_diff(before, b._state_fingerprint())
 '''
         result = subprocess.run([sys.executable, "-c", script],
             env={**os.environ, "PYTHONPATH": str(behavior_cert.APP)},

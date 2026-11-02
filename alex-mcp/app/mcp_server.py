@@ -38,7 +38,7 @@ from config import get_settings
 
 mcp = MCPServer(
     "Alex Household Tools",
-    version="0.5.53",
+    version="0.5.54",
     instructions="Deterministic household tools. Identity and permissions are injected by Alex and are never model-controlled.",
 )
 
