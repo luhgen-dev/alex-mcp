@@ -18,6 +18,19 @@ import behavior_capabilities as capabilities  # noqa: E402
 
 
 class BehaviourRigCatalogTests(unittest.TestCase):
+    def test_voice_parity_expansion_preserves_media_and_does_not_duplicate(self):
+        contract = contracts.PROMPT_CONTRACTS[0]
+        conv = contracts.CONVERSATION_CONTRACTS[0]
+        rows = [(contract, "text", "request", "catalog", 0),
+                (contract, "voice", "request", "catalog", 0),
+                (contract, "text", "other request", "catalog", 0),
+                (contract, "image", "photo", "catalog", 0)]
+        expanded, conversations = behavior_cert._with_voice_parity(rows, [(conv, "text")])
+        self.assertEqual(len(expanded), 5)
+        self.assertIn((contract, "voice", "other request", "catalog", 0), expanded)
+        self.assertEqual([r[1] for r in expanded].count("image"), 1)
+        self.assertEqual(conversations, [(conv, "text"), (conv, "voice")])
+
     def test_catalog_is_complete_and_coherent(self):
         report = behavior_cert.catalog_audit()
         self.assertEqual(report["status"], "PASS", report["failures"])
@@ -248,6 +261,42 @@ class BehaviourRigJudgeMutationTests(unittest.TestCase):
                     os.environ.pop("ALEX_CERT_NOW", None)
                 else:
                     os.environ["ALEX_CERT_NOW"] = old_clock
+
+    def test_live_seed_with_its_own_roster_in_fresh_process(self):
+        import subprocess
+        script = '''
+import tempfile, pathlib, json, os
+import behavior_cert as b
+with tempfile.TemporaryDirectory() as tmp:
+    p = pathlib.Path(tmp)
+    options = p / "options.json"
+    options.write_text(json.dumps(b._sandbox_options("auto", {})))
+    os.environ["ALEX_DATA_DIR"] = tmp
+    os.environ["ALEX_OPTIONS_PATH"] = str(options)
+    b._install_fixed_clock()
+    b._install_sqlite_clock(p)
+    b._reset_case_database(p, "core")
+    import db
+    with db.connect() as c:
+        assert c.execute("SELECT COUNT(*) FROM schedule_conflicts WHERE status='OPEN'").fetchone()[0] == 0
+        assert c.execute("SELECT COUNT(*) FROM leave_records").fetchone()[0] == 0
+        assert c.execute("SELECT CURRENT_TIMESTAMP, datetime('now')").fetchone()[0] == "2026-09-29 02:00:00"
+    import conversation_state
+    actor = b._actor("clock-check", "clock-chat", "hello")
+    db.add_turn(actor.user_id, actor.conversation_id, "user", "hello", read_scope="family")
+    assert len(conversation_state.recent_turns(actor)) == 1
+    assert b.CERT_FIXTURES["dentist_diary_id"]
+    b._claim("clock-check", "hello", "clock-chat")
+    before = b._state_fingerprint()
+    db.create_pending_item(actor, "PRIVATE_SEARCH_OFFER", note="synthetic offer")
+    assert b._state_diff(before, b._state_fingerprint()) == {}
+    db.create_pending_item(actor, "REMINDER_DRAFT", note="synthetic draft")
+    assert "pending_items" in b._state_diff(before, b._state_fingerprint())
+'''
+        result = subprocess.run([sys.executable, "-c", script],
+            env={**os.environ, "PYTHONPATH": str(behavior_cert.APP)},
+            capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_heldout_phrase_is_not_emitted_verbatim(self):
         secret = "this is my private real historical wording"

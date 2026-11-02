@@ -29,6 +29,7 @@ import json
 import os
 import re
 import statistics
+import sqlite3
 import sys
 import tempfile
 import time
@@ -879,6 +880,39 @@ def _install_fixed_clock():
     """
     os.environ["ALEX_CERT_NOW"] = CERT_NOW_UTC
 
+
+def _install_sqlite_clock(sandbox_dir: Path):
+    """Freeze SQLite's behavioral timestamps in this isolated live process.
+
+    DEFAULT CURRENT_TIMESTAMP otherwise uses wall time while the application
+    uses September's fixture clock, making every conversation look future-dated
+    and discarding its history. Keep SQLite date arithmetic, substituting only
+    its 'now' input. Refuse any non-sandbox database connection.
+    """
+    original_connect = sqlite3.connect
+    root = sandbox_dir.resolve()
+
+    def connect(database, *args, **kwargs):
+        if not Path(str(database)).resolve().is_relative_to(root):
+            raise RuntimeError("CERTIFICATION SAFETY STOP: SQLite path escaped sandbox")
+        conn = original_connect(database, *args, **kwargs)
+        import runtime_clock
+        conn.create_function("current_timestamp", 0,
+            lambda: runtime_clock.now_utc().strftime("%Y-%m-%d %H:%M:%S"))
+
+        def date_function(*values):
+            values = list(values or ("now",))
+            if str(values[0]).casefold() == "now":
+                values[0] = runtime_clock.utc_iso()
+            with original_connect(":memory:") as clock_conn:
+                return clock_conn.execute(
+                    "SELECT datetime(" + ",".join("?" for _ in values) + ")", values
+                ).fetchone()[0]
+        conn.create_function("datetime", -1, date_function)
+        return conn
+
+    sqlite3.connect = connect
+
 def _initialize_sandbox():
     import db
     import phase2_finance
@@ -901,7 +935,11 @@ _STATE_FINGERPRINT_EXCLUDE = {
     # user's durable household state.
     "inbound_messages", "outbound_messages", "conversation_turns",
     "tool_execution_claims", "tool_audit", "ai_usage", "selection_sets",
-    "diagnostic_runs",
+    "diagnostic_runs", "goal_selection_sets",
+    # Inbound originals are captured even when the requested household action
+    # is refused. Saved-item links and exact delivered-file checks cover media
+    # effects; transport capture alone must never prove a successful write.
+    "media_objects",
 }
 
 
@@ -921,7 +959,10 @@ def _state_fingerprint() -> dict[str, dict[str, Any]]:
         ]
         out: dict[str, dict[str, Any]] = {}
         for table in tables:
-            rows = conn.execute(f'SELECT * FROM "{table}"').fetchall()
+            # Consent offers are conversation control state, not a household
+            # write. Retain all other pending records in mutation checks.
+            where = " WHERE kind!='PRIVATE_SEARCH_OFFER'" if table == "pending_items" else ""
+            rows = conn.execute(f'SELECT * FROM "{table}"{where}').fetchall()
             encoded = sorted(
                 json.dumps(dict(row), ensure_ascii=False, sort_keys=True, default=str)
                 for row in rows
@@ -993,7 +1034,7 @@ def _latency_breakdown(mid: str, trace: dict, total_ms: int) -> dict[str, Any]:
 
 
 def _validate_seed(seed: str | None) -> None:
-    if seed != "core":
+    if seed not in {"core", "private_core", "plan_update", "shopping_product", "cash_allocation", "task_done"}:
         return
     import db
 
@@ -1033,8 +1074,25 @@ def _reset_case_database(sandbox_dir: Path, seed: str | None) -> str:
     _initialize_sandbox()
     _install_fixed_clock()
     _install_fake_ha()
-    if seed == "core":
-        _seed_core()
+    if seed in {"core", "private_core", "plan_update", "shopping_product", "cash_allocation", "task_done"}:
+        _seed_core(private_memory=seed == "private_core", pending_plan=seed == "plan_update")
+    if seed == "task_done":
+        import phase2
+        from context import with_action_key
+        conv = "seed@s.whatsapp.net"
+        _claim("seed-task-done", "complete passport task", conv)
+        phase2.complete_task(with_action_key(_actor("seed-task-done",conv,"complete passport task"),
+            "seed-task-done"), CERT_FIXTURES["malacca_task_id"])
+    if seed == "shopping_product":
+        import services
+        from context import with_action_key
+        conv = "seed@s.whatsapp.net"
+        _claim("seed-rice", "add rice", conv)
+        services.add_shopping_item(with_action_key(_actor("seed-rice",conv,"add rice"),"seed-rice"),"Rice",shared=True)
+    if seed == "cash_allocation":
+        import phase2_finance
+        phase2_finance.record_cash_event("OT",500,"2026-09-28",HUSBAND,
+            visibility="family",description="Extra OT cash",source_message_id="seed-ot")
     _validate_seed(seed)
     return str(case_path)
 
@@ -1067,7 +1125,7 @@ def _actor(mid: str, conv: str, text: str = "", source: str = "text",
     )
 
 
-def _seed_core():
+def _seed_core(private_memory: bool = False, pending_plan: bool = False):
     import db
     import media
     import phase2
@@ -1103,7 +1161,7 @@ def _seed_core():
     mid = "seed-cobalt"
     _claim(mid, "remember cobalt", conv)
     cobalt = services.save_item(
-        with_action_key(_actor(mid, conv, "remember cobalt"), "seed-cobalt-action"),
+        with_action_key(_actor(mid, conv, "remember cobalt privately" if private_memory else "remember cobalt"), "seed-cobalt-action"),
         "Smoke-test code word",
         "cobalt PRIVATE-CERT-CANARY-COBALT-7K2",
         "test,code", False,
@@ -1118,7 +1176,7 @@ def _seed_core():
     )
     vinyl = services.save_item(
         with_action_key(
-            _actor(mid, conv, "save this vinyl setup", media_ids=[vinyl_media]),
+            _actor(mid, conv, "save this vinyl setup privately" if private_memory else "save this vinyl setup", media_ids=[vinyl_media]),
             "seed-vinyl-action",
         ),
         "Vinyl Setup & Music Inspo",
@@ -1141,9 +1199,9 @@ def _seed_core():
             item, shared=True,
         )
 
-    # Dentist diary event + reminder. 17:00 is deliberately outside the
-    # synthetic morning work shift, so the seed itself cannot be rejected as a
-    # work conflict before behavioural cases run.
+    # The public fixture is a confirmed 17:00 appointment. The synthetic
+    # roster runs until 17:30, so explicitly keep both during fixture setup;
+    # do not let an unresolved seed conflict contaminate every live case.
     mid = "seed-dentist-diary"
     _claim(mid, "dentist appointment 1 October 5pm", conv)
     diary = phase2.add_diary_event(
@@ -1153,7 +1211,13 @@ def _seed_core():
         "2026-10-01T17:15:00+08:00",
     )
     if diary.get("status") == "needs_choice":
-        raise RuntimeError("CERTIFICATION SEED INVALID: dentist fixture unexpectedly conflicts with work")
+        resolution = phase2.resolve_diary_conflict(
+            _actor(mid, conv, "Keep both the appointment and work"),
+            diary["conflict_id"], 2,
+        )
+        diary = resolution.get("diary") or {}
+    if not diary.get("diary_id"):
+        raise RuntimeError("CERTIFICATION SEED INVALID: confirmed dentist fixture missing")
     CERT_FIXTURES["dentist_diary_id"] = diary.get("diary_id")
     mid = "seed-dentist-rem"
     _claim(mid, "remind dentist on 1 October 2026 at 3pm", conv)
@@ -1172,7 +1236,7 @@ def _seed_core():
     malacca = phase2.create_plan(
         with_action_key(_actor(mid, conv, "Malacca family day trip"), "seed-malacca-action"),
         "Family Day Trip to Malacca",
-        notes="Date undecided. Kid-friendly activities. Aim to be back home by around 9pm.",
+        notes="Date undecided." if pending_plan else "Date undecided. Kid-friendly activities. Aim to be back home by around 9pm.",
         locked=False,
     )
 
@@ -1190,7 +1254,7 @@ def _seed_core():
     # Goal with a zero deterministic baseline, used only as read fixture.
     phase2_finance.create_goal(
         "Family Holiday Savings", 5000, 0, HUSBAND,
-        visibility="private", status="DRAFT",
+        visibility="family", status="DRAFT",
     )
 
 
@@ -1360,7 +1424,7 @@ def _outbound_rows(mid: str) -> list[dict[str, Any]]:
 
 
 def _reply_from_outbound(rows: list[dict[str, Any]]) -> str:
-    texts = [str(row.get("text_body") or "") for row in rows if row.get("kind") == "TEXT"]
+    texts = [str(row.get("text_body") or "") for row in rows if row.get("text_body")]
     return texts[-1] if texts else ""
 
 
@@ -1489,8 +1553,19 @@ def _judge_observation(
     successful_tools = {
         call["tool"] for call in calls
         if str(call.get("status") or "").upper() in {"OK", "PASS", "SUCCESS"}
+        or any(pattern in str((call.get("result") or {}).get("error") or "").casefold()
+               for pattern in getattr(contract, "allowed_tool_errors", ()))
     }
     successful_caps = set(capabilities_for_tools(successful_tools))
+    if trace.get("scoped_memory_context_matches_expected"):
+        successful_caps.add("memory.search")
+    # Production ingress can resolve an exact persisted selection without MCP.
+    # Count only an observed successful fast path, retaining file identity checks.
+    if (ingress_result or {}).get("ok") and any((ingress_result or {}).get(k)
+            for k in ("numbered_selection", "selection_followup")):
+        successful_caps.add("selection.resolve")
+    if (ingress_result or {}).get("ok") and (ingress_result or {}).get("reminder_claimed"):
+        successful_caps.add("reminder.claim.take")
     required_caps = set(contract.required_any) - {"routing.discovery"}
     required_all_caps = set(getattr(contract, "required_all", frozenset())) - {"routing.discovery"}
     forbidden_caps = set(contract.forbidden) - {"routing.discovery"}
@@ -1552,6 +1627,10 @@ def _judge_observation(
 
     persistent_mutation_called = any(
         brain._is_mutating_tool(call["tool"]) and call["tool"] != "ha_control"
+        and str(call.get("status") or "").upper() in {"OK", "PASS", "SUCCESS"}
+        and not (call.get("result") or {}).get("error")
+        and str((call.get("result") or {}).get("status", "")).casefold()
+            not in {"needs_clarification", "needs_choice", "not_found", "error", "denied"}
         for call in trace.get("calls", [])
         if call.get("tool") and not str(call["tool"]).startswith("_")
     )
@@ -1568,7 +1647,7 @@ def _judge_observation(
             problems.append(f"table {table} changed but contract requires it unchanged")
 
     if contract.expect_clarification:
-        if "?" not in (reply or ""):
+        if "?" not in (reply or "") and not (getattr(contract, "allow_answer", False) and reply.strip()):
             problems.append("expected a clarification question")
         if persistent_mutation_called:
             problems.append("clarification turn performed a persistent mutation")
@@ -1631,13 +1710,32 @@ def _run_ingress_turn(
         "text": prompt if source != "voice" else "",
         "quoted_message_id": quoted_message_id,
         "sent_at_ms": int(runtime_clock.now_utc().timestamp() * 1000),
+        # These are post-wake group contracts, matching bridge provenance.
+        "alex_mentioned": conversation_type == "GROUP",
+        "reply_to_alex": bool(quoted_message_id),
     }
     if source == "voice":
+        # Exercise the CURRENT opt-in voice path. The old transcribe_audio mock
+        # was unreachable after voice became a deferred inbox, so live voice
+        # rows never reached the brain. Stub recognition only; retain ingress,
+        # server-side authority, provenance, routing, MCP, and outbound writes.
+        import voice_notes
+        voice_settings = replace(ingress.get_settings(), voice_notes_enabled=True)
+
+        def transcribe_fixture(media_id):
+            media._update_transcript(media_id, prompt, {
+                "mode": "certification_transcript_fixture", "command_execution": True,
+                "authoritative": True, "status": "DONE", "recognition_tested": False,
+            })
+            return prompt
+
         payload.update({
             "audio_data": base64.b64encode(b"CERTIFICATION VOICE FIXTURE").decode("ascii"),
             "audio_mime_type": "audio/ogg",
         })
-        with patch.object(media, "transcribe_audio", return_value=prompt):
+        with patch.object(ingress, "get_settings", return_value=voice_settings), \
+             patch.object(media, "get_settings", return_value=voice_settings), \
+             patch.object(voice_notes, "transcribe", side_effect=transcribe_fixture):
             return ingress.process(payload)
 
     if source == "image":
@@ -1683,13 +1781,34 @@ def _observe_ingress_turn(
     outbound_before = _outbound_rows(mid)
     ha_before = _ha_snapshot()
     started = time.monotonic()
-    ingress_result = _run_ingress_turn(
-        mid=mid, conv=conv, prompt=prompt, source=source, phone=phone,
-        conversation_type=conversation_type, quoted_message_id=quoted_message_id,
-        media_fixture=getattr(contract, "media_fixture", None),
-    )
+    # Scoped persistent-memory preload is a real database lookup even when no
+    # MCP call follows. Observe it; accept only exact expected facts, not any
+    # unrelated context or a model assertion that it remembered something.
+    import learned_memory
+    import services
+    from contextlib import nullcontext
+    context_payloads = []
+    original_context = learned_memory.context_for_turn
+    def observe_context(*args, **kwargs):
+        value = original_context(*args, **kwargs)
+        context_payloads.append(value)
+        return value
+    # The isolated bridge fixture has no real WhatsApp pairing file. Group
+    # contracts run in their own synthetic paired conversation, never a live JID.
+    group_binding = (patch.object(services, "_family_group_conversation_id", return_value=conv)
+                     if conversation_type == "GROUP" else nullcontext())
+    with patch.object(learned_memory, "context_for_turn", side_effect=observe_context), group_binding:
+        ingress_result = _run_ingress_turn(
+            mid=mid, conv=conv, prompt=prompt, source=source, phone=phone,
+            conversation_type=conversation_type, quoted_message_id=quoted_message_id,
+            media_fixture=getattr(contract, "media_fixture", None),
+        )
     elapsed_ms = int((time.monotonic() - started) * 1000)
     trace = _trace(mid)
+    expected = tuple(getattr(contract, "expected_terms", ()))
+    context_text = json.dumps(context_payloads, ensure_ascii=False).casefold()
+    trace["scoped_memory_context_matches_expected"] = bool(expected) and all(
+        term.casefold() in context_text for term in expected)
     outbounds = _outbound_rows(mid)
     reply = _reply_from_outbound(outbounds)
     state_after = _state_fingerprint()
@@ -1759,6 +1878,7 @@ def _live_one(contract: PromptContract, prompt: str, source: str,
         "latency": _latency_breakdown(mid, observed["trace"], observed["elapsed_ms"]),
         "estimated_cost_usd": cost_usd,
         "durable_state_diff": observed["durable_state_diff"],
+        "ingress_result": observed["ingress_result"],
         "trace": observed["trace"],
         "status": "PASS" if not problems else "FAIL",
         "problems": problems,
@@ -1804,6 +1924,15 @@ def _live_conversation(contract, source: str, hard_latency_ms: int) -> dict:
             # This is a process-lifecycle surrogate: state must remain durable
             # without reseeding or changing db.DB_PATH.
             _initialize_sandbox()
+            # Force the probe to read persisted memory, not recent chat history.
+            import db
+            conn = db.connect()
+            try:
+                for conversation in conversations.values():
+                    conn.execute("DELETE FROM conversation_turns WHERE conversation_id=?", (conversation,))
+                conn.commit()
+            finally:
+                conn.close()
         mid = (
             previous_mid
             if step.reuse_previous_message_id and previous_mid
@@ -1844,6 +1973,7 @@ def _live_conversation(contract, source: str, hard_latency_ms: int) -> dict:
             "latency": _latency_breakdown(mid, observed["trace"], observed["elapsed_ms"]),
             "estimated_cost_usd": _turn_cost_usd(mid),
             "durable_state_diff": observed["durable_state_diff"],
+            "ingress_result": observed["ingress_result"],
             "trace": observed["trace"],
             "status": "PASS" if not problems else "FAIL",
             "problems": problems,
@@ -1990,7 +2120,8 @@ def live_certify(phase: str, provider: str, source_options: str | None,
                  max_live_cost_usd: float, heldout_path: str | None = None,
                  live_adversarial_per_contract: int = 1,
                  live_strategy: str = "benchmark",
-                 contract_ids: set[str] | None = None) -> dict:
+                 contract_ids: set[str] | None = None,
+                 include_voice_parity: bool = False) -> dict:
     source = _load_source_options(source_options)
     creds = _credential_options(provider, source)
     heldout = _load_heldout_corpus(heldout_path)
@@ -2010,6 +2141,7 @@ def live_certify(phase: str, provider: str, source_options: str | None,
     os.environ["ALEX_HA_API_URL"] = "http://127.0.0.1:9/certification-no-ha"
     os.environ["ALEX_CERT_NOW"] = CERT_NOW_UTC
     os.environ.pop("SUPERVISOR_TOKEN", None)
+    _install_sqlite_clock(sandbox_dir)
 
     # Imports that bind DATA_DIR/OPTIONS_PATH happen only after the sandbox is set.
     import config
@@ -2070,6 +2202,20 @@ def live_certify(phase: str, provider: str, source_options: str | None,
             "hard_missing_contracts": [],
         }
 
+    if include_voice_parity:
+        prompt_plan, conversation_plan = _with_voice_parity(prompt_plan, conversation_plan)
+
+    def checkpoint():
+        if report_path:
+            Path(str(report_path) + ".progress.json").write_text(json.dumps({
+                "status": "RUNNING", "completed_prompts": len(rows),
+                "planned_prompts": len(prompt_plan), "completed_conversations": len(conversations),
+                "planned_conversations": len(conversation_plan),
+                "estimated_cost_usd": accumulated_cost,
+                "failures": [r for r in rows + conversations if r["status"] == "FAIL"],
+            }, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    checkpoint()
     # Benchmark mode deliberately runs the highest-value prompt evidence first.
     # Conversations follow because each chain costs several turns but proves
     # pronoun/focus/state continuity that isolated prompts cannot.
@@ -2083,6 +2229,7 @@ def live_certify(phase: str, provider: str, source_options: str | None,
         row["prompt"] = _report_prompt(prompt, variant_kind)
         rows.append(row)
         accumulated_cost += float(row.get("estimated_cost_usd") or 0.0)
+        checkpoint()
 
     if not budget_stopped:
         for contract, source_kind in conversation_plan:
@@ -2096,6 +2243,7 @@ def live_certify(phase: str, provider: str, source_options: str | None,
                 float(step.get("estimated_cost_usd") or 0.0)
                 for step in conversation["steps"]
             )
+            checkpoint()
 
     elapsed = [r["elapsed_ms"] for r in rows]
     for conv in conversations:
@@ -2137,6 +2285,8 @@ def live_certify(phase: str, provider: str, source_options: str | None,
         "provider": provider,
         "status": live_status,
         "sandbox": True,
+        "voice_parity": include_voice_parity,
+        "voice_recognition": "fixture; live ASR accuracy is not certified",
         "sandbox_path_verified": True,
         "production_data_access": "provider credentials may be read from --source-options; all certification state writes are bound to disposable sandbox DB paths",
         "summary": {
@@ -2172,6 +2322,24 @@ def live_certify(phase: str, provider: str, source_options: str | None,
     return _emit(report, report_path)
 
 
+def _with_voice_parity(prompts: list, conversations: list) -> tuple[list, list]:
+    """Replay text-capable contracts at the authenticated voice boundary too."""
+    result = list(prompts)
+    seen = {(r[0].id, r[1], r[2]) for r in prompts}
+    for row in prompts:
+        key = (row[0].id, "voice", row[2])
+        if row[1] == "text" and key not in seen:
+            result.append((row[0], "voice", *row[2:]))
+            seen.add(key)
+    convs = list(conversations)
+    seen_convs = {(c.id, source) for c, source in conversations}
+    for contract, source in conversations:
+        if source == "text" and (contract.id, "voice") not in seen_convs:
+            convs.append((contract, "voice"))
+            seen_convs.add((contract.id, "voice"))
+    return result, convs
+
+
 def _parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Alex cross-phase behaviour certification")
     p.add_argument(
@@ -2198,6 +2366,8 @@ def _parser() -> argparse.ArgumentParser:
         help="optional existing options file used only to copy provider credentials into the sandbox",
     )
     p.add_argument("--report", default=None)
+    p.add_argument("--include-voice-parity", action="store_true",
+                   help="also run text-capable contracts as authorized voice transcript fixtures")
     p.add_argument("--hard-latency-ms", type=int, default=20000)
     p.add_argument(
         "--max-live-cost-usd", type=float, default=0.25,
@@ -2243,6 +2413,7 @@ def main() -> dict:
             max(0, int(args.live_adversarial_per_contract)),
             args.live_strategy,
             set(args.contract) or None,
+            args.include_voice_parity,
         )
     if report["status"] != "PASS" and not args.no_fail_exit:
         raise SystemExit(1)

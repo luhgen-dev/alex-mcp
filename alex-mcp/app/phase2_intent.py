@@ -113,9 +113,12 @@ def reminder_write_signal(text) -> bool:
     low = normalize_intent_text(text).strip().casefold()
     if not low:
         return False
+    import multilingual_intent
+    if multilingual_intent.requests_reminder(low):
+        return True
 
     explicit = bool(re.search(
-        r"\b(?:remind\s+(?:me|us|my\s+wife|my\s+husband|priya)|"
+        r"\b(?:remind\s+(?:me|us|my\s+wife|my\s+husband|priya|(?:the\s+)?family|(?:the\s+)?household|both\s+of\s+us)|"
         r"set\s+(?:a\s+)?reminder|add\s+(?:a\s+)?reminder)\b",
         low,
     ))

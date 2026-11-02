@@ -74,7 +74,9 @@ import human_ai_lab
 # only in remember_knowledge's description allowing authorized current voice.
 # Their typed capability decisions remain unchanged; the exact public delta is
 # evaluation/multilingual-voice-0553. This is not fresh independent-model evidence.
-REVIEWED_CORPUS_FINGERPRINT = "b9cb6f2cafc4d18763e96d369174d5027428bb3fa17d78f3d58e222024dd4782"
+# 0.5.54: reviewed asset routing, monitor enums, plan follow-ups, family reminder
+# intent and private fixture changes. Delta: evaluation/voice-parity-0554.
+REVIEWED_CORPUS_FINGERPRINT = "78646490da1c3a954a76d4e879ac54b276ab20831ddea80a135e7c0c8971ca00"
 
 
 def _low(value: str) -> str:

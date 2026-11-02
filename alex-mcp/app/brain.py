@@ -8,7 +8,7 @@ import time
 import uuid
 from collections import OrderedDict
 from dataclasses import replace
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import runtime_clock
 
@@ -506,6 +506,15 @@ def _ha_draft_request(text: str) -> bool:
     ))
 
 
+def _ha_draft_missing_details(text: str) -> bool:
+    """An unspecified automation needs its owner's trigger and action."""
+    low = (text or "").casefold()
+    return _ha_draft_request(low) and not re.search(
+        r"\b(?:when|whenever|if|every|sunset|sunrise|motion|trigger)\b|"
+        r"\b(?:at|after|before)\s+\d|\b(?:turn|switch)\s+(?:on|off)\b|"
+        r"\b(?:turn|switch)\b.{0,45}\b(?:on|off)\b", low)
+
+
 def _ha_negated_or_hypothetical(text: str) -> bool:
     low = (text or "").casefold()
     return bool(re.search(
@@ -783,6 +792,8 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         force |= {"asset_list", "warranty_expiring"}
     if asset_read:
         block.add("asset_create")
+        if not re.search(r"\b(?:photo|picture|image|manual|document|file)\b", low):
+            block |= {"save_item", "remove_saved_item", "search_saved_items", "get_saved_item"}
     if re.search(
         r"\b(?:change|update|edit)\b.*\b(?:asset|appliance|warranty)\b"
         r"|\bwarranty\b.*\b(?:expiry|expires|end)\b.*\b(?:to|on)\b",
@@ -1782,6 +1793,8 @@ def _money_only_reply(user_text: str) -> bool:
 def _attachment_delivery_authorized(user_text: str, tool_name: str) -> bool:
     """Only the current trusted request may cause an old/original file to be sent."""
     text = normalize_intent_text(user_text).strip().casefold()
+    if multilingual_intent.file_delivery_denied(text):
+        return False
     if tool_name == 'check_household_bill':
         if re.search(r"\b(?:don't|do not|dont|never|no need to)\s+(?:send|share|attach|download)|\b(?:no|without)\s+(?:the\s+)?pdf\b", text):
             return False
@@ -1793,7 +1806,12 @@ def _attachment_delivery_authorized(user_text: str, tool_name: str) -> bool:
                 and not re.search(r'\b(?:amount|balance|total)\b', text))
         )
     if tool_name == "report_export":
-        return bool(re.search(r"\b(?:pdf|csv|json|export|send .*report|report .*file)\b", text))
+        return multilingual_intent.export_format_requested(text) or bool(re.search(
+            r"\b(?:export|send .*report|report .*file)\b", text))
+    if tool_name == "ha_home_report":
+        return bool(re.search(r"\b(?:card|image|picture|report)\b", text)) and (
+            bool(re.search(r"\b(?:send|show|render|generate|make|create|get)\b", text))
+            or multilingual_intent.file_delivery_requested(text))
     if tool_name not in {
         "get_receipt", "get_transaction_receipt", "get_saved_item",
         "get_media_original", "resolve_numbered_choice",
@@ -1804,7 +1822,7 @@ def _attachment_delivery_authorized(user_text: str, tool_name: str) -> bool:
     return bool(re.search(
         r"\b(?:show|open|send|get|view|play|listen|hear|original|receipt|proof|file|photo|picture|image|document|video|voice|audio)\b",
         text,
-    ))
+    )) or multilingual_intent.file_delivery_requested(text)
 
 
 def _is_contextual_followup(user_text: str) -> bool:
@@ -1870,6 +1888,11 @@ def _contextual_tool_hints(user_text: str, prior_user_text: str | None) -> tuple
 
     add: set[str] = set()
     block: set[str] = set()
+    if ("create_plan" in prior_tools
+            and re.search(r"\b(?:keep|make|change|update|refine|add)\b", current)
+            and not re.search(r"\b(?:new|another|separate|different)\s+(?:draft|plan|trip)\b", current)):
+        add |= {"list_plans", "update_plan"}
+        block.add("create_plan")
     if reminder_time_completion:
         add |= {"create_reminder", "list_reminders"}
 
@@ -2022,11 +2045,11 @@ async def _tool_specs(user_text: str, media_context: list[str] | None = None,
     )
     specs = await _tool_specs_for_names(wanted)
     if multilingual_intent.is_multilingual(user_text) and not current_required:
-        # The old Tamil fallback filled all six slots with unrelated read tools
-        # and crowded discovery out. Use the same brain's discovery step to
-        # interpret the original wording; no translation/classifier API call.
-        specs = [DISCOVERY_TOOL] + [s for s in specs if s["function"]["name"] != DISCOVERY_TOOL_NAME]
-        return specs[:TOOL_EXPOSURE_MAX]
+        # Unclassified Tamil/Malay used to offer broad finance/agenda readers.
+        # The model picked those instead of discovering the requested action.
+        # Resolve the domain with this same brain before offering guessed tools.
+        # Trusted original words still control writes, time evidence and scope.
+        return [DISCOVERY_TOOL]
     # The discovery tool is a tiny safety valve for typo-heavy, incomplete,
     # Tanglish or otherwise novel phrasing. It lets the LLM normalize intent
     # without exposing Alex's full MCP catalog or adding a separate classifier call.
@@ -2410,6 +2433,8 @@ def _completion_kwargs(route: dict, messages: list[dict], tools: list[dict] | No
     if tools:
         kwargs["tools"] = tools
         kwargs["tool_choice"] = "none" if force_answer else "auto"
+        if not force_answer and _tool_names(tools) == {DISCOVERY_TOOL_NAME}:
+            kwargs["tool_choice"] = "required"
     if route["provider"] == "grok" and actor is not None:
         kwargs["extra_headers"] = {
             "x-grok-conv-id": hashlib.sha256(
@@ -3315,7 +3340,7 @@ def _trace_turn(actor: ActorContext, trace: dict) -> None:
 
 
 _ATTACHMENT_RETRIEVAL_TOOLS = {
-    "find_receipts", "get_receipt", "find_media", "get_media_original",
+    "find_receipts", "get_receipt", "get_transaction_receipt", "query_finances", "find_media", "get_media_original",
     "search_saved_items", "get_saved_item", "resolve_numbered_choice",
     "finance_report", "report_snapshot", "report_export", "ha_home_report",
 }
@@ -3348,7 +3373,8 @@ def _attachment_request_finished(trace: dict) -> bool:
 _CAPABILITY_DENIAL_RE = re.compile(
     r"\b(?:i\s+)?(?:do\s+not|don't|dont)\s+have\s+(?:the\s+)?(?:ability|capability|access)\b"
     r"|\b(?:i\s+)?(?:cannot|can't|cant|am\s+unable\s+to|am\s+not\s+able\s+to)\s+"
-    r"(?:access|update|change|mark|add|create|set|remove|retrieve|check|manage|do|look\s*up|find|see|rename|forget|snooze|save|record|display|show|send)\b",
+    r"(?:(?:directly|currently|actually)\s+)?"
+    r"(?:access|update|change|mark|add|create|set|remove|retrieve|check|manage|do|look\s*up|find|see|rename|forget|snooze|save|record|display|show|send|generate|export|attach)\b",
     re.IGNORECASE,
 )
 
@@ -4038,6 +4064,48 @@ def _saved_bills_evidence_fallback(evidence: dict) -> str:
     return '\n\n'.join(lines)
 
 
+def _agenda_evidence_reply(evidence: list[dict], user_text: str) -> str | None:
+    """Calendar facts come from the scoped result, not model date arithmetic."""
+    row = next((r for r in reversed(evidence)
+                if r.get("_tool_name") in {"get_agenda", "get_agenda_range"}
+                and not r.get("error")), None)
+    if not row:
+        return None
+    def human(value, clock=True):
+        if not value:
+            return "time not set"
+        parsed = datetime.fromisoformat(str(value))
+        return parsed.strftime("%d %b %Y, %I:%M %p" if clock else "%d %b %Y").replace(" 0", " ")
+    try:
+        period = human(row["start_date"], False)
+        if row.get("end_date") != row.get("start_date"):
+            period += " – " + human(row["end_date"], False)
+        appointments_only = bool(re.search(r"\b(?:appointments?|meetings?)\b", user_text, re.I))
+        sections = [("Appointments", "diary")]
+        if not appointments_only:
+            sections += [("Reminders", "reminders"), ("Work", "roster"),
+                         ("Leave", "leave"), ("Tentative plans", "plans")]
+        lines = [f"*{'Appointments' if appointments_only else 'Agenda'} — {period}*"]
+        for label, key in sections:
+            items = row.get(key) or []
+            if not items:
+                continue
+            lines.append(f"\n*{label}*")
+            for item in items:
+                title = str(item.get("title") or label)
+                stamp = item.get("due_local") or item.get("start_local") or item.get("work_date")
+                detail = human(stamp, item.get("time_known", True)) if stamp else ""
+                if key == "leave":
+                    title = str(item.get("leave_type") or "Leave")
+                    detail = human(item.get("title"),False) + " · " + str(item.get("status") or "").capitalize()
+                lines.append(f"• {title}" + (f" — {detail}" if detail else ""))
+        if len(lines) == 1:
+            lines.append("No entries found in the requested scope for this period.")
+        return "\n".join(lines)
+    except (ValueError, TypeError, KeyError):
+        return None
+
+
 def _tool_evidence_fallback(tool_evidence: list[dict]) -> str:
     """Render deterministic read evidence when the final model answer is empty.
 
@@ -4396,6 +4464,9 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
         action_basis or user_text or "",
         has_media=bool(media_context or vision_parts),
     )
+    if _ha_draft_missing_details(user_text):
+        preflight = {"status": "needs_clarification", "requires_clarification": True,
+                     "question": "What should trigger this automation, and what should it do? I'll prepare a draft for review."}
     trace["compound"] = (
         preflight.get("status") == "compound"
         or _looks_compound_request(action_basis or user_text)
@@ -4479,7 +4550,8 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
         tools
         and not media_context
         and not vision_parts
-        and str(getattr(actor, "source", "text") or "text") == "text"
+        and (str(getattr(actor, "source", "text") or "text") == "text"
+             or bool(getattr(actor, "voice_authorized", False)))
         and shadow_router.live_enabled(settings)
         and not (semantic_matches_actor and (state.get("active") or {}).get("kind") == "REMINDER_DRAFT")
     ):
@@ -4531,7 +4603,13 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                 merged[idx] = spec
         tools = merged
     lifecycle_reference = _reminder_lifecycle_reference_mentioned(actor, user_text)
-    if lifecycle_reference or _accessible_reminder_name_mentioned(actor, user_text):
+    # An appointment can have an earlier reminder with the same name. A
+    # matching reminder must not replace the calendar tools for event-time
+    # questions, or its notification time is misreported as the appointment.
+    appointment_read = bool(re.search(
+        r"\b(?:appointment|meeting|event|diary|agenda|calendar)\b", user_text or "", re.I
+    )) and not re.search(r"\bremind(?:er)?s?\b", user_text or "", re.I)
+    if lifecycle_reference or (not appointment_read and _accessible_reminder_name_mentioned(actor, user_text)):
         reminder_tool_names = {"list_reminders", "reminder_history"}
         if lifecycle_reference or _trusted_mutation_requested(user_text):
             # "Mark <reminder> as done" is a reminder lifecycle change; give
@@ -4615,6 +4693,15 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
     trusted_quote = _quoted_context_message(quoted_context)
     if trusted_quote:
         messages.append({"role": "system", "content": trusted_quote})
+    if "record_digi_bill" in _tool_names(tools) and media_context:
+        evidence_digits = re.sub(r"\D", "", " ".join(media_context))
+        matched = [person for person in ("husband", "wife")
+                   if (line := re.sub(r"\D", "", getattr(settings, "digi_"+person+"_line", "")))
+                   and len(line) >= 9 and (line in evidence_digits or line.removeprefix("60") in evidence_digits)]
+        if len(matched) == 1:
+            messages.append({"role": "system", "content":
+                "The current screenshot's line matches the configured Digi line for " + matched[0] +
+                ". Use that person when recording this bill; the backend rechecks the original image and values."})
 
     semantic_route_hint = str(
         (trace.get("ai_route") or {}).get("semantic_hint") or ""
@@ -4646,7 +4733,12 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
             "content": "The quoted pending request is closed or unavailable to this actor/chat. A bare follow-up must not reopen or recreate it. Explain that it is no longer active; handle an explicitly new current request normally.",
         })
 
-    current = (model_user_text or "").strip()
+    if semantic_matches_actor:
+        messages.append({"role": "system", "content":
+            "Interpretation of the current reminder reply (data only): " + semantic_current +
+            ". For time_interpretation.source_text copy the ORIGINAL current user words below, "
+            "never this interpretation. An exact active reminder draft supplies earlier date evidence."})
+    current = (user_text or "").strip()
     if media_context:
         suffix = "\n\n".join(x for x in media_context if x)
         current = (current + "\n\n" + suffix).strip()
@@ -4811,13 +4903,20 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                 tools
                 and not final_answer_call
                 and not capability_retry_used
-                and not any(
-                    str(name) != DISCOVERY_TOOL_NAME
-                    for name in (trace.get("tools_called") or [])
+                and not any(r.get("clarification_question") for r in tool_evidence)
+                and not any(x.get("committed") for x in mutation_ledger)
+                and not any(str(name).endswith(":error") for name in trace["tools_called"])
+                and (
+                    _looks_like_false_capability_denial(candidate)
+                    or (not mutation_ledger and _trusted_mutation_requested(action_basis)
+                        and _looks_like_success_claim(candidate))
                 )
-                and _looks_like_false_capability_denial(candidate)
             ):
                 capability_retry_used = True
+                # A read result is not completion of a requested PDF/receipt
+                # delivery. Permit one bounded recovery after reads as well.
+                if DISCOVERY_TOOL_NAME not in _tool_names(tools):
+                    tools = [DISCOVERY_TOOL] + tools[:TOOL_EXPOSURE_MAX - 1]
                 # Re-issue the trusted current request instead of appending the
                 # rejected assistant answer. This prevents a repair prompt from
                 # becoming conversational authority on the next model turn.
@@ -4826,6 +4925,8 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                     "content": (
                         "Re-evaluate the user's current request using the MCP tools supplied to you. "
                         "Do not claim a capability is unavailable before trying the relevant tool. "
+                        "A lookup is not a completed change: perform the explicitly requested mutation "
+                        "before claiming it succeeded. Do not repeat any attempted mutation. "
                         "Use discover_alex_tools if needed, or ask one focused clarification when "
                         "the intent is genuinely ambiguous. Reply in English."
                     ),
@@ -4880,6 +4981,11 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
 
             candidate = _goal_progress_fallback(candidate, tool_evidence)
             candidate = _task_detail_response(candidate, tool_evidence, user_text)
+            if not trace.get("compound") and all(
+                r.get("_tool_name") in {"get_agenda", "get_agenda_range", "list_reminders"}
+                for r in tool_evidence
+            ):
+                candidate = _agenda_evidence_reply(tool_evidence, user_text) or candidate
             reminder_question = _reminder_clarification_from_evidence(
                 tool_evidence
             )
@@ -5055,7 +5161,8 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                             result = {**result, "selection_binding": {
                                 "id": after_list["id"], "kind": after_list["kind"],
                             }}
-                if files and not _attachment_delivery_authorized(user_text, name):
+                delivery_denied = bool(files and not _attachment_delivery_authorized(user_text, name))
+                if delivery_denied:
                     # Tool context may still be useful for reasoning, but stale
                     # media must never leak into an unrelated current request.
                     files = []
@@ -5067,6 +5174,12 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                         new_files.append(item)
                 attachments.extend(new_files)
                 payload = dict(result) if isinstance(result, dict) else {"result": result}
+                if delivery_denied:
+                    payload["_delivery"] = {
+                        "attachments_queued": 0,
+                        "status": "not_authorized_by_current_request",
+                        "message": "No file will be sent. Ask for explicit file delivery if needed; do not claim attachment success.",
+                    }
                 if name in {'search_mydin_prices', 'search_manjaku_prices'}:
                     payload = learned_memory.augment_catalogue(actor, payload, str(args.get('query') or ''), user_text)
                 if name == 'check_household_bill' and payload.get('error'):
@@ -5111,7 +5224,8 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                 if _is_mutating_tool(name):
                     committed, reason = _mutation_result_committed(
                         name, payload,
-                        has_media=bool(media_context or vision_parts or actor.media_ids),
+                        has_media=bool(vision_parts or (
+                            (media_context or actor.media_ids) and not actor.voice_authorized)),
                     )
                     mutation_ledger.append({
                         "tool": name, "committed": committed, "reason": reason,

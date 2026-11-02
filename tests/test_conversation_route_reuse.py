@@ -56,4 +56,5 @@ class RouteReuseTests(ConversationFixture):
                                       semantic_user_text=normalized))
         router.assert_not_awaited()
         self.assertEqual(len(requests), 1)
-        self.assertEqual(requests[0]["messages"][-1]["content"], normalized)
+        self.assertEqual(requests[0]["messages"][-1]["content"], current.trusted_text)
+        self.assertTrue(any(normalized in m["content"] for m in requests[0]["messages"] if m["role"] == "system"))

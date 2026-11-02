@@ -1,3 +1,12 @@
+## 0.5.54 — voice feature parity and cross-feature repairs
+
+- Restore Tamil, Tanglish and Malay reminder creation, source-checked colloquial times, and follow-up clarification without replacing the original user words.
+- Deliver requested original receipt images, saved pictures, PDFs and home-status cards through the existing WhatsApp outbox. Keep current-request authorization, negations, privacy and duplicate protection.
+- Discover tools before declaring native-language features unavailable. Recover bounded false capability denials and distinguish command audio from a saved photo or note.
+- Ground agenda dates and appointment times in canonical records. Repair family-reminder recognition, scoped natural task/plan names, plan refinement, asset browsing, Digi line identification and monitor type schemas.
+- Audit text and authorized voice ingress with isolated synthetic household data, real providers and exact file/state assertions. Correct stale certification clocks and fixtures; no live household records or device states are changed by certification.
+- Existing voice recognition, provider routing, keys, options, data and WhatsApp pairing are retained. No database migration or new paid route is enabled.
+
 ## 0.5.53 — opt-in multilingual voice-note pilot
 
 - Add one bounded OpenAI transcription per addressed WhatsApp voice note, preserving original-language text, audio provenance, scoped execution and duplicate-message protection. Voice is disabled by default until configured and tested.

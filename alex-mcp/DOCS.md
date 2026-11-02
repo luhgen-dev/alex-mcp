@@ -17,21 +17,21 @@ No API key, phone number, provider or pairing credential is stored in source cod
 
 ## What runs locally
 
-### Multilingual voice notes (0.5.53)
+### Multilingual voice notes (0.5.54)
 
 Voice notes can use one OpenAI transcription request, then the existing Alex brain
 and scoped tools. Tamil, Tanglish, English and Malay can be tested through the same
 WhatsApp requests used for text. Recognition accuracy needs real-recording testing.
 
 1. Back up Alex MCP including its data, then use the normal Home Assistant app
-   update screen to install **0.5.53**. Refresh/check for updates if it is not listed.
+   update screen to install **0.5.54**. Refresh/check for updates if it is not listed.
 2. In **Alex MCP → Configuration**, enable `voice_notes_enabled` and enter the
    credited OpenAI organization's API key privately in `voice_openai_api_key`.
    An existing `openai_api_key` is used only if the voice key is empty. A dedicated
    voice key leaves ordinary text-model routing unchanged.
 3. Keep `voice_monthly_budget_usd: 5.0`, `voice_max_seconds: 180` and language hints
    `ta`, `en`, `ms` for the initial test. Save and restart **Alex MCP**.
-4. Open the Web UI, confirm WhatsApp is connected and the runtime is **0.5.53**,
+4. Open the Web UI, confirm WhatsApp is connected and the runtime is **0.5.54**,
    then send a short Tamil voice note in an authorized DM. Verify both the reply
    and the actual saved result before trying amounts, reminders or private requests.
 

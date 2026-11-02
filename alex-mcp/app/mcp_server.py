@@ -38,7 +38,7 @@ from config import get_settings
 
 mcp = MCPServer(
     "Alex Household Tools",
-    version="0.5.53",
+    version="0.5.54",
     instructions="Deterministic household tools. Identity and permissions are injected by Alex and are never model-controlled.",
 )
 
@@ -1944,9 +1944,9 @@ def monitor_home_state(entity_id: str, target_state: str, actor: Actor,
 
 
 @alex_tool()
-def monitor_delegate(delegation_type: str, subject: str, actor: Actor,
+def monitor_delegate(delegation_type: Literal['OT_GOAL_TRACK', 'BILL_MONITOR', 'GOAL_MONITOR', 'PRESENCE_REMINDER', 'CUSTOM'], subject: str, actor: Actor,
                      shared: bool = False) -> dict:
-    """Enable one proactive monitor only after an explicit user instruction. Quiet by default otherwise."""
+    """Enable one explicitly requested monitor. Use GOAL_MONITOR for a savings goal, BILL_MONITOR for bills, OT_GOAL_TRACK for overtime savings, PRESENCE_REMINDER for presence, CUSTOM otherwise. Quiet by default."""
     return phase2_delegation.create_delegation(
         delegation_type, subject, actor.phone, actor.source_message_id,
         actor.conversation_type,

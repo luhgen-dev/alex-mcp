@@ -1,0 +1,245 @@
+{
+  "baseline_fingerprint": "b9cb6f2cafc4d18763e96d369174d5027428bb3fa17d78f3d58e222024dd4782",
+  "candidate_fingerprint": "78646490da1c3a954a76d4e879ac54b276ab20831ddea80a135e7c0c8971ca00",
+  "packet_count": 471,
+  "review": "Reviewed changed schemas, tool exposure, explicit family reminder semantics and corrected private-memory fixture. This is deterministic regression review, not an independent AI assessment.",
+  "changes": [
+    {
+      "old_packet_id": "hai-cf193d7a96a50ceab6",
+      "new_packet_id": "hai-cf193d7a96a50ceab6",
+      "prompt": "What appliances or assets have I saved?",
+      "changed_keys": [
+        "available_tools"
+      ],
+      "removed_tools": [
+        "get_saved_item",
+        "save_item",
+        "search_saved_items"
+      ],
+      "added_tools": [
+        "discover_alex_tools"
+      ],
+      "changed_tool_schemas": []
+    },
+    {
+      "old_packet_id": "hai-063bdd60109e54165c",
+      "new_packet_id": "hai-063bdd60109e54165c",
+      "prompt": "Any warranties I should know about?",
+      "changed_keys": [
+        "available_tools"
+      ],
+      "removed_tools": [
+        "get_saved_item"
+      ],
+      "added_tools": [
+        "discover_alex_tools"
+      ],
+      "changed_tool_schemas": []
+    },
+    {
+      "old_packet_id": "hai-3411810c151f6888c0",
+      "new_packet_id": "hai-3411810c151f6888c0",
+      "prompt": "What are you monitoring for me?",
+      "changed_keys": [
+        "available_tools"
+      ],
+      "removed_tools": [],
+      "added_tools": [],
+      "changed_tool_schemas": [
+        "monitor_delegate"
+      ]
+    },
+    {
+      "old_packet_id": "hai-d396009ee891ced47f",
+      "new_packet_id": "hai-d396009ee891ced47f",
+      "prompt": "Show the things I asked you to track.",
+      "changed_keys": [
+        "available_tools"
+      ],
+      "removed_tools": [],
+      "added_tools": [],
+      "changed_tool_schemas": [
+        "monitor_delegate"
+      ]
+    },
+    {
+      "old_packet_id": "hai-d63bac1097544e719d",
+      "new_packet_id": "hai-d63bac1097544e719d",
+      "prompt": "List my active monitoring jobs.",
+      "changed_keys": [
+        "available_tools"
+      ],
+      "removed_tools": [],
+      "added_tools": [],
+      "changed_tool_schemas": [
+        "monitor_delegate"
+      ]
+    },
+    {
+      "old_packet_id": "hai-bdb722ba1a559fb8bc",
+      "new_packet_id": "hai-bdb722ba1a559fb8bc",
+      "prompt": "Stop tracking my Family Holiday Savings goal.",
+      "changed_keys": [
+        "available_tools"
+      ],
+      "removed_tools": [],
+      "added_tools": [],
+      "changed_tool_schemas": [
+        "monitor_delegate"
+      ]
+    },
+    {
+      "old_packet_id": "hai-75ba5f473edde282e1",
+      "new_packet_id": "hai-75ba5f473edde282e1",
+      "prompt": "Monitor the Hall AC and tell me when it turns on.",
+      "changed_keys": [
+        "available_tools"
+      ],
+      "removed_tools": [],
+      "added_tools": [],
+      "changed_tool_schemas": [
+        "monitor_delegate"
+      ]
+    },
+    {
+      "old_packet_id": "hai-a81383f0057c119a5d",
+      "new_packet_id": "hai-a81383f0057c119a5d",
+      "prompt": "Monitor my Family Holiday Savings goal.",
+      "changed_keys": [
+        "available_tools"
+      ],
+      "removed_tools": [],
+      "added_tools": [],
+      "changed_tool_schemas": [
+        "monitor_delegate"
+      ]
+    },
+    {
+      "old_packet_id": "hai-076a989534b13928b4",
+      "new_packet_id": "hai-076a989534b13928b4",
+      "prompt": "Track the holiday goal for me.",
+      "changed_keys": [
+        "available_tools"
+      ],
+      "removed_tools": [],
+      "added_tools": [],
+      "changed_tool_schemas": [
+        "monitor_delegate"
+      ]
+    },
+    {
+      "old_packet_id": "hai-56cb2c064c5faad53d",
+      "new_packet_id": "hai-56cb2c064c5faad53d",
+      "prompt": "Stop monitoring my holiday goal.",
+      "changed_keys": [
+        "available_tools"
+      ],
+      "removed_tools": [],
+      "added_tools": [],
+      "changed_tool_schemas": [
+        "monitor_delegate"
+      ]
+    },
+    {
+      "old_packet_id": "hai-f456b233cd8cc06657",
+      "new_packet_id": "hai-f456b233cd8cc06657",
+      "prompt": "Cancel the holiday-goal tracking.",
+      "changed_keys": [
+        "available_tools"
+      ],
+      "removed_tools": [],
+      "added_tools": [],
+      "changed_tool_schemas": [
+        "monitor_delegate"
+      ]
+    },
+    {
+      "old_packet_id": "hai-a0ff42eb7220d7f707",
+      "new_packet_id": "hai-a0ff42eb7220d7f707",
+      "prompt": "Stop tracking that custom maintenance ledger.",
+      "changed_keys": [
+        "available_tools"
+      ],
+      "removed_tools": [],
+      "added_tools": [],
+      "changed_tool_schemas": [
+        "monitor_delegate"
+      ]
+    },
+    {
+      "old_packet_id": "hai-430f9825cf1415c98c",
+      "new_packet_id": "hai-430f9825cf1415c98c",
+      "prompt": "I don't know the date yet. Make it kid-friendly and I want us back home by around 9pm. Keep it as a draft.",
+      "changed_keys": [
+        "available_tools"
+      ],
+      "removed_tools": [
+        "create_plan"
+      ],
+      "added_tools": [
+        "share_plan"
+      ],
+      "changed_tool_schemas": []
+    },
+    {
+      "old_packet_id": "hai-8896c7ce6ecd60aa52",
+      "new_packet_id": "hai-8896c7ce6ecd60aa52",
+      "prompt": "I don't know the date yet. Make it kid-friendly and I want us back home by around 9pm. Keep it as a draft.",
+      "changed_keys": [
+        "available_tools"
+      ],
+      "removed_tools": [
+        "create_plan"
+      ],
+      "added_tools": [
+        "share_plan"
+      ],
+      "changed_tool_schemas": []
+    },
+    {
+      "old_packet_id": "hai-58b35a01b54ad3ec8c",
+      "new_packet_id": "hai-59728fc6c607570fe7",
+      "prompt": "What private saved code word do I have?",
+      "changed_keys": [
+        "packet_id",
+        "prompt"
+      ],
+      "removed_tools": [],
+      "added_tools": [],
+      "changed_tool_schemas": []
+    },
+    {
+      "old_packet_id": "hai-f3b7634780157f7513",
+      "new_packet_id": "hai-f3b7634780157f7513",
+      "prompt": "What saved code word do I have?",
+      "changed_keys": [
+        "conversation_history"
+      ],
+      "removed_tools": [],
+      "added_tools": [],
+      "changed_tool_schemas": []
+    },
+    {
+      "old_packet_id": "hai-e88ba5e7b44c373eb3",
+      "new_packet_id": "hai-e88ba5e7b44c373eb3",
+      "prompt": "Remind the family tomorrow at 9am to collect the parcel; anyone can claim it.",
+      "changed_keys": [
+        "available_tools"
+      ],
+      "removed_tools": [
+        "add_diary_event",
+        "check_my_availability",
+        "check_spouse_availability",
+        "get_agenda",
+        "resolve_latest_diary_conflict"
+      ],
+      "added_tools": [
+        "discover_alex_tools",
+        "list_reminders",
+        "reminder_history",
+        "update_reminder"
+      ],
+      "changed_tool_schemas": []
+    }
+  ]
+}
