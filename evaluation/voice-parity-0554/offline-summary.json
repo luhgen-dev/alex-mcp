@@ -1,0 +1,16 @@
+{
+  "mode": "offline",
+  "status": "PASS",
+  "summary": {
+    "contracts": 174,
+    "prompt_contracts": 162,
+    "conversation_contracts": 12,
+    "conversation_step_checks": 33,
+    "variant_checks_passed": 1389,
+    "discovery_dependent_checks": 0,
+    "failures": 0,
+    "mcp_tool_count": 151,
+    "tool_exposure_cap": 6,
+    "heldout_contracts_loaded": 0
+  }
+}

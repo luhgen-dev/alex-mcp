@@ -1,0 +1,3127 @@
+{
+  "status": "PASS",
+  "method": "Full cross-domain baseline plus focused replays; latest observation per case. Synthetic input with real providers, no sender worker or physical HA.",
+  "counts": {
+    "prompt_results": 230,
+    "conversation_results": 26
+  },
+  "failures": [],
+  "runs": [
+    {
+      "run": "v3-phase1",
+      "status": "FAIL",
+      "summary": {
+        "prompt_runs": 55,
+        "conversation_runs": 14,
+        "failures": 7,
+        "budget_stopped": false,
+        "estimated_cost_usd": 0.09385725,
+        "max_live_cost_usd": 1,
+        "live_strategy": "benchmark",
+        "planned_prompt_runs": 55,
+        "planned_conversation_runs": 14,
+        "skipped_paid_contracts": 14,
+        "cost_per_executed_prompt_usd": 0.0011042,
+        "offline_status": "PASS",
+        "offline_failures": 0,
+        "discovery_contracts": [],
+        "hard_missing_contracts": [],
+        "latency_ms_p50": 3009,
+        "latency_ms_max": 9428,
+        "latency_by_domain": {
+          "finance": {
+            "count": 20,
+            "p50_ms": 2846,
+            "p95_ms": 4827,
+            "max_ms": 5453
+          },
+          "memory": {
+            "count": 21,
+            "p50_ms": 3209,
+            "p95_ms": 5668,
+            "max_ms": 8155
+          },
+          "receipts": {
+            "count": 12,
+            "p50_ms": 3130,
+            "p95_ms": 7758,
+            "max_ms": 9050
+          },
+          "reminders": {
+            "count": 16,
+            "p50_ms": 3023,
+            "p95_ms": 5812,
+            "max_ms": 6481
+          },
+          "shopping": {
+            "count": 16,
+            "p50_ms": 3199,
+            "p95_ms": 7953,
+            "max_ms": 9428
+          }
+        },
+        "hard_latency_ms": 20000
+      }
+    },
+    {
+      "run": "v3-phase2",
+      "status": "FAIL",
+      "summary": {
+        "prompt_runs": 137,
+        "conversation_runs": 8,
+        "failures": 19,
+        "budget_stopped": false,
+        "estimated_cost_usd": 0.16113425,
+        "max_live_cost_usd": 1,
+        "live_strategy": "benchmark",
+        "planned_prompt_runs": 137,
+        "planned_conversation_runs": 8,
+        "skipped_paid_contracts": 35,
+        "cost_per_executed_prompt_usd": 0.00102633,
+        "offline_status": "PASS",
+        "offline_failures": 0,
+        "discovery_contracts": [],
+        "hard_missing_contracts": [],
+        "latency_ms_p50": 2747,
+        "latency_ms_max": 33412,
+        "latency_by_domain": {
+          "agenda": {
+            "count": 14,
+            "p50_ms": 3078,
+            "p95_ms": 3840,
+            "max_ms": 5142
+          },
+          "assets": {
+            "count": 4,
+            "p50_ms": 2656,
+            "p95_ms": 2938,
+            "max_ms": 2938
+          },
+          "bills": {
+            "count": 4,
+            "p50_ms": 3238,
+            "p95_ms": 3608,
+            "max_ms": 3608
+          },
+          "cash_planning": {
+            "count": 20,
+            "p50_ms": 2396,
+            "p95_ms": 3075,
+            "max_ms": 5361
+          },
+          "diagnostics": {
+            "count": 2,
+            "p50_ms": 2528,
+            "p95_ms": 2644,
+            "max_ms": 2644
+          },
+          "diary": {
+            "count": 6,
+            "p50_ms": 2847,
+            "p95_ms": 5685,
+            "max_ms": 5685
+          },
+          "finance": {
+            "count": 5,
+            "p50_ms": 7202,
+            "p95_ms": 11322,
+            "max_ms": 11322
+          },
+          "goals": {
+            "count": 16,
+            "p50_ms": 2759,
+            "p95_ms": 4190,
+            "max_ms": 5055
+          },
+          "home_assistant": {
+            "count": 14,
+            "p50_ms": 3867,
+            "p95_ms": 9403,
+            "max_ms": 11031
+          },
+          "monitoring": {
+            "count": 4,
+            "p50_ms": 3951,
+            "p95_ms": 10310,
+            "max_ms": 10310
+          },
+          "plans": {
+            "count": 16,
+            "p50_ms": 3145,
+            "p95_ms": 6599,
+            "max_ms": 33412
+          },
+          "privacy": {
+            "count": 22,
+            "p50_ms": 2445,
+            "p95_ms": 6320,
+            "max_ms": 6641
+          },
+          "reports": {
+            "count": 6,
+            "p50_ms": 2480,
+            "p95_ms": 2734,
+            "max_ms": 2734
+          },
+          "tasks": {
+            "count": 12,
+            "p50_ms": 4187,
+            "p95_ms": 8156,
+            "max_ms": 8663
+          },
+          "work": {
+            "count": 12,
+            "p50_ms": 2573,
+            "p95_ms": 3522,
+            "max_ms": 4433
+          }
+        },
+        "hard_latency_ms": 20000
+      }
+    },
+    {
+      "run": "v3-phase3",
+      "status": "PASS",
+      "summary": {
+        "prompt_runs": 22,
+        "conversation_runs": 2,
+        "failures": 0,
+        "budget_stopped": false,
+        "estimated_cost_usd": 0.0347555,
+        "max_live_cost_usd": 1,
+        "live_strategy": "benchmark",
+        "planned_prompt_runs": 22,
+        "planned_conversation_runs": 2,
+        "skipped_paid_contracts": 26,
+        "cost_per_executed_prompt_usd": 0.00133675,
+        "offline_status": "PASS",
+        "offline_failures": 0,
+        "discovery_contracts": [],
+        "hard_missing_contracts": [],
+        "latency_ms_p50": 3384,
+        "latency_ms_max": 11639,
+        "latency_by_domain": {
+          "home_assistant": {
+            "count": 4,
+            "p50_ms": 4219,
+            "p95_ms": 5874,
+            "max_ms": 5874
+          },
+          "language": {
+            "count": 10,
+            "p50_ms": 3438,
+            "p95_ms": 7691,
+            "max_ms": 7691
+          },
+          "routing": {
+            "count": 8,
+            "p50_ms": 3730,
+            "p95_ms": 11639,
+            "max_ms": 11639
+          },
+          "safety": {
+            "count": 4,
+            "p50_ms": 3084,
+            "p95_ms": 3527,
+            "max_ms": 3527
+          }
+        },
+        "hard_latency_ms": 20000
+      }
+    },
+    {
+      "run": "v3-native",
+      "status": "PASS",
+      "summary": {
+        "prompt_runs": 16,
+        "conversation_runs": 2,
+        "failures": 0,
+        "budget_stopped": false,
+        "estimated_cost_usd": 0.05106125,
+        "max_live_cost_usd": 0.5,
+        "live_strategy": "full",
+        "planned_prompt_runs": 16,
+        "planned_conversation_runs": 2,
+        "skipped_paid_contracts": 0,
+        "cost_per_executed_prompt_usd": 0.00255306,
+        "offline_status": null,
+        "offline_failures": null,
+        "discovery_contracts": [],
+        "hard_missing_contracts": [],
+        "latency_ms_p50": 7008,
+        "latency_ms_max": 13144,
+        "latency_by_domain": {
+          "memory": {
+            "count": 4,
+            "p50_ms": 6396,
+            "p95_ms": 10570,
+            "max_ms": 10570
+          },
+          "receipts": {
+            "count": 4,
+            "p50_ms": 10698,
+            "p95_ms": 13144,
+            "max_ms": 13144
+          },
+          "reminders": {
+            "count": 8,
+            "p50_ms": 6150,
+            "p95_ms": 11931,
+            "max_ms": 11931
+          },
+          "reports": {
+            "count": 2,
+            "p50_ms": 6721,
+            "p95_ms": 7762,
+            "max_ms": 7762
+          },
+          "shopping": {
+            "count": 2,
+            "p50_ms": 5338,
+            "p95_ms": 5396,
+            "max_ms": 5396
+          }
+        },
+        "hard_latency_ms": 20000
+      }
+    },
+    {
+      "run": "v4-phase1",
+      "status": "FAIL",
+      "summary": {
+        "prompt_runs": 55,
+        "conversation_runs": 14,
+        "failures": 4,
+        "budget_stopped": false,
+        "estimated_cost_usd": 0.09758925,
+        "max_live_cost_usd": 1,
+        "live_strategy": "benchmark",
+        "planned_prompt_runs": 55,
+        "planned_conversation_runs": 14,
+        "skipped_paid_contracts": 14,
+        "cost_per_executed_prompt_usd": 0.00114811,
+        "offline_status": "PASS",
+        "offline_failures": 0,
+        "discovery_contracts": [],
+        "hard_missing_contracts": [],
+        "latency_ms_p50": 2668,
+        "latency_ms_max": 11842,
+        "latency_by_domain": {
+          "finance": {
+            "count": 20,
+            "p50_ms": 2515,
+            "p95_ms": 4838,
+            "max_ms": 5045
+          },
+          "memory": {
+            "count": 21,
+            "p50_ms": 2345,
+            "p95_ms": 5895,
+            "max_ms": 10052
+          },
+          "receipts": {
+            "count": 12,
+            "p50_ms": 2908,
+            "p95_ms": 6571,
+            "max_ms": 9430
+          },
+          "reminders": {
+            "count": 16,
+            "p50_ms": 2987,
+            "p95_ms": 5790,
+            "max_ms": 11842
+          },
+          "shopping": {
+            "count": 16,
+            "p50_ms": 2611,
+            "p95_ms": 9037,
+            "max_ms": 10161
+          }
+        },
+        "hard_latency_ms": 20000
+      }
+    },
+    {
+      "run": "v4-phase2",
+      "status": "FAIL",
+      "summary": {
+        "prompt_runs": 36,
+        "conversation_runs": 4,
+        "failures": 2,
+        "budget_stopped": false,
+        "estimated_cost_usd": 0.04289,
+        "max_live_cost_usd": 1,
+        "live_strategy": "benchmark",
+        "planned_prompt_runs": 36,
+        "planned_conversation_runs": 4,
+        "skipped_paid_contracts": 0,
+        "cost_per_executed_prompt_usd": 0.00093239,
+        "offline_status": "PASS",
+        "offline_failures": 0,
+        "discovery_contracts": [],
+        "hard_missing_contracts": [],
+        "latency_ms_p50": 2391,
+        "latency_ms_max": 12751,
+        "latency_by_domain": {
+          "assets": {
+            "count": 2,
+            "p50_ms": 2446,
+            "p95_ms": 2451,
+            "max_ms": 2451
+          },
+          "home_assistant": {
+            "count": 4,
+            "p50_ms": 1204,
+            "p95_ms": 2234,
+            "max_ms": 2234
+          },
+          "monitoring": {
+            "count": 2,
+            "p50_ms": 3579,
+            "p95_ms": 4906,
+            "max_ms": 4906
+          },
+          "plans": {
+            "count": 14,
+            "p50_ms": 2484,
+            "p95_ms": 6084,
+            "max_ms": 7106
+          },
+          "privacy": {
+            "count": 14,
+            "p50_ms": 2400,
+            "p95_ms": 8543,
+            "max_ms": 12751
+          },
+          "tasks": {
+            "count": 10,
+            "p50_ms": 2108,
+            "p95_ms": 2546,
+            "max_ms": 2546
+          }
+        },
+        "hard_latency_ms": 20000
+      }
+    },
+    {
+      "run": "v4-native",
+      "status": "PASS",
+      "summary": {
+        "prompt_runs": 16,
+        "conversation_runs": 2,
+        "failures": 0,
+        "budget_stopped": false,
+        "estimated_cost_usd": 0.0536335,
+        "max_live_cost_usd": 0.5,
+        "live_strategy": "full",
+        "planned_prompt_runs": 16,
+        "planned_conversation_runs": 2,
+        "skipped_paid_contracts": 0,
+        "cost_per_executed_prompt_usd": 0.00268168,
+        "offline_status": null,
+        "offline_failures": null,
+        "discovery_contracts": [],
+        "hard_missing_contracts": [],
+        "latency_ms_p50": 6965,
+        "latency_ms_max": 13759,
+        "latency_by_domain": {
+          "memory": {
+            "count": 4,
+            "p50_ms": 6231,
+            "p95_ms": 9442,
+            "max_ms": 9442
+          },
+          "receipts": {
+            "count": 4,
+            "p50_ms": 8253,
+            "p95_ms": 13100,
+            "max_ms": 13100
+          },
+          "reminders": {
+            "count": 8,
+            "p50_ms": 5978,
+            "p95_ms": 13759,
+            "max_ms": 13759
+          },
+          "reports": {
+            "count": 2,
+            "p50_ms": 7134,
+            "p95_ms": 8724,
+            "max_ms": 8724
+          },
+          "shopping": {
+            "count": 2,
+            "p50_ms": 5261,
+            "p95_ms": 5381,
+            "max_ms": 5381
+          }
+        },
+        "hard_latency_ms": 20000
+      }
+    },
+    {
+      "run": "v5-phase2",
+      "status": "PASS",
+      "summary": {
+        "prompt_runs": 0,
+        "conversation_runs": 2,
+        "failures": 0,
+        "budget_stopped": false,
+        "estimated_cost_usd": 0.005169,
+        "max_live_cost_usd": 1,
+        "live_strategy": "benchmark",
+        "planned_prompt_runs": 0,
+        "planned_conversation_runs": 2,
+        "skipped_paid_contracts": 0,
+        "cost_per_executed_prompt_usd": 0.00129225,
+        "offline_status": "PASS",
+        "offline_failures": 0,
+        "discovery_contracts": [],
+        "hard_missing_contracts": [],
+        "latency_ms_p50": 4867,
+        "latency_ms_max": 7948,
+        "latency_by_domain": {
+          "privacy": {
+            "count": 4,
+            "p50_ms": 4867,
+            "p95_ms": 7948,
+            "max_ms": 7948
+          }
+        },
+        "hard_latency_ms": 20000
+      }
+    },
+    {
+      "run": "v6-phase1",
+      "status": "FAIL",
+      "summary": {
+        "prompt_runs": 0,
+        "conversation_runs": 4,
+        "failures": 2,
+        "budget_stopped": false,
+        "estimated_cost_usd": 0.00716625,
+        "max_live_cost_usd": 1,
+        "live_strategy": "benchmark",
+        "planned_prompt_runs": 0,
+        "planned_conversation_runs": 4,
+        "skipped_paid_contracts": 0,
+        "cost_per_executed_prompt_usd": 0.00089578,
+        "offline_status": "PASS",
+        "offline_failures": 0,
+        "discovery_contracts": [],
+        "hard_missing_contracts": [],
+        "latency_ms_p50": 2559,
+        "latency_ms_max": 7207,
+        "latency_by_domain": {
+          "memory": {
+            "count": 4,
+            "p50_ms": 3625,
+            "p95_ms": 7207,
+            "max_ms": 7207
+          },
+          "reminders": {
+            "count": 4,
+            "p50_ms": 1363,
+            "p95_ms": 3063,
+            "max_ms": 3063
+          }
+        },
+        "hard_latency_ms": 20000
+      }
+    },
+    {
+      "run": "v7-phase1",
+      "status": "PASS",
+      "summary": {
+        "prompt_runs": 0,
+        "conversation_runs": 2,
+        "failures": 0,
+        "budget_stopped": false,
+        "estimated_cost_usd": 0.00272,
+        "max_live_cost_usd": 1,
+        "live_strategy": "benchmark",
+        "planned_prompt_runs": 0,
+        "planned_conversation_runs": 2,
+        "skipped_paid_contracts": 0,
+        "cost_per_executed_prompt_usd": 0.00068,
+        "offline_status": "PASS",
+        "offline_failures": 0,
+        "discovery_contracts": [],
+        "hard_missing_contracts": [],
+        "latency_ms_p50": 1220,
+        "latency_ms_max": 3259,
+        "latency_by_domain": {
+          "reminders": {
+            "count": 4,
+            "p50_ms": 1220,
+            "p95_ms": 3259,
+            "max_ms": 3259
+          }
+        },
+        "hard_latency_ms": 20000
+      }
+    }
+  ],
+  "cases": [
+    {
+      "kind": "prompt_results",
+      "contract": "p1.finance.latest",
+      "source": "text",
+      "prompt": "How much did I pay for the management fee last time?",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.finance.latest",
+      "source": "text",
+      "prompt": "What was my last management payment?",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.finance.latest",
+      "source": "voice",
+      "prompt": "How much did I pay for the management fee last time?",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.finance.latest",
+      "source": "voice",
+      "prompt": "What was my last management payment?",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.finance.list",
+      "source": "text",
+      "prompt": "Show my recent expenses.",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.finance.list",
+      "source": "text",
+      "prompt": "What transactions have I made recently?",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.finance.write",
+      "source": "text",
+      "prompt": "I paid RM12.50 for parking.",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.finance.write",
+      "source": "text",
+      "prompt": "Log RM12.50 parking.",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.memory.picture",
+      "source": "text",
+      "prompt": "Show me the vinyl picture I saved.",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.memory.picture",
+      "source": "text",
+      "prompt": "Find that picture of my vinyl setup.",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.receipt.find",
+      "source": "text",
+      "prompt": "Find my management fee receipt.",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.receipt.find",
+      "source": "text",
+      "prompt": "Show the receipt for my last management payment.",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.reminder.read",
+      "source": "text",
+      "prompt": "What reminders do I have?",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.reminder.read",
+      "source": "text",
+      "prompt": "Anything I need to remember later?",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.reminder.read",
+      "source": "voice",
+      "prompt": "What reminders do I have?",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.reminder.read",
+      "source": "voice",
+      "prompt": "Anything I need to remember later?",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.memory.browse",
+      "source": "text",
+      "prompt": "What do you remember that I asked you to save?",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.memory.browse",
+      "source": "voice",
+      "prompt": "What do you remember that I asked you to save?",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.memory.caption.image",
+      "source": "image",
+      "prompt": "Save this picture for me as Vinyl test image.",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.memory.recall",
+      "source": "text",
+      "prompt": "What have I taught you?",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.memory.save",
+      "source": "text",
+      "prompt": "Remember that my locker code word is cobalt.",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.memory.teach",
+      "source": "text",
+      "prompt": "Remember my usual coffee is decaf.",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.receipt.ingest.image",
+      "source": "image",
+      "prompt": "Log this management fee receipt.",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.receipt.ingest.pdf",
+      "source": "pdf",
+      "prompt": "Log this payment receipt.",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.reminder.relative",
+      "source": "text",
+      "prompt": "What reminders do I have next Thursday?",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.reminder.relative",
+      "source": "voice",
+      "prompt": "What reminders do I have next Thursday?",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.reminder.write",
+      "source": "text",
+      "prompt": "Remind me tomorrow at 9am to call the clinic.",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.shopping.ambiguous",
+      "source": "text",
+      "prompt": "I might buy coffee later.",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.shopping.manjaku_prices",
+      "source": "text",
+      "prompt": "How much are Mimora diapers at Manjaku?",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.shopping.monthly",
+      "source": "text",
+      "prompt": "What's the grocery amount for this month?",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.shopping.prices",
+      "source": "text",
+      "prompt": "How much is Myrasa 5kg at Mydin?",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.shopping.product_choice",
+      "source": "text",
+      "prompt": "Choose MYDIN SKU 10010176 for the rice product in my grocery list.",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.shopping.read",
+      "source": "text",
+      "prompt": "What's on the family shopping list?",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.shopping.reference",
+      "source": "text",
+      "prompt": "Remember Huggies diaper L 52 pcs at Manjaku is RM45 per pack.",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.shopping.write",
+      "source": "text",
+      "prompt": "Add milk and bananas to the family shopping list.",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.finance.list",
+      "source": "voice",
+      "prompt": "Show my recent expenses.",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.finance.list",
+      "source": "voice",
+      "prompt": "What transactions have I made recently?",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.finance.write",
+      "source": "voice",
+      "prompt": "I paid RM12.50 for parking.",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.finance.write",
+      "source": "voice",
+      "prompt": "Log RM12.50 parking.",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.memory.picture",
+      "source": "voice",
+      "prompt": "Show me the vinyl picture I saved.",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.memory.picture",
+      "source": "voice",
+      "prompt": "Find that picture of my vinyl setup.",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.receipt.find",
+      "source": "voice",
+      "prompt": "Find my management fee receipt.",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.receipt.find",
+      "source": "voice",
+      "prompt": "Show the receipt for my last management payment.",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.memory.recall",
+      "source": "voice",
+      "prompt": "What have I taught you?",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.memory.save",
+      "source": "voice",
+      "prompt": "Remember that my locker code word is cobalt.",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.memory.teach",
+      "source": "voice",
+      "prompt": "Remember my usual coffee is decaf.",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.reminder.write",
+      "source": "voice",
+      "prompt": "Remind me tomorrow at 9am to call the clinic.",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.shopping.ambiguous",
+      "source": "voice",
+      "prompt": "I might buy coffee later.",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.shopping.manjaku_prices",
+      "source": "voice",
+      "prompt": "How much are Mimora diapers at Manjaku?",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.shopping.monthly",
+      "source": "voice",
+      "prompt": "What's the grocery amount for this month?",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.shopping.prices",
+      "source": "voice",
+      "prompt": "How much is Myrasa 5kg at Mydin?",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.shopping.product_choice",
+      "source": "voice",
+      "prompt": "Choose MYDIN SKU 10010176 for the rice product in my grocery list.",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.shopping.read",
+      "source": "voice",
+      "prompt": "What's on the family shopping list?",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.shopping.reference",
+      "source": "voice",
+      "prompt": "Remember Huggies diaper L 52 pcs at Manjaku is RM45 per pack.",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p1.shopping.write",
+      "source": "voice",
+      "prompt": "Add milk and bananas to the family shopping list.",
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "conversation_results",
+      "contract": "conv.receipt.followup",
+      "source": "text",
+      "prompt": null,
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "conversation_results",
+      "contract": "conv.memory.numbered",
+      "source": "text",
+      "prompt": null,
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "conversation_results",
+      "contract": "conv.finance.correction",
+      "source": "text",
+      "prompt": null,
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "conversation_results",
+      "contract": "conv.finance.replay",
+      "source": "text",
+      "prompt": null,
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "conversation_results",
+      "contract": "conv.memory.restart",
+      "source": "text",
+      "prompt": null,
+      "status": "PASS",
+      "run": "v6-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "conversation_results",
+      "contract": "conv.reminder.midnight",
+      "source": "text",
+      "prompt": null,
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "conversation_results",
+      "contract": "conv.repair.reminder.quote.claim",
+      "source": "text",
+      "prompt": null,
+      "status": "PASS",
+      "run": "v7-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "conversation_results",
+      "contract": "conv.receipt.followup",
+      "source": "voice",
+      "prompt": null,
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "conversation_results",
+      "contract": "conv.memory.numbered",
+      "source": "voice",
+      "prompt": null,
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "conversation_results",
+      "contract": "conv.finance.correction",
+      "source": "voice",
+      "prompt": null,
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "conversation_results",
+      "contract": "conv.finance.replay",
+      "source": "voice",
+      "prompt": null,
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "conversation_results",
+      "contract": "conv.memory.restart",
+      "source": "voice",
+      "prompt": null,
+      "status": "PASS",
+      "run": "v6-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "conversation_results",
+      "contract": "conv.reminder.midnight",
+      "source": "voice",
+      "prompt": null,
+      "status": "PASS",
+      "run": "v4-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "conversation_results",
+      "contract": "conv.repair.reminder.quote.claim",
+      "source": "voice",
+      "prompt": null,
+      "status": "PASS",
+      "run": "v7-phase1",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.agenda.read",
+      "source": "text",
+      "prompt": "What do I have planned for 1 October 2026?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.agenda.read",
+      "source": "text",
+      "prompt": "What's on my agenda on 1 October 2026?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.agenda.relative",
+      "source": "text",
+      "prompt": "What appointments do I have next Thursday?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.agenda.relative",
+      "source": "text",
+      "prompt": "What's on my agenda next Thursday?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.agenda.relative",
+      "source": "voice",
+      "prompt": "What appointments do I have next Thursday?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.agenda.relative",
+      "source": "voice",
+      "prompt": "What's on my agenda next Thursday?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.bills.read",
+      "source": "text",
+      "prompt": "What bills do I have coming up?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.bills.read",
+      "source": "text",
+      "prompt": "Anything due soon?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.diary.detail",
+      "source": "text",
+      "prompt": "What time is my dentist appointment on 1 October?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.diary.detail",
+      "source": "text",
+      "prompt": "When is the dentist appointment?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.goals.agency",
+      "source": "text",
+      "prompt": "Create an unlocked Family Holiday Savings goal for RM5,000. Don't set a monthly contribution.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.goals.agency",
+      "source": "text",
+      "prompt": "Start a RM5,000 family holiday goal, but leave the monthly amount undecided.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.goals.create",
+      "source": "text",
+      "prompt": "Create a goal to save RM5,000 for a family holiday.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.goals.create",
+      "source": "text",
+      "prompt": "I want a RM5,000 family holiday savings goal.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.goals.list",
+      "source": "text",
+      "prompt": "What goals do I currently have?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.goals.list",
+      "source": "text",
+      "prompt": "Show my goals.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.home.read",
+      "source": "text",
+      "prompt": "Is the hall AC on right now?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.home.read",
+      "source": "text",
+      "prompt": "Check the hall air conditioner state.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.plan.read",
+      "source": "text",
+      "prompt": "What do we have planned for the Malacca family day trip so far?",
+      "status": "PASS",
+      "run": "v4-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.plan.read",
+      "source": "text",
+      "prompt": "Show me the Malacca day-trip draft.",
+      "status": "PASS",
+      "run": "v4-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.plan.update",
+      "source": "text",
+      "prompt": "Update the Malacca draft: kid-friendly, date undecided, back home by around 9pm.",
+      "status": "PASS",
+      "run": "v4-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.plan.update",
+      "source": "text",
+      "prompt": "For the Malacca plan, keep the date open, make it kid-friendly and aim to be home by 9pm.",
+      "status": "PASS",
+      "run": "v4-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.plan.update",
+      "source": "voice",
+      "prompt": "Update the Malacca draft: kid-friendly, date undecided, back home by around 9pm.",
+      "status": "PASS",
+      "run": "v4-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.plan.update",
+      "source": "voice",
+      "prompt": "For the Malacca plan, keep the date open, make it kid-friendly and aim to be home by 9pm.",
+      "status": "PASS",
+      "run": "v4-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.privacy.group.memory",
+      "source": "text",
+      "prompt": "What things have I asked you to remember?",
+      "status": "PASS",
+      "run": "v4-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.privacy.group.memory",
+      "source": "text",
+      "prompt": "Show me everything I have saved with you.",
+      "status": "PASS",
+      "run": "v4-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.privacy.wife.memory",
+      "source": "text",
+      "prompt": "What things have been saved privately?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.privacy.wife.memory",
+      "source": "text",
+      "prompt": "Show me the saved memories I can access.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.work.read",
+      "source": "text",
+      "prompt": "What shift am I working on 1 October 2026?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.work.read",
+      "source": "text",
+      "prompt": "Which shift do I have on 1 October?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.asset.create",
+      "source": "text",
+      "prompt": "Save my water dispenser as a household asset.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.assets.read",
+      "source": "text",
+      "prompt": "What appliances or assets have I saved?",
+      "status": "PASS",
+      "run": "v4-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.calculate",
+      "source": "text",
+      "prompt": "Calculate RM593.62 minus RM200.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.cash.allocate",
+      "source": "text",
+      "prompt": "Put RM200 of that extra cash into my Family Holiday goal.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.cash.pool.create",
+      "source": "text",
+      "prompt": "Create a stash called Holiday Buffer.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.cash.record",
+      "source": "text",
+      "prompt": "I got RM400 OT today.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.planning.baseline",
+      "source": "text",
+      "prompt": "What's my safe monthly baseline?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.planning.brief",
+      "source": "text",
+      "prompt": "Give me my money plan overview.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.planning.cashflow",
+      "source": "text",
+      "prompt": "Show my cash flow for this month.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.planning.income",
+      "source": "text",
+      "prompt": "What's my income outlook for this month?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.reserve.add",
+      "source": "text",
+      "prompt": "Set aside RM300 a month as a school reserve.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.reserve.read",
+      "source": "text",
+      "prompt": "What reserves or allowances do I have?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.diagnostics.read",
+      "source": "text",
+      "prompt": "Why did Alex fail recently?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.diary.create",
+      "source": "text",
+      "prompt": "Add my dentist appointment on 5 October at 4pm to my diary.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.bill.digi.capture",
+      "source": "image",
+      "prompt": "Save my Digi Check Bill Details screenshot.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.bill.monthly",
+      "source": "text",
+      "prompt": "What are this month's payments and commitments?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.bill.provider.read",
+      "source": "text",
+      "prompt": "Check my TNB bill amount.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.home.automation",
+      "source": "text",
+      "prompt": "Draft an automation to turn on the hall light at sunset.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.home.automation.missing_details",
+      "source": "text",
+      "prompt": "Prepare a Home Assistant automation for the hall light; don't deploy it.",
+      "status": "PASS",
+      "run": "v4-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.home.control",
+      "source": "text",
+      "prompt": "Turn off the living room light.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.home.report",
+      "source": "text",
+      "prompt": "Send me the home status card.",
+      "status": "PASS",
+      "run": "v4-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.home.summary",
+      "source": "text",
+      "prompt": "What's on at home right now?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.monitor.delegate",
+      "source": "text",
+      "prompt": "Monitor my Family Holiday Savings goal.",
+      "status": "PASS",
+      "run": "v4-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.monitor.read",
+      "source": "text",
+      "prompt": "What are you monitoring for me?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.plan.create",
+      "source": "text",
+      "prompt": "Start a draft plan for a Malacca family day trip next month.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.availability.self",
+      "source": "text",
+      "prompt": "Am I free on 1 October at 6pm?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.availability.spouse",
+      "source": "text",
+      "prompt": "Is my wife free on 1 October at 6pm?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.privacy.group.shopping",
+      "source": "text",
+      "prompt": "What's on our family shopping list?",
+      "status": "PASS",
+      "run": "v4-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.privacy.group.shopping.write",
+      "source": "text",
+      "prompt": "Add milk to our family shopping list.",
+      "status": "PASS",
+      "run": "v4-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.privacy.wife.private_write",
+      "source": "text",
+      "prompt": "Remove the saved cobalt note.",
+      "status": "PASS",
+      "run": "v4-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.report.export",
+      "source": "text",
+      "prompt": "Export my finance report as PDF.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.report.payload",
+      "source": "text",
+      "prompt": "Prepare my finance data for Google Sheets.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.report.read",
+      "source": "text",
+      "prompt": "Give me a finance summary.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.tasks.cancel",
+      "source": "text",
+      "prompt": "Cancel the passport-check task.",
+      "status": "PASS",
+      "run": "v4-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.tasks.complete",
+      "source": "text",
+      "prompt": "Mark the passport-check task done.",
+      "status": "PASS",
+      "run": "v4-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.tasks.create",
+      "source": "text",
+      "prompt": "Add checking our passport expiry dates as a task for the Malacca trip.",
+      "status": "PASS",
+      "run": "v4-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.tasks.read",
+      "source": "text",
+      "prompt": "What tasks do I still have for the Malacca trip?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.tasks.reopen",
+      "source": "text",
+      "prompt": "Reopen the passport-check task.",
+      "status": "PASS",
+      "run": "v4-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.tasks.update",
+      "source": "text",
+      "prompt": "Change the passport-check task title to Check all passport expiry dates.",
+      "status": "PASS",
+      "run": "v4-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.leave.read",
+      "source": "text",
+      "prompt": "How much annual leave do I have left?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.leave.records",
+      "source": "text",
+      "prompt": "Show my recorded leave entries.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.ot.read",
+      "source": "text",
+      "prompt": "Am I eligible for OT this Saturday?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.work.departure",
+      "source": "text",
+      "prompt": "What time should I leave home for work tomorrow? My commute takes 30 minutes.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.agenda.read",
+      "source": "voice",
+      "prompt": "What do I have planned for 1 October 2026?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.agenda.read",
+      "source": "voice",
+      "prompt": "What's on my agenda on 1 October 2026?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.bills.read",
+      "source": "voice",
+      "prompt": "What bills do I have coming up?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.bills.read",
+      "source": "voice",
+      "prompt": "Anything due soon?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.diary.detail",
+      "source": "voice",
+      "prompt": "What time is my dentist appointment on 1 October?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.diary.detail",
+      "source": "voice",
+      "prompt": "When is the dentist appointment?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.goals.agency",
+      "source": "voice",
+      "prompt": "Create an unlocked Family Holiday Savings goal for RM5,000. Don't set a monthly contribution.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.goals.agency",
+      "source": "voice",
+      "prompt": "Start a RM5,000 family holiday goal, but leave the monthly amount undecided.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.goals.create",
+      "source": "voice",
+      "prompt": "Create a goal to save RM5,000 for a family holiday.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.goals.create",
+      "source": "voice",
+      "prompt": "I want a RM5,000 family holiday savings goal.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.goals.list",
+      "source": "voice",
+      "prompt": "What goals do I currently have?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.goals.list",
+      "source": "voice",
+      "prompt": "Show my goals.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.home.read",
+      "source": "voice",
+      "prompt": "Is the hall AC on right now?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.home.read",
+      "source": "voice",
+      "prompt": "Check the hall air conditioner state.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.plan.read",
+      "source": "voice",
+      "prompt": "What do we have planned for the Malacca family day trip so far?",
+      "status": "PASS",
+      "run": "v4-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.plan.read",
+      "source": "voice",
+      "prompt": "Show me the Malacca day-trip draft.",
+      "status": "PASS",
+      "run": "v4-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.privacy.group.memory",
+      "source": "voice",
+      "prompt": "What things have I asked you to remember?",
+      "status": "PASS",
+      "run": "v4-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.privacy.group.memory",
+      "source": "voice",
+      "prompt": "Show me everything I have saved with you.",
+      "status": "PASS",
+      "run": "v4-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.privacy.wife.memory",
+      "source": "voice",
+      "prompt": "What things have been saved privately?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.privacy.wife.memory",
+      "source": "voice",
+      "prompt": "Show me the saved memories I can access.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.work.read",
+      "source": "voice",
+      "prompt": "What shift am I working on 1 October 2026?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.work.read",
+      "source": "voice",
+      "prompt": "Which shift do I have on 1 October?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.asset.create",
+      "source": "voice",
+      "prompt": "Save my water dispenser as a household asset.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.assets.read",
+      "source": "voice",
+      "prompt": "What appliances or assets have I saved?",
+      "status": "PASS",
+      "run": "v4-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.calculate",
+      "source": "voice",
+      "prompt": "Calculate RM593.62 minus RM200.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.cash.allocate",
+      "source": "voice",
+      "prompt": "Put RM200 of that extra cash into my Family Holiday goal.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.cash.pool.create",
+      "source": "voice",
+      "prompt": "Create a stash called Holiday Buffer.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.cash.record",
+      "source": "voice",
+      "prompt": "I got RM400 OT today.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.planning.baseline",
+      "source": "voice",
+      "prompt": "What's my safe monthly baseline?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.planning.brief",
+      "source": "voice",
+      "prompt": "Give me my money plan overview.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.planning.cashflow",
+      "source": "voice",
+      "prompt": "Show my cash flow for this month.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.planning.income",
+      "source": "voice",
+      "prompt": "What's my income outlook for this month?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.reserve.add",
+      "source": "voice",
+      "prompt": "Set aside RM300 a month as a school reserve.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.reserve.read",
+      "source": "voice",
+      "prompt": "What reserves or allowances do I have?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.diagnostics.read",
+      "source": "voice",
+      "prompt": "Why did Alex fail recently?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.diary.create",
+      "source": "voice",
+      "prompt": "Add my dentist appointment on 5 October at 4pm to my diary.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.bill.monthly",
+      "source": "voice",
+      "prompt": "What are this month's payments and commitments?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.bill.provider.read",
+      "source": "voice",
+      "prompt": "Check my TNB bill amount.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.home.automation",
+      "source": "voice",
+      "prompt": "Draft an automation to turn on the hall light at sunset.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.home.automation.missing_details",
+      "source": "voice",
+      "prompt": "Prepare a Home Assistant automation for the hall light; don't deploy it.",
+      "status": "PASS",
+      "run": "v4-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.home.control",
+      "source": "voice",
+      "prompt": "Turn off the living room light.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.home.report",
+      "source": "voice",
+      "prompt": "Send me the home status card.",
+      "status": "PASS",
+      "run": "v4-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.home.summary",
+      "source": "voice",
+      "prompt": "What's on at home right now?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.monitor.delegate",
+      "source": "voice",
+      "prompt": "Monitor my Family Holiday Savings goal.",
+      "status": "PASS",
+      "run": "v4-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.monitor.read",
+      "source": "voice",
+      "prompt": "What are you monitoring for me?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.plan.create",
+      "source": "voice",
+      "prompt": "Start a draft plan for a Malacca family day trip next month.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.availability.self",
+      "source": "voice",
+      "prompt": "Am I free on 1 October at 6pm?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.availability.spouse",
+      "source": "voice",
+      "prompt": "Is my wife free on 1 October at 6pm?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.privacy.group.shopping",
+      "source": "voice",
+      "prompt": "What's on our family shopping list?",
+      "status": "PASS",
+      "run": "v4-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.privacy.group.shopping.write",
+      "source": "voice",
+      "prompt": "Add milk to our family shopping list.",
+      "status": "PASS",
+      "run": "v4-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.privacy.wife.private_write",
+      "source": "voice",
+      "prompt": "Remove the saved cobalt note.",
+      "status": "PASS",
+      "run": "v4-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.report.export",
+      "source": "voice",
+      "prompt": "Export my finance report as PDF.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.report.payload",
+      "source": "voice",
+      "prompt": "Prepare my finance data for Google Sheets.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.report.read",
+      "source": "voice",
+      "prompt": "Give me a finance summary.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.tasks.cancel",
+      "source": "voice",
+      "prompt": "Cancel the passport-check task.",
+      "status": "PASS",
+      "run": "v4-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.tasks.complete",
+      "source": "voice",
+      "prompt": "Mark the passport-check task done.",
+      "status": "PASS",
+      "run": "v4-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.tasks.create",
+      "source": "voice",
+      "prompt": "Add checking our passport expiry dates as a task for the Malacca trip.",
+      "status": "PASS",
+      "run": "v4-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.tasks.read",
+      "source": "voice",
+      "prompt": "What tasks do I still have for the Malacca trip?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.tasks.reopen",
+      "source": "voice",
+      "prompt": "Reopen the passport-check task.",
+      "status": "PASS",
+      "run": "v4-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.tasks.update",
+      "source": "voice",
+      "prompt": "Change the passport-check task title to Check all passport expiry dates.",
+      "status": "PASS",
+      "run": "v4-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.leave.read",
+      "source": "voice",
+      "prompt": "How much annual leave do I have left?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.leave.records",
+      "source": "voice",
+      "prompt": "Show my recorded leave entries.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.ot.read",
+      "source": "voice",
+      "prompt": "Am I eligible for OT this Saturday?",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p2.work.departure",
+      "source": "voice",
+      "prompt": "What time should I leave home for work tomorrow? My commute takes 30 minutes.",
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "conversation_results",
+      "contract": "conv.diary.reminder",
+      "source": "text",
+      "prompt": null,
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "conversation_results",
+      "contract": "conv.diary.reminder",
+      "source": "voice",
+      "prompt": null,
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "conversation_results",
+      "contract": "conv.plan.refine",
+      "source": "text",
+      "prompt": null,
+      "status": "PASS",
+      "run": "v4-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "conversation_results",
+      "contract": "conv.plan.refine",
+      "source": "voice",
+      "prompt": null,
+      "status": "PASS",
+      "run": "v4-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "conversation_results",
+      "contract": "conv.goal.agency",
+      "source": "text",
+      "prompt": null,
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "conversation_results",
+      "contract": "conv.privacy.dm.group",
+      "source": "text",
+      "prompt": null,
+      "status": "PASS",
+      "run": "v5-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "conversation_results",
+      "contract": "conv.goal.agency",
+      "source": "voice",
+      "prompt": null,
+      "status": "PASS",
+      "run": "v3-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "conversation_results",
+      "contract": "conv.privacy.dm.group",
+      "source": "voice",
+      "prompt": null,
+      "status": "PASS",
+      "run": "v5-phase2",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p3.language.tamil.memory",
+      "source": "text",
+      "prompt": "என் சேமித்த விஷயங்களை காட்டு",
+      "status": "PASS",
+      "run": "v3-phase3",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p3.language.tamil.memory",
+      "source": "text",
+      "prompt": "நான் சேமிக்க சொன்னதை காட்டு",
+      "status": "PASS",
+      "run": "v3-phase3",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p3.language.tamil.reminder",
+      "source": "text",
+      "prompt": "நாளைக்கு காலை 9 மணிக்கு மின்சார பில் கட்ட நினைவூட்டு",
+      "status": "PASS",
+      "run": "v3-phase3",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p3.language.tamil.reminder",
+      "source": "text",
+      "prompt": "நாளை காலை 9 மணிக்கு மின்சார கட்டணம் செலுத்த நினைவூட்டு",
+      "status": "PASS",
+      "run": "v3-phase3",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p3.typo.reminder",
+      "source": "text",
+      "prompt": "alx plz remidn me tmrw 9am pay elctrcity",
+      "status": "PASS",
+      "run": "v3-phase3",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p3.typo.reminder",
+      "source": "text",
+      "prompt": "rember me tomorow 9am pay bill",
+      "status": "PASS",
+      "run": "v3-phase3",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p3.language.tamil.reminder.ambiguous",
+      "source": "text",
+      "prompt": "நாளை 9 மணிக்கு மின்சார கட்டணம் செலுத்த நினைவூட்டு",
+      "status": "PASS",
+      "run": "v3-phase3",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p3.multi.finance.reminder",
+      "source": "text",
+      "prompt": "Log RM6 parking and remind me today at 5pm to renew parking.",
+      "status": "PASS",
+      "run": "v3-phase3",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p3.typo.reminder.ambiguous",
+      "source": "text",
+      "prompt": "alx plz remidn me tmrw 9 pay elctrcity",
+      "status": "PASS",
+      "run": "v3-phase3",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p3.negation.ha",
+      "source": "text",
+      "prompt": "Don't turn off the hall AC.",
+      "status": "PASS",
+      "run": "v3-phase3",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p3.read.only",
+      "source": "text",
+      "prompt": "What pictures did I ask you to save?",
+      "status": "PASS",
+      "run": "v3-phase3",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p3.language.tamil.memory",
+      "source": "voice",
+      "prompt": "என் சேமித்த விஷயங்களை காட்டு",
+      "status": "PASS",
+      "run": "v3-phase3",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p3.language.tamil.memory",
+      "source": "voice",
+      "prompt": "நான் சேமிக்க சொன்னதை காட்டு",
+      "status": "PASS",
+      "run": "v3-phase3",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p3.language.tamil.reminder",
+      "source": "voice",
+      "prompt": "நாளைக்கு காலை 9 மணிக்கு மின்சார பில் கட்ட நினைவூட்டு",
+      "status": "PASS",
+      "run": "v3-phase3",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p3.language.tamil.reminder",
+      "source": "voice",
+      "prompt": "நாளை காலை 9 மணிக்கு மின்சார கட்டணம் செலுத்த நினைவூட்டு",
+      "status": "PASS",
+      "run": "v3-phase3",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p3.typo.reminder",
+      "source": "voice",
+      "prompt": "alx plz remidn me tmrw 9am pay elctrcity",
+      "status": "PASS",
+      "run": "v3-phase3",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p3.typo.reminder",
+      "source": "voice",
+      "prompt": "rember me tomorow 9am pay bill",
+      "status": "PASS",
+      "run": "v3-phase3",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p3.language.tamil.reminder.ambiguous",
+      "source": "voice",
+      "prompt": "நாளை 9 மணிக்கு மின்சார கட்டணம் செலுத்த நினைவூட்டு",
+      "status": "PASS",
+      "run": "v3-phase3",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p3.multi.finance.reminder",
+      "source": "voice",
+      "prompt": "Log RM6 parking and remind me today at 5pm to renew parking.",
+      "status": "PASS",
+      "run": "v3-phase3",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p3.typo.reminder.ambiguous",
+      "source": "voice",
+      "prompt": "alx plz remidn me tmrw 9 pay elctrcity",
+      "status": "PASS",
+      "run": "v3-phase3",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p3.negation.ha",
+      "source": "voice",
+      "prompt": "Don't turn off the hall AC.",
+      "status": "PASS",
+      "run": "v3-phase3",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "p3.read.only",
+      "source": "voice",
+      "prompt": "What pictures did I ask you to save?",
+      "status": "PASS",
+      "run": "v3-phase3",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "conversation_results",
+      "contract": "conv.home.contextual.control",
+      "source": "text",
+      "prompt": null,
+      "status": "PASS",
+      "run": "v3-phase3",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "conversation_results",
+      "contract": "conv.home.contextual.control",
+      "source": "voice",
+      "prompt": null,
+      "status": "PASS",
+      "run": "v3-phase3",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "native.reminder.create",
+      "source": "text",
+      "prompt": "இன்னும் ஒரு அஞ்சு நிமிஷத்துல மருந்து எடுக்க ரிமைண்ட் பண்ணு",
+      "status": "PASS",
+      "run": "v4-native",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "native.reminder.create",
+      "source": "voice",
+      "prompt": "இன்னும் ஒரு அஞ்சு நிமிஷத்துல மருந்து எடுக்க ரிமைண்ட் பண்ணு",
+      "status": "PASS",
+      "run": "v4-native",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "native.reminder.list",
+      "source": "text",
+      "prompt": "எனக்கு என்னென்ன ரிமைண்டர் இருக்குன்னு காண்பிக்க முடியுமா?",
+      "status": "PASS",
+      "run": "v4-native",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "native.reminder.list",
+      "source": "voice",
+      "prompt": "எனக்கு என்னென்ன ரிமைண்டர் இருக்குன்னு காண்பிக்க முடியுமா?",
+      "status": "PASS",
+      "run": "v4-native",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "native.receipt.tamil",
+      "source": "text",
+      "prompt": "நான் கடைசியா கட்டிய மேனேஜ்மென்ட் கட்டணத்தோட ரிசீட் எனக்கு அனுப்பு",
+      "status": "PASS",
+      "run": "v4-native",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "native.receipt.tamil",
+      "source": "voice",
+      "prompt": "நான் கடைசியா கட்டிய மேனேஜ்மென்ட் கட்டணத்தோட ரிசீட் எனக்கு அனுப்பு",
+      "status": "PASS",
+      "run": "v4-native",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "native.receipt.malay",
+      "source": "text",
+      "prompt": "Tolong hantar gambar resit bayaran management fee terakhir",
+      "status": "PASS",
+      "run": "v4-native",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "native.receipt.malay",
+      "source": "voice",
+      "prompt": "Tolong hantar gambar resit bayaran management fee terakhir",
+      "status": "PASS",
+      "run": "v4-native",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "native.report.pdf",
+      "source": "text",
+      "prompt": "என்னோட செப்டம்பர் 2026 செலவுகள் PDFல அனுப்பு",
+      "status": "PASS",
+      "run": "v4-native",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "native.report.pdf",
+      "source": "voice",
+      "prompt": "என்னோட செப்டம்பர் 2026 செலவுகள் PDFல அனுப்பு",
+      "status": "PASS",
+      "run": "v4-native",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "native.memory.browse",
+      "source": "text",
+      "prompt": "நான் சேமிக்க சொன்னதை காட்டு",
+      "status": "PASS",
+      "run": "v4-native",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "native.memory.browse",
+      "source": "voice",
+      "prompt": "நான் சேமிக்க சொன்னதை காட்டு",
+      "status": "PASS",
+      "run": "v4-native",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "native.memory.picture",
+      "source": "text",
+      "prompt": "நான் சேமித்த vinyl படத்தை எனக்கு அனுப்பு",
+      "status": "PASS",
+      "run": "v4-native",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "native.memory.picture",
+      "source": "voice",
+      "prompt": "நான் சேமித்த vinyl படத்தை எனக்கு அனுப்பு",
+      "status": "PASS",
+      "run": "v4-native",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "native.shopping.read",
+      "source": "text",
+      "prompt": "என்னோட ஷாப்பிங் லிஸ்ட் ல என்ன இருக்கு?",
+      "status": "PASS",
+      "run": "v4-native",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "prompt_results",
+      "contract": "native.shopping.read",
+      "source": "voice",
+      "prompt": "என்னோட ஷாப்பிங் லிஸ்ட் ல என்ன இருக்கு?",
+      "status": "PASS",
+      "run": "v4-native",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "conversation_results",
+      "contract": "native.reminder.followup",
+      "source": "text",
+      "prompt": null,
+      "status": "PASS",
+      "run": "v4-native",
+      "problems": [],
+      "failed_steps": []
+    },
+    {
+      "kind": "conversation_results",
+      "contract": "native.reminder.followup",
+      "source": "voice",
+      "prompt": null,
+      "status": "PASS",
+      "run": "v4-native",
+      "problems": [],
+      "failed_steps": []
+    }
+  ]
+}
