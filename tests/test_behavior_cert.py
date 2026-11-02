@@ -262,6 +262,30 @@ class BehaviourRigJudgeMutationTests(unittest.TestCase):
                 else:
                     os.environ["ALEX_CERT_NOW"] = old_clock
 
+    def test_live_seed_with_its_own_roster_in_fresh_process(self):
+        import subprocess
+        script = '''
+import tempfile, pathlib, json, os
+import behavior_cert as b
+with tempfile.TemporaryDirectory() as tmp:
+    p = pathlib.Path(tmp)
+    options = p / "options.json"
+    options.write_text(json.dumps(b._sandbox_options("auto", {})))
+    os.environ["ALEX_DATA_DIR"] = tmp
+    os.environ["ALEX_OPTIONS_PATH"] = str(options)
+    b._install_fixed_clock()
+    b._reset_case_database(p, "core")
+    import db
+    with db.connect() as c:
+        assert c.execute("SELECT COUNT(*) FROM schedule_conflicts WHERE status='OPEN'").fetchone()[0] == 0
+        assert c.execute("SELECT COUNT(*) FROM leave_records").fetchone()[0] == 0
+    assert b.CERT_FIXTURES["dentist_diary_id"]
+'''
+        result = subprocess.run([sys.executable, "-c", script],
+            env={**os.environ, "PYTHONPATH": str(behavior_cert.APP)},
+            capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_heldout_phrase_is_not_emitted_verbatim(self):
         secret = "this is my private real historical wording"
         rendered = behavior_cert._report_prompt(secret, "heldout")

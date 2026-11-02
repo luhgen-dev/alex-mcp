@@ -1141,9 +1141,9 @@ def _seed_core():
             item, shared=True,
         )
 
-    # Dentist diary event + reminder. 17:00 is deliberately outside the
-    # synthetic morning work shift, so the seed itself cannot be rejected as a
-    # work conflict before behavioural cases run.
+    # The public fixture is a confirmed 17:00 appointment. The synthetic
+    # roster runs until 17:30, so explicitly keep both during fixture setup;
+    # do not let an unresolved seed conflict contaminate every live case.
     mid = "seed-dentist-diary"
     _claim(mid, "dentist appointment 1 October 5pm", conv)
     diary = phase2.add_diary_event(
@@ -1153,7 +1153,13 @@ def _seed_core():
         "2026-10-01T17:15:00+08:00",
     )
     if diary.get("status") == "needs_choice":
-        raise RuntimeError("CERTIFICATION SEED INVALID: dentist fixture unexpectedly conflicts with work")
+        resolution = phase2.resolve_diary_conflict(
+            _actor(mid, conv, "Keep both the appointment and work"),
+            diary["conflict_id"], 2,
+        )
+        diary = resolution.get("diary") or {}
+    if not diary.get("diary_id"):
+        raise RuntimeError("CERTIFICATION SEED INVALID: confirmed dentist fixture missing")
     CERT_FIXTURES["dentist_diary_id"] = diary.get("diary_id")
     mid = "seed-dentist-rem"
     _claim(mid, "remind dentist on 1 October 2026 at 3pm", conv)
