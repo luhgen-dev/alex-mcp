@@ -20,6 +20,21 @@ import test_multilingual_voice as voice_fixture
 
 
 class VoiceParityPolicyTests(unittest.TestCase):
+    def test_saved_memory_read_is_not_a_new_save(self):
+        self.assertFalse(multilingual_intent.requests_action("நான் சேமிக்க சொன்னதை காட்டு"))
+        self.assertTrue(multilingual_intent.requests_action("இந்த தகவலை சேமி"))
+
+    def test_native_reminder_keeps_pending_clarification(self):
+        phrase = "நாளைக்கு மருந்து எடுக்க ரிமைண்ட் பண்ணு"
+        self.assertTrue(core.ingress._is_reminder_request(phrase))
+        self.assertFalse(multilingual_intent.requests_reminder("ரிமைண்ட் பண்ணாத"))
+
+    def test_colloquial_date_preserves_source_and_canonical_meaning(self):
+        for token in ("tmrw", "tomorow"):
+            phrase = f"remind me {token} 9am to pay the bill"
+            result = reminder_time.validate(dict(source_text=f"{token} 9am",kind="LOCAL_CLOCK",
+                reference="CURRENT_MESSAGE",date_text=token,time_text="09:00",needs_clarification=False),current_text=phrase)
+            self.assertEqual(result["canonical_text"],"tomorrow 09:00")
     def test_observed_capability_denials_trigger_recovery(self):
         for reply in (
             "I cannot directly set a new reminder for you with the tools currently available.",
@@ -124,6 +139,14 @@ class VoiceParityIngressTests(unittest.TestCase):
         self.assertEqual(Path(files[0]["local_path"]).read_bytes(), raw)
         self.assertTrue(core.ingress.process(self.payload("parity-voice"))["duplicate"])
         self.assertEqual(self.api.call_count, 1)
+
+    def test_voice_save_of_quoted_photo_preserves_photo_not_command_audio(self):
+        mid, raw, _ = self.seed_receipt()
+        result = self.run_voice("Save this photo as fixture reference", [],quoted_message_id="parity-receipt")
+        self.assertTrue(result["original_media_saved"])
+        with core.db.connect() as c:
+            rows = c.execute("SELECT media_id FROM saved_items").fetchall()
+        self.assertEqual([r["media_id"] for r in rows], [mid])
 
     def test_tamil_pdf_request_delivers_valid_report(self):
         self.seed_receipt()

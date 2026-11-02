@@ -2040,12 +2040,15 @@ def resolve_media_to_save(actor: ActorContext, quoted_message_id: str | None = N
 
 
 def save_original_media_request(actor: ActorContext, quoted_message_id: str | None = None) -> dict | None:
-    """Bounded fast path for explicit typed attachment-save instructions.
+    """Bounded fast path for explicit authenticated attachment-save instructions.
 
     Returning None leaves ordinary note requests to the normal tools. This is
-    never called on an ASR transcript and cannot execute embedded media text.
+    Authorized voice may save an explicitly quoted original. It must not treat
+    the incoming command recording as the requested photo/file.
     """
-    if actor.source == "voice":
+    if actor.source == "voice" and (
+        not getattr(actor, "voice_authorized", False) or not quoted_message_id
+    ):
         return None
     text = str(actor.trusted_text or "").strip()
     if re.search(r"\bas\s+(?:a\s+)?(?:text|note)\s*:", text, re.I):

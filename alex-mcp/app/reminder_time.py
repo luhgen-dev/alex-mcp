@@ -239,6 +239,7 @@ def dates_in(text: str) -> list[str]:
 
 def canonical_date(text: str) -> str:
     value = normalized(text)
+    value = re.sub(r"\b(?:tmr|tmrw|tomoro|tomorow)\b", "tomorrow", value)
     if len(value) > 80:
         _fail("REMINDER_NEEDS_DATE", "date interpretation is too long")
     tokens = dates_in(value)

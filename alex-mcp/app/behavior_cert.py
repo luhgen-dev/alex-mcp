@@ -29,6 +29,7 @@ import json
 import os
 import re
 import statistics
+import sqlite3
 import sys
 import tempfile
 import time
@@ -879,6 +880,39 @@ def _install_fixed_clock():
     """
     os.environ["ALEX_CERT_NOW"] = CERT_NOW_UTC
 
+
+def _install_sqlite_clock(sandbox_dir: Path):
+    """Freeze SQLite's behavioral timestamps in this isolated live process.
+
+    DEFAULT CURRENT_TIMESTAMP otherwise uses wall time while the application
+    uses September's fixture clock, making every conversation look future-dated
+    and discarding its history. Keep SQLite date arithmetic, substituting only
+    its 'now' input. Refuse any non-sandbox database connection.
+    """
+    original_connect = sqlite3.connect
+    root = sandbox_dir.resolve()
+
+    def connect(database, *args, **kwargs):
+        if not Path(str(database)).resolve().is_relative_to(root):
+            raise RuntimeError("CERTIFICATION SAFETY STOP: SQLite path escaped sandbox")
+        conn = original_connect(database, *args, **kwargs)
+        import runtime_clock
+        conn.create_function("current_timestamp", 0,
+            lambda: runtime_clock.now_utc().strftime("%Y-%m-%d %H:%M:%S"))
+
+        def date_function(*values):
+            values = list(values or ("now",))
+            if str(values[0]).casefold() == "now":
+                values[0] = runtime_clock.utc_iso()
+            with original_connect(":memory:") as clock_conn:
+                return clock_conn.execute(
+                    "SELECT datetime(" + ",".join("?" for _ in values) + ")", values
+                ).fetchone()[0]
+        conn.create_function("datetime", -1, date_function)
+        return conn
+
+    sqlite3.connect = connect
+
 def _initialize_sandbox():
     import db
     import phase2_finance
@@ -993,7 +1027,7 @@ def _latency_breakdown(mid: str, trace: dict, total_ms: int) -> dict[str, Any]:
 
 
 def _validate_seed(seed: str | None) -> None:
-    if seed != "core":
+    if seed not in {"core", "private_core"}:
         return
     import db
 
@@ -1033,8 +1067,8 @@ def _reset_case_database(sandbox_dir: Path, seed: str | None) -> str:
     _initialize_sandbox()
     _install_fixed_clock()
     _install_fake_ha()
-    if seed == "core":
-        _seed_core()
+    if seed in {"core", "private_core"}:
+        _seed_core(private_memory=seed == "private_core")
     _validate_seed(seed)
     return str(case_path)
 
@@ -1067,7 +1101,7 @@ def _actor(mid: str, conv: str, text: str = "", source: str = "text",
     )
 
 
-def _seed_core():
+def _seed_core(private_memory: bool = False):
     import db
     import media
     import phase2
@@ -1103,7 +1137,7 @@ def _seed_core():
     mid = "seed-cobalt"
     _claim(mid, "remember cobalt", conv)
     cobalt = services.save_item(
-        with_action_key(_actor(mid, conv, "remember cobalt"), "seed-cobalt-action"),
+        with_action_key(_actor(mid, conv, "remember cobalt privately" if private_memory else "remember cobalt"), "seed-cobalt-action"),
         "Smoke-test code word",
         "cobalt PRIVATE-CERT-CANARY-COBALT-7K2",
         "test,code", False,
@@ -1118,7 +1152,7 @@ def _seed_core():
     )
     vinyl = services.save_item(
         with_action_key(
-            _actor(mid, conv, "save this vinyl setup", media_ids=[vinyl_media]),
+            _actor(mid, conv, "save this vinyl setup privately" if private_memory else "save this vinyl setup", media_ids=[vinyl_media]),
             "seed-vinyl-action",
         ),
         "Vinyl Setup & Music Inspo",
@@ -1196,7 +1230,7 @@ def _seed_core():
     # Goal with a zero deterministic baseline, used only as read fixture.
     phase2_finance.create_goal(
         "Family Holiday Savings", 5000, 0, HUSBAND,
-        visibility="private", status="DRAFT",
+        visibility="family", status="DRAFT",
     )
 
 
@@ -1558,6 +1592,8 @@ def _judge_observation(
 
     persistent_mutation_called = any(
         brain._is_mutating_tool(call["tool"]) and call["tool"] != "ha_control"
+        and str((call.get("result") or {}).get("status", "")).casefold()
+            not in {"needs_clarification", "needs_choice", "not_found", "error", "denied"}
         for call in trace.get("calls", [])
         if call.get("tool") and not str(call["tool"]).startswith("_")
     )
@@ -2033,6 +2069,7 @@ def live_certify(phase: str, provider: str, source_options: str | None,
     os.environ["ALEX_HA_API_URL"] = "http://127.0.0.1:9/certification-no-ha"
     os.environ["ALEX_CERT_NOW"] = CERT_NOW_UTC
     os.environ.pop("SUPERVISOR_TOKEN", None)
+    _install_sqlite_clock(sandbox_dir)
 
     # Imports that bind DATA_DIR/OPTIONS_PATH happen only after the sandbox is set.
     import config

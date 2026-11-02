@@ -7,7 +7,7 @@ import re
 
 _TAMIL = re.compile(r"[\u0b80-\u0bff]")
 _ACTION = re.compile(
-    r"(?:சேர்க்கவும்|சேர்த்துவிடு|சேர்த்திடு|சேர்த்து|சேர்|பதிவு\s*செய்|சேமித்து|சேமிக்கவும்|சேமி|"
+    r"(?:சேர்க்கவும்|சேர்த்துவிடு|சேர்த்திடு|சேர்த்து|சேர்|பதிவு\s*செய்|சேமித்து|சேமிக்கவும்|சேமி(?![\u0b80-\u0bff])|"
     r"நினைவூட்டு|நினைவூட்ட|ஞாபகப்படுத்த|நியாபகப்படுத்த|ரிமைண்(?:ட்|டர்)\s*(?:பண்ணு|வை|போடு|செட்)|நினைவில்\s*(?:வை|வைத்துக்கொள்)|நீக்கவும்|நீக்கு|மாற்றவும்|மாற்று|"
     r"ரத்து\s*செய்|அணைக்கவும்|அணை|இயக்கு|செலவு\s*செய்தேன்|வாங்கினேன்|கட்டினேன்)"
     r"|\b(?:serthu|serthidu|serthukko|sethudu|semichu|semichuko|nyabaga\s*paduthu|"
@@ -46,6 +46,13 @@ def denies_action(text: str) -> bool:
 
 def requests_action(text: str) -> bool:
     return bool(_ACTION.search(text or "")) and not denies_action(text)
+
+
+def requests_reminder(text: str) -> bool:
+    return requests_action(text) and bool(re.search(
+        r"நினைவூட்டு|நினைவூட்ட|ஞாபகப்படுத்த|நியாபகப்படுத்த|ரிமைண்(?:ட்|டர்)"
+        r"|\b(?:ninaivootu|ninaivuttu|nyabaga\s*paduth(?:u|unga)|"
+        r"gnabaga\s*paduth(?:u|unga)|ingatkan)\b", text or "", re.I))
 
 
 def explicit_private(text: str) -> bool:

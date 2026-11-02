@@ -4536,7 +4536,13 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                 merged[idx] = spec
         tools = merged
     lifecycle_reference = _reminder_lifecycle_reference_mentioned(actor, user_text)
-    if lifecycle_reference or _accessible_reminder_name_mentioned(actor, user_text):
+    # An appointment can have an earlier reminder with the same name. A
+    # matching reminder must not replace the calendar tools for event-time
+    # questions, or its notification time is misreported as the appointment.
+    appointment_read = bool(re.search(
+        r"\b(?:appointment|meeting|event|diary|agenda|calendar)\b", user_text or "", re.I
+    )) and not re.search(r"\bremind(?:er)?s?\b", user_text or "", re.I)
+    if lifecycle_reference or (not appointment_read and _accessible_reminder_name_mentioned(actor, user_text)):
         reminder_tool_names = {"list_reminders", "reminder_history"}
         if lifecycle_reference or _trusted_mutation_requested(user_text):
             # "Mark <reminder> as done" is a reminder lifecycle change; give
@@ -4818,7 +4824,11 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                 and not capability_retry_used
                 and not any(x.get("committed") for x in mutation_ledger)
                 and not any(str(name).endswith(":error") for name in trace["tools_called"])
-                and _looks_like_false_capability_denial(candidate)
+                and (
+                    _looks_like_false_capability_denial(candidate)
+                    or (not mutation_ledger and _trusted_mutation_requested(action_basis)
+                        and _looks_like_success_claim(candidate))
+                )
             ):
                 capability_retry_used = True
                 # A read result is not completion of a requested PDF/receipt
@@ -4833,6 +4843,8 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                     "content": (
                         "Re-evaluate the user's current request using the MCP tools supplied to you. "
                         "Do not claim a capability is unavailable before trying the relevant tool. "
+                        "A lookup is not a completed change: perform the explicitly requested mutation "
+                        "before claiming it succeeded. Do not repeat any attempted mutation. "
                         "Use discover_alex_tools if needed, or ask one focused clarification when "
                         "the intent is genuinely ambiguous. Reply in English."
                     ),
