@@ -15,7 +15,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
-MODULES = ('services', 'outbox', 'behavior_cert', 'phase2', 'custom_ledgers', 'multilingual_intent')
+MODULES = ('services', 'outbox', 'behavior_cert', 'phase2', 'custom_ledgers', 'multilingual_intent', 'finance_privacy')
 
 
 def main():
@@ -47,8 +47,11 @@ def main():
             sys.path.insert(0, str(overlay))
         for name in MODULES:
             path = 'alex-mcp/app/' + name + '.py'
-            source = (subprocess.check_output(['git', 'show', baseline + ':' + path], cwd=ROOT)
-                      if baseline else (ROOT / path).read_bytes())
+            try:
+                source = (subprocess.check_output(['git', 'show', baseline + ':' + path], cwd=ROOT, stderr=subprocess.PIPE)
+                          if baseline else (ROOT / path).read_bytes())
+            except subprocess.CalledProcessError:
+                parser.error('Baseline lacks ' + path + '; use a matching historical runner/test snapshot. No mixed candidate/baseline run was performed.')
             hashes[path] = hashlib.sha256(source).hexdigest()
             if baseline:
                 (overlay / (name + '.py')).write_bytes(source)
@@ -57,6 +60,8 @@ def main():
                 module = importlib.import_module(name)
                 if Path(module.__file__).resolve() != overlay / (name + '.py'):
                     raise RuntimeError('baseline import did not use the selected module: ' + name)
+        for path in ('alex-mcp/app/brain.py', 'alex-mcp/app/ingress.py', 'alex-mcp/app/db.py', 'alex-mcp/app/schema.sql'):
+            hashes[path] = hashlib.sha256((ROOT / path).read_bytes()).hexdigest()
         for path in sorted((ROOT / 'tests').glob('*independent*.py')):
             hashes[str(path.relative_to(ROOT))] = hashlib.sha256(path.read_bytes()).hexdigest()
         suite = unittest.defaultTestLoader.discover(str(ROOT / 'tests'), pattern='test_*_independent.py')

@@ -18,6 +18,7 @@ import brain
 import db
 import media
 import services
+import finance_privacy
 import phase2_intent
 import phase2_reports
 import scope_policy
@@ -2113,6 +2114,17 @@ def process(payload: dict) -> dict:
             actor.phone,
             allow_group_peer_quote=explicit_group_quote_handoff,
         )
+
+        if (finance_privacy.requested(actor.trusted_text) and quoted_context
+                and (quoted_context.get('financial_event') or quoted_context.get('context_kind') == 'FINANCIAL_EVENT')):
+            try:
+                moved = finance_privacy.move_quoted_expense(actor)
+            except (ValueError, PermissionError) as exc:
+                return _finish_simple_turn(actor, str(exc), expense_privacy_failed=True)
+            reply = ('That expense is already in your private records.' if moved['status'] == 'already_private'
+                     else 'Moved that expense to your private records. It is no longer included in shared finance searches.')
+            return _finish_simple_turn(actor, reply, context_kind='FINANCIAL_EVENT',
+                                       context_id=moved['event_id'], expense_moved_private=True)
 
         bridge_quoted_text = ""
         if not quoted_context and explicit_group_quote_handoff:

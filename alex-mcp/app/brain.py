@@ -564,7 +564,7 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
     """
     low = normalize_intent_text(text).casefold()
     low = re.sub(r"\b(do not|don't|dont)\s+want(?:\s+you)?\s+to\s+", r"\1 ", low)
-    force: set[str] = set()
+    force: set[str] = set(multilingual_intent.required_tools(text))
     block: set[str] = set()
 
     if _implicit_emoji_memory_save(text):
@@ -3371,10 +3371,10 @@ def _attachment_request_finished(trace: dict) -> bool:
 
 
 _CAPABILITY_DENIAL_RE = re.compile(
-    r"\b(?:i\s+)?(?:do\s+not|don't|dont)\s+have\s+(?:the\s+)?(?:ability|capability|access)\b"
+    r"\b(?:i\s+)?(?:do\s+not|don't|dont)\s+have\s+(?:the\s+)?(?:(?:read|write)\s+)?(?:ability|capability|access)\b"
     r"|\b(?:i\s+)?(?:cannot|can't|cant|am\s+unable\s+to|am\s+not\s+able\s+to)\s+"
     r"(?:(?:directly|currently|actually)\s+)?"
-    r"(?:access|update|change|mark|add|create|set|remove|retrieve|check|manage|do|look\s*up|find|see|rename|forget|snooze|save|record|display|show|send|generate|export|attach)\b",
+    r"(?:access|update|change|mark|add|create|set|remove|retrieve|check|manage|do|look\s*up|find|see|rename|forget|snooze|save|record|log|move|display|show|send|generate|export|attach)\b",
     re.IGNORECASE,
 )
 
@@ -4999,6 +4999,9 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                     candidate, action_basis or user_text, mutation_ledger
                 )
             )
+            if (capability_retry_used and not any(x.get('committed') for x in mutation_ledger)
+                    and _looks_like_false_capability_denial(final)):
+                final = "I couldn't verify that the request was completed. Please check the saved result before retrying."
             final = _guard_warranty_grounding(final, tool_evidence)
             final = _guard_delivery_claim(final, attachments)
             _record_usage_buckets(actor.source_message_id, usage_by_route)

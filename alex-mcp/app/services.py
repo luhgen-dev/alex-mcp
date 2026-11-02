@@ -985,6 +985,7 @@ def confirm_expense(actor: ActorContext, event_id: str, approve: bool = True,
     marks, spaces = _spaces_sql(actor)
     conn = connect()
     try:
+        conn.execute('BEGIN IMMEDIATE')
         row = conn.execute(
             f"SELECT * FROM financial_events WHERE event_id=? AND space_id IN ({marks})",
             [event_id] + spaces,
@@ -1226,6 +1227,7 @@ def correct_expense(actor: ActorContext, event_id: str, amount: float | None = N
     marks, spaces = _spaces_sql(actor)
     conn = connect()
     try:
+        conn.execute('BEGIN IMMEDIATE')
         existing = conn.execute("SELECT event_id FROM financial_events WHERE action_key=?", (actor.action_key,)).fetchone()
         if existing:
             return {"status": "already_applied", "event_id": existing["event_id"]}
@@ -1244,7 +1246,6 @@ def correct_expense(actor: ActorContext, event_id: str, amount: float | None = N
         if not new_category or new_amount is None or new_amount <= 0:
             raise ValueError("A correction needs a valid amount and spending category; privacy is not a category.")
         child_id = str(uuid.uuid4())
-        conn.execute("BEGIN")
         conn.execute(
             """INSERT INTO financial_events(
                 event_id,action_key,source_message_id,space_id,created_by,owner_id,event_type,

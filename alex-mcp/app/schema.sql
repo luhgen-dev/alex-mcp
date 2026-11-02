@@ -103,6 +103,15 @@ CREATE TABLE IF NOT EXISTS financial_event_corrections (
     FOREIGN KEY(child_event_id) REFERENCES financial_events(event_id)
 );
 
+CREATE TABLE IF NOT EXISTS financial_visibility_changes (
+    source_message_id TEXT PRIMARY KEY REFERENCES inbound_messages(message_id),
+    event_id TEXT NOT NULL REFERENCES financial_events(event_id),
+    owner_id TEXT NOT NULL REFERENCES users(user_id),
+    private_space TEXT NOT NULL REFERENCES spaces(space_id),
+    event_ids_json TEXT NOT NULL,
+    changed_at_utc TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS media_objects (
     media_id TEXT PRIMARY KEY,
     source_message_id TEXT NOT NULL,

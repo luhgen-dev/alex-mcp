@@ -9,6 +9,7 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 
 import runtime_clock
+import finance_privacy
 
 from db import connect
 
@@ -73,6 +74,8 @@ def _row_value(row, key, default=None):
 
 
 def _payload(row) -> dict:
+    with connect() as conn:
+        finance_privacy.validate_outbound(conn, row)
     kind = row["kind"]
     message_id = _whatsapp_message_id(row["outbound_id"])
     source_message_id = _row_value(row, "source_message_id")
@@ -780,6 +783,7 @@ def sweep():
 
         for row in rows:
             permanent_error = False
+            privacy_error = False
             if row["context_kind"] in (
                 "REMINDER_INITIAL", "REMINDER_FOLLOWUP",
                 "REMINDER_CLAIMANT_FOLLOWUP", "REMINDER_FAMILY_RESURFACE",
@@ -804,10 +808,15 @@ def sweep():
                 row = _joined_row(conn, row["outbound_id"])
 
             try:
-                payload = _payload(row)
-                ok, detail = _send(payload)
-            except (FileNotFoundError, AttachmentIntegrityError) as exc:
+                # Match the visibility operation's lock order: file lock,
+                # then database. Do not wait on it with a SQLite write held.
+                conn.commit()
+                with finance_privacy.delivery_guard():
+                    payload = _payload(row)
+                    ok, detail = _send(payload)
+            except (FileNotFoundError, AttachmentIntegrityError, finance_privacy.PrivacyDeliveryError) as exc:
                 ok, detail, permanent_error = False, str(exc), True
+                privacy_error = isinstance(exc, finance_privacy.PrivacyDeliveryError)
             except Exception as exc:
                 ok, detail = False, str(exc)
 
@@ -895,9 +904,15 @@ def sweep():
                        last_error=?,next_attempt_at_utc=NULL WHERE outbound_id=?""",
                     (attempts, detail[:1000], row["outbound_id"]),
                 )
+                if privacy_error:
+                    import uuid
+                    conn.execute('''INSERT INTO outbound_messages(outbound_id,source_message_id,
+                        conversation_id,kind,text_body,context_kind)
+                        VALUES(?,?,?,'TEXT',?,'PRIVACY_DELIVERY_NOTICE')''',
+                        (str(uuid.uuid4()), row['source_message_id'], row['conversation_id'], finance_privacy.EXPIRED_NOTICE))
                 conn.commit()
                 refreshed = _joined_row(conn, row["outbound_id"])
-                if refreshed and refreshed["kind"] == "DOCUMENT":
+                if refreshed and refreshed["kind"] == "DOCUMENT" and not privacy_error:
                     _ensure_unresolved_markers(conn, refreshed)
                     _queue_document_notice(
                         conn, _joined_row(conn, row["outbound_id"]), permanent=True

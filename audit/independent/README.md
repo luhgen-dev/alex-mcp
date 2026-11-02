@@ -28,23 +28,37 @@ written. The requested comprehensive audit and deployment are **not complete**.
 
 ## Screenshot failures still unresolved
 
-**Voice expense refusal:** exact audio/transcripts and production tool traces have
-not been obtained. Do not invent the spoken wording or infer a transcription
-failure from a screenshot. The existing tests mock transcription and script tool
-calls; they cannot establish spontaneous understanding by the deployed model.
+**Voice expense refusal:** operator-supplied production traces show authorized
+Tamil transcription, omitted write capabilities, a failed capability recovery,
+and tool calls discarded at the final model-call limit. Terminal font rendering
+does not preserve every Tamil character clearly; constructed regression phrases
+are not labelled verbatim transcripts. Colloquial reminder/logging imperatives
+now retain their required mutator before schema capping. The spoken Tamil loanword
+for "private" also selects owner-private storage; a real SQLite test checks it.
+The false-denial detector
+also recognizes "cannot log" and "write access", and an exhausted recovery may
+not repeat an unsupported lack-of-capability claim. New SDK/ingress tests are
+written but remain **NOT_RUN** here because dependencies cannot be installed.
 
-**Quoted expense moved to private:** the registry exposes no expense scope-move
-tool. `correct_expense` preserves the existing space. The current phrase requesting
-a private destination produces private read scope, which excludes the original
-shared expense from a normal search. The independent test reproduces that
-search-boundary behavior; it is **not a passing test for the requested move**.
+**Quoted expense moved to private:** both captured corrections failed with
+"event not found in your accessible spaces". An explicit English move/save-to-private
+request quoting one expense now uses a deterministic ingress operation. It binds
+the stored provider quote, verifies ownership, and moves the entire correction
+chain in one transaction while preserving IDs, amounts and original files.
+Another person's record, a group request, or a receipt still shared through a
+different record is refused without a partial change. Linked custom-ledger and
+saved-file references are checked as well. This is an ingress capability, not a
+new model-facing MCP tool, and general read scopes are unchanged.
 
-An eventual move must separately authorize the exact quoted source and the
-destination, preserve identity/history, deal with correction chains and original
-media links, revalidate queued delivery/report/selection context, and avoid
-moving another household member's records. Broadening all private reads or
-changing a category to `private` is not a repair. The separate historical and
-latest expense examples must be traced independently in production.
+New local checks cover stored moves/retries, correction history, original receipt
+bytes, owner/spouse/group boundaries, shared-file dependencies, quoted metadata,
+and queued delivery. A cross-process file lock serializes the final outbox
+check/send with a visibility commit. Stale finance snapshots for other recipients
+are conservatively replaced by a safe request for a fresh result. Already sent
+WhatsApp messages cannot be erased by this operation. Correction/confirmation
+authorization now occurs inside a write transaction to prevent stale shared-scope
+decisions across a concurrent move. Full ingress, migration, provider, report-cache
+and production acceptance remain pending; this is not a deployed fix.
 
 ## Feature-by-feature status
 
@@ -58,7 +72,7 @@ argument generation, conversational understanding, or phone delivery.
 | --- | --- | --- |
 | Identity and conversation | Unknown sender rejected; group actor has only shared membership. Four Node contracts passed for quoted context, reactions, controls, and FIFO. | Real sender/group binding, quote continuity, overlapping requests, delayed follow-ups, and conversation privacy. |
 | Multilingual voice and media | Voice implementation reviewed without edits; receipt original-file integrity repaired locally. | Actual English/Tamil/Tanglish/Malay/mixed audio, expense reproduction, STT accuracy, language/amount preservation, disabled/budget/failure behavior on the deployed configuration. |
-| Finance, receipts, privacy corrections | Local exact cents, retry identity, append-only history, totals, ordinary/private/spouse/group isolation, missing/corrupt originals. Validation repairs pass. | Requested quoted privacy move is unimplemented; actual screenshot rows and correction chains need production inspection. |
+| Finance, receipts, privacy corrections | Local exact cents, retries, append-only history, totals, isolation, original integrity and quoted private-move storage/egress checks pass. Operator traces confirm both reported moves failed in 0.5.54. | Full ingress/MCP, migration, concurrent provider turns, report caches and deployed acceptance. |
 | Reports and exports | Certification file judge now rejects wrong/missing/empty originals. | Full/filtered totals, date windows, PDF/image/XLSX content and decoding, report/selection scope, cached report invalidation, delivered bytes. |
 | Shopping and prices | Real queue tests: duplicate add, rename/purchase during lookup, bounded retries, sanitized errors, no accidental expense. | Live Mydin/Manjaku data, matching/pack quantities, remembered-price preference, provenance/estimates and monthly summaries. Network lookup is mocked in local worker tests. |
 | Saved memory and teaching | Saved-note scope/emoji content checks pass. | Teaching revisions, learned preferences/prices, recall injection boundaries, deleting/forgetting and original media lifecycle. |
@@ -93,10 +107,11 @@ fails. A running service is therefore not evidence that structural checks passed
 
 ## Exact automated evidence and its limits
 
-- [candidate.json](candidate.json), [candidate.log](candidate.log): **48 tests,
-  zero failures/errors/skips**. SHA-256 values bind the six changed runtime
-  modules and the independent fixture/test files to the results.
-- [baseline.json](baseline.json), [baseline.log](baseline.log): the same 48 tests
+- [candidate.json](candidate.json), [candidate.log](candidate.log): **59 tests,
+  zero failures/errors/skips**. SHA-256 values bind seven tested runtime modules,
+  the independent fixture/test files, and the additional wiring/schema sources.
+  The latter hashes do not certify execution of the SDK-dependent ingress/brain.
+- [baseline.json](baseline.json), [baseline.log](baseline.log): the earlier 48 tests
   against the original six runtime modules produce **35 failed assertions and
   five errors, affecting 22 distinct test methods**. Subtest failures are counted
   separately from test methods. The errors are malformed JSON, three numeric
@@ -104,6 +119,10 @@ fails. A running service is therefore not evidence that structural checks passed
   The runner selects all baseline modules before importing any, and checks
   their loaded paths. Incremental replacement had cached candidate helper
   functions in baseline dependants and initially masked the new time regression.
+  Those historical baseline logs remain tied to their recorded test hashes at
+  commit `959d419b843ab58974ff71c610fa653ab513fc3a`; they are not a comparison
+  of the expanded 59-test suite. The current runner refuses a baseline missing
+  the new privacy module instead of silently importing candidate code.
 - Local Python 3.12.14. Python compilation passed. Four existing Node contracts
   and bridge syntax passed. These are not a container build or a paired session.
 - Earlier isolated execution of 53 available test modules: six modules passed,
@@ -111,7 +130,7 @@ fails. A running service is therefore not evidence that structural checks passed
   `requests`; another encountered incompatible installed MCP APIs. Passing
   modules accounted for 54 test methods (52 passed, two packaged-runtime skips),
   including nine earlier independent tests. **Do not add this overlapping,
-  earlier count to the final 48-test result.**
+  earlier count to the current 59-test result.**
 - The installed MCP package is 1.29.0; the app pins 2.2.0. `requests`, `openai`,
   and `websocket-client` are unavailable. Dependency installation could not reach
   the package index. The full suite, structural/stress checks, current routing
@@ -186,7 +205,7 @@ python -m unittest discover -s audit/independent -p test_ha_snapshot_probe.py -v
 The second command passes **eight additional standalone tests**, including copied
 WAL replay, source/archive preservation, scope of exported conversation data,
 credential filtering, permissions, path traversal and symlink rejection. These
-are separate from the 48-test repair suite above. They use synthetic archives.
+are separate from the 59-test repair suite above. They use synthetic archives.
 The collector retains redacted tool errors and routing decisions, hashes input
 event IDs, and preserves zero/false values instead of converting them to blanks.
 
@@ -201,6 +220,18 @@ certify model tool exposure, voice ingress, reminder delivery, or resolution of
 the reported voice refusal. Those remain open production checks.
 
 ### Direct-access limitation
+
+`ha_runtime_checks.py --commit <full-published-SHA>` supplies an operator-assisted
+test route when this workspace cannot install the pinned SDKs. It downloads only
+that public source snapshot and public dependencies, creates a private isolated
+venv and empty data/options under `/config/alex-audit/runtime-*`, and runs each
+test module in a separate bounded subprocess. Inherited Supervisor/provider
+credentials are excluded. Provider HTTP destinations are blocked by the test
+environment proxy; localhost remains available for local HTTP contract tests.
+The script does not access production Alex data or restart/update an HA app.
+It preserves private logs and a summary for failures; it does not claim a Docker
+build or actual provider/phone delivery. Locally, compilation and synthetic ZIP
+path validation were checked. Running the SDK suite on HA remains outstanding.
 
 The current shell cannot reach its network proxy; requests do not reach HA.
 Permission requests stall without an approval control visible to the user. The
