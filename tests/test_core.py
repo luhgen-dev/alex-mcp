@@ -97,6 +97,7 @@ class AlexCoreTests(unittest.TestCase):
                 "task_reminder_links", "task_events", "tasks",
                 "diary_reminder_links", "plan_diary_links", "schedule_conflicts", "diary_events", "plans",
                 "leave_records", "work_roster", "cashflow_baselines",
+                "household_bill_records", "digi_screenshot_prompts",
                 "event_media_links", "financial_event_corrections", "financial_events",
                 "saved_items", "shopping_items", "reminders", "savings_goals", "money_buckets",
                 "leave_state", "pending_items", "media_objects", "inbound_messages",

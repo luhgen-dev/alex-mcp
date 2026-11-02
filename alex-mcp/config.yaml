@@ -1,5 +1,5 @@
 name: "Alex MCP"
-version: "0.5.47"
+version: "0.5.48"
 slug: "alex_mcp"
 description: "MCP-first household assistant — natural WhatsApp conversation, deterministic tools, receipts, reminders and memory"
 arch:
@@ -58,6 +58,20 @@ options:
   presence_mappings: []
   daily_brief_enabled: true
   mydin_prices_enabled: true
+  manjaku_prices_enabled: true
+  grocery_background_prices: true
+  digi_husband_line: ""
+  digi_wife_line: ""
+  tnb_portal_enabled: false
+  tnb_email: ""
+  tnb_password: ""
+  tnb_account: ""
+  saj_portal_enabled: false
+  saj_email: ""
+  saj_password: ""
+  saj_account: ""
+  digi_screenshot_reminder_enabled: true
+  digi_screenshot_reminder_time: "19:00"
   daily_brief_time: "04:30"
   dm_disappearing_seconds: 86400
   ha_notify_devices: []
@@ -200,6 +214,20 @@ schema:
       active: bool
   daily_brief_enabled: bool
   mydin_prices_enabled: bool
+  manjaku_prices_enabled: bool
+  grocery_background_prices: bool
+  digi_husband_line: str?
+  digi_wife_line: str?
+  tnb_portal_enabled: bool
+  tnb_email: str?
+  tnb_password: password
+  tnb_account: str?
+  saj_portal_enabled: bool
+  saj_email: str?
+  saj_password: password
+  saj_account: str?
+  digi_screenshot_reminder_enabled: bool
+  digi_screenshot_reminder_time: str
   daily_brief_time: str
   dm_disappearing_seconds: "int(0,7776000)"
   ha_notify_devices:

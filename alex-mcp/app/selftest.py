@@ -16,6 +16,8 @@ import phase2_schedule
 from config import DATA_DIR, get_settings
 
 REQUIRED_TABLES = {
+    "grocery_price_jobs","grocery_product_choices","grocery_price_quotes","grocery_item_history",
+    "household_bill_records","digi_screenshot_prompts",
     "inbound_messages","users","user_phone_history","spaces","memberships","routing_rules",
     "financial_events","financial_event_corrections","media_objects","event_media_links",
     "saved_items","shopping_items","reminders","savings_goals","money_buckets","leave_state",

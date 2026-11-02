@@ -43,6 +43,12 @@ CAPABILITY_TO_TOOLS: dict[str, frozenset[str]] = {
     "shopping.add": frozenset({"add_shopping_item"}),
     "shopping.read": frozenset({"list_shopping_items"}),
     "shopping.prices": frozenset({"search_mydin_prices", "get_mydin_product_price"}),
+    "shopping.manjaku_prices": frozenset({"search_manjaku_prices", "get_manjaku_product_price"}),
+    "shopping.monthly": frozenset({"grocery_monthly_summary"}),
+    "shopping.product_choice": frozenset({"select_grocery_product"}),
+    "bill.provider.read": frozenset({"check_household_bill"}),
+    "bill.digi.capture": frozenset({"record_digi_bill"}),
+    "bill.monthly": frozenset({"household_payments_summary"}),
     "shopping.update": frozenset({"update_shopping_item"}),
 
     # Diary / plans / availability

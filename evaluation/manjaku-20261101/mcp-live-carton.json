@@ -1,0 +1,85 @@
+{
+  "ok": true,
+  "source": "Manjaku Online",
+  "source_kind": "live_first_party_storefront",
+  "currency": "MYR",
+  "cached": false,
+  "checked_at": "2026-11-01T11:09:06.466259+00:00",
+  "checked_at_local": "2026-11-01T19:09:06.466259+08:00",
+  "elapsed_ms": 5293,
+  "price_scope_note": "Manjaku Online listed prices only; physical-store prices/stock can differ. Cart, bundle, member and voucher discounts and delivery are not verified.",
+  "products": [
+    {
+      "handle": "-carton-bundle-sale-sofyroo-tissue",
+      "title": "[CARTON BUNDLE SALE] SOFYROO TISSUE",
+      "url": "https://www.manjaku.com/products/-carton-bundle-sale-sofyroo-tissue",
+      "currency": "MYR",
+      "price_min": "50.00",
+      "price_max": "290.00",
+      "requires_variant_selection": false,
+      "variants": [
+        {
+          "variant_id": "18076521603504230930502080",
+          "sku": "30300530-C",
+          "option": "FACIAL 250S X 24PCK",
+          "selling_price": "140.00",
+          "compare_at_price": null,
+          "available_online": true,
+          "stock_quantity": 578,
+          "allows_backorder": false,
+          "quantity_minimum": 1,
+          "quantity_increment": 1,
+          "quantity_maximum": null,
+          "url": "https://www.manjaku.com/products/-carton-bundle-sale-sofyroo-tissue?sku=18076521603504230930502080"
+        },
+        {
+          "variant_id": "18076521603504230930582080",
+          "sku": "30300531-C",
+          "option": "FACIAL 80S X 100PCK",
+          "selling_price": "290.00",
+          "compare_at_price": null,
+          "available_online": true,
+          "stock_quantity": 834,
+          "allows_backorder": false,
+          "quantity_minimum": 1,
+          "quantity_increment": 1,
+          "quantity_maximum": null,
+          "url": "https://www.manjaku.com/products/-carton-bundle-sale-sofyroo-tissue?sku=18076521603504230930582080"
+        },
+        {
+          "variant_id": "18076521603504230930642080",
+          "sku": "30300532-C",
+          "option": "POCKET 10X8S X 50PCK",
+          "selling_price": "50.00",
+          "compare_at_price": null,
+          "available_online": true,
+          "stock_quantity": 485,
+          "allows_backorder": false,
+          "quantity_minimum": 1,
+          "quantity_increment": 1,
+          "quantity_maximum": null,
+          "url": "https://www.manjaku.com/products/-carton-bundle-sale-sofyroo-tissue?sku=18076521603504230930642080"
+        }
+      ],
+      "selected_variant": {
+        "variant_id": "18076521603504230930582080",
+        "sku": "30300531-C",
+        "option": "FACIAL 80S X 100PCK",
+        "selling_price": "290.00",
+        "compare_at_price": null,
+        "available_online": true,
+        "stock_quantity": 834,
+        "allows_backorder": false,
+        "quantity_minimum": 1,
+        "quantity_increment": 1,
+        "quantity_maximum": null,
+        "url": "https://www.manjaku.com/products/-carton-bundle-sale-sofyroo-tissue?sku=18076521603504230930582080"
+      },
+      "requested_quantity": 2,
+      "quantity_allowed": true,
+      "sufficient_stock": true,
+      "listed_items_subtotal": "580.00",
+      "subtotal_note": "Listed-price arithmetic only; cart promotions and delivery excluded; not a checkout quote."
+    }
+  ]
+}

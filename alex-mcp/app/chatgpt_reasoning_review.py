@@ -57,7 +57,11 @@ import human_ai_lab
 # tool: retrieve current catalogue prices, without ledger or shopping writes.
 # The exact delta is preserved in evaluation/mydin-20261101/oracle-delta.json.
 # This recertifies only this deterministic oracle, not the independent snapshot.
-REVIEWED_CORPUS_FINGERPRINT = "ad77d51401e78619e55114fa695036e16017c86d1218ef37ffa868321eff90ee"
+# 2026-11-01 held Manjaku bundle: all 446 existing public packets unchanged;
+# three new price requests require the supplied Manjaku catalogue search, not
+# MYDIN prices or household writes. Public delta: evaluation/manjaku-20261101.
+# This remains deterministic regression evidence, not an independent review.
+REVIEWED_CORPUS_FINGERPRINT = "fddfd018ba5e9cbbcddb8d674911d5750f7174c4c2bce22c0ded85e390f0485e"
 
 
 def _low(value: str) -> str:
@@ -116,6 +120,9 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
             "tools": selected,
             "reply_language": "en",
         }
+
+    if re.search(r"grocery|groceries", text) and "month" in text and "grocery_monthly_summary" in tools:
+        return result("tools", ["grocery_monthly_summary"])
 
     # Genuine ambiguity: possibility is not permission to mutate.
     if re.search(r"\b(?:might buy|maybe we need|thinking of getting) coffee\b", text):
@@ -667,6 +674,15 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
         if "finance_report" in tools:
             return result("tools", ["finance_report"])
 
+    if re.search(r"\b(?:payments?|bills|commitments)\b", text) and re.search(r"month|consolidat", text) and "household_payments_summary" in tools:
+        return result("tools", ["household_payments_summary"])
+    if re.search(r"\b(?:choose|use|select)\b", text) and "sku" in text and "select_grocery_product" in tools:
+        return result("tools", ["select_grocery_product"])
+    if re.search(r"digi|celcom", text) and "screenshot" in text and "record_digi_bill" in tools:
+        return result("tools", ["record_digi_bill"])
+    if re.search(r"\b(?:tnb|saj|ranhill)\b", text) and not re.search(r"\b(?:paid|pay|unpaid|defer|move|postpone|confirm|mark|log|receipt|remind)\b", text) and "check_household_bill" in tools:
+        return result("tools", ["check_household_bill"])
+
     # A MYDIN catalogue price question needs the public product source. It is
     # not a request to inspect household spending or change a shopping list.
     if (
@@ -675,6 +691,13 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
         and "search_mydin_prices" in tools
     ):
         return result("tools", ["search_mydin_prices"])
+
+    if (
+        re.search(r"\bmanjaku\b", text)
+        and re.search(r"\b(?:prices?|cost|how much|harga)\b", text)
+        and "search_manjaku_prices" in tools
+    ):
+        return result("tools", ["search_manjaku_prices"])
 
     # Finance ledger.
     finance_signal = bool(

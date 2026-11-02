@@ -1,7 +1,49 @@
 configuration:
+  grocery_background_prices:
+    name: Quiet background grocery pricing
+    description: Queue retailer lookups after list changes. Plain lists hide prices; ask for prices/totals to see saved estimates. Ambiguous products require a choice.
+  digi_screenshot_reminder_enabled:
+    name: Monthly Digi screenshot prompt
+    description: Ask the configured husband privately for both Digi bill screenshots once monthly from the 16th. No SMS, phone control, PDFs or messages to the spouse.
+  digi_screenshot_reminder_time:
+    name: Digi prompt time
+    description: Local HH:MM on the 16th, default 19:00. Catches up once if Alex was offline.
+  digi_husband_line:
+    name: Husband Digi line
+    description: Exact Digi mobile number, with country code. This can differ from the WhatsApp number.
+  digi_wife_line:
+    name: Wife Digi line
+    description: Exact second Digi line. No other supplementary numbers are tracked.
+  tnb_portal_enabled:
+    name: Enable TNB portal adapter
+    description: Off until configured and tested. Reads the home bill on demand only; no payments or automatic bill sending.
+  tnb_email:
+    name: TNB portal email
+    description: Enter privately here. A cloud-browser login does not configure Alex.
+  tnb_password:
+    name: TNB portal password
+    description: Stored in Home Assistant options. Never send passwords in WhatsApp. Interactive verification may require signing in directly.
+  tnb_account:
+    name: TNB home account
+    description: Exact account identifier as shown on the portal, including letters and hyphens. Used to reject mismatched accounts.
+  saj_portal_enabled:
+    name: Enable SAJ portal adapter
+    description: Off until configured and tested. Reads the home bill on demand only; no payments or automatic bill sending.
+  saj_email:
+    name: SAJ portal email
+    description: Enter privately here. A cloud-browser login does not configure Alex.
+  saj_password:
+    name: SAJ portal password
+    description: Stored in Home Assistant options. Never send passwords in WhatsApp. Interactive verification may require signing in directly.
+  saj_account:
+    name: SAJ home account
+    description: Exact account identifier as shown on the portal, including letters and hyphens. Used to reject mismatched accounts.
+  manjaku_prices_enabled:
+    name: Manjaku live prices
+    description: Read current Manjaku Online listed prices in the background and on request. Physical stores and cart discounts may differ. Disable to stop all Manjaku lookups.
   mydin_prices_enabled:
     name: MYDIN live prices
-    description: Read current MYDIN Online prices on request. No login or API key required. Disable to stop all MYDIN lookups.
+    description: Read current MYDIN Online prices in the background and on request. No login or API key required. Disable to stop all MYDIN lookups.
   ai_provider:
     name: AI brain
     description: "Choose the brain. dot is EXPERIMENTAL: shared-shopping text only and requires a verified connection; it never falls back to another provider. Existing modes stay unchanged."

@@ -33,11 +33,12 @@ import discussion_journal
 import custom_ledgers
 import scope_policy
 import mydin_prices
+import manjaku_prices
 from config import get_settings
 
 mcp = MCPServer(
     "Alex Household Tools",
-    version="0.5.47",
+    version="0.5.48",
     instructions="Deterministic household tools. Identity and permissions are injected by Alex and are never model-controlled.",
 )
 
@@ -799,6 +800,22 @@ def add_shopping_item(item: str, actor: Actor, quantity: str | None = None,
 
 
 @alex_tool()
+def search_manjaku_prices(query: str, actor: Actor, limit: int = 3) -> dict:
+    """Search current Manjaku Online listed prices using concise product/brand/pack keywords. Returns top matches, exact handles and variant IDs, MYR prices, online availability, links and local check time. Physical stores may differ. Cart/member/bundle discounts are unverified. An empty result is not proof of absence from the whole catalogue. No household records are changed."""
+    if get_settings().manjaku_prices_enabled is not True:
+        raise ValueError("Manjaku live prices are disabled in Alex Configuration.")
+    return manjaku_prices.search(query, limit, actor.timezone)
+
+
+@alex_tool()
+def get_manjaku_product_price(handle: str, actor: Actor, variant_id: str | None = None, quantity: int = 1) -> dict:
+    """Refresh one Manjaku Online product using its exact handle and chosen variant_id from search_manjaku_prices. Require a size/variant choice when ambiguous. quantity counts sale units/packs. Listed-price subtotal excludes unverified cart/bundle/member discounts and delivery; report unavailable variants and stock shortages. Read-only, never a purchase."""
+    if get_settings().manjaku_prices_enabled is not True:
+        raise ValueError("Manjaku live prices are disabled in Alex Configuration.")
+    return manjaku_prices.product(handle, variant_id, quantity, actor.timezone)
+
+
+@alex_tool()
 def search_mydin_prices(query: str, actor: Actor, limit: int = 5, page: int = 1) -> dict:
     """Search current MYDIN Online selling prices by product/brand/pack size. Public catalogue only. Returns exact product links, iSKUs, MYR selling prices, stock and check time. Present alternatives for ambiguous requests; never substitute a bulk tier price for one pack. No shopping or finance records are changed."""
     if get_settings().mydin_prices_enabled is not True:
@@ -816,9 +833,24 @@ def get_mydin_product_price(sku: str, actor: Actor, quantity: int = 1) -> dict:
 
 @alex_tool()
 def list_shopping_items(actor: Actor, include_purchased: bool = False, limit: int = 50,
-                        scope: str | None = None) -> dict:
-    """List shopping items visible to the authenticated household user. scope may be all, family, or private."""
-    return services.list_shopping_items(actor, include_purchased, limit, scope)
+                        scope: str | None = None, include_prices: bool = False) -> dict:
+    """List groceries. Default items/quantities only; include_prices=true ONLY for a price/total request. Saved reference estimates label pending, ambiguous and stale prices. Scope is enforced by authenticated context. List adds/edits already queue quiet background pricing."""
+    return services.list_shopping_items(actor, include_purchased, limit, scope, include_prices)
+
+
+@alex_tool()
+def grocery_monthly_summary(actor: Actor, period: str | None = None) -> dict:
+    """Monthly grocery overview (YYYY-MM, defaults current local month). Returns historical list estimates separately from recorded actual groceries/kids-supplies spending. Never add estimates to actual expenses. Unknown prices remain unknown."""
+    import grocery_prices
+    return grocery_prices.monthly_summary(actor, period)
+
+
+@alex_tool()
+def select_grocery_product(item_id: str, retailer: str, product_id: str, actor: Actor,
+                           variant_id: str | None = None) -> dict:
+    """Bind an existing grocery item to the user's chosen exact MYDIN iSKU or Manjaku handle/variant from catalogue results. Use only after an explicit product/size choice; never guess for generic rice/milk/diapers. Refreshes and remembers that reference for background quantity updates; never records a purchase."""
+    import grocery_prices
+    return grocery_prices.select_product(actor, item_id, retailer, product_id, variant_id)
 
 
 @alex_tool()
@@ -1570,6 +1602,48 @@ def planning_list_goals(actor: Actor) -> dict:
 
 
 @alex_tool()
+def check_household_bill(provider: str, actor: Actor, include_pdf: bool = False,
+                         analyse_pdf: bool = False) -> dict:
+    """On-demand live TNB or SAJ home bill check. Stores a timestamped observation; no payment or expense is created. include_pdf=true ONLY when the user requests the PDF/original bill; TNB supports it, SAJ download remains unverified. analyse_pdf=true downloads and extracts untrusted statement text for a requested discrepancy review; it does not send a PDF unless include_pdf=true. Credentials/account must be configured privately in HA. Digi is screenshot-only; never use phone control or SMS. A failed source returns unavailable, not zero."""
+    import household_bills
+    return household_bills.refresh(actor, provider, include_pdf, analyse_pdf)
+
+
+@alex_tool()
+def record_digi_bill(person: str, invoice_date: str, invoice_amount: str, actor: Actor,
+                     outstanding: str | None = None, due_date: str | None = None,
+                     readable: bool = True, media_id: str | None = None,
+                     quoted_message_id: str | None = None) -> dict:
+    """Save a readable current/quoted Digi Check Bill Details screenshot for husband or wife only. Read invoice_date (YYYY-MM-DD), invoice_amount (Current bill), outstanding (Total due), and due_date separately. Null for unreadable/absent balance/date; never guess. Verify whose number is shown against configured lines. This is a bill observation, NOT payment proof or an expense. Duplicate images do not duplicate bills. Do not ingest SMS."""
+    import household_bills
+    return household_bills.record_digi(actor, person, invoice_date, invoice_amount, outstanding, due_date, readable, media_id, quoted_message_id)
+
+
+@alex_tool()
+def household_payments_summary(actor: Actor, period: str | None = None,
+                                refresh_utilities: bool = True) -> dict:
+    """Consolidate a local month (YYYY-MM) of TNB, SAJ, both Digi screenshots and recurring commitments, plus a separate grocery budget view. Refresh configured utilities on demand for the current month only, never send PDFs. Unknown or stale balances remain labelled. Do not add grocery estimates to actual expenses, or duplicate a provider bill as a recurring commitment."""
+    import household_bills
+    import grocery_prices
+    import runtime_clock
+    target = household_bills._period(period, actor.timezone)
+    refreshes = []
+    if refresh_utilities and target == runtime_clock.today(actor.timezone).strftime("%Y-%m"):
+        for provider in ("tnb", "saj"):
+            if getattr(get_settings(), provider + "_portal_enabled") is True:
+                try:
+                    result = household_bills.refresh(actor, provider)
+                    refreshes.append({"provider":provider,"status":result["status"],"reason":result.get("reason")})
+                except (ValueError, PermissionError) as exc:
+                    refreshes.append({"provider":provider,"status":"unavailable","reason":str(exc)})
+    bill_view = bills_list(actor, target)
+    return {"period":target,"utility_refreshes":refreshes, **bill_view,
+            "groceries":grocery_prices.monthly_summary(actor,target),
+            "combined_total":None,
+            "total_note":"Provider balances, recurring expected/paid records, and grocery estimates are separate views. Match overlapping commitments before adding a grand total; an expected amount is not proof of unpaid debt. Missing source data must be shown, never silently treated as zero."}
+
+
+@alex_tool()
 def bills_list(actor: Actor, period: str | None = None,
                as_of_date: str | None = None) -> dict:
     """List recurring obligations. If period is omitted, materialize the current and next local month so 'coming up' does not falsely return empty."""
@@ -1593,13 +1667,16 @@ def bills_list(actor: Actor, period: str | None = None,
     obligations = phase2_finance.list_obligations(
         actor.phone, actor.conversation_type, "all", period
     )
+    import household_bills
+    provider_bills = household_bills.list_records(actor, period or effective_day.strftime("%Y-%m"))
     return {
         "obligations": obligations,
+        "provider_bills": provider_bills,
         "as_of_date": effective_date,
         "empty_means": (
             "No recurring obligation is recorded for this query; tell the user that directly "
             "instead of probing unrelated reminder or finance tools."
-            if not obligations else None
+            if not obligations and not provider_bills["bills"] else None
         ),
     }
 

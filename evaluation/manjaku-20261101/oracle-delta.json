@@ -1,0 +1,491 @@
+{
+  "baseline_fingerprint": "ad77d51401e78619e55114fa695036e16017c86d1218ef37ffa868321eff90ee",
+  "current_fingerprint": "8bc77474012cffdf7b8cb3bf986b8e2a01105b59a5686d08d1a841f658332529",
+  "unchanged_packets": 446,
+  "removed": [],
+  "changed": [],
+  "added": [
+    {
+      "packet_version": 3,
+      "packet_id": "hai-3455132da8b94257aa",
+      "source": "text",
+      "conversation_type": "DIRECT_DM",
+      "actor": "husband",
+      "prompt": "Harga lampin di Manjaku?",
+      "reasoning_instruction": "Act as Alex's reasoning layer only. Select the supplied MCP capabilities needed to complete the whole turn, or choose clarify/refuse/answer. A whole-turn capability plan may include a lookup followed by the requested action, conditional on a unique authorized lookup result. Selecting that later capability does not claim its arguments are already known or that it has executed. Never invent household facts, record ids, amounts, currencies or timing. If a required user decision is missing, clarify. Never assume a capability that is not supplied. If a supplied tool explicitly accepts a natural name/reference and resolves it internally, use that tool directly instead of inventing a separate lookup tool.",
+      "runtime_policy": {
+        "household_records": "Personal facts are never guessed. If the answer depends on household records, receipts, reminders, goals, leave, or saved information, use the appropriate tool. Tool results are the source of truth.",
+        "financial_currency": "For money writes, MYR is the household default when the user does not state a currency. Explicit SGD/S$/another supported currency overrides it. A bare \"RM\" means MYR. Never reinterpret a clearly stated currency.",
+        "empty_cash_pool": "Creating a named stash without an amount creates an empty zero-balance container and records no funding or money movement. The creation tool has a built-in MYR currency default for an empty container; use SGD if the user requests it. An opening balance or other funding still requires an explicitly stated amount and reliably evidenced currency.",
+        "private_scope": "Ordinary DM reads are Family Shared by default; the user never needs to say \"shared\". Explicit private wording or an emoji selects the owner's private scope. Private scope belongs to the authenticated sender; it never grants access to another person's private records. If an ordinary shared-scope lookup finds nothing, do not imply the item does not exist everywhere and do not reveal whether a private match exists. Say it was not found in shared records and, when useful, offer to check the owner's private records. A direct \"yes\" to that specific offer authorizes only that private follow-up.",
+        "tentative_shopping": "For tentative shopping language such as \"might buy\", \"maybe we need\", or \"thinking of getting\", you may ask one short question when the object or intent is genuinely uncertain. Ordinary household goods such as detergent/milk/diapers may be added directly when the user's intent is clear. If the user clearly changes an existing item's quantity (\"I actually need 2 detergents\") or says it was bought, update that named item directly instead of asking a redundant Yes/No question.",
+        "automation_drafts": "Home Assistant automation requests produce a reviewable draft through ha_draft_automation. Explain that the draft is not deployed; Alex has no automatic automation-deployment capability. Do not operate a device merely because an automation mentions it.",
+        "attachment_delivery": "Files and images: when a tool result contains \"_delivery\" with attachments_queued or returns an attachment in the current turn, Alex sends that original file with your reply automatically. Never say you cannot send images or files. For an attachment being sent now, say \"Here it is\" or \"Here's your report\" rather than \"queued\", \"shortly\", \"on its way\" or similar future-delivery wording. Deferred/retrying language is reserved for a genuinely unresolved delivery.",
+        "tool_discovery": "Use only when the user's meaning clearly needs Alex household data or an action but the currently available tools do not cover it. Rewrite the user's intended task as a short clear English intent so Alex can load the correct narrow tool set. Do not use for casual conversation."
+      },
+      "evaluation_scope": "Capability selection for synthetic interpreted input. Source labels describe fixture provenance; they do not certify raw audio authorization, transcription, actual attachment rendering or live delivery. Any prior assistant fixture text is scenario setup, not observed provider execution.",
+      "reply_language_policy": "English unless the user explicitly requests another language.",
+      "available_tools": [
+        {
+          "name": "search_manjaku_prices",
+          "description": "Search current Manjaku Online listed prices using concise product/brand/pack keywords. Returns top matches, exact handles and variant IDs, MYR prices, online availability, links and local check time. Physical stores may differ. Cart/member/bundle discounts are unverified. An empty result is not proof of absence from the whole catalogue. No household records are changed.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "title": "Query",
+                "type": "string"
+              },
+              "limit": {
+                "default": 3,
+                "title": "Limit",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "query"
+            ],
+            "title": "search_manjaku_pricesArguments"
+          }
+        },
+        {
+          "name": "get_manjaku_product_price",
+          "description": "Refresh one Manjaku Online product using its exact handle and chosen variant_id from search_manjaku_prices. Require a size/variant choice when ambiguous. quantity counts sale units/packs. Listed-price subtotal excludes unverified cart/bundle/member discounts and delivery; report unavailable variants and stock shortages. Read-only, never a purchase.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "handle": {
+                "title": "Handle",
+                "type": "string"
+              },
+              "variant_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Variant Id"
+              },
+              "quantity": {
+                "default": 1,
+                "title": "Quantity",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "handle"
+            ],
+            "title": "get_manjaku_product_priceArguments"
+          }
+        },
+        {
+          "name": "discover_alex_tools",
+          "description": "Use only when the user's meaning clearly needs Alex household data or an action but the currently available tools do not cover it. Rewrite the user's intended task as a short clear English intent so Alex can load the correct narrow tool set. Do not use for casual conversation.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "intent": {
+                "type": "string",
+                "description": "Short normalized description of what the user wants Alex to know or do."
+              }
+            },
+            "required": [
+              "intent"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ],
+      "conversation_history": []
+    },
+    {
+      "packet_version": 3,
+      "packet_id": "hai-4160b86044054d0a67",
+      "source": "text",
+      "conversation_type": "DIRECT_DM",
+      "actor": "husband",
+      "prompt": "Check Manjaku wipes prices.",
+      "reasoning_instruction": "Act as Alex's reasoning layer only. Select the supplied MCP capabilities needed to complete the whole turn, or choose clarify/refuse/answer. A whole-turn capability plan may include a lookup followed by the requested action, conditional on a unique authorized lookup result. Selecting that later capability does not claim its arguments are already known or that it has executed. Never invent household facts, record ids, amounts, currencies or timing. If a required user decision is missing, clarify. Never assume a capability that is not supplied. If a supplied tool explicitly accepts a natural name/reference and resolves it internally, use that tool directly instead of inventing a separate lookup tool.",
+      "runtime_policy": {
+        "household_records": "Personal facts are never guessed. If the answer depends on household records, receipts, reminders, goals, leave, or saved information, use the appropriate tool. Tool results are the source of truth.",
+        "financial_currency": "For money writes, MYR is the household default when the user does not state a currency. Explicit SGD/S$/another supported currency overrides it. A bare \"RM\" means MYR. Never reinterpret a clearly stated currency.",
+        "empty_cash_pool": "Creating a named stash without an amount creates an empty zero-balance container and records no funding or money movement. The creation tool has a built-in MYR currency default for an empty container; use SGD if the user requests it. An opening balance or other funding still requires an explicitly stated amount and reliably evidenced currency.",
+        "private_scope": "Ordinary DM reads are Family Shared by default; the user never needs to say \"shared\". Explicit private wording or an emoji selects the owner's private scope. Private scope belongs to the authenticated sender; it never grants access to another person's private records. If an ordinary shared-scope lookup finds nothing, do not imply the item does not exist everywhere and do not reveal whether a private match exists. Say it was not found in shared records and, when useful, offer to check the owner's private records. A direct \"yes\" to that specific offer authorizes only that private follow-up.",
+        "tentative_shopping": "For tentative shopping language such as \"might buy\", \"maybe we need\", or \"thinking of getting\", you may ask one short question when the object or intent is genuinely uncertain. Ordinary household goods such as detergent/milk/diapers may be added directly when the user's intent is clear. If the user clearly changes an existing item's quantity (\"I actually need 2 detergents\") or says it was bought, update that named item directly instead of asking a redundant Yes/No question.",
+        "automation_drafts": "Home Assistant automation requests produce a reviewable draft through ha_draft_automation. Explain that the draft is not deployed; Alex has no automatic automation-deployment capability. Do not operate a device merely because an automation mentions it.",
+        "attachment_delivery": "Files and images: when a tool result contains \"_delivery\" with attachments_queued or returns an attachment in the current turn, Alex sends that original file with your reply automatically. Never say you cannot send images or files. For an attachment being sent now, say \"Here it is\" or \"Here's your report\" rather than \"queued\", \"shortly\", \"on its way\" or similar future-delivery wording. Deferred/retrying language is reserved for a genuinely unresolved delivery.",
+        "tool_discovery": "Use only when the user's meaning clearly needs Alex household data or an action but the currently available tools do not cover it. Rewrite the user's intended task as a short clear English intent so Alex can load the correct narrow tool set. Do not use for casual conversation."
+      },
+      "evaluation_scope": "Capability selection for synthetic interpreted input. Source labels describe fixture provenance; they do not certify raw audio authorization, transcription, actual attachment rendering or live delivery. Any prior assistant fixture text is scenario setup, not observed provider execution.",
+      "reply_language_policy": "English unless the user explicitly requests another language.",
+      "available_tools": [
+        {
+          "name": "search_manjaku_prices",
+          "description": "Search current Manjaku Online listed prices using concise product/brand/pack keywords. Returns top matches, exact handles and variant IDs, MYR prices, online availability, links and local check time. Physical stores may differ. Cart/member/bundle discounts are unverified. An empty result is not proof of absence from the whole catalogue. No household records are changed.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "title": "Query",
+                "type": "string"
+              },
+              "limit": {
+                "default": 3,
+                "title": "Limit",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "query"
+            ],
+            "title": "search_manjaku_pricesArguments"
+          }
+        },
+        {
+          "name": "get_manjaku_product_price",
+          "description": "Refresh one Manjaku Online product using its exact handle and chosen variant_id from search_manjaku_prices. Require a size/variant choice when ambiguous. quantity counts sale units/packs. Listed-price subtotal excludes unverified cart/bundle/member discounts and delivery; report unavailable variants and stock shortages. Read-only, never a purchase.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "handle": {
+                "title": "Handle",
+                "type": "string"
+              },
+              "variant_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Variant Id"
+              },
+              "quantity": {
+                "default": 1,
+                "title": "Quantity",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "handle"
+            ],
+            "title": "get_manjaku_product_priceArguments"
+          }
+        },
+        {
+          "name": "discover_alex_tools",
+          "description": "Use only when the user's meaning clearly needs Alex household data or an action but the currently available tools do not cover it. Rewrite the user's intended task as a short clear English intent so Alex can load the correct narrow tool set. Do not use for casual conversation.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "intent": {
+                "type": "string",
+                "description": "Short normalized description of what the user wants Alex to know or do."
+              }
+            },
+            "required": [
+              "intent"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ],
+      "conversation_history": []
+    },
+    {
+      "packet_version": 3,
+      "packet_id": "hai-93a79ff5498a78b898",
+      "source": "text",
+      "conversation_type": "DIRECT_DM",
+      "actor": "husband",
+      "prompt": "How much are Mimora diapers at Manjaku?",
+      "reasoning_instruction": "Act as Alex's reasoning layer only. Select the supplied MCP capabilities needed to complete the whole turn, or choose clarify/refuse/answer. A whole-turn capability plan may include a lookup followed by the requested action, conditional on a unique authorized lookup result. Selecting that later capability does not claim its arguments are already known or that it has executed. Never invent household facts, record ids, amounts, currencies or timing. If a required user decision is missing, clarify. Never assume a capability that is not supplied. If a supplied tool explicitly accepts a natural name/reference and resolves it internally, use that tool directly instead of inventing a separate lookup tool.",
+      "runtime_policy": {
+        "household_records": "Personal facts are never guessed. If the answer depends on household records, receipts, reminders, goals, leave, or saved information, use the appropriate tool. Tool results are the source of truth.",
+        "financial_currency": "For money writes, MYR is the household default when the user does not state a currency. Explicit SGD/S$/another supported currency overrides it. A bare \"RM\" means MYR. Never reinterpret a clearly stated currency.",
+        "empty_cash_pool": "Creating a named stash without an amount creates an empty zero-balance container and records no funding or money movement. The creation tool has a built-in MYR currency default for an empty container; use SGD if the user requests it. An opening balance or other funding still requires an explicitly stated amount and reliably evidenced currency.",
+        "private_scope": "Ordinary DM reads are Family Shared by default; the user never needs to say \"shared\". Explicit private wording or an emoji selects the owner's private scope. Private scope belongs to the authenticated sender; it never grants access to another person's private records. If an ordinary shared-scope lookup finds nothing, do not imply the item does not exist everywhere and do not reveal whether a private match exists. Say it was not found in shared records and, when useful, offer to check the owner's private records. A direct \"yes\" to that specific offer authorizes only that private follow-up.",
+        "tentative_shopping": "For tentative shopping language such as \"might buy\", \"maybe we need\", or \"thinking of getting\", you may ask one short question when the object or intent is genuinely uncertain. Ordinary household goods such as detergent/milk/diapers may be added directly when the user's intent is clear. If the user clearly changes an existing item's quantity (\"I actually need 2 detergents\") or says it was bought, update that named item directly instead of asking a redundant Yes/No question.",
+        "automation_drafts": "Home Assistant automation requests produce a reviewable draft through ha_draft_automation. Explain that the draft is not deployed; Alex has no automatic automation-deployment capability. Do not operate a device merely because an automation mentions it.",
+        "attachment_delivery": "Files and images: when a tool result contains \"_delivery\" with attachments_queued or returns an attachment in the current turn, Alex sends that original file with your reply automatically. Never say you cannot send images or files. For an attachment being sent now, say \"Here it is\" or \"Here's your report\" rather than \"queued\", \"shortly\", \"on its way\" or similar future-delivery wording. Deferred/retrying language is reserved for a genuinely unresolved delivery.",
+        "tool_discovery": "Use only when the user's meaning clearly needs Alex household data or an action but the currently available tools do not cover it. Rewrite the user's intended task as a short clear English intent so Alex can load the correct narrow tool set. Do not use for casual conversation."
+      },
+      "evaluation_scope": "Capability selection for synthetic interpreted input. Source labels describe fixture provenance; they do not certify raw audio authorization, transcription, actual attachment rendering or live delivery. Any prior assistant fixture text is scenario setup, not observed provider execution.",
+      "reply_language_policy": "English unless the user explicitly requests another language.",
+      "available_tools": [
+        {
+          "name": "query_finances",
+          "description": "Read true ledger totals and matching transactions. Use ISO dates YYYY-MM-DD. scope may be all/family/private. source may be all/voice/receipt/text. For today/tomorrow/yesterday, resolve the runtime date and set both start_date and end_date. Natural drill-downs inherit the active canonical report period unless the current turn names a different period.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "start_date": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Start Date"
+              },
+              "end_date": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "End Date"
+              },
+              "category": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Category"
+              },
+              "search": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Search"
+              },
+              "currency": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Currency"
+              },
+              "limit": {
+                "default": 20,
+                "title": "Limit",
+                "type": "integer"
+              },
+              "scope": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Scope"
+              },
+              "source": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Source"
+              }
+            },
+            "title": "query_financesArguments"
+          }
+        },
+        {
+          "name": "find_receipts",
+          "description": "Find original receipts by merchant/bank/reference, amount or date. scope may be all/family/private and is enforced by the backend.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Query"
+              },
+              "amount": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Amount"
+              },
+              "start_date": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Start Date"
+              },
+              "end_date": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "End Date"
+              },
+              "limit": {
+                "default": 10,
+                "title": "Limit",
+                "type": "integer"
+              },
+              "scope": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Scope"
+              }
+            },
+            "title": "find_receiptsArguments"
+          }
+        },
+        {
+          "name": "get_receipt",
+          "description": "Retrieve one original receipt previously found by find_receipts so Alex can send the actual image/document back.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "media_id": {
+                "title": "Media Id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "media_id"
+            ],
+            "title": "get_receiptArguments"
+          }
+        },
+        {
+          "name": "search_manjaku_prices",
+          "description": "Search current Manjaku Online listed prices using concise product/brand/pack keywords. Returns top matches, exact handles and variant IDs, MYR prices, online availability, links and local check time. Physical stores may differ. Cart/member/bundle discounts are unverified. An empty result is not proof of absence from the whole catalogue. No household records are changed.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "title": "Query",
+                "type": "string"
+              },
+              "limit": {
+                "default": 3,
+                "title": "Limit",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "query"
+            ],
+            "title": "search_manjaku_pricesArguments"
+          }
+        },
+        {
+          "name": "get_manjaku_product_price",
+          "description": "Refresh one Manjaku Online product using its exact handle and chosen variant_id from search_manjaku_prices. Require a size/variant choice when ambiguous. quantity counts sale units/packs. Listed-price subtotal excludes unverified cart/bundle/member discounts and delivery; report unavailable variants and stock shortages. Read-only, never a purchase.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "handle": {
+                "title": "Handle",
+                "type": "string"
+              },
+              "variant_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Variant Id"
+              },
+              "quantity": {
+                "default": 1,
+                "title": "Quantity",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "handle"
+            ],
+            "title": "get_manjaku_product_priceArguments"
+          }
+        },
+        {
+          "name": "calculate",
+          "description": "Perform exact local arithmetic instead of estimating in language.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "expression": {
+                "title": "Expression",
+                "type": "string"
+              }
+            },
+            "required": [
+              "expression"
+            ],
+            "title": "calculateArguments"
+          }
+        }
+      ],
+      "conversation_history": []
+    }
+  ]
+}

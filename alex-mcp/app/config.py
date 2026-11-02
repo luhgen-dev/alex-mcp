@@ -52,6 +52,20 @@ class Settings:
     ai_routing: str = "off"
     daily_brief_enabled: bool = True
     mydin_prices_enabled: bool = True
+    manjaku_prices_enabled: bool = True
+    grocery_background_prices: bool = True
+    digi_husband_line: str = ""
+    digi_wife_line: str = ""
+    digi_screenshot_reminder_enabled: bool = True
+    digi_screenshot_reminder_time: str = "19:00"
+    tnb_portal_enabled: bool = False
+    tnb_email: str = field(default="", repr=False)
+    tnb_password: str = field(default="", repr=False)
+    tnb_account: str = field(default="", repr=False)
+    saj_portal_enabled: bool = False
+    saj_email: str = field(default="", repr=False)
+    saj_password: str = field(default="", repr=False)
+    saj_account: str = field(default="", repr=False)
     daily_brief_time: str = "04:30"
     dm_disappearing_seconds: int = 86400
     ha_notify_devices: list[dict] = field(default_factory=list)
@@ -163,6 +177,12 @@ def get_settings() -> Settings:
     clean["ha_notify_devices"] = [
         item for item in devices if isinstance(item, dict)
     ][:10]
+    for key in ("mydin_prices_enabled", "manjaku_prices_enabled", "grocery_background_prices", "digi_screenshot_reminder_enabled"):
+        clean[key] = clean.get(key, True) is True
+    digi_time = str(clean.get("digi_screenshot_reminder_time", "19:00"))
+    clean["digi_screenshot_reminder_time"] = digi_time if __import__("re").fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", digi_time) else "19:00"
+    for key in ("tnb_portal_enabled", "saj_portal_enabled"):
+        clean[key] = clean.get(key, False) is True
     return Settings(**clean)
 
 

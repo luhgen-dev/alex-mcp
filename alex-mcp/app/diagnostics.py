@@ -284,6 +284,18 @@ def system_health(actor, hours: int = 24) -> dict:
             "window_hours": max(1, min(24 * 30, int(hours))),
             "database": "ok" if db_ok else "problem",
             "startup_selftest": selftest,
+            "retail_and_bills": {
+                "grocery_background_enabled": settings.grocery_background_prices,
+                "grocery_queue": {row["state"]: row["n"] for row in conn.execute("SELECT state,COUNT(*) AS n FROM grocery_price_jobs GROUP BY state")},
+                "last_price_saved_at": conn.execute("SELECT MAX(checked_at) FROM grocery_price_quotes").fetchone()[0],
+                "digi_prompt_enabled": settings.digi_screenshot_reminder_enabled,
+                "digi_lines_configured": bool(settings.digi_husband_line and settings.digi_wife_line),
+                "utility_connections": {provider: {
+                    "enabled": getattr(settings,provider+"_portal_enabled"),
+                    "credentials_configured": bool(getattr(settings,provider+"_email") and getattr(settings,provider+"_password") and getattr(settings,provider+"_account")),
+                    "live_verified": "Check the bill on demand; configuration alone is not proof of a working login.",
+                } for provider in ("tnb","saj")},
+            },
             "provider": {
                 "name": settings.ai_provider,
                 "model": settings.model,

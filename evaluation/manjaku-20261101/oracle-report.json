@@ -1,0 +1,60 @@
+{
+  "mode": "human_ai",
+  "status": "PASS",
+  "summary": {
+    "packets": 449,
+    "corpus_fingerprint": "8bc77474012cffdf7b8cb3bf986b8e2a01105b59a5686d08d1a841f658332529",
+    "reviewed_corpus_fingerprint": "8bc77474012cffdf7b8cb3bf986b8e2a01105b59a5686d08d1a841f658332529",
+    "corpus_match": true,
+    "decisions_received": 449,
+    "passed": 449,
+    "failed": 0,
+    "domains": [
+      "agenda",
+      "assets",
+      "bills",
+      "cash_planning",
+      "daily_brief",
+      "diagnostics",
+      "diary",
+      "discussion",
+      "finance",
+      "goals",
+      "home_assistant",
+      "language",
+      "ledger",
+      "media",
+      "memory",
+      "monitoring",
+      "plans",
+      "privacy",
+      "receipts",
+      "reminders",
+      "reports",
+      "routing",
+      "safety",
+      "shopping",
+      "tasks",
+      "work"
+    ],
+    "sources": [
+      "image",
+      "pdf",
+      "text",
+      "voice"
+    ]
+  },
+  "meta_failures": [],
+  "failures": [],
+  "review": {
+    "independent_public_packet_only": false,
+    "classification": "deterministic regression oracle; not an independent model test",
+    "reviewer": "deterministic regression oracle",
+    "decision_counts": {
+      "tools": 431,
+      "clarify": 18,
+      "refuse": 0,
+      "answer": 0
+    }
+  }
+}

@@ -76,6 +76,7 @@ def media_fixture_text(fixture: str | None) -> str:
     receipt is attached while withholding the evidence used by ingress.
     """
     return {
+        "digi_bill": ("CelcomDigi Check Bill Details 0123456789 Invoice date 16/09/2026 Current bill RM454.72 Total due RM0.00 Payment due on 15/10/2026"),
         "management_receipt": (
             "Payment Receipt\nManagement Fee\nAmount RM593.62\n"
             "Reference CERT-MGMT-IMG\nDate 28/09/2026\nPayment successful"
@@ -757,6 +758,8 @@ def _sandbox_options(provider: str, creds: dict) -> dict:
         **creds,
         "husband_phone": HUSBAND,
         "wife_phone": WIFE,
+        "digi_husband_line": "+60123456789",
+        "digi_wife_line": "+60129876543",
         "timezone": "Asia/Kuala_Lumpur",
         "context_turns": 8,
         "reasoning_effort": "low",
@@ -1647,7 +1650,7 @@ def _run_ingress_turn(
             ),
             "image_mime_type": "image/png",
         })
-        ocr = media_fixture_text(media_fixture) if media_fixture == "management_receipt" else ""
+        ocr = media_fixture_text(media_fixture) if media_fixture in {"management_receipt", "digi_bill"} else ""
         with patch.object(media, "extract_text", return_value=ocr):
             return ingress.process(payload)
 
