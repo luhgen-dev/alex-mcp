@@ -154,6 +154,74 @@
         "No live ASR or WhatsApp delivery",
         "Image-only skipped gates remain outstanding"
       ]
+    },
+    {
+      "commit": "6a604e38aad4a986007688c9256a027c8387c96b",
+      "evidence": "Operator screenshots 315310.jpg, 315312.jpg, 315314.jpg, 315316.jpg, 315318.jpg; complete raw logs remain on HA",
+      "private_report": "/config/alex-audit/runtime-f4egas2m/summary.json",
+      "production_changed": false,
+      "complete_unit_suite": true,
+      "jobs": 68,
+      "passed_jobs": 68,
+      "failed_jobs": 0,
+      "test_modules": 63,
+      "passed_test_modules": 63,
+      "test_execution_count": 1047,
+      "skipped_count": 2,
+      "passed_other_jobs": [
+        "compile",
+        "selftest",
+        "stress",
+        "catalog",
+        "offline_routing"
+      ],
+      "failed_modules": [],
+      "skipped_tests": [
+        {
+          "module": "test_dot_startup",
+          "test": "test_packaged_binary_executes_without_network_or_credentials",
+          "reason": "HA image-only binary execution"
+        },
+        {
+          "module": "test_dot_startup",
+          "test": "test_real_egress_and_dot_sockets_coexist",
+          "reason": "real HA image socket coexistence"
+        }
+      ],
+      "routing": {
+        "status": "PASS",
+        "contracts": 176,
+        "prompt_contracts": 164,
+        "conversation_contracts": 12,
+        "conversation_step_checks": 33,
+        "variant_checks_passed": 1399,
+        "discovery_dependent_checks": 0,
+        "failures": 0,
+        "mcp_tool_count": 151,
+        "tool_exposure_cap": 6,
+        "heldout_contracts_loaded": 0
+      },
+      "live_provider": {
+        "status": "RUNNING",
+        "provider": "auto",
+        "completed_prompts": 37,
+        "planned_prompts": 264,
+        "completed_conversations": 0,
+        "planned_conversations": 24,
+        "estimated_cost_usd": 0.04108425,
+        "estimated_stop_threshold_usd": 1.0,
+        "limits": [
+          "Only API-provider path exercised; configured ChatGPT session routing remains unverified",
+          "Synthetic household, fake HA, no WhatsApp sending",
+          "Voice recognition uses transcript fixtures"
+        ]
+      },
+      "pending": [
+        "Complete real API provider benchmark",
+        "Configured ChatGPT session routing",
+        "Packaged image build/startup/socket checks",
+        "Production deployment and phone acceptance"
+      ]
     }
   ]
 }

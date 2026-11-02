@@ -8,7 +8,8 @@ its partial result and limitations are recorded below.
 No household database, credentials or pairing files were changed. The operator
 restarted Terminal & SSH to cancel a malformed mobile paste, then restored its
 temporary Python installation. Alex and other household services kept running.
-No provider calls were made. The speech/transcription implementation and
+A real API-provider benchmark is now running with synthetic household state;
+its result is pending. The speech/transcription implementation and production
 provider configuration are unchanged.
 
 The original assignment remains open. The attached screenshots are evidence of
@@ -115,8 +116,8 @@ argument generation, conversational understanding, or phone delivery.
 | Daily brief | Work/brief and task/reminder modules pass: local date/DST, exact task counts, private group guard, regeneration and shared acknowledgement identity. | Current household facts, worker timing, once-per-day delivery, pin cleanup and device readback. |
 | Ear/listening and journal | `test_discussion_journal` passes: restart persistence, scoped summaries/actions, retry, quote/selection ownership, deadline grounding and rejection of summary-provider action requests. | Real start/stop/resume/capture conversations, spontaneous summary accuracy and original evidence delivery. |
 | Assets and monitoring | Independent asset scope tests and core monitor tests pass with synthetic HA states, including explicit delegation and one-shot candidates. | Warranty/date originals, configured entity transitions, cancellation/deduplication across real worker restarts and delivery. |
-| HA tools and custom ledgers | Custom-ledger exact cents/scope/retry and numeric/JSON repairs pass. Six new HA adapter tests prove numeric rejection before calls and correct brightness/toggle/domain readback with mocked transport. | Pinned-dependency adapter run, live entity reads/control, automation drafts, physical state readback and custom-ledger attachments/lifecycle. |
-| Operations, upgrades and recovery | Source blobs verified; Alex-only backup readable; copied SQLite integrity/FKs pass. Pinned SDK suite passed 63/64 jobs, and the sole failing module passed its targeted follow-up. Migration, selftest, stress and catalog checks pass in isolation. | Final candidate full suite, packaged image build/two image-only tests, production migration/restart/rollback, pairing preservation and phone smoke. |
+| HA tools and custom ledgers | Custom-ledger exact cents/scope/retry and numeric/JSON repairs pass. Six HA adapter tests now also pass in the pinned SDK suite, proving numeric rejection before calls and correct brightness/toggle/domain readback with mocked transport. | Live entity reads/control, automation drafts, physical state readback and custom-ledger attachments/lifecycle. |
+| Operations, upgrades and recovery | Source blobs verified; Alex-only backup readable; copied SQLite integrity/FKs pass. Current candidate's full isolated run passed 68/68 jobs, including migration, selftest, stress, catalog and offline routing; two packaged-runtime tests remain skipped. | Packaged image build/two image-only tests, production migration/restart/rollback, pairing preservation and phone smoke. |
 
 ## Worker inventory
 
@@ -172,14 +173,15 @@ A running service alone is not evidence that structural checks passed.
   HA adapter tests: baseline produces 25 failed assertions (including subtests)
   and four numeric-conversion errors; candidate passes all six. These are
   separate from the focused count. Local import uses pip-vendored `requests`
-  2.34.2; all HTTP/state responses are mocked. Pinned-dependency execution and
-  actual device state changes are still required.
+  2.34.2; all HTTP/state responses are mocked. The later 6a604e3 full HA suite
+  also passes this module with the project's pinned dependencies. Actual device
+  state changes remain unverified.
 - The installed MCP package is 1.29.0; the app pins 2.2.0. `requests`, `openai`,
   and `websocket-client` are unavailable. Dependency installation could not reach
   the package index in this executor. The subsequent HA Terminal run below used
   the pinned dependencies successfully. Later HA runs provide the bounded suite
-  and offline routing evidence below; the final-candidate full suite and container
-  build are not passed or waived.
+  and offline routing evidence below, including the full 6a604e3 suite. The
+  container build is not passed or waived.
 - Operator-assisted HA Terminal run of `4cfbbcf24ea5e48abbad26daeb5a5343a1a3c706`:
   **58/64 jobs passed; six modules failed**. Compile, selftest, stress and tool
   catalog passed; 54/60 test modules passed. These are job counts, not test-case
@@ -253,7 +255,24 @@ A running service alone is not evidence that structural checks passed.
   Two additional constructed Tamil contracts require exactly 5,690 stored cents
   and a due time two minutes after the fixed clock. They are prioritized for
   real-provider execution and are explicitly not verbatim production transcripts.
-  The expanded catalog and provider benchmark have not yet run on HA.
+  The expanded catalog/offline matrix subsequently passed on HA as recorded below;
+  the paid provider benchmark is still running.
+- Full operator-assisted run at `6a604e38aad4a986007688c9256a027c8387c96b`:
+  **68/68 jobs passed; 1,047 test executions; two explicit image-only skips**.
+  This includes all 63 test modules, compilation, selftest, stress, catalog and
+  offline routing. The offline result is **176 contracts** (164 prompt and 12
+  conversation), **33 conversation-step checks, 1,399 variants, zero failures**,
+  all 151 MCP tools registered, and a six-tool exposure limit. No external
+  held-out phrases were supplied. Evidence: screenshots 315310/312/314/316/318;
+  private logs are under `/config/alex-audit/runtime-f4egas2m`.
+  The same two packaged-runtime tests remain skipped. Counts include imported,
+  overlapping test executions; they are not 1,047 unique feature scenarios.
+  The real API-provider benchmark then started: the last observed progress is
+  **37/264 prompts and 0/24 conversations completed**, estimated cost US$0.04108425.
+  Progress does not reveal individual pass/fail results. It uses synthetic
+  household state, simulated HA and no WhatsApp sender; configured ChatGPT
+  session routing and live ASR are explicitly not exercised. No live pass is
+  claimed until the completed report is reviewed.
 - Upstream CI run `41451020384` was observed failed with zero job steps executed.
   The prior release records a billing lock; this session has not independently
   verified the account-level billing cause.
