@@ -1783,13 +1783,19 @@ def _observe_ingress_turn(
     # MCP call follows. Observe it; accept only exact expected facts, not any
     # unrelated context or a model assertion that it remembered something.
     import learned_memory
+    import services
+    from contextlib import nullcontext
     context_payloads = []
     original_context = learned_memory.context_for_turn
     def observe_context(*args, **kwargs):
         value = original_context(*args, **kwargs)
         context_payloads.append(value)
         return value
-    with patch.object(learned_memory, "context_for_turn", side_effect=observe_context):
+    # The isolated bridge fixture has no real WhatsApp pairing file. Group
+    # contracts run in their own synthetic paired conversation, never a live JID.
+    group_binding = (patch.object(services, "_family_group_conversation_id", return_value=conv)
+                     if conversation_type == "GROUP" else nullcontext())
+    with patch.object(learned_memory, "context_for_turn", side_effect=observe_context), group_binding:
         ingress_result = _run_ingress_turn(
             mid=mid, conv=conv, prompt=prompt, source=source, phone=phone,
             conversation_type=conversation_type, quoted_message_id=quoted_message_id,
