@@ -122,10 +122,33 @@ def prepare_audio_tools(work, env, logs):
                work, env, logs/'audio-preflight.log', 30)
 
 
+def routing_result(path, execution):
+    """Retain LIVE_REQUIRED as unfinished; never turn a process failure green."""
+    if not path.is_file():
+        return None
+    try:
+        report = json.loads(path.read_text())
+    except (ValueError, OSError):
+        return None
+    if not isinstance(report, dict) or report.get('mode') != 'offline':
+        return None
+    status = report.get('status')
+    if status not in {'PASS', 'FAIL', 'LIVE_REQUIRED'}:
+        return None
+    expected_code = 0 if status == 'PASS' else 1
+    if execution.get('exit_code') != expected_code:
+        return None
+    execution['status'] = status
+    execution['routing_summary'] = report.get('summary', {})
+    return report
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--commit', required=True)
     parser.add_argument('--reuse', type=Path, help='Reuse the SDK venv from a previous isolated runtime directory')
+    parser.add_argument('--only', action='append', default=[], help='Run only a named check (repeatable); compile always runs. This is not a full suite pass.')
+    parser.add_argument('--offline-routing', action='store_true', help='Also audit every configured behavior contract and routing variant without provider calls')
     args = parser.parse_args()
     if not re.fullmatch('[0-9a-f]{40}', args.commit):
         parser.error('commit must be a full immutable GitHub commit SHA')
@@ -195,8 +218,24 @@ def main():
     jobs += [('selftest', [python, 'alex-mcp/app/selftest.py'], 120),
              ('stress', [python, 'alex-mcp/app/stress_test.py'], 180),
              ('catalog', [python, 'alex-mcp/app/behavior_cert.py', '--mode', 'catalog'], 120)]
+    available = {name for name, _, _ in jobs}
+    if set(args.only) - available:
+        raise ValueError('unknown_check_selection')
+    if args.only:
+        selected = set(args.only) | {'compile'}
+        jobs = [job for job in jobs if job[0] in selected]
+    report['complete_unit_suite'] = not bool(args.only)
+    report['selected_checks'] = [name for name, _, _ in jobs]
+    print('CHECK_SCOPE', 'targeted; previous results retained separately' if args.only else 'complete unit suite', flush=True)
+    routing_path = work/'routing-report.json'
+    if args.offline_routing:
+        jobs.append(('offline_routing', [python, 'alex-mcp/app/behavior_cert.py', '--mode', 'offline',
+                                        '--report', str(routing_path)], 300))
+    routing = None
     for index, (name, command, timeout) in enumerate(jobs, 1):
         result = run(command, checkout, env, logs/(name+'.log'), timeout)
+        if name == 'offline_routing':
+            routing = routing_result(routing_path, result)
         report['checks'][name] = result
         save()
         print(f'{index}/{len(jobs)} {name}: {result["status"]} (skipped={result["skipped"]})', flush=True)
@@ -211,6 +250,17 @@ def main():
     for name, result in report['checks'].items():
         for message in result['skip_messages']:
             print('SKIP_DETAILS', name, message, flush=True)
+    if routing:
+        print('ROUTING_RESULT', json.dumps({'status': routing['status'], **routing.get('summary', {})}), flush=True)
+        seen = set()
+        for failure in routing.get('failures', []):
+            detail = {k: failure[k] for k in ('contract', 'kind', 'detail', 'prompt', 'provider_facing_tools') if k in failure}
+            key = json.dumps(detail, ensure_ascii=False, sort_keys=True)
+            if key not in seen and len(seen) < 30:
+                print('ROUTING_FAILURE', key, flush=True)
+            seen.add(key)
+        if len(seen) > 30:
+            print('ROUTING_MORE', len(seen)-30, 'additional distinct failures in', routing_path, flush=True)
     print('PRIVATE_REPORT', work/'summary.json', flush=True)
     return 1 if failed else 0
 

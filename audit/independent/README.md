@@ -5,8 +5,10 @@ Evidence collected 2026-11-02. This branch is a **draft repair candidate**. It h
 not been merged, installed, restarted, or verified as the running Alex app.
 An operator-assisted isolated SDK test run on HA Terminal has now completed;
 its partial result and limitations are recorded below.
-No household database, credentials, pairing files, or unrelated HA services were
-changed. No provider calls were made. The speech/transcription implementation and
+No household database, credentials or pairing files were changed. The operator
+restarted Terminal & SSH to cancel a malformed mobile paste, then restored its
+temporary Python installation. Alex and other household services kept running.
+No provider calls were made. The speech/transcription implementation and
 provider configuration are unchanged.
 
 The original assignment remains open. The attached screenshots are evidence of
@@ -87,8 +89,9 @@ application privacy boundary was widened. The corrected test awaits rerun.
 
 “Local” below means isolated synthetic SQLite/files. None of these rows is an
 end-to-end production pass. [tool_inventory.json](tool_inventory.json) enumerates
-all 151 statically registered tools, and deliberately marks their actual MCP
-execution in this audit `NOT_RUN`. Backend tests do not certify tool discovery,
+all 151 statically registered tools. SDK tests now exercise some real MCP calls,
+but their execution has not been individually attributed across that inventory.
+Backend tests do not certify every tool's discovery,
 argument generation, conversational understanding, or phone delivery.
 
 | Capability family | Fresh evidence / current result | Remaining acceptance work |
@@ -173,8 +176,10 @@ fails. A running service is therefore not evidence that structural checks passed
   `quoted`/`voice_pending` results; the runner now supplies synthetic identities.
   FFmpeg is present in the app Dockerfile but absent from Terminal. The revised
   runner installs signed Alpine packages into a private test sysroot and verifies
-  actual Opus encoding. That package installation has not yet run on HA.
-- Four local runner-mechanics tests pass (including mocked private APK setup),
+  actual Opus encoding. Subsequent operator runs report `AUDIO_TOOLS PASS` and
+  execute real Ogg decode tests successfully.
+- Five local runner-mechanics tests pass (including mocked private APK setup and
+  a check that `LIVE_REQUIRED` or a crashed process cannot become a routing pass),
   and eight earlier backup-probe tests passed. Neither count certifies the app.
   No application assertion, schema requirement, or release gate was removed to
   address the six module failures. The revised complete SDK run remains pending.
@@ -193,6 +198,23 @@ fails. A running service is therefore not evidence that structural checks passed
   A new negative regression proves that harness behavior. The application code
   is unchanged since `c1815ade`; the complete suite must run with this stricter
   harness before accepting the result. The runner also prints skipped test names.
+- Third operator-assisted HA run at `c34ba271005baad79b86b59357432fb62691f787`:
+  **63/64 jobs passed; 1,034 test executions; two skips**. The stricter core
+  provider harness, negative harness regression, complete voice-parity module,
+  migrations, selftest, stress and catalog passed. The single remaining test
+  reached the expected cached-export privacy refusal, but asserted `ValueError`
+  instead of the MCP boundary's `ToolError`. The assertion now uses the SDK's
+  exception class; fresh scoped export assertions after it are still required.
+  The two skipped tests are exactly `test_packaged_binary_executes_without_network_or_credentials`
+  and `test_real_egress_and_dot_sockets_coexist`, both in `test_dot_startup` and
+  requiring the packaged HA image. They are not waived.
+  Evidence: screenshots 315261/263/265/267. Python 3.14.10 was restored in the
+  Terminal app after its restart; the public source and isolated test data were
+  recreated while the verified SDK environment was reused. App code is unchanged.
+  The voice expense fixture now says 56.90, matching its scripted amount, and
+  asserts that exact transcript was stored. It still does not certify live ASR.
+  The next run targets these two edited modules and the broader offline routing
+  matrix; it is explicitly not another complete unit-suite run.
 - Upstream CI run `41451020384` was observed failed with zero job steps executed.
   The prior release records a billing lock; this session has not independently
   verified the account-level billing cause.
@@ -293,6 +315,10 @@ only if installation succeeded and pinned requirement bytes are unchanged.
 All source, data, audio packages and logs for the new run use a new directory.
 The revised runner reports actual test exceptions, execution counts and skips
 directly. Its local mechanics checks do not replace the pending SDK rerun.
+`--only <check>` is repeatable and marks the result as a targeted run; compilation
+still runs. `--offline-routing` additionally checks all configured prompt and
+conversation contracts. Its `LIVE_REQUIRED` results remain unfinished, and
+known routing failures are printed with their contract and prompt for repair.
 
 The current shell cannot reach its network proxy; requests do not reach HA.
 Permission requests stall without an approval control visible to the user. The

@@ -151,12 +151,14 @@ class VoiceParityIngressTests(unittest.TestCase):
         return media_id, raw, result
 
     def test_colloquial_voice_expense_persists_and_quoted_private_move_needs_no_model(self):
-        text = 'நான் 56 ரூபாய் ஸ்பெண்ட் பண்ணேன் என் லெட்ஜர்ல லாக் பண்ணு'
+        text = 'நான் 56.90 ரூபாய் ஸ்பெண்ட் பண்ணேன் என் லெட்ஜர்ல லாக் பண்ணு'
         self.run_voice(text, [
             {'tool': 'log_expense', 'args': {'description': 'Synthetic coffee', 'amount': 56.90, 'category': 'food'}},
             {'content': 'Recorded the expense.'},
         ], mid='colloquial-expense')
         with core.db.connect() as conn:
+            transcript = conn.execute("SELECT transcript_text FROM media_objects WHERE source_message_id='colloquial-expense' AND media_type='AUDIO'").fetchone()[0]
+            self.assertEqual(transcript, text)
             row = conn.execute("SELECT * FROM financial_events WHERE source_message_id='colloquial-expense'").fetchone()
             self.assertEqual(row['amount_minor'], 5690)
             self.assertEqual(row['space_id'], 'FAMILY_SHARED')

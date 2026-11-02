@@ -68,7 +68,8 @@ class V0538ReliabilityTests(unittest.TestCase):
         with db.connect() as conn:
             self.assertEqual(conn.execute('SELECT space_id FROM financial_events WHERE event_id=?',
                                           (event,)).fetchone()[0], owner.private_space)
-        with self.assertRaisesRegex(ValueError, 'Financial visibility changed'):
+        # The MCP wrapper deliberately exposes domain errors as ToolError.
+        with self.assertRaisesRegex(core.ToolError, 'Financial visibility changed'):
             mcp_server.report_export(actor=reader, format='json')
         mcp_server.query_finances(actor=reader, scope='family')
         fresh = mcp_server.report_export(actor=reader, format='json')

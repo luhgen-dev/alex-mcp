@@ -1,6 +1,7 @@
 """Runner mechanics only; no package installation or household access."""
 from pathlib import Path
 import os
+import json
 import sys
 import tempfile
 import unittest
@@ -16,6 +17,17 @@ class RuntimeRunnerTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.commit = 'a' * 40
+
+    def test_routing_gate_never_promotes_live_required_or_failed_execution(self):
+        path = self.root/'routing.json'
+        path.write_text(json.dumps({'mode':'offline', 'status':'LIVE_REQUIRED', 'summary':{'discovery_dependent_checks':2}}))
+        result = {'status':'FAIL', 'exit_code':1}
+        self.assertIsNotNone(checks.routing_result(path, result))
+        self.assertEqual(result['status'], 'LIVE_REQUIRED')
+        path.write_text(json.dumps({'mode':'offline','status':'PASS','summary':{}}))
+        crashed = {'status':'FAIL', 'exit_code':139}
+        self.assertIsNone(checks.routing_result(path, crashed))
+        self.assertEqual(crashed['status'], 'FAIL')
 
     def test_source_archive_accepts_only_the_pinned_root(self):
         archive = self.root/'source.zip'
