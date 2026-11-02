@@ -109,6 +109,9 @@ def initialize() -> None:
         conn.executescript(schema)
         from grocery_prices import SCHEMA as grocery_schema
         conn.executescript(grocery_schema)
+        from learned_memory import SCHEMA as learned_schema
+        conn.executescript(learned_schema)
+        _ensure_column(conn, 'conversation_turns', 'read_scope', 'TEXT')
         from household_bills import SCHEMA as bill_schema
         conn.executescript(bill_schema)
         from media_schema import ensure_original_media_types
@@ -539,14 +542,24 @@ def fail_inbound(message_id: str, error: str) -> None:
         conn.close()
 
 
-def add_turn(user_id: str, conversation_id: str, role: str, content: str) -> None:
+def add_turn(user_id: str, conversation_id: str, role: str, content: str,
+             read_scope: str | None = None) -> None:
     if not content:
         return
     conn = connect()
     try:
+        if read_scope is None:
+            import scope_policy
+            if role == 'user':
+                read_scope = scope_policy.resolve_read_scope(content)
+            else:
+                previous = conn.execute('''SELECT read_scope,content FROM conversation_turns
+                    WHERE user_id=? AND conversation_id=? AND role='user'
+                    ORDER BY created_at_utc DESC,rowid DESC LIMIT 1''', (user_id, conversation_id)).fetchone()
+                read_scope = (previous['read_scope'] or scope_policy.resolve_read_scope(previous['content'])) if previous else 'private'
         conn.execute(
-            "INSERT INTO conversation_turns(turn_id,user_id,conversation_id,role,content) VALUES(?,?,?,?,?)",
-            (str(uuid.uuid4()), user_id, conversation_id, role, content[:12000]),
+            "INSERT INTO conversation_turns(turn_id,user_id,conversation_id,role,content,read_scope) VALUES(?,?,?,?,?,?)",
+            (str(uuid.uuid4()), user_id, conversation_id, role, content[:12000], read_scope),
         )
         conn.commit()
     finally:

@@ -67,7 +67,10 @@ import human_ai_lab
 # All expected capability decisions remain unchanged. The exact public delta
 # is evaluation/utility-grocery-0550/oracle-delta.json. Fresh independent-model
 # review is deferred because GitHub Actions is billing-blocked, not claimed here.
-REVIEWED_CORPUS_FINGERPRINT = "5b38fa00714cd4965088c84d99442d3c3f9e4c643ea827b15237fa1f67e56437"
+# 0.5.52: 462 existing packets unchanged; nine new explicit teach/recall/price-reference
+# packets reviewed against the three scoped tools. Public delta: evaluation/persistent-learning-0552.
+# This remains a deterministic oracle; fresh independent review is deferred.
+REVIEWED_CORPUS_FINGERPRINT = "0292017fc029a974c586a54970cdc6ae2506cdc9595766fe19223b92867051ee"
 
 
 def _low(value: str) -> str:
@@ -127,6 +130,12 @@ def _decision(packet: dict[str, Any]) -> dict[str, Any]:
             "reply_language": "en",
         }
 
+    if 'remember_product_price' in tools and re.search(r'\b(?:remember|save)\b', text) and re.search(r'\b(?:rm\s*\d+|price reference|cost)\b', text):
+        return result('tools', ['remember_product_price'])
+    if 'remember_knowledge' in tools and re.search(r'\b(?:remember|teach)\b', text):
+        return result('tools', ['remember_knowledge'])
+    if 'recall_knowledge' in tools and re.search(r'\b(?:taught|learned|remembered prices|price history)\b', text):
+        return result('tools', ['recall_knowledge'])
     if re.search(r"grocery|groceries", text) and "month" in text and "grocery_monthly_summary" in tools:
         return result("tools", ["grocery_monthly_summary"])
 

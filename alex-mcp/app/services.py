@@ -2275,7 +2275,7 @@ def remove_saved_item(actor: ActorContext, item_id: str) -> dict:
     conn = connect()
     try:
         row = conn.execute(
-            f"SELECT item_id,media_id FROM saved_items WHERE item_id=? AND space_id IN ({marks})",
+            f"SELECT item_id,media_id,space_id FROM saved_items WHERE item_id=? AND space_id IN ({marks})",
             [item_id] + spaces,
         ).fetchone()
         if not row:
@@ -2283,6 +2283,9 @@ def remove_saved_item(actor: ActorContext, item_id: str) -> dict:
         # The media archive is evidence and remains. Only the user's explicit
         # memory index is removed.
         conn.execute("DELETE FROM saved_items WHERE item_id=?", (item_id,))
+        conn.execute('''UPDATE grocery_price_jobs SET state='QUEUED',attempts=0,next_try=?,lease_until=NULL
+            WHERE item_id IN (SELECT item_id FROM shopping_items WHERE space_id=? AND status='OPEN')''',
+                     (db.utc_now(), row['space_id']))
         conn.commit()
         return {"status": "removed", "item_id": item_id,
                 "original_media_retained": bool(row["media_id"])}

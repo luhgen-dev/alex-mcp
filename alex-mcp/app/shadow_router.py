@@ -58,6 +58,7 @@ Rules:
 - date_text/time_text may normalize obvious wording (for example "tmr" -> "tomorrow"). relative_minutes may normalize an explicit duration such as "half an hour" -> 30.
 - target/scope describe only explicit or context-bound meaning; use UNSPECIFIED when not known.
 - Grocery adds/edits already price silently in the background. A plain list and a list with prices both use list_shopping_items; standalone price questions use MYDIN/Manjaku search; monthly grocery totals use grocery_monthly_summary. Product binding requires an actual choice.
+- Explicit chat teaching uses remember_knowledge for facts/preferences and remember_product_price for a price reference. recall_knowledge reads taught data/history; remove_saved_item forgets an exact returned memory. A reference price never means an expense or grocery purchase. Existing attachment saving uses save_item.
 - TNB/SAJ amount or requested PDF uses check_household_bill. Digi Check Bill Details screenshots use record_digi_bill, not log_expense; invoice/amount due/payment are different. Month-end combined payments use household_payments_summary. Do not invent account identities, values or payment status. No phone-screen/SMS path.
 - Return an empty tools list for pure chit-chat that needs no household data.
 - needs_clarification is true only when the user's meaning genuinely cannot be resolved from current + active context.

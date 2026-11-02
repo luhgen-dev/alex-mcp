@@ -41,16 +41,26 @@ def recent_turns(actor, limit: int = 6) -> list[dict]:
     conn = db.connect()
     try:
         rows = conn.execute(
-            """SELECT role,content,created_at_utc FROM conversation_turns
+            """SELECT role,content,created_at_utc,read_scope FROM conversation_turns
                WHERE user_id=? AND conversation_id=?
                ORDER BY created_at_utc DESC,rowid DESC LIMIT ?""",
             (actor.user_id, actor.conversation_id, max(2, min(20, int(limit)))),
         ).fetchall()
-        return [
-            {"role": row["role"], "content": _text(row["content"], HISTORY_TEXT_MAX)}
-            for row in reversed(rows)
-            if row["role"] in {"user", "assistant"} and _recent(row["created_at_utc"])
-        ]
+        current_scope = scope_policy.effective_read_scope(actor)
+        inherited_scope, result = None, []
+        for row in reversed(rows):
+            scope = row['read_scope']
+            if row['role'] == 'user':
+                inherited_scope = scope or scope_policy.resolve_read_scope(row['content'])
+            scope = scope or inherited_scope
+            # Legacy orphan assistant rows have no provable scope. New rows
+            # carry the authenticated turn's scope even after privacy emoji
+            # are stripped from conversational text.
+            if scope is None or (current_scope != 'all' and scope != current_scope):
+                continue
+            if row['role'] in {'user', 'assistant'} and _recent(row['created_at_utc']):
+                result.append({'role': row['role'], 'content': _text(row['content'], HISTORY_TEXT_MAX)})
+        return result
     finally:
         conn.close()
 
