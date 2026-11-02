@@ -16,10 +16,10 @@ UNRELATED_READS = {'query_finances', 'search_saved_items', 'get_saved_item',
                    'list_shopping_items', 'list_reminders', 'get_agenda_range'}
 _OTHER = re.compile(
     r"\b(?:spent|spend|spending|paid|payment|bought|purchased|expense|expenses|receipt|receipts|"
-    r"budget|salary|income|monthly|month|diary|agenda|remind|reminder|reminders|task|tasks|"
+    r"budget|salary|income|monthly|month|history|remembered|learned|preferences|diary|agenda|remind|reminder|reminders|task|tasks|"
     r"goals?|roster|shift|work|weather|tomorrow|yesterday|bill|bills|tnb|saj|digi|"
     r"bitcoin|shares|stocks|forex|gold|petrol|fuel|flight|hotel|recipe|calories|nutrition|"
-    r"add|put|remove|delete|save|record|log|mark|list)\b|\bat home\b|\bin (?:the )?fridge\b",
+    r"add|put|remove|delete|save|remember|teach|learn|forget|update(?!\s+me\b)|correct|record|log|mark|list)\b|\bat home\b|\bin (?:the )?fridge\b",
     re.I,
 )
 _PRICE = re.compile(r'\b(?:prices?|harga)\b|விலை', re.I)
@@ -90,12 +90,18 @@ def render(evidence: list[dict]) -> str:
             continue
         source = 'Manjaku Online' if 'manjaku' in name else 'MYDIN Online'
         if item.get('error') or item.get('ok') is not True:
-            sections.append(f'{source}: current prices are unavailable. I have no verified price to quote.')
+            import learned_memory
+            fallback = learned_memory.render_reference(item.get('_learned_reference'))
+            sections.append(f'{source}: current prices are unavailable.' + ('\n' + fallback if fallback else ' I have no verified price to quote.'))
             continue
         lines = [source + (f" — checked {item['checked_at_local']}" if item.get('checked_at_local') else '')]
         rows = item.get('products') or []
         if not rows:
             lines.append('No matching products were found in these search results. This does not prove they are absent from the full catalogue; a brand or pack size may help.')
+            import learned_memory
+            fallback = learned_memory.render_reference(item.get('_learned_reference'))
+            if fallback:
+                lines.append(fallback)
         for index, row in enumerate(rows[:10], 1):
             title = html.unescape(str(row.get('title') or 'Product'))
             selected = row.get('selected_variant')

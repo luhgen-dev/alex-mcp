@@ -56,6 +56,50 @@ Schema changes or source failures yield an unavailable error, never an old or
 invented price. `manjaku_prices_enabled: false` disables these network calls.
 No login/API key, API Anything or purchase is involved. Standalone source searches do not change household records. The grocery worker separately stores price references for existing list items.
 
+### Teaching Alex in chat (0.5.52)
+
+Facts, supported preferences and reference prices can be taught without editing code.
+Examples below use fictional product prices; Alex does not prepopulate them:
+
+- “Remember my usual coffee is decaf.”
+- “Remember I prefer short bullet replies.”
+- “Remember Huggies diaper L 52 pcs is RM45 per pack at Manjaku.”
+- “Update the remembered Huggies L 52 pcs price at Manjaku to RM47.”
+- “Show my learned preferences” / “Show Huggies price history.”
+- “Forget the remembered Huggies price.”
+
+The exact brand/range, size and pack count distinguish products. User-taught aliases
+can represent a usual product; ambiguous matches require a choice. Prices are MYR
+per pack, dated and explicitly estimated, never presented as current store quotes,
+stock confirmation, purchases or expense records. No real Huggies price is seeded.
+References remain usable in later months until corrected or forgotten. Verified
+online results take priority. Missing online results use an accessible remembered
+reference, including in quiet grocery enrichment and monthly list estimates.
+“Remember: use online prices only for groceries” disables remembered automatic
+fallback; “Remember: approximate remembered grocery prices are fine” enables it.
+A current request for online/current prices **only** also suppresses fallback.
+
+`remember_knowledge` stores facts/preferences with stable subjects and topic labels;
+`remember_product_price` stores typed price evidence; `recall_knowledge` inspects
+current records and version history. Existing saved text notes can also be recalled
+automatically when relevant. Correction reuses the exact subject or product/pack/store;
+forgetting uses the existing scoped saved-item removal. Replies must acknowledge a
+successful write, not merely promise to remember. If a price or pack is missing,
+Alex asks for it rather than fabricating it. A receipt may supply price evidence
+when a typed caption explicitly asks to remember its prices; ordinary financial
+receipt logging does not yet automatically build the product catalogue.
+
+Recall is bounded and topic-based, not unlimited semantic understanding. It respects
+the current read scope on every turn: ordinary reads use Shared, private reads need
+the existing explicit private/emoji signal. General personal presentation preferences
+are applied for their author. Memories cannot override privacy, current instructions,
+configured work/bill records, or tool permissions. Unsupported automation/integration
+requests can be saved as wishes, but are not activated by remembering them.
+
+The upgrade adds structured memory metadata/version tables and a nullable conversation
+scope column. Back up add-on data before updating; rollback requires restoring the
+matching data backup. Stored household data and existing options are retained.
+
 ### Quiet grocery pricing and totals
 
 There are three entry points:

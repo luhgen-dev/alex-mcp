@@ -18,6 +18,7 @@ import runtime_clock
 import scope_policy
 import mydin_prices
 import manjaku_prices
+import learned_memory
 from config import get_settings
 
 SCHEMA = """
@@ -125,7 +126,7 @@ def _quote(retailer, product_id, variant, quantity, tz):
             'product': p}
 
 
-def lookup(row, choice=None):
+def _lookup_online(row, choice=None):
     settings, quantity = get_settings(), pack_count(row['quantity'])
     if quantity is None:
         return {'status': 'needs_quantity', 'note': 'Confirm the number of packs; weight/volume is not a pack count.'}
@@ -163,6 +164,21 @@ def lookup(row, choice=None):
         return {**selected, 'alternatives': options, 'selection': 'exact_product_reference'}
     return {'status': 'needs_choice' if any(x['status'] == 'needs_choice' for x in options) else 'unavailable',
             'alternatives': options}
+
+
+def lookup(row, choice=None):
+    result = _lookup_online(row, choice)
+    if result['status'] == 'priced' or choice or not row.get('space_id'):
+        return result
+    quantity = pack_count(row['quantity'])
+    if quantity is None:
+        return result
+    stores = _retailers(row)
+    fallback = learned_memory.reference([row['space_id']], _query(row), quantity,
+                                         stores[0] if len(stores) == 1 else None)
+    if fallback and fallback['status'] == 'priced':
+        return {**fallback, 'online_status': result['status']}
+    return result
 
 
 def process_one():
@@ -285,15 +301,18 @@ def attach_prices(actor, items):
             q = conn.execute('SELECT * FROM grocery_price_quotes WHERE item_id=? AND revision=? ORDER BY checked_at DESC,rowid DESC LIMIT 1',
                              (row['item_id'], revision(row))).fetchone()
             price = json.loads(q['payload_json']) if q else {'status': 'pending'}
+            if row['status'] == 'OPEN' and not learned_memory.valid_reference(conn, price, row['space_id']):
+                q, price = None, {'status': 'pending', 'note': 'Remembered price changed or was forgotten; refreshing.'}
             if price.get('status') == 'unavailable':
                 for older in conn.execute('SELECT * FROM grocery_price_quotes WHERE item_id=? AND revision=? ORDER BY checked_at DESC,rowid DESC', (row['item_id'], revision(row))):
                     previous = json.loads(older['payload_json'])
-                    if previous.get('status') == 'priced':
+                    if previous.get('status') == 'priced' and learned_memory.valid_reference(conn, previous, row['space_id']):
                         q, price = older, {**previous, 'refresh_error': 'source_unavailable'}
                         break
             if q:
                 price['saved_at'] = q['checked_at']
-                price['stale'] = runtime_clock.now_utc() - datetime.fromisoformat(q['checked_at']) > timedelta(hours=24)
+                price['stale'] = (price.get('source_kind') != 'learned_reference' and
+                                  runtime_clock.now_utc() - datetime.fromisoformat(q['checked_at']) > timedelta(hours=24))
             if row['status'] == 'OPEN' and (not q or price.get('stale')):
                 changed(conn, row['item_id'], remember=False)
                 conn.execute("UPDATE grocery_price_jobs SET state='QUEUED',attempts=0,next_try=? WHERE item_id=? AND state='DONE'", (db.utc_now(), row['item_id']))
@@ -343,6 +362,8 @@ def monthly_summary(actor, period=None):
             q = conn.execute('SELECT * FROM grocery_price_quotes WHERE item_id=? AND revision=? AND checked_at<=? ORDER BY checked_at DESC,rowid DESC LIMIT 1',
                              (item_id, h['revision'], cutoff)).fetchone()
             price = json.loads(q['payload_json']) if q else {'status': 'unknown'}
+            if item['status'] == 'OPEN' and not learned_memory.valid_reference(conn, price, item['space_id']):
+                price = {'status': 'unknown', 'note': 'Reference changed or forgotten; awaiting refresh.'}
             amount = Decimal(price['line_total']) if price.get('status') == 'priced' else None
             if amount is None:
                 missing += 1

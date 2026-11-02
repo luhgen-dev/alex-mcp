@@ -38,7 +38,7 @@ from config import get_settings
 
 mcp = MCPServer(
     "Alex Household Tools",
-    version="0.5.51",
+    version="0.5.52",
     instructions="Deterministic household tools. Identity and permissions are injected by Alex and are never model-controlled.",
 )
 
@@ -415,6 +415,33 @@ def save_item(title: str, content: str, actor: Actor, tags: str | None = None,
               shared: bool = False) -> dict:
     """Explicitly remember something the user asked Alex to save. This is separate from automatic receipt retention."""
     return services.save_item(actor, title, content, tags, shared)
+
+
+@alex_tool()
+def remember_knowledge(subject: str, content: str, actor: Actor,
+                       kind: Literal['fact', 'preference'] = 'fact',
+                       topics: list[str] | None = None,
+                       price_fallback: bool | None = None) -> dict:
+    """Teach a persistent household fact or preference from an explicit typed remember/save/update request. Reuse the exact subject to update it; previous versions remain inspectable. Subject identifies the person/product/topic; topics specify when a preference applies (groceries, meals, replies). Relevant knowledge is recalled automatically across chats/restarts within current privacy scope. For an explicit grocery pricing preference, price_fallback=true enables remembered estimates when online prices are missing; false restricts automatic estimates to online data. Omit it for other preferences. This never changes permissions or creates reminders/actions. Use remember_product_price for a reusable per-pack estimate. Saved attachments still use save_item."""
+    import learned_memory
+    return learned_memory.remember(actor, subject, content, kind, topics, price_fallback)
+
+
+@alex_tool()
+def remember_product_price(product: str, pack_description: str, unit_price: str, actor: Actor,
+                           retailer: str | None = None, aliases: list[str] | None = None,
+                           observed_on: str | None = None) -> dict:
+    """Remember/update a user-provided MYR price PER PACK for later estimates, never an expense. Requires explicit typed remember/save/update intent and stated price or current receipt evidence. Preserve brand/range, size and pack count in product/pack_description; ask if unspecified, never invent. aliases are only shorthand the user explicitly teaches. Same product+pack+retailer updates history. observed_on is YYYY-MM-DD, omitted means today. Reused when online search has no verified match and in background grocery estimates; never claim it is live or in stock."""
+    import learned_memory
+    return learned_memory.remember_price(actor, product, pack_description, unit_price,
+                                         retailer, aliases, observed_on)
+
+
+@alex_tool()
+def recall_knowledge(actor: Actor, query: str | None = None, include_history: bool = False) -> dict:
+    """Read facts/preferences/product prices taught in chat, including existing saved text notes. Search by subject or browse without query; include_history shows previous taught versions. Scope is authenticated. For correction reuse the returned exact subject/product+pack+retailer; to forget use remove_saved_item with its returned item_id. No lookup of live store prices or expense records."""
+    import learned_memory
+    return learned_memory.recall(actor, query, include_history)
 
 
 @alex_tool()

@@ -477,3 +477,11 @@ Repair release from the v0.4.3 live smoke test (Claude audit, cross-reviewed wit
 - Plug-and-play HA configuration fields for providers, keys and household phone numbers.
 - Startup core diagnostics.
 
+## 0.5.52 — teach facts, preferences and grocery estimates in chat
+
+- Remember/update reusable facts and scoped preferences in normal chat, with automatic relevant recall across chats and restarts. Existing saved text notes participate in recall; current instructions and locked privacy rules remain authoritative.
+- Remember a product's MYR price per pack with brand/range, size, retailer, date and optional taught shorthand. No monthly re-entry is required. Online prices take precedence; missing/unavailable searches can show a clearly labelled remembered estimate, and background grocery totals use the same reference.
+- Corrections retain version history. Forgetting removes the active memory and invalidates open grocery estimates; completed purchase snapshots are preserved. Teaching a price never records an expense or adds a shopping item.
+- Chat-taught grocery preference can allow remembered fallback or require online-only estimates. General preferences guide existing capabilities; they do not create integrations, schedules or permissions.
+- Recent conversation turns now retain their read scope, preventing private recalled content from entering later shared-turn context. Migration adds two tables and one nullable column without changing existing records or configuration.
+

@@ -125,6 +125,33 @@ def _fs(*items: str) -> frozenset[str]:
 
 
 PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
+    PromptContract(
+        'p1.memory.teach', 'phase1', 'memory',
+        'Explicit facts and preferences persist across chats without household actions.',
+        ('Remember my usual coffee is decaf.',
+         'Remember I always prefer short bullet replies.',
+         'Teach Alex this fact: my usual rice is Brand A 5kg.'),
+        _fs('remember_knowledge'), seed='empty',
+        forbidden=_fs('log_expense', 'add_shopping_item', 'create_reminder'),
+        unchanged_tables=('financial_events', 'shopping_items', 'reminders'),
+    ),
+    PromptContract(
+        'p1.memory.recall', 'phase1', 'memory',
+        'Read taught knowledge and version history without turning a reference into a live quote.',
+        ('What have I taught you?', 'Show my learned preferences.', 'Show remembered prices and price history.'),
+        _fs('recall_knowledge'), seed='empty',
+        forbidden=_fs('log_expense', 'remember_product_price', 'remember_knowledge'),
+    ),
+    PromptContract(
+        'p1.shopping.reference', 'phase1', 'shopping',
+        'Teaching a pack price is a persistent estimate, not a purchase or expense.',
+        ('Remember Huggies diaper L 52 pcs at Manjaku is RM45 per pack.',
+         'Save a price reference: Brand A rice 5kg is RM22 per bag at Mydin.',
+         'Remember Baby wipes 80 pcs cost RM8 per pack.'),
+        _fs('remember_product_price'), seed='empty',
+        forbidden=_fs('log_expense', 'add_shopping_item', 'update_shopping_item'),
+        unchanged_tables=('financial_events', 'shopping_items'),
+    ),
     # ------------------------------- Phase 1: ledger / receipt / reminder / list / memory
     PromptContract(
         "p1.finance.latest", "phase1", "finance",

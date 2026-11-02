@@ -30,6 +30,9 @@ CAPABILITY_TO_TOOLS: dict[str, frozenset[str]] = {
     "memory.search": frozenset({"search_saved_items"}),
     "memory.get": frozenset({"get_saved_item"}),
     "memory.remove": frozenset({"remove_saved_item"}),
+    "memory.teach": frozenset({"remember_knowledge"}),
+    "memory.recall": frozenset({"recall_knowledge"}),
+    "shopping.price_reference": frozenset({"remember_product_price"}),
     "selection.resolve": frozenset({"resolve_numbered_choice"}),
 
     # Reminders / shopping
