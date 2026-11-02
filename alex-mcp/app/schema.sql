@@ -784,6 +784,18 @@ CREATE TABLE IF NOT EXISTS tool_audit (
 
 CREATE INDEX IF NOT EXISTS idx_tool_audit_message ON tool_audit(source_message_id, created_at_utc);
 
+-- One reservation per original voice message. Failed/interrupted requests keep
+-- their reservation because the provider may have received/billed the audio.
+CREATE TABLE IF NOT EXISTS voice_transcription_jobs (
+    media_id TEXT PRIMARY KEY REFERENCES media_objects(media_id) ON DELETE CASCADE,
+    status TEXT NOT NULL CHECK(status IN ('STARTED','DONE','FAILED')),
+    duration_seconds REAL NOT NULL,
+    reserved_usd REAL NOT NULL,
+    latency_ms INTEGER NOT NULL DEFAULT 0,
+    reason TEXT NOT NULL DEFAULT '',
+    created_at_utc TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS ai_usage (
     usage_id TEXT PRIMARY KEY,
     source_message_id TEXT,

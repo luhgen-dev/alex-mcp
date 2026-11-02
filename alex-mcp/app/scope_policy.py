@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 
 from text_normalization import normalize_intent_text
+import multilingual_intent
 
 
 _PRIVATE_RE = re.compile(
@@ -56,7 +57,8 @@ def strip_control_emoji(text: str | None) -> str:
 
 
 def explicit_private(text: str | None) -> bool:
-    return bool(_PRIVATE_RE.search(normalize_intent_text(text)))
+    value = normalize_intent_text(text)
+    return bool(_PRIVATE_RE.search(value)) or multilingual_intent.explicit_private(value)
 
 
 def explicit_family(text: str | None) -> bool:

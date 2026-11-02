@@ -397,12 +397,15 @@ def main() -> dict:
     require("Alex replies in text only." in docs,
             "voice input/text output owner decision documented")
     media_text = (APP / "media.py").read_text(encoding="utf-8")
+    voice_text = (APP / "voice_notes.py").read_text(encoding="utf-8")
     schema_text = (APP / "schema.sql").read_text(encoding="utf-8")
     require(
-        "_choose_voice_transcript" in media_text
-        and '"en", "ta"' in media_text
-        and "auto_cloud_rescue" in media_text,
-        "voice pipeline locally verifies suspicious English/Tamil ASR before cloud rescue",
+        "voice_notes.transcribe(mid)" in media_text
+        and 'voice_notes_enabled: false' in config_text
+        and 'voice_openai_api_key: ""' in config_text
+        and "max_retries=0" in voice_text
+        and "voice_transcription_jobs" in voice_text,
+        "current voice pipeline is opt-in with durable upload reservations and no automatic API retry",
     )
     require(
         "transcript_meta_json TEXT" in schema_text

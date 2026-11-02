@@ -33,6 +33,12 @@ class Settings:
     wife_name: str = "Priya"
     timezone: str = "Asia/Kuala_Lumpur"
     stt_provider: str = "auto"
+    voice_notes_enabled: bool = False
+    voice_openai_api_key: str = field(default="", repr=False)
+    voice_monthly_budget_usd: float = 5.0
+    voice_max_seconds: int = 180
+    voice_language_hints: list[str] = field(default_factory=lambda: ["ta", "en", "ms"])
+    voice_keywords: list[str] = field(default_factory=lambda: ["Alex"])
     cloud_stt_rescue_enabled: bool = False
     whisper_model: str = "base"
     ocr_enabled: bool = True
@@ -183,6 +189,20 @@ def get_settings() -> Settings:
     clean["digi_screenshot_reminder_time"] = digi_time if __import__("re").fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", digi_time) else "19:00"
     for key in ("tnb_portal_enabled", "saj_portal_enabled"):
         clean[key] = clean.get(key, False) is True
+    clean["voice_notes_enabled"] = clean.get("voice_notes_enabled", False) is True
+    try:
+        budget = float(clean.get("voice_monthly_budget_usd", 5.0))
+        clean["voice_monthly_budget_usd"] = max(0.0, budget) if __import__("math").isfinite(budget) else 0.0
+    except (TypeError, ValueError):
+        clean["voice_monthly_budget_usd"] = 0.0
+    try:
+        clean["voice_max_seconds"] = max(10, min(600, int(clean.get("voice_max_seconds", 180))))
+    except (TypeError, ValueError):
+        clean["voice_max_seconds"] = 180
+    hints = clean.get("voice_language_hints", ["ta", "en", "ms"])
+    clean["voice_language_hints"] = [x for x in hints if isinstance(x, str) and __import__("re").fullmatch(r"[a-z]{2,3}", x)][:8] if isinstance(hints, list) else ["ta", "en", "ms"]
+    keywords = clean.get("voice_keywords", ["Alex"])
+    clean["voice_keywords"] = [x.strip() for x in keywords if isinstance(x, str) and 0 < len(x.strip()) <= 80 and not any(c in x for c in "<>\r\n")][:30] if isinstance(keywords, list) else ["Alex"]
     return Settings(**clean)
 
 

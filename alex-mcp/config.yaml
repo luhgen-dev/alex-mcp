@@ -1,5 +1,5 @@
 name: "Alex MCP"
-version: "0.5.52"
+version: "0.5.53"
 slug: "alex_mcp"
 description: "MCP-first household assistant — natural WhatsApp conversation, deterministic tools, receipts, reminders and memory"
 arch:
@@ -37,6 +37,12 @@ options:
   wife_name: "Priya"
   timezone: "Asia/Kuala_Lumpur"
   stt_provider: "auto"
+  voice_notes_enabled: false
+  voice_openai_api_key: ""
+  voice_monthly_budget_usd: 5.0
+  voice_max_seconds: 180
+  voice_language_hints: ["ta", "en", "ms"]
+  voice_keywords: ["Alex"]
   cloud_stt_rescue_enabled: false
   whisper_model: "base"
   ocr_enabled: true
@@ -98,6 +104,14 @@ schema:
   wife_name: str
   timezone: str
   stt_provider: "list(auto|local_whisper|xai|openai|gemini)"
+  voice_notes_enabled: bool
+  voice_openai_api_key: password
+  voice_monthly_budget_usd: "float(0,)"
+  voice_max_seconds: "int(10,600)"
+  voice_language_hints:
+    - str
+  voice_keywords:
+    - str
   cloud_stt_rescue_enabled: bool
   whisper_model: "list(tiny|base|small)"
   ocr_enabled: bool

@@ -99,8 +99,26 @@ configuration:
     name: Household timezone
     description: IANA timezone used for reminders and date interpretation.
   stt_provider:
-    name: Voice-note transcription
-    description: Auto uses local Whisper first, then configured cloud fallbacks. Local Whisper uses no AI API tokens.
+    name: Legacy transcription provider
+    description: Legacy diagnostic setting. The opt-in WhatsApp voice path below uses one OpenAI transcription and does not run local/cloud comparison passes.
+  voice_notes_enabled:
+    name: Understand WhatsApp voice notes
+    description: Send addressed voice notes to OpenAI once and handle the transcript like a text request. Off preserves the existing pending-review inbox. Test with your household recordings before relying on it.
+  voice_openai_api_key:
+    name: Voice OpenAI API key
+    description: Use a key from your credited API organization. Stored in Home Assistant options; never send it in chat. If empty, uses the existing OpenAI API key. This dedicated key does not change the everyday AI brain.
+  voice_monthly_budget_usd:
+    name: Voice transcription monthly limit (USD)
+    description: Default 5 USD, based on estimated audio duration in each calendar month. Zero stops new transcriptions. This is separate from the text brain and is not your live OpenAI credit balance. Failed/interrupted uploads retain their reserved estimate.
+  voice_max_seconds:
+    name: Maximum voice-note length
+    description: Maximum seconds per note, default 180. Longer recordings remain pending rather than being silently cut short.
+  voice_language_hints:
+    name: Expected spoken languages
+    description: Language hints, default ta (Tamil), en (English), ms (Malay). Mixed speech stays in its original languages.
+  voice_keywords:
+    name: Voice vocabulary hints
+    description: Optional names or product terms you actually use, one item per entry. Keep this short; hints are not guaranteed words in the recording.
   whisper_model:
     name: Local Whisper model
     description: Base is the default balance. Small uses more memory but can improve difficult multilingual voice notes.

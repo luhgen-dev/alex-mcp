@@ -287,19 +287,18 @@ def _received_at_utc(payload: dict) -> str:
     return now.isoformat()
 
 
-def build_turn(payload: dict, media_lines: list[str]) -> dict:
+def build_turn(payload: dict, media_lines: list[str], *, voice_authorized: bool = False) -> dict:
     """Normalize one inbound WhatsApp message into a single Turn shape.
 
     trusted_text  = typed text only
     document_lines = OCR/PDF text (untrusted content, never user intent)
 
-    Voice transcripts are deliberately non-authoritative in v0.5.6. Original
-    audio is saved to the pending-review inbox and only later typed text may
-    become executable intent.
+    Only a successful server-side opt-in transcription can supply user intent.
+    Client-supplied transcript fields, quoted audio and OCR never authorize it.
     """
     typed = str(payload.get("text") or "").strip()
-    _transcript, document_lines = media.split_voice_transcript(media_lines)
-    trusted_text = typed
+    transcript, document_lines = media.split_voice_transcript(media_lines)
+    trusted_text = "\n".join(x for x in (typed, transcript if voice_authorized else "") if x)
     # Emoji is an Alex privacy control signal, not semantic subject matter.
     # Keep the raw text on ActorContext for scope enforcement/provenance, but
     # remove control emoji before deterministic intent parsing and any model.
@@ -360,7 +359,8 @@ def _private_group_handoff_requested(text: str) -> bool:
     # No domain (salary, stash, asset, receipt, etc.) may silently infer private
     # intent. Private DM handoff requires the current command's explicit
     # private wording or emoji shortcut.
-    return (explicit_private or emoji_private) and (readish or writeish)
+    import multilingual_intent
+    return (explicit_private or emoji_private) and (readish or writeish or multilingual_intent.is_multilingual(text))
 
 def _dm_conversation_for_actor(actor) -> str:
     return actor.phone.replace("+", "") + "@s.whatsapp.net"
@@ -1907,9 +1907,28 @@ def process(payload: dict) -> dict:
             return {"ok": True, "listening_capture": result.get("status") == "captured"}
 
         db.touch_inbound_processing(payload["message_id"])
+        # Authenticate before any audio can leave the home server. The bridge
+        # already gates group messages; enforce the same voice gate here too.
+        db.resolve_actor(payload["sender_phone"], payload["conversation_id"],
+                         payload.get("conversation_type", "DIRECT_DM"), payload["message_id"], [])
+        if (payload.get("audio_data") and get_settings().voice_notes_enabled
+                and payload.get("conversation_type") == "GROUP"
+                and not (payload.get("alex_mentioned") or payload.get("reply_to_alex"))):
+            db.finish_inbound(payload["message_id"], "Voice message not addressed to Alex")
+            return {"ok": True, "ignored": True}
         media_ids, media_lines, vision_parts = media.process_payload_media(payload)
         db.touch_inbound_processing(payload["message_id"])
-        turn = build_turn(payload, media_lines)
+        voice_authorized = bool(payload.get("audio_data") and get_settings().voice_notes_enabled and any(
+            json.loads((media.get_media(mid) or {}).get("transcript_meta_json") or "{}").get("command_execution") is True
+            for mid in media_ids
+        ))
+        turn = build_turn(payload, media_lines, voice_authorized=voice_authorized)
+        if voice_authorized:
+            # Existing quote/follow-up readers consume this user-input column.
+            # Exact original audio and the separate transcript remain in media.
+            with db.connect() as conn:
+                conn.execute("UPDATE inbound_messages SET raw_text=? WHERE message_id=?",
+                             (turn["trusted_text"], payload["message_id"]))
         actor = db.resolve_actor(
             payload["sender_phone"],
             payload["conversation_id"],
@@ -1922,6 +1941,7 @@ def process(payload: dict) -> dict:
         actor = replace(
             actor,
             source=turn["source"],
+            voice_authorized=voice_authorized,
             trusted_text=turn["trusted_text"],
             intent_text=turn["intent_text"],
             received_at_utc=turn["received_at_utc"],
@@ -2038,7 +2058,7 @@ def process(payload: dict) -> dict:
             return _finish_simple_turn(actor, saved_media["reply"],
                                        original_media_saved=True, saved_item_id=saved_media.get("item_id"))
 
-        if payload.get("audio_data"):
+        if payload.get("audio_data") and not voice_authorized:
             audio_id = next(
                 (
                     mid for mid in media_ids
@@ -2055,6 +2075,10 @@ def process(payload: dict) -> dict:
                 "voice messages, so please type what you want me to do when you "
                 "have time. I’ll keep this pending until then."
             )
+            if get_settings().voice_notes_enabled:
+                import voice_notes
+                meta = json.loads((media.get_media(audio_id) or {}).get("transcript_meta_json") or "{}")
+                reply = voice_notes.pending_reply(meta.get("reason", ""))
             db.queue_outbound(
                 actor.conversation_id, "TEXT", text=reply,
                 source_message_id=actor.source_message_id,
@@ -2695,6 +2719,7 @@ def process(payload: dict) -> dict:
             dm_actor = replace(
                 dm_actor,
                 source=turn["source"],
+                voice_authorized=voice_authorized,
                 trusted_text=turn["trusted_text"],
                 received_at_utc=turn["received_at_utc"],
                 read_scope=turn["read_scope"],

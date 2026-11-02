@@ -16,6 +16,7 @@ import db
 import runtime_clock
 import scope_policy
 from text_normalization import normalize_intent_text
+import multilingual_intent
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS learned_memory (
@@ -83,10 +84,10 @@ def teaching_tools(text):
 
 def _authorize(actor):
     from brain import _trusted_mutation_requested
-    if (not actor.action_key or actor.source == 'voice' or
-            not _WRITE.search(actor.trusted_text) or
+    if (not actor.action_key or (actor.source == 'voice' and not actor.voice_authorized) or
+            not (_WRITE.search(actor.trusted_text) or multilingual_intent.requests_memory(actor.trusted_text)) or
             not _trusted_mutation_requested(actor.trusted_text)):
-        raise ValueError('Please explicitly ask me to remember or update this in a typed message.')
+        raise ValueError('Please explicitly ask me to remember or update this in your message.')
     space = scope_policy.resolve_new_write_space(actor)
     if space not in actor.allowed_spaces:
         raise PermissionError('That memory scope is not accessible.')
