@@ -395,6 +395,10 @@ def resolve_plan_reference(actor: ActorContext, plan_id: str | None = None,
             ).fetchall()
             rows = [r for r in visible if re.search(
                 r"(?<!\w)" + re.escape(supplied_name) + r"(?!\w)", r["title"], re.I)]
+            if not rows:
+                tokens = set(re.findall(r"\w+", supplied_name.casefold())) - {"the", "our", "my", "plan"}
+                rows = [r for r in visible if tokens and tokens.issubset(
+                    set(re.findall(r"\w+", r["title"].casefold())))]
         active = [row for row in rows if row["status"] != "CANCELLED"]
         candidates = active or rows
         if not candidates:
@@ -842,6 +846,10 @@ def resolve_task_reference(actor: ActorContext, task_id: str | None = None,
             row for row in rows
             if wanted in norm(row["title"]) or norm(row["title"]) in wanted
         ]
+        if not candidates:
+            tokens = set(wanted.split()) - {"the", "our", "my", "task"}
+            candidates = [row for row in rows if tokens and tokens.issubset(
+                set(norm(row["title"]).split()))]
         if len(candidates) == 1:
             return str(candidates[0]["task_id"])
         if not candidates:

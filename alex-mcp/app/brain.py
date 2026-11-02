@@ -506,6 +506,15 @@ def _ha_draft_request(text: str) -> bool:
     ))
 
 
+def _ha_draft_missing_details(text: str) -> bool:
+    """An unspecified automation needs its owner's trigger and action."""
+    low = (text or "").casefold()
+    return _ha_draft_request(low) and not re.search(
+        r"\b(?:when|whenever|if|every|sunset|sunrise|motion|trigger)\b|"
+        r"\b(?:at|after|before)\s+\d|\b(?:turn|switch)\s+(?:on|off)\b|"
+        r"\b(?:turn|switch)\b.{0,45}\b(?:on|off)\b", low)
+
+
 def _ha_negated_or_hypothetical(text: str) -> bool:
     low = (text or "").casefold()
     return bool(re.search(
@@ -784,7 +793,7 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
     if asset_read:
         block.add("asset_create")
         if not re.search(r"\b(?:photo|picture|image|manual|document|file)\b", low):
-            block |= {"search_saved_items", "get_saved_item"}
+            block |= {"save_item", "remove_saved_item", "search_saved_items", "get_saved_item"}
     if re.search(
         r"\b(?:change|update|edit)\b.*\b(?:asset|appliance|warranty)\b"
         r"|\bwarranty\b.*\b(?:expiry|expires|end)\b.*\b(?:to|on)\b",
@@ -1799,6 +1808,10 @@ def _attachment_delivery_authorized(user_text: str, tool_name: str) -> bool:
     if tool_name == "report_export":
         return multilingual_intent.export_format_requested(text) or bool(re.search(
             r"\b(?:export|send .*report|report .*file)\b", text))
+    if tool_name == "ha_home_report":
+        return bool(re.search(r"\b(?:card|image|picture|report)\b", text)) and (
+            bool(re.search(r"\b(?:send|show|render|generate|make|create|get)\b", text))
+            or multilingual_intent.file_delivery_requested(text))
     if tool_name not in {
         "get_receipt", "get_transaction_receipt", "get_saved_item",
         "get_media_original", "resolve_numbered_choice",
@@ -1875,6 +1888,11 @@ def _contextual_tool_hints(user_text: str, prior_user_text: str | None) -> tuple
 
     add: set[str] = set()
     block: set[str] = set()
+    if ("create_plan" in prior_tools
+            and re.search(r"\b(?:keep|make|change|update|refine|add)\b", current)
+            and not re.search(r"\b(?:new|another|separate|different)\s+(?:draft|plan|trip)\b", current)):
+        add |= {"list_plans", "update_plan"}
+        block.add("create_plan")
     if reminder_time_completion:
         add |= {"create_reminder", "list_reminders"}
 
@@ -4446,6 +4464,9 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
         action_basis or user_text or "",
         has_media=bool(media_context or vision_parts),
     )
+    if _ha_draft_missing_details(user_text):
+        preflight = {"status": "needs_clarification", "requires_clarification": True,
+                     "question": "What should trigger this automation, and what should it do? I'll prepare a draft for review."}
     trace["compound"] = (
         preflight.get("status") == "compound"
         or _looks_compound_request(action_basis or user_text)
@@ -5203,7 +5224,8 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                 if _is_mutating_tool(name):
                     committed, reason = _mutation_result_committed(
                         name, payload,
-                        has_media=bool(media_context or vision_parts or actor.media_ids),
+                        has_media=bool(vision_parts or (
+                            (media_context or actor.media_ids) and not actor.voice_authorized)),
                     )
                     mutation_ledger.append({
                         "tool": name, "committed": committed, "reason": reason,

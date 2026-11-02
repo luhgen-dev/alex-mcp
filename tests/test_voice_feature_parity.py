@@ -20,6 +20,22 @@ import test_multilingual_voice as voice_fixture
 
 
 class VoiceParityPolicyTests(unittest.TestCase):
+    def test_family_reminder_is_explicit_and_plan_followup_is_an_update(self):
+        import phase2_intent
+        self.assertTrue(phase2_intent.reminder_write_signal(
+            "Remind the family tomorrow at 9am to collect the parcel; anyone can claim it."))
+        add, block = core.brain._contextual_tool_hints(
+            "Make it kid-friendly and keep it as a draft.",
+            "Start a draft family day trip to Malacca next month. Don't lock it yet.")
+        self.assertIn("update_plan", add)
+        self.assertIn("create_plan", block)
+
+    def test_status_card_delivery_and_unspecified_automation(self):
+        self.assertTrue(core.brain._attachment_delivery_authorized("Send me the home status card.", "ha_home_report"))
+        self.assertFalse(core.brain._attachment_delivery_authorized("Don't send the home status card.", "ha_home_report"))
+        self.assertTrue(core.brain._ha_draft_missing_details("Draft an automation for the hall light."))
+        self.assertFalse(core.brain._ha_draft_missing_details("Draft an automation to turn the hall light on at sunset."))
+
     def test_saved_memory_read_is_not_a_new_save(self):
         self.assertFalse(multilingual_intent.requests_action("நான் சேமிக்க சொன்னதை காட்டு"))
         self.assertTrue(multilingual_intent.requests_action("இந்த தகவலை சேமி"))
@@ -147,6 +163,33 @@ class VoiceParityIngressTests(unittest.TestCase):
         with core.db.connect() as c:
             rows = c.execute("SELECT media_id FROM saved_items").fetchall()
         self.assertEqual([r["media_id"] for r in rows], [mid])
+
+    def test_voice_memory_note_does_not_require_command_recording(self):
+        result = self.run_voice("Remember that our code word is cobalt", [
+            {"tool": "save_item", "args": {"title": "Code word", "content": "cobalt"}},
+            {"content": "I've saved the code word cobalt."},
+        ])
+        self.assertTrue(result["ok"])
+        with core.db.connect() as c:
+            row = c.execute("SELECT content,media_id FROM saved_items").fetchone()
+            reply = c.execute("SELECT text_body FROM outbound_messages WHERE source_message_id='parity-voice' AND kind='TEXT'").fetchone()[0]
+        self.assertEqual(row["content"], "cobalt")
+        self.assertIsNone(row["media_id"])
+        self.assertNotIn("couldn't verify", reply)
+
+    def test_plan_and_task_natural_names_require_unique_scoped_match(self):
+        import phase2
+        from context import with_action_key
+        phone = "+60111111111"
+        self.claim("parity-plan", phone, "create family plan")
+        actor = replace(self.actor("parity-plan",phone), trusted_text="create family plan")
+        plan = phase2.create_plan(with_action_key(actor,"plan-one"),"Family Day Trip to Malacca")
+        self.assertEqual(phase2.resolve_plan_reference(actor,plan_name="Malacca trip"),plan["plan_id"])
+        task = phase2.create_task(with_action_key(actor,"task-one"),"Check passport expiry dates")
+        self.assertEqual(phase2.resolve_task_reference(actor,task_name="passport-check"),task["task_id"])
+        phase2.create_task(with_action_key(actor,"task-two"),"Check passport renewal status")
+        with self.assertRaisesRegex(ValueError,"ambiguous"):
+            phase2.resolve_task_reference(actor,task_name="passport-check")
 
     def test_appointment_read_keeps_calendar_tools_when_reminder_name_matches(self):
         self.claim("parity-dentist", "+60111111111", "Remind me of Dentist Appointment on 1 January 2030 at 3pm")

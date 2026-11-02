@@ -274,11 +274,17 @@ with tempfile.TemporaryDirectory() as tmp:
     os.environ["ALEX_DATA_DIR"] = tmp
     os.environ["ALEX_OPTIONS_PATH"] = str(options)
     b._install_fixed_clock()
+    b._install_sqlite_clock(p)
     b._reset_case_database(p, "core")
     import db
     with db.connect() as c:
         assert c.execute("SELECT COUNT(*) FROM schedule_conflicts WHERE status='OPEN'").fetchone()[0] == 0
         assert c.execute("SELECT COUNT(*) FROM leave_records").fetchone()[0] == 0
+        assert c.execute("SELECT CURRENT_TIMESTAMP, datetime('now')").fetchone()[0] == "2026-09-29 02:00:00"
+    import conversation_state
+    actor = b._actor("clock-check", "clock-chat", "hello")
+    db.add_turn(actor.user_id, actor.conversation_id, "user", "hello", read_scope="family")
+    assert len(conversation_state.recent_turns(actor)) == 1
     assert b.CERT_FIXTURES["dentist_diary_id"]
 '''
         result = subprocess.run([sys.executable, "-c", script],

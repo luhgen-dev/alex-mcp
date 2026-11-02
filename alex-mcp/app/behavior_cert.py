@@ -935,7 +935,11 @@ _STATE_FINGERPRINT_EXCLUDE = {
     # user's durable household state.
     "inbound_messages", "outbound_messages", "conversation_turns",
     "tool_execution_claims", "tool_audit", "ai_usage", "selection_sets",
-    "diagnostic_runs",
+    "diagnostic_runs", "goal_selection_sets",
+    # Inbound originals are captured even when the requested household action
+    # is refused. Saved-item links and exact delivered-file checks cover media
+    # effects; transport capture alone must never prove a successful write.
+    "media_objects",
 }
 
 
@@ -1027,7 +1031,7 @@ def _latency_breakdown(mid: str, trace: dict, total_ms: int) -> dict[str, Any]:
 
 
 def _validate_seed(seed: str | None) -> None:
-    if seed not in {"core", "private_core", "plan_update", "shopping_product", "cash_allocation"}:
+    if seed not in {"core", "private_core", "plan_update", "shopping_product", "cash_allocation", "task_done"}:
         return
     import db
 
@@ -1067,8 +1071,15 @@ def _reset_case_database(sandbox_dir: Path, seed: str | None) -> str:
     _initialize_sandbox()
     _install_fixed_clock()
     _install_fake_ha()
-    if seed in {"core", "private_core", "plan_update", "shopping_product", "cash_allocation"}:
+    if seed in {"core", "private_core", "plan_update", "shopping_product", "cash_allocation", "task_done"}:
         _seed_core(private_memory=seed == "private_core", pending_plan=seed == "plan_update")
+    if seed == "task_done":
+        import phase2
+        from context import with_action_key
+        conv = "seed@s.whatsapp.net"
+        _claim("seed-task-done", "complete passport task", conv)
+        phase2.complete_task(with_action_key(_actor("seed-task-done",conv,"complete passport task"),
+            "seed-task-done"), CERT_FIXTURES["malacca_task_id"])
     if seed == "shopping_product":
         import services
         from context import with_action_key
@@ -1543,6 +1554,11 @@ def _judge_observation(
                for pattern in getattr(contract, "allowed_tool_errors", ()))
     }
     successful_caps = set(capabilities_for_tools(successful_tools))
+    # Production ingress can resolve an exact persisted selection without MCP.
+    # Count only an observed successful fast path, retaining file identity checks.
+    if (ingress_result or {}).get("ok") and any((ingress_result or {}).get(k)
+            for k in ("numbered_selection", "selection_followup")):
+        successful_caps.add("selection.resolve")
     required_caps = set(contract.required_any) - {"routing.discovery"}
     required_all_caps = set(getattr(contract, "required_all", frozenset())) - {"routing.discovery"}
     forbidden_caps = set(contract.forbidden) - {"routing.discovery"}
@@ -1604,6 +1620,8 @@ def _judge_observation(
 
     persistent_mutation_called = any(
         brain._is_mutating_tool(call["tool"]) and call["tool"] != "ha_control"
+        and str(call.get("status") or "").upper() in {"OK", "PASS", "SUCCESS"}
+        and not (call.get("result") or {}).get("error")
         and str((call.get("result") or {}).get("status", "")).casefold()
             not in {"needs_clarification", "needs_choice", "not_found", "error", "denied"}
         for call in trace.get("calls", [])
@@ -1685,6 +1703,9 @@ def _run_ingress_turn(
         "text": prompt if source != "voice" else "",
         "quoted_message_id": quoted_message_id,
         "sent_at_ms": int(runtime_clock.now_utc().timestamp() * 1000),
+        # These are post-wake group contracts, matching bridge provenance.
+        "alex_mentioned": conversation_type == "GROUP",
+        "reply_to_alex": bool(quoted_message_id),
     }
     if source == "voice":
         # Exercise the CURRENT opt-in voice path. The old transcribe_audio mock
@@ -1874,6 +1895,15 @@ def _live_conversation(contract, source: str, hard_latency_ms: int) -> dict:
             # This is a process-lifecycle surrogate: state must remain durable
             # without reseeding or changing db.DB_PATH.
             _initialize_sandbox()
+            # Force the probe to read persisted memory, not recent chat history.
+            import db
+            conn = db.connect()
+            try:
+                for conversation in conversations.values():
+                    conn.execute("DELETE FROM conversation_turns WHERE conversation_id=?", (conversation,))
+                conn.commit()
+            finally:
+                conn.close()
         mid = (
             previous_mid
             if step.reuse_previous_message_id and previous_mid

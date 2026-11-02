@@ -118,7 +118,7 @@ def reminder_write_signal(text) -> bool:
         return True
 
     explicit = bool(re.search(
-        r"\b(?:remind\s+(?:me|us|my\s+wife|my\s+husband|priya)|"
+        r"\b(?:remind\s+(?:me|us|my\s+wife|my\s+husband|priya|(?:the\s+)?family|(?:the\s+)?household|both\s+of\s+us)|"
         r"set\s+(?:a\s+)?reminder|add\s+(?:a\s+)?reminder)\b",
         low,
     ))

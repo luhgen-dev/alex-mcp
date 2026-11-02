@@ -822,7 +822,7 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
             "Reopen the passport-check task.",
             "Put the passport task back to open.",
         ),
-        _fs("task.reopen"), seed="core",
+        _fs("task.reopen"), seed="task_done",
     ),
     PromptContract(
         "p2.tasks.cancel", "phase2", "tasks",
@@ -1942,7 +1942,7 @@ CONVERSATION_CONTRACTS: tuple[ConversationContract, ...] = (
             ),
             ConversationStep(
                 "Send me that again.",
-                _fs("get_receipt"),
+                _fs("get_receipt", "resolve_numbered_choice"),
                 expect_attachment=True, expect_attachment_of="management_receipt",
                 quote_previous=True,
             ),
@@ -2138,10 +2138,10 @@ CONVERSATION_CONTRACTS: tuple[ConversationContract, ...] = (
     ConversationContract(
         "conv.privacy.dm.group", "phase2", "privacy",
         "Private data visible in the owner's DM must not leak when the same owner asks from family group.",
-        "core",
+        "private_core",
         (
             ConversationStep(
-                "What saved code word do I have?",
+                "What private saved code word do I have?",
                 _fs("search_saved_items"),
                 expected_terms=("cobalt",),
             ),
