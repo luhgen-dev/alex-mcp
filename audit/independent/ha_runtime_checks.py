@@ -1,8 +1,9 @@
 """Run a pinned checkout's tests in an isolated HA Terminal virtual environment.
 
-Never reads Alex options, database, pairing or Supervisor credentials. No app
-upgrade/restart or system-wide package changes. Downloads public source and
-dependencies; tests receive synthetic household options and no inherited credentials.
+Default checks never read Alex options, database, pairing or Supervisor credentials.
+The explicit --live-provider phase selects API credentials/model names from app
+options for a synthetic provider benchmark. No app upgrade/restart or system-wide
+package changes. Tests receive synthetic household options and no inherited credentials.
 """
 import argparse
 import json

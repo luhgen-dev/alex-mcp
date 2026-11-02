@@ -29,8 +29,9 @@ written. The requested comprehensive audit and deployment are **not complete**.
 | Audit redaction misses credentials | Double-escaped regexes fail to remove bearer and provider credentials from error strings; several key spellings are missed. | Correct patterns; conservatively redact credential keys while retaining explicitly recognized numeric usage counters. | Six independent test methods, with nested fields, variants, and nonmutation checks. All secrets in these tests are synthetic. |
 | Attachment judge can falsely pass | Correct pathname with wrong/missing bytes passes baseline; audio/video are not treated as attachments. | Freeze independent fixture digests; check queued file readability/content/hash as well as identity and count. Include audio/video. | Six judge mutation probes: positive original, wrong bytes, missing file, empty file, missing digest, and audio/video. |
 | Product documentation contradicts current voice implementation | The voice section still describes voice as never executable. Historical certification counts can be mistaken for current acceptance. | Document 0.5.54 transcript authority/fallback and explicitly label historical certification. | Source/document review; no claim of live speech verification. |
+| Startup reports success after initialization failure | A nonzero database initializer is ignored; a failed structural self-test is reduced to a warning before the success log. | Exit the initialization script on either failure and explicitly configure s6 to stop the container when initialization fails. | Three subprocess checks execute the real shell script with controlled initializer/self-test failures and success. Packaged s6 behavior still requires image verification. |
 
-## Screenshot failures still unresolved
+## Screenshot repairs awaiting production acceptance
 
 **Voice expense refusal:** operator-supplied production traces show authorized
 Tamil transcription, omitted write capabilities, a failed capability recovery,
@@ -42,12 +43,11 @@ for "private" also selects owner-private storage; a real SQLite test checks it.
 The false-denial detector
 also recognizes "cannot log" and "write access", and an exhausted recovery may
 not repeat an unsupported lack-of-capability claim. New SDK/ingress tests are
-written. The second isolated SDK run executed voice ingress with real Ogg decoding
-and scripted provider responses; its new expense-to-private regression passed.
-One reminder test still failed because its script requested discovery before the
-now-directly-offered mutator. That script is repaired; the strengthened harness
-now preserves provider assertions through application error handling. Full rerun
-and actual provider/phone acceptance remain pending.
+written. Isolated SDK runs execute voice ingress with real Ogg decoding and
+scripted provider responses. The expense-to-private and colloquial-reminder
+regressions now pass, including the stricter harness that preserves provider
+assertions through application error handling. The latest targeted voice-module
+run passed at `39be0ec`. Actual provider/phone acceptance remains pending.
 
 **Quoted expense moved to private:** both captured corrections failed with
 "event not found in your accessible spaces". An explicit English move/save-to-private
@@ -66,8 +66,9 @@ check/send with a visibility commit. Stale finance snapshots for other recipient
 are conservatively replaced by a safe request for a fresh result. Already sent
 WhatsApp messages cannot be erased by this operation. Correction/confirmation
 authorization now occurs inside a write transaction to prevent stale shared-scope
-decisions across a concurrent move. Full ingress, migration, provider, report-cache
-and production acceptance remain pending; this is not a deployed fix.
+decisions across a concurrent move. Isolated SDK ingress, migration and report-cache
+tests pass; provider and production acceptance remain pending. This is not a
+deployed fix.
 
 **Cached finance privacy and repeated exports:** a cached shared ledger could
 survive a move to private. Finance queries now read their totals, records and
@@ -83,7 +84,8 @@ That SDK regression ran and exposed an incomplete synthetic actor: without
 ingress's trusted text, its seed expense used the legacy private fallback.
 The fixture now sets trusted text, verifies the stored shared row before export,
 and exercises the spouse's report before/after the owner's private move. No
-application privacy boundary was widened. The corrected test awaits rerun.
+application privacy boundary was widened. The corrected test passed at `39be0ec`,
+including refusal of the old report and a fresh scoped export after the move.
 
 ## Feature-by-feature status
 
@@ -97,22 +99,22 @@ argument generation, conversational understanding, or phone delivery.
 | Capability family | Fresh evidence / current result | Remaining acceptance work |
 | --- | --- | --- |
 | Identity and conversation | Unknown sender rejected; group actor has only shared membership. Four Node contracts passed for quoted context, reactions, controls, and FIFO. | Real sender/group binding, quote continuity, overlapping requests, delayed follow-ups, and conversation privacy. |
-| Multilingual voice and media | Voice implementation reviewed without edits; receipt original-file integrity repaired locally. | Actual English/Tamil/Tanglish/Malay/mixed audio, expense reproduction, STT accuracy, language/amount preservation, disabled/budget/failure behavior on the deployed configuration. |
-| Finance, receipts, privacy corrections | Local exact cents, retries, append-only history, totals, isolation, original integrity and quoted private-move storage/egress checks pass. Operator traces confirm both reported moves failed in 0.5.54. | Full ingress/MCP, migration, concurrent provider turns, report caches and deployed acceptance. |
-| Reports and exports | Certification file judge now rejects wrong/missing/empty originals. | Full/filtered totals, date windows, PDF/image/XLSX content and decoding, report/selection scope, cached report invalidation, delivered bytes. |
+| Multilingual voice and media | `test_multilingual_voice`, `test_voice_feature_parity` and voice/time modules pass with real Ogg decode and fixture transcription/provider responses. Stored expense cents and reminder due time are asserted. STT implementation is unchanged. | Actual English/Tamil/Tanglish/Malay/mixed audio, spontaneous routing, STT accuracy, disabled/budget/failure behavior on the deployed configuration. |
+| Finance, receipts, privacy corrections | Independent SQLite tests, `test_issue61_media_finance`, media-upgrade and voice ingress tests pass: exact cents, retries, history, isolation, original integrity and stored quoted moves. Operator traces confirm both reported moves failed in 0.5.54. | Real-provider turns, production data migration/readback, concurrent live requests and owner/spouse phone acceptance. |
+| Reports and exports | `test_v0538_reminder_report_reliability` now passes: normal/fallback PDFs, stale-cache refusal, fresh scoped export and repeated exports. Attachment judge mutation probes reject wrong/missing/empty bytes. | Full/filtered totals and date windows on household records; PDF/image/XLSX rendering and actual delivered bytes. |
 | Shopping and prices | Real queue tests: duplicate add, rename/purchase during lookup, bounded retries, sanitized errors, no accidental expense. | Live Mydin/Manjaku data, matching/pack quantities, remembered-price preference, provenance/estimates and monthly summaries. Network lookup is mocked in local worker tests. |
-| Saved memory and teaching | Saved-note scope/emoji content checks pass. | Teaching revisions, learned preferences/prices, recall injection boundaries, deleting/forgetting and original media lifecycle. |
-| Reminders and HA companion | Outbox transport retry preserves one stable provider message key; missing/corrupt document is not delivered. | Scheduler due time, presence, repeated/escalated reminders, claim/handoff/reaction lifecycle, actual companion actions and phone delivery. |
-| Diary and availability | Source paths inspected, but no new diary/availability behavioral pass. | Conflicts, date-only/time-known states, end-before-start validation, recurrence, spouse busy-only boundary and linked reminder changes. |
+| Saved memory and teaching | `test_progressive_teaching`, `test_v0552_learning` and teaching-ingress modules pass: explicit approval, version history, restart recall, private exclusions, forgetting and price/preference persistence. Saved-note scope/emoji checks also pass. | Spontaneous teaching/correction conversations, actual persisted household preferences and original media lifecycle on phones. |
+| Reminders and HA companion | Core, reminder lifecycle/time/handoff modules pass. HA token tampering, first-winner claims and received-versus-acknowledged states are checked; transports are mocked. | Real scheduler timing/presence, repeated/escalated delivery, companion action binding and phone receipts. |
+| Diary and availability | Core tests pass for work/leave conflict choices, date-only events, linked reminder edits/cancellation, agenda scope and plan materialization. | Live conversation resolution, recurrence and timezone edges, spouse busy-only output and concurrent linked changes. |
 | Tasks and plans | Task create/complete/reopen/cancel history, retry, no implicit plan/reminder, spouse/group isolation; plan list scope repaired. | Conversational discovery, confirmation/materialized diary lifecycle, cross-record atomicity, linked reminder edits, plan sharing and follow-ups. |
 | Goals, cash and stashes | Goal read-scope/model-argument boundary, private goal denial, exact pool spending, retry and overdraft rollback pass locally. | Contributions/allocations/baselines/projections/reserves, evidence matching, cross-ledger double counting, conversation lifecycle. |
-| Bills, utilities and Digi | Not behaviorally verified in this session. | Portal credentials/status handling, payment evidence, monthly/due logic, screenshot prompts, duplicates, correct account and delivery. |
-| Work and leave | Source/test inventory only. | Actual configured roster, leave ranges/balances, OT/salary, commute/departure and private-work boundaries. |
-| Daily brief | Worker and delivery-marker paths identified. | Current household facts, scope, stale data, schedule/DST, once-per-day queue/delivery and pin cleanup. |
-| Ear/listening and journal | Source/test inventory only. | Start/stop/resume, addressed versus captured messages, private exclusions, durable summaries and injection resistance. |
-| Assets and monitoring | Asset read scope and owner/spouse/group edit isolation pass locally. | Warranty dates, document originals, monitor scheduling/cancellation, candidate deduplication and actual delivery. |
+| Bills, utilities and Digi | `test_household_bills` and utility-reply tests pass using portal fixtures: account mismatch, unknown versus zero balances, redirects, PDF signatures, monthly prompts, scope and duplicate evidence. | Configured live portal login, current account/month data, payment evidence and delivered original documents. |
+| Work and leave | `test_issue61_work_brief` and core work tests pass: six leave categories, private profile isolation, effective versions, overnight OT, import atomicity and HA-sync preservation. | Actual configured roster/leave balances, salary/commute assumptions and live private work conversations. |
+| Daily brief | Work/brief and task/reminder modules pass: local date/DST, exact task counts, private group guard, regeneration and shared acknowledgement identity. | Current household facts, worker timing, once-per-day delivery, pin cleanup and device readback. |
+| Ear/listening and journal | `test_discussion_journal` passes: restart persistence, scoped summaries/actions, retry, quote/selection ownership, deadline grounding and rejection of summary-provider action requests. | Real start/stop/resume/capture conversations, spontaneous summary accuracy and original evidence delivery. |
+| Assets and monitoring | Independent asset scope tests and core monitor tests pass with synthetic HA states, including explicit delegation and one-shot candidates. | Warranty/date originals, configured entity transitions, cancellation/deduplication across real worker restarts and delivery. |
 | HA tools and custom ledgers | Custom-ledger exact cents, scope, classification gate, retry, no accidental main-ledger entries, numeric/JSON repairs pass. | Live entity reads/control, automation drafts, physical state readback, custom-ledger attachments/lifecycle and integration tests. |
-| Operations, upgrades and recovery | Source verified against upstream blobs; compile and focused checks pass. Full suite is blocked. | Fresh HA backup, current settings/version/process readback, real dependency/container build, migration/restart/rollback, pairing preservation, CI and production smoke. |
+| Operations, upgrades and recovery | Source blobs verified; Alex-only backup readable; copied SQLite integrity/FKs pass. Pinned SDK suite passed 63/64 jobs, and the sole failing module passed its targeted follow-up. Migration, selftest, stress and catalog checks pass in isolation. | Final candidate full suite, packaged image build/two image-only tests, production migration/restart/rollback, pairing preservation and phone smoke. |
 
 ## Worker inventory
 
@@ -121,15 +123,19 @@ All seven packaged services were enumerated from `rootfs/etc/services.d`:
 | Worker | Evidence in this session |
 | --- | --- |
 | `node-bridge` → `connect.js` | Four local payload/FIFO contracts and syntax check; no paired bridge run. |
-| `python-ingress` → `ingress.py` | Isolated SDK ingress checks now execute, including real Ogg decoding and quoted private moves; model/STT/transport responses are scripted. Full run still has two test failures described below. |
+| `python-ingress` → `ingress.py` | Isolated SDK ingress checks pass, including real Ogg decoding and quoted private moves; model/STT/transport responses are scripted. Live-provider and phone checks remain outstanding. |
 | `python-outbox` → `outbox.py` | Real local durable queue states with transport adapter mocked; no WhatsApp delivery. |
 | `python-scheduler` → `scheduler.py` | Core and reminder-lifecycle module checks pass in isolated HA testing; live due-time scheduling and actual delivery remain unverified. |
-| `python-ha-mobile` → `ha_mobile.py` | Inventoried; live worker/action verification outstanding. |
+| `python-ha-mobile` → `ha_mobile.py` | Core tests check signed actions, claims and receipt/ack distinction; notification service and websocket/device delivery remain unverified. |
 | `python-grocery-prices` → `grocery_prices.py` | Local lease/revision/retry state tests with lookup mocked. |
-| `python-dot` → `dot_runtime.py` | DOT modules passed in the first isolated HA run. Two image-only startup/socket checks are guarded by `ALEX_TEST_PACKAGED_RUNTIME`; current aggregate shows two skips and the next runner prints their names. No packaged binary or live bridge certification. Keep feature disabled. |
+| `python-dot` → `dot_runtime.py` | DOT modules pass; the two named packaged-binary/socket tests remain skipped outside the image. No packaged binary or live bridge certification. Keep feature disabled. |
 
-Startup runs `init_db.py` and logs a warning rather than stopping when `selftest.py`
-fails. A running service is therefore not evidence that structural checks passed.
+Startup previously ran past `init_db.py` failure and warned past `selftest.py`
+failure. The candidate now stops on either failure and sets
+`S6_BEHAVIOUR_IF_STAGE2_FAILS=2`, as documented by
+[s6-overlay](https://github.com/just-containers/s6-overlay#customizing-s6-overlay-behaviour).
+Three subprocess tests pass; the container gate still needs image-level execution.
+A running service alone is not evidence that structural checks passed.
 
 ## Exact automated evidence and its limits
 
@@ -160,8 +166,9 @@ fails. A running service is therefore not evidence that structural checks passed
 - The installed MCP package is 1.29.0; the app pins 2.2.0. `requests`, `openai`,
   and `websocket-client` are unavailable. Dependency installation could not reach
   the package index in this executor. The subsequent HA Terminal run below used
-  the pinned dependencies successfully. The full suite, current routing
-  certification and container build are not passed or waived.
+  the pinned dependencies successfully. Later HA runs provide the bounded suite
+  and offline routing evidence below; the final-candidate full suite and container
+  build are not passed or waived.
 - Operator-assisted HA Terminal run of `4cfbbcf24ea5e48abbad26daeb5a5343a1a3c706`:
   **58/64 jobs passed; six modules failed**. Compile, selftest, stress and tool
   catalog passed; 54/60 test modules passed. These are job counts, not test-case
@@ -182,7 +189,7 @@ fails. A running service is therefore not evidence that structural checks passed
   a check that `LIVE_REQUIRED` or a crashed process cannot become a routing pass),
   and eight earlier backup-probe tests passed. Neither count certifies the app.
   No application assertion, schema requirement, or release gate was removed to
-  address the six module failures. The revised complete SDK run remains pending.
+  address the six module failures. Later SDK results are recorded below.
 - Second operator-assisted HA run at `c1815adeb9f7ed0407d6a2a022de76db8969c67d`:
   **62/64 jobs passed; 1,033 test executions; two skips**. Both remaining failing
   modules report one failing test each: `test_v0538_reminder_report_reliability`
@@ -197,14 +204,16 @@ fails. A running service is therefore not evidence that structural checks passed
   so an invalid final scripted call cannot silently turn into a passing test.
   A new negative regression proves that harness behavior. The application code
   is unchanged since `c1815ade`; the complete suite must run with this stricter
-  harness before accepting the result. The runner also prints skipped test names.
+  harness before accepting the result; the following run did so. The runner also
+  prints skipped test names.
 - Third operator-assisted HA run at `c34ba271005baad79b86b59357432fb62691f787`:
   **63/64 jobs passed; 1,034 test executions; two skips**. The stricter core
   provider harness, negative harness regression, complete voice-parity module,
   migrations, selftest, stress and catalog passed. The single remaining test
   reached the expected cached-export privacy refusal, but asserted `ValueError`
   instead of the MCP boundary's `ToolError`. The assertion now uses the SDK's
-  exception class; fresh scoped export assertions after it are still required.
+  exception class; the following targeted run also executes the fresh scoped
+  export assertions after it.
   The two skipped tests are exactly `test_packaged_binary_executes_without_network_or_credentials`
   and `test_real_egress_and_dot_sockets_coexist`, both in `test_dot_startup` and
   requiring the packaged HA image. They are not waived.
@@ -213,8 +222,8 @@ fails. A running service is therefore not evidence that structural checks passed
   recreated while the verified SDK environment was reused. App code is unchanged.
   The voice expense fixture now says 56.90, matching its scripted amount, and
   asserts that exact transcript was stored. It still does not certify live ASR.
-  The next run targets these two edited modules and the broader offline routing
-  matrix; it is explicitly not another complete unit-suite run.
+  The follow-up below targets these two edited modules and the broader offline
+  routing matrix; it is explicitly not another complete unit-suite run.
 - Follow-up at `39be0ec31939c275377617833ce129ca7e76761c` passed **4/4 targeted
   jobs, 29 test executions, zero skips**. Both corrected report and voice modules
   passed. The offline matrix passed **174 contracts** (162 prompt, 12 conversation),
@@ -237,6 +246,9 @@ fails. A running service is therefore not evidence that structural checks passed
 - Upstream CI run `41451020384` was observed failed with zero job steps executed.
   The prior release records a billing lock; this session has not independently
   verified the account-level billing cause.
+- At `6fb24e7`, workflow runs `41500571326` and `41500571262` also failed;
+  their lab/container/test jobs returned no step or log evidence through the
+  connector. No successful CI execution or image build is inferred.
 
 The source was obtained through the GitHub connector because shell network
 access is blocked. All 178 non-`evaluation/` files were checked against upstream
@@ -253,9 +265,10 @@ python audit/independent/run_checks.py --report /tmp/alex-candidate.json
 python audit/independent/run_checks.py --baseline-ref 17b37cd998b58b926e3ca00fd8f13d8a8bbcb070 --report /tmp/alex-baseline.json
 ```
 
-The baseline command is expected to exit 1. It loads only the five original
-runtime modules while keeping the new test corpus and unchanged dependency
-source. The fixture creates synthetic tables directly: **it does not test schema
+The baseline command is expected to exit 1 when the selected suite requires a
+module absent from the baseline; use the historical recorded corpus for the
+earlier comparison. It must not import a candidate replacement silently.
+The focused fixture creates synthetic tables directly: **it does not test schema
 migrations**. Worker network adapters are mocked at the boundary; durable queue
 and file behavior remain real. No stub SDK is used to make the suite pass.
 
@@ -276,6 +289,12 @@ and file behavior remain real. No stub SDK is used to make the suite pass.
 6. Synthetic receipt fixture bytes are sufficient for identity checks, but are
    not valid media-decoder/phone-rendering evidence. File validity and actual
    delivery require separate checks.
+7. A scripted-provider assertion could be caught by application error handling.
+   The harness now retains and re-raises those assertions; a negative regression
+   proves that unoffered tools and exhausted replies cannot silently pass.
+8. Live certification could report PASS for a successful subset despite missing
+   offline capabilities or unfinished work. The new status gate rejects those
+   cases; paid provider execution of the new guard is still pending.
 
 ## Genuine blockers and continuation
 
@@ -304,7 +323,7 @@ python -m unittest discover -s audit/independent -p test_ha_snapshot_probe.py -v
 The second command passes **eight additional standalone tests**, including copied
 WAL replay, source/archive preservation, scope of exported conversation data,
 credential filtering, permissions, path traversal and symlink rejection. These
-are separate from the 59-test repair suite above. They use synthetic archives.
+are separate from the 68-test repair suite above. They use synthetic archives.
 The collector retains redacted tool errors and routing decisions, hashes input
 event IDs, and preserves zero/false values instead of converting them to blanks.
 
@@ -333,7 +352,7 @@ build or actual provider/phone delivery. `--reuse` can reuse the prior SDK venv
 only if installation succeeded and pinned requirement bytes are unchanged.
 All source, data, audio packages and logs for the new run use a new directory.
 The revised runner reports actual test exceptions, execution counts and skips
-directly. Its local mechanics checks do not replace the pending SDK rerun.
+directly. Its local mechanics checks do not replace SDK/application execution.
 `--only <check>` is repeatable and marks the result as a targeted run; compilation
 still runs. `--offline-routing` additionally checks all configured prompt and
 conversation contracts. Its `LIVE_REQUIRED` results remain unfinished, and
@@ -358,12 +377,12 @@ not make the shell transport usable. No authenticated browser or remote terminal
 tool is available. The existing HA credential has **not** been proven valid or
 invalid against the server; asking for another token would not fix this.
 
-Continue in an execution session that can make approved HTTPS requests. First
-perform a read-only HA API check, inspect current Alex version/settings/processes,
-and take a fresh backup before any production change. Retrieve exact private
-voice/quote traces, complete remaining domain/worker/privacy tests and the scope
-move implementation, rerun the real dependency/container suite, then release and
-deploy. Verify actual database/file/delivery state and pairing after restart.
+The operator-assisted Terminal route has already supplied a backup, traces,
+isolated SDK execution and offline routing evidence. Continue that route for
+the pending real-provider probe and packaged-runtime checks. Before production
+changes, recheck the app state/options and create a fresh Alex-only backup.
+Complete the remaining domain/worker/integration acceptance, release and deploy,
+then verify database/file/delivery state and pairing after restart.
 No additional approval is needed for those already-authorized routine actions.
 
 ## Short phone acceptance test — after completion and deployment
