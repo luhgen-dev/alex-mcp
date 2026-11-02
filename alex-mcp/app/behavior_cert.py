@@ -2006,7 +2006,8 @@ def live_certify(phase: str, provider: str, source_options: str | None,
                  max_live_cost_usd: float, heldout_path: str | None = None,
                  live_adversarial_per_contract: int = 1,
                  live_strategy: str = "benchmark",
-                 contract_ids: set[str] | None = None) -> dict:
+                 contract_ids: set[str] | None = None,
+                 include_voice_parity: bool = False) -> dict:
     source = _load_source_options(source_options)
     creds = _credential_options(provider, source)
     heldout = _load_heldout_corpus(heldout_path)
@@ -2086,6 +2087,20 @@ def live_certify(phase: str, provider: str, source_options: str | None,
             "hard_missing_contracts": [],
         }
 
+    if include_voice_parity:
+        prompt_plan, conversation_plan = _with_voice_parity(prompt_plan, conversation_plan)
+
+    def checkpoint():
+        if report_path:
+            Path(str(report_path) + ".progress.json").write_text(json.dumps({
+                "status": "RUNNING", "completed_prompts": len(rows),
+                "planned_prompts": len(prompt_plan), "completed_conversations": len(conversations),
+                "planned_conversations": len(conversation_plan),
+                "estimated_cost_usd": accumulated_cost,
+                "failures": [r for r in rows + conversations if r["status"] == "FAIL"],
+            }, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    checkpoint()
     # Benchmark mode deliberately runs the highest-value prompt evidence first.
     # Conversations follow because each chain costs several turns but proves
     # pronoun/focus/state continuity that isolated prompts cannot.
@@ -2099,6 +2114,7 @@ def live_certify(phase: str, provider: str, source_options: str | None,
         row["prompt"] = _report_prompt(prompt, variant_kind)
         rows.append(row)
         accumulated_cost += float(row.get("estimated_cost_usd") or 0.0)
+        checkpoint()
 
     if not budget_stopped:
         for contract, source_kind in conversation_plan:
@@ -2112,6 +2128,7 @@ def live_certify(phase: str, provider: str, source_options: str | None,
                 float(step.get("estimated_cost_usd") or 0.0)
                 for step in conversation["steps"]
             )
+            checkpoint()
 
     elapsed = [r["elapsed_ms"] for r in rows]
     for conv in conversations:
@@ -2153,6 +2170,8 @@ def live_certify(phase: str, provider: str, source_options: str | None,
         "provider": provider,
         "status": live_status,
         "sandbox": True,
+        "voice_parity": include_voice_parity,
+        "voice_recognition": "fixture; live ASR accuracy is not certified",
         "sandbox_path_verified": True,
         "production_data_access": "provider credentials may be read from --source-options; all certification state writes are bound to disposable sandbox DB paths",
         "summary": {
@@ -2188,6 +2207,24 @@ def live_certify(phase: str, provider: str, source_options: str | None,
     return _emit(report, report_path)
 
 
+def _with_voice_parity(prompts: list, conversations: list) -> tuple[list, list]:
+    """Replay text-capable contracts at the authenticated voice boundary too."""
+    result = list(prompts)
+    seen = {(r[0].id, r[1], r[2]) for r in prompts}
+    for row in prompts:
+        key = (row[0].id, "voice", row[2])
+        if row[1] == "text" and key not in seen:
+            result.append((row[0], "voice", *row[2:]))
+            seen.add(key)
+    convs = list(conversations)
+    seen_convs = {(c.id, source) for c, source in conversations}
+    for contract, source in conversations:
+        if source == "text" and (contract.id, "voice") not in seen_convs:
+            convs.append((contract, "voice"))
+            seen_convs.add((contract.id, "voice"))
+    return result, convs
+
+
 def _parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Alex cross-phase behaviour certification")
     p.add_argument(
@@ -2214,6 +2251,8 @@ def _parser() -> argparse.ArgumentParser:
         help="optional existing options file used only to copy provider credentials into the sandbox",
     )
     p.add_argument("--report", default=None)
+    p.add_argument("--include-voice-parity", action="store_true",
+                   help="also run text-capable contracts as authorized voice transcript fixtures")
     p.add_argument("--hard-latency-ms", type=int, default=20000)
     p.add_argument(
         "--max-live-cost-usd", type=float, default=0.25,
@@ -2259,6 +2298,7 @@ def main() -> dict:
             max(0, int(args.live_adversarial_per_contract)),
             args.live_strategy,
             set(args.contract) or None,
+            args.include_voice_parity,
         )
     if report["status"] != "PASS" and not args.no_fail_exit:
         raise SystemExit(1)

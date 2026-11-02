@@ -18,6 +18,19 @@ import behavior_capabilities as capabilities  # noqa: E402
 
 
 class BehaviourRigCatalogTests(unittest.TestCase):
+    def test_voice_parity_expansion_preserves_media_and_does_not_duplicate(self):
+        contract = contracts.PROMPT_CONTRACTS[0]
+        conv = contracts.CONVERSATION_CONTRACTS[0]
+        rows = [(contract, "text", "request", "catalog", 0),
+                (contract, "voice", "request", "catalog", 0),
+                (contract, "text", "other request", "catalog", 0),
+                (contract, "image", "photo", "catalog", 0)]
+        expanded, conversations = behavior_cert._with_voice_parity(rows, [(conv, "text")])
+        self.assertEqual(len(expanded), 5)
+        self.assertIn((contract, "voice", "other request", "catalog", 0), expanded)
+        self.assertEqual([r[1] for r in expanded].count("image"), 1)
+        self.assertEqual(conversations, [(conv, "text"), (conv, "voice")])
+
     def test_catalog_is_complete_and_coherent(self):
         report = behavior_cert.catalog_audit()
         self.assertEqual(report["status"], "PASS", report["failures"])
