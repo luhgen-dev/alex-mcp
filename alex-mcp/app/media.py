@@ -846,6 +846,21 @@ def process_payload_media(payload: dict) -> tuple[list[str], list[str], list[dic
             payload["audio_data"],
         )
         media_ids.append(mid)
+        if get_settings().voice_notes_enabled:
+            import voice_notes
+            try:
+                transcript = voice_notes.transcribe(mid)
+            except voice_notes.VoiceNoteUnavailable as exc:
+                row = get_media(mid) or {}
+                meta = json.loads(row.get("transcript_meta_json") or "{}")
+                # Preserve detailed attempt metadata; never erase a paid result
+                # or synthesize a transcript on an unavailable route.
+                meta.update(mode="openai_voice_note", command_execution=False,
+                            authoritative=False, reason=str(exc))
+                _update_transcript(mid, row.get("transcript_text") or "", meta)
+            else:
+                context_lines.append(VOICE_TRANSCRIPT_PREFIX + transcript)
+            return media_ids, context_lines, vision_parts
         _update_transcript(
             mid, "",
             {

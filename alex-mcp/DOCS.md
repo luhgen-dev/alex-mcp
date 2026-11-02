@@ -17,6 +17,30 @@ No API key, phone number, provider or pairing credential is stored in source cod
 
 ## What runs locally
 
+### Multilingual voice notes (0.5.53)
+
+Voice notes can use one OpenAI transcription request, then the existing Alex brain
+and scoped tools. Tamil, Tanglish, English and Malay can be tested through the same
+WhatsApp requests used for text. Recognition accuracy needs real-recording testing.
+
+1. Back up Alex MCP including its data, then use the normal Home Assistant app
+   update screen to install **0.5.53**. Refresh/check for updates if it is not listed.
+2. In **Alex MCP → Configuration**, enable `voice_notes_enabled` and enter the
+   credited OpenAI organization's API key privately in `voice_openai_api_key`.
+   An existing `openai_api_key` is used only if the voice key is empty. A dedicated
+   voice key leaves ordinary text-model routing unchanged.
+3. Keep `voice_monthly_budget_usd: 5.0`, `voice_max_seconds: 180` and language hints
+   `ta`, `en`, `ms` for the initial test. Save and restart **Alex MCP**.
+4. Open the Web UI, confirm WhatsApp is connected and the runtime is **0.5.53**,
+   then send a short Tamil voice note in an authorized DM. Verify both the reply
+   and the actual saved result before trying amounts, reminders or private requests.
+
+Original audio is retained. Unavailable or unclear input goes to the pending inbox
+with an actionable reply; failed uploads are not automatically repeated. Voice
+spending estimates appear separately in Usage. Disable `voice_notes_enabled` to
+restore the deferred inbox. Installing alone does not enable paid transcription.
+See [voice implementation and acceptance checks](../docs/multilingual-voice-notes.md).
+
 ### Grocery prices: MYDIN and Manjaku (0.5.48)
 
 Ask Alex: “What is the current price of Myrasa 5kg at MYDIN?”, “Harga susu di
@@ -135,7 +159,7 @@ Ask “what are this month's payments?” for saved Digi records, configured on-
 - durable outbound queue
 - original receipt/media storage and ACL-scoped later retrieval (including original voice notes)
 - receipt OCR through Tesseract
-- local multilingual Whisper voice-note transcription
+- local voice-file preservation and conversion; opt-in cloud transcription as above
 - PDF text extraction
 - WhatsApp session state
 - startup structural diagnostics

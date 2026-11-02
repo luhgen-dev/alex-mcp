@@ -21,6 +21,8 @@ class ActorContext:
     # defaults so existing callers/tests keep working unchanged.
     # source: text | voice | image | document | mixed
     source: str = "text"
+    # Set only by ingress after successful opt-in transcription of this input.
+    voice_authorized: bool = False
     # The user's own words: typed text or the transcript of their voice note.
     # OCR/PDF text is NEVER placed here (it is untrusted document content).
     trusted_text: str = ""

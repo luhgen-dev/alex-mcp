@@ -38,7 +38,7 @@ from config import get_settings
 
 mcp = MCPServer(
     "Alex Household Tools",
-    version="0.5.52",
+    version="0.5.53",
     instructions="Deterministic household tools. Identity and permissions are injected by Alex and are never model-controlled.",
 )
 
@@ -422,7 +422,7 @@ def remember_knowledge(subject: str, content: str, actor: Actor,
                        kind: Literal['fact', 'preference'] = 'fact',
                        topics: list[str] | None = None,
                        price_fallback: bool | None = None) -> dict:
-    """Teach a persistent household fact or preference from an explicit typed remember/save/update request. Reuse the exact subject to update it; previous versions remain inspectable. Subject identifies the person/product/topic; topics specify when a preference applies (groceries, meals, replies). Relevant knowledge is recalled automatically across chats/restarts within current privacy scope. For an explicit grocery pricing preference, price_fallback=true enables remembered estimates when online prices are missing; false restricts automatic estimates to online data. Omit it for other preferences. This never changes permissions or creates reminders/actions. Use remember_product_price for a reusable per-pack estimate. Saved attachments still use save_item."""
+    """Teach a persistent household fact or preference from an explicit remember/save/update request (typed or authorized current voice). Reuse the exact subject to update it; previous versions remain inspectable. Subject identifies the person/product/topic; topics specify when a preference applies (groceries, meals, replies). Relevant knowledge is recalled automatically across chats/restarts within current privacy scope. For an explicit grocery pricing preference, price_fallback=true enables remembered estimates when online prices are missing; false restricts automatic estimates to online data. Omit it for other preferences. This never changes permissions or creates reminders/actions. Use remember_product_price for a reusable per-pack estimate. Saved attachments still use save_item."""
     import learned_memory
     return learned_memory.remember(actor, subject, content, kind, topics, price_fallback)
 

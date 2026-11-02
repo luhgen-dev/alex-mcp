@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 from config import DATA_DIR, get_settings
 from db import connect
 import runtime_clock
+import voice_notes
 
 SELFTEST_FILE = os.path.join(DATA_DIR, "selftest.json")
 
@@ -88,6 +89,7 @@ def usage_summary(hours: int = 24) -> dict:
             "average_ai_latency_ms": round(float(row["avg_latency"] or 0), 1),
             "estimated_ai_cost_usd": round(float(row["estimated_cost"] or 0), 6),
             "by_provider": by_provider,
+            "voice_transcription": voice_notes.usage_summary(),
             "note": (
                 "Local telemetry only; reading this makes no AI request. "
                 "xAI rows use provider-reported billed cost when available; other rows use configured token rates."
@@ -296,6 +298,7 @@ def system_health(actor, hours: int = 24) -> dict:
                     "live_verified": "Check the bill on demand; configuration alone is not proof of a working login.",
                 } for provider in ("tnb","saj")},
             },
+            "voice_transcription": voice_notes.usage_summary(),
             "provider": {
                 "name": settings.ai_provider,
                 "model": settings.model,

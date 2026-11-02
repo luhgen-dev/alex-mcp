@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 
 from text_normalization import normalize_intent_text
+from multilingual_intent import time_evidence
 
 
 FIELDS = frozenset({
@@ -58,7 +59,7 @@ def _fail(code: str = "REMINDER_NEEDS_TIME", message: str = "ask for an unambigu
 
 def number_text(text: str) -> str:
     """Normalize the bounded English number grammar, not whole command phrases."""
-    value = normalized(text)
+    value = normalized(time_evidence(text))
     value = re.sub(r"\bhalf\s+(?:an?\s+)?hour\b", "0.5 hour", value)
     value = re.sub(r"\ba\s+quarter\s+of\s+an?\s+hour\b", "0.25 hour", value)
     tens = "twenty|thirty|forty|fourty|fifty|sixty|seventy|eighty|ninety"
@@ -117,7 +118,7 @@ def relative_minutes_in(text: str, *, bare: bool = False) -> int | None:
 
 
 def _daypart(text: str) -> str | None:
-    value = normalized(text)
+    value = normalized(time_evidence(text))
     value = re.sub(r"\bafter\s+dinner\b", "evening", value)
     value = re.sub(r"\bafter\s+lunch\b", "afternoon", value)
     found = re.findall(r"\b(morning|afternoon|evening|night|am|pm)\b", value)
@@ -221,7 +222,7 @@ def clock_in(text: str, *, inherited_daypart: str | None = None) -> tuple[int, i
 
 
 def dates_in(text: str) -> list[str]:
-    value = normalized(text)
+    value = normalized(time_evidence(text))
     value = re.sub(r"\b(?:tmr|tmrw|tomoro|tomorow)\b", "tomorrow", value)
     if re.search(r"\bday\s+after\s+tomorrow\b", value):
         _fail("REMINDER_NEEDS_DATE", "state the exact date for this relative day")

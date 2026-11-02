@@ -1,3 +1,11 @@
+## 0.5.53 — opt-in multilingual voice-note pilot
+
+- Add one bounded OpenAI transcription per addressed WhatsApp voice note, preserving original-language text, audio provenance, scoped execution and duplicate-message protection. Voice is disabled by default until configured and tested.
+- Repair multilingual discovery, explicit private cues, source-checked reminder time evidence and persistent teaching from authorized current voice input.
+- Add a separate duration-based voice budget with durable upload reservations, clear pending fallback and local usage diagnostics. Keep the existing everyday brain and paid reasoning routes unchanged.
+- See `docs/multilingual-voice-notes.md` for configuration, credit-use findings and the outstanding live-recording acceptance checks.
+- Update through Home Assistant's normal add-on screen, then enable `voice_notes_enabled` and configure the credited API key in `voice_openai_api_key`. Save and restart Alex MCP. Existing options, records and WhatsApp pairing are retained.
+
 ## 0.5.51 — retain the retailer through longer product conversations
 
 - Preserve the actual retailer across generic price follow-ups and after the original store-naming message leaves bounded recent history. Use the source heading of the verified prior reply as public catalogue context, never as price evidence or write authorization.
