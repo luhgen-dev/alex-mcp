@@ -202,22 +202,66 @@
         "heldout_contracts_loaded": 0
       },
       "live_provider": {
-        "status": "RUNNING",
+        "status": "FAIL",
         "provider": "auto",
-        "completed_prompts": 37,
         "planned_prompts": 264,
-        "completed_conversations": 0,
         "planned_conversations": 24,
-        "estimated_cost_usd": 0.04108425,
         "estimated_stop_threshold_usd": 1.0,
         "limits": [
           "Only API-provider path exercised; configured ChatGPT session routing remains unverified",
           "Synthetic household, fake HA, no WhatsApp sending",
           "Voice recognition uses transcript fixtures"
-        ]
+        ],
+        "final_totals_verified": true,
+        "final_evidence": "Operator screenshots 315320 and 315328; final report status FAIL, all 264 prompts and 24 conversations completed, three failures, no budget stop.",
+        "observed_failures": [
+          {
+            "contract": "p3.audit.tamil.expense",
+            "source": "text",
+            "problems": [
+              "financial_events expected ACTIVE exact row count1/delta1, observed0"
+            ],
+            "reply": "OK, I have noted the Starbucks expense of56.90MYR. Could you let me know the category (e.g.food,drinks)?",
+            "interpretation": "315328 confirms log_expense received amount56.9 and descriptionStarbucks without category; returned needs_confirmation, categorynull, pending_reason purpose_or_category_unclear, shared scope. The expense was stored pending, not ACTIVE."
+          },
+          {
+            "contract": "p1.memory.picture",
+            "source": "text",
+            "problems": [
+              "required-all capability memory.get absent"
+            ],
+            "interpretation": "No attachment identity problem reported; inspect whether another valid retrieval tool supplied original."
+          },
+          {
+            "contract": "p1.memory.picture",
+            "source": "voice",
+            "problems": [
+              "required-all capability memory.get absent"
+            ],
+            "interpretation": "No attachment identity problem reported; inspect actual retrieval calls."
+          }
+        ],
+        "diagnostic_caveat": "Old helper reads routes from wrong nesting and printed empty arrays. Correct trace is turn.result.routes. New helper repairs display without changing recorded underlying traces.",
+        "selection_followup": {
+          "evidence": "Operator screenshot315326, final result of diagnostic query; contract/source header not visible in this crop",
+          "observed": "Successful search returned saved item, then successful resolve_numbered_choice(choice1,selection_kind SAVED_ITEM) returned found with the same item_id.",
+          "conclusion": "Confirmed valid saved-item retrieval path missing from judge capability attribution; exact attachment checks remain unchanged.",
+          "unverified": "Full source header of the pictured selection trace and the other picture case trace are still clipped; neither picture failure reported an attachment identity problem."
+        },
+        "last_observed_progress": {
+          "completed_prompts": 37,
+          "completed_conversations": 0,
+          "estimated_cost_usd": 0.04108425
+        },
+        "completed_prompts": 264,
+        "completed_conversations": 24,
+        "estimated_cost_usd": 0.32134125,
+        "failures": 3,
+        "budget_stopped": false,
+        "expense_repair": "General purchase categorization guidance added to brain prompt and log_expense description; unknown transfer purpose still requires review. No merchant keyword rule or backend confirmation bypass. Added clear-cafe and unknown-P2P live contracts; Tamil contract now also requires canonical food category. Targeted provider proof pending."
       },
       "pending": [
-        "Complete real API provider benchmark",
+        "Targeted judge and purchase categorization checks with real provider",
         "Configured ChatGPT session routing",
         "Packaged image build/startup/socket checks",
         "Production deployment and phone acceptance"

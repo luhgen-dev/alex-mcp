@@ -12,7 +12,10 @@ test_sanitization_is_recursive_and_nonmutating (test_audit_redaction_independent
 test_usage_metrics_are_not_credentials (test_audit_redaction_independent.ReportRedactionTests.test_usage_metrics_are_not_credentials) ... ok
 test_complete_success_and_observed_failure_remain_distinct (test_certification_status_independent.CertificationStatusTests.test_complete_success_and_observed_failure_remain_distinct) ... ok
 test_empty_and_interrupted_runs_cannot_pass (test_certification_status_independent.CertificationStatusTests.test_empty_and_interrupted_runs_cannot_pass) ... ok
+test_later_empty_search_cannot_reuse_an_earlier_saved_match (test_certification_status_independent.CertificationStatusTests.test_later_empty_search_cannot_reuse_an_earlier_saved_match) ... ok
 test_model_choices_preserved_without_household_configuration (test_certification_status_independent.CertificationStatusTests.test_model_choices_preserved_without_household_configuration) ... ok
+test_saved_selection_is_an_observed_saved_item_read (test_certification_status_independent.CertificationStatusTests.test_saved_selection_is_an_observed_saved_item_read) ... ok
+test_selection_must_match_domain_identity_success_and_preceding_search (test_certification_status_independent.CertificationStatusTests.test_selection_must_match_domain_identity_success_and_preceding_search) ... ok
 test_successful_paid_subset_does_not_hide_missing_capability (test_certification_status_independent.CertificationStatusTests.test_successful_paid_subset_does_not_hide_missing_capability) ... ok
 test_cached_finance_payload_is_removed_after_move_and_fresh_read_is_scoped (test_finance_privacy_independent.ExpensePrivacyTests.test_cached_finance_payload_is_removed_after_move_and_fresh_read_is_scoped) ... ok
 test_correction_chain_and_receipt_become_private_without_changing_bytes (test_finance_privacy_independent.ExpensePrivacyTests.test_correction_chain_and_receipt_become_private_without_changing_bytes) ... ok
@@ -71,6 +74,6 @@ test_outbox_corrupt_original_is_failed_before_transport (test_workers_independen
 test_outbox_transport_retry_preserves_message_identity (test_workers_independent.WorkerStateTests.test_outbox_transport_retry_preserves_message_identity) ... ok
 
 ----------------------------------------------------------------------
-Ran 71 tests in 1.019s
+Ran 74 tests in 1.052s
 
 OK

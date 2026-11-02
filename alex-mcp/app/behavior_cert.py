@@ -1573,6 +1573,37 @@ def _attachment_identity_problems(contract, outbounds: list[dict]) -> list[str]:
     return problems
 
 
+def _saved_selection_capabilities(calls: list[dict]) -> set[str]:
+    """Recognize an actual saved-item read via the public selection tool.
+
+    A selection tool name alone proves nothing about the selected domain or
+    identity. Bind its successful result to the preceding authorized saved-item
+    search. Original attachment identity/bytes are still checked by the judge.
+    """
+    choices = {}
+    observed = set()
+    for call in calls:
+        if str(call.get('status') or '').upper() not in {'OK', 'PASS', 'SUCCESS'}:
+            continue
+        result = call.get('result') or {}
+        if not isinstance(result, dict) or result.get('error'):
+            continue
+        if call.get('tool') == 'search_saved_items':
+            choices = {row['choice']: row['item_id'] for row in (result.get('matches') or [])
+                       if isinstance(row, dict) and type(row.get('choice')) is int
+                       and row.get('item_id')}
+        elif call.get('tool') == 'resolve_numbered_choice':
+            args = call.get('arguments') or {}
+            if not isinstance(args, dict):
+                continue
+            choice = args.get('choice')
+            if (args.get('selection_kind') == 'SAVED_ITEM' and type(choice) is int
+                    and result.get('status') == 'found' and result.get('item_id')
+                    and choices.get(choice) == result['item_id']):
+                observed.add('memory.get')
+    return observed
+
+
 def _judge_observation(
     contract,
     *,
@@ -1603,6 +1634,9 @@ def _judge_observation(
                for pattern in getattr(contract, "allowed_tool_errors", ()))
     }
     successful_caps = set(capabilities_for_tools(successful_tools))
+    saved_selection_caps = _saved_selection_capabilities(calls)
+    successful_caps.update(saved_selection_caps)
+    called_caps.update(saved_selection_caps)
     if trace.get("scoped_memory_context_matches_expected"):
         successful_caps.add("memory.search")
     # Production ingress can resolve an exact persisted selection without MCP.
@@ -2051,7 +2085,8 @@ LIVE_BENCHMARK_PRIORITY = frozenset({
     "p3.typo.reminder", "p3.language.tamil.reminder",
     "p3.language.tamil.memory",
 })
-LIVE_AUDIT_PRIORITY = frozenset({'p3.audit.tamil.expense', 'p3.audit.tamil.reminder'})
+LIVE_AUDIT_PRIORITY = frozenset({'p3.audit.tamil.expense', 'p3.audit.tamil.reminder',
+                                'p3.audit.expense.category', 'p3.audit.expense.unknown_purpose'})
 
 
 def _benchmark_live_plan(

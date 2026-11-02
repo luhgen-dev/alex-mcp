@@ -35,7 +35,29 @@ def redact(value, secrets):
     return json.loads(text)
 
 
-def run_provider(work, checkout, python, env, budget):
+def failure_detail(row):
+    trace = row.get('trace') or {}
+    detail = {k: row.get(k) for k in ('contract', 'source', 'problems', 'attachment_count')}
+    detail['reply'] = str(row.get('reply', ''))[:400]
+    detail['routes'] = ((trace.get('turn') or {}).get('result') or {}).get('routes', [])
+    detail['tools'] = [{k: call.get(k) for k in ('tool', 'status')} for call in trace.get('calls', [])]
+    if row.get('steps'):
+        detail['failed_steps'] = [{k: step.get(k) for k in ('step', 'problems', 'reply')}
+                                  for step in row['steps'] if step.get('status') != 'PASS']
+    return detail
+
+
+def result_summary(result):
+    summary = result.get('summary') or {}
+    return {'status': result['status'], 'exit_code': result.get('exit_code'),
+            'scope': 'targeted' if result.get('contracts') else 'benchmark',
+            'contracts': result.get('contracts', []),
+            **{k: summary.get(k) for k in ('prompt_runs', 'planned_prompt_runs',
+                'conversation_runs', 'planned_conversation_runs', 'failures',
+                'budget_stopped', 'estimated_cost_usd')}}
+
+
+def run_provider(work, checkout, python, env, budget, contracts=()):
     info = subprocess.run(['ha', 'apps', 'info', '9c6165c2_alex_mcp', '--raw-json'],
                           capture_output=True, text=True, timeout=30, check=True)
     app = json.loads(info.stdout)
@@ -65,6 +87,8 @@ def run_provider(work, checkout, python, env, budget):
                    '--live-strategy', 'benchmark', '--include-voice-parity',
                    '--max-live-cost-usd', str(budget), '--hard-latency-ms', '60000',
                    '--report', str(report_path)]
+        for contract in contracts:
+            command.extend(['--contract', contract])
         with log_path.open('w') as log:
             process = subprocess.Popen(command, cwd=checkout, env=child_env, stdout=log, stderr=subprocess.STDOUT)
             timed_out = False
@@ -103,18 +127,13 @@ def run_provider(work, checkout, python, env, budget):
     expected_code = 0 if report.get('status') == 'PASS' else 1
     result = {'status': report.get('status', 'FAIL') if process.returncode == expected_code else 'FAIL',
               'exit_code': process.returncode, 'summary': report.get('summary', {}),
-              'report': str(report_path), 'voice_recognition': report.get('voice_recognition')}
-    print('LIVE_RESULT', json.dumps(result, ensure_ascii=False), flush=True)
+              'report': str(report_path), 'voice_recognition': report.get('voice_recognition'),
+              'contracts': list(contracts)}
+    print('LIVE_RESULT', json.dumps(result_summary(result), ensure_ascii=False), flush=True)
     failures = [r for r in report.get('prompt_results', []) + report.get('conversation_results', [])
                 if r.get('status') != 'PASS']
     for row in failures[:20]:
-        detail = {k: row.get(k) for k in ('contract', 'source', 'problems')}
-        detail['reply'] = str(row.get('reply', ''))[:400]
-        detail['routes'] = (row.get('trace') or {}).get('routes', [])
-        if row.get('steps'):
-            detail['failed_steps'] = [{k: step.get(k) for k in ('step', 'problems', 'reply')}
-                                      for step in row['steps'] if step.get('status') != 'PASS']
-        print('LIVE_FAILURE', json.dumps(detail, ensure_ascii=False), flush=True)
+        print('LIVE_FAILURE', json.dumps(failure_detail(row), ensure_ascii=False), flush=True)
     if len(failures) > 20:
         print('LIVE_MORE_FAILURES', len(failures)-20, flush=True)
     print('LIVE_PRIVATE_REPORT', report_path, flush=True)

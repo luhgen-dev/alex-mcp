@@ -8,8 +8,9 @@ its partial result and limitations are recorded below.
 No household database, credentials or pairing files were changed. The operator
 restarted Terminal & SSH to cancel a malformed mobile paste, then restored its
 temporary Python installation. Alex and other household services kept running.
-A real API-provider benchmark is now running with synthetic household state;
-its result is pending. The speech/transcription implementation and production
+A real API-provider benchmark completed 264 prompts and 24 conversations with
+three failures (estimated cost $0.32134125). Follow-up repairs await a targeted
+provider run. The speech/transcription implementation and production
 provider configuration are unchanged.
 
 The original assignment remains open. The attached screenshots are evidence of
@@ -142,7 +143,7 @@ A running service alone is not evidence that structural checks passed.
 
 ## Exact automated evidence and its limits
 
-- [candidate.json](candidate.json), [candidate.log](candidate.log): **71 tests,
+- [candidate.json](candidate.json), [candidate.log](candidate.log): **74 tests,
   zero failures/errors/skips**. SHA-256 values bind eight tested runtime modules,
   the independent fixture/test files, and the additional wiring/schema sources.
   The latter hashes do not certify execution of the SDK-dependent ingress/brain.
@@ -156,7 +157,7 @@ A running service alone is not evidence that structural checks passed.
   functions in baseline dependants and initially masked the new time regression.
   Those historical baseline logs remain tied to their recorded test hashes at
   commit `959d419b843ab58974ff71c610fa653ab513fc3a`; they are not a comparison
-  of the expanded 71-test suite. The current runner refuses a baseline missing
+  of the expanded 74-test suite. The current runner refuses a baseline missing
   the new privacy module instead of silently importing candidate code.
 - Local Python 3.12.14. Python compilation passed. Four existing Node contracts
   and bridge syntax passed. These are not a container build or a paired session.
@@ -165,10 +166,10 @@ A running service alone is not evidence that structural checks passed.
   `requests`; another encountered incompatible installed MCP APIs. Passing
   modules accounted for 54 test methods (52 passed, two packaged-runtime skips),
   including nine earlier independent tests. **Do not add this overlapping,
-  earlier count to the current 71-test result.**
+  earlier count to the current 74-test result.**
 - [startup-gate.json](startup-gate.json) and its log compare three shell tests:
   the old script fails two; the repaired script passes all three. These three
-  tests are included in the 71-test focused count, not additional to it.
+  tests are included in the 74-test focused count, not additional to it.
 - [ha-control-readback.json](ha-control-readback.json) and its log compare six
   HA adapter tests: baseline produces 25 failed assertions (including subtests)
   and four numeric-conversion errors; candidate passes all six. These are
@@ -256,7 +257,7 @@ A running service alone is not evidence that structural checks passed.
   and a due time two minutes after the fixed clock. They are prioritized for
   real-provider execution and are explicitly not verbatim production transcripts.
   The expanded catalog/offline matrix subsequently passed on HA as recorded below;
-  the paid provider benchmark is still running.
+  the paid provider benchmark subsequently finished with the failures noted below.
 - Full operator-assisted run at `6a604e38aad4a986007688c9256a027c8387c96b`:
   **68/68 jobs passed; 1,047 test executions; two explicit image-only skips**.
   This includes all 63 test modules, compilation, selftest, stress, catalog and
@@ -273,6 +274,40 @@ A running service alone is not evidence that structural checks passed.
   household state, simulated HA and no WhatsApp sender; configured ChatGPT
   session routing and live ASR are explicitly not exercised. No live pass is
   claimed until the completed report is reviewed.
+- Screenshot 315320 shows the provider run has finished, with three failed prompt
+  rows printed: one text variant of `p3.audit.tamil.expense` did not match the
+  expected ACTIVE expense row and asked for a category; text/voice variants of
+  `p1.memory.picture` lacked the judge's required `memory.get` capability.
+  The picture rows reported no missing/wrong original-file problem, so an
+  alternative valid retrieval path must be inspected before classifying this
+  as an application defect. The expense may have been stored pending review;
+  actual tool arguments/results are requested. Final aggregate counts/cost
+  were clipped in the screenshot and are not inferred from earlier progress.
+  The helper also displayed empty routes because it read the wrong trace level;
+  this display bug is repaired, with a regression. New output keeps final totals
+  compact, and `--live-contract` supports explicitly labelled targeted reruns.
+  Five live-probe and five runtime-helper mechanics tests pass locally.
+- Screenshot 315326 confirms a valid saved-picture read through an authorized
+  search followed by `resolve_numbered_choice(selection_kind="SAVED_ITEM")`,
+  returning the same item ID. The judge now attributes `memory.get` only when
+  that successful selection matches the preceding successful search. Wrong
+  domain, identity, choice, ordering, failed calls and stale matches remain
+  rejected. Exact original-file count/path/bytes checks are unchanged. Three
+  new focused methods pass; the complete 74-test focused suite passes. A full
+  SDK judge regression for valid/missing/corrupt originals is written and awaits
+  the targeted HA run. Subsequent expense/totals evidence follows below.
+- Screenshot 315328 confirms final provider status **FAIL**, 264 prompts, 24
+  conversations, three failures, no budget stop, estimated cost **$0.32134125**.
+  The expense call supplied amount 56.9 and description Starbucks without a
+  category. The backend correctly returned `needs_confirmation` with a null
+  category and `purpose_or_category_unclear`; it was not an ACTIVE expense.
+  The repair tells the model to supply a broad category for a clear ordinary
+  purchase while leaving unknown transfer purposes pending. It adds no merchant
+  keyword rule and does not bypass backend review. New live contracts check a
+  cafe purchase and an unknown person-to-person transfer; the existing Tamil
+  expense now also requires category `food`. These are real-provider acceptance
+  checks awaiting the targeted HA run, not claimed passes. Current focused
+  tests remain 74/74 passing; the 10 probe/runner mechanics tests pass separately.
 - Upstream CI run `41451020384` was observed failed with zero job steps executed.
   The prior release records a billing lock; this session has not independently
   verified the account-level billing cause.
@@ -353,7 +388,7 @@ python -m unittest discover -s audit/independent -p test_ha_snapshot_probe.py -v
 The second command passes **eight additional standalone tests**, including copied
 WAL replay, source/archive preservation, scope of exported conversation data,
 credential filtering, permissions, path traversal and symlink rejection. These
-are separate from the 71-test repair suite above. They use synthetic archives.
+are separate from the 74-test repair suite above. They use synthetic archives.
 The collector retains redacted tool errors and routing decisions, hashes input
 event IDs, and preserves zero/false values instead of converting them to blanks.
 

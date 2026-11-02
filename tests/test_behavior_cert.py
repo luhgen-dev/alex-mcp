@@ -4,6 +4,7 @@ These tests validate the rig/catalog itself. They do not certify Alex behaviour;
 that is the job of behavior_cert.py --mode offline/live.
 """
 import os
+import hashlib
 import sys
 import tempfile
 import unittest
@@ -90,6 +91,31 @@ class BehaviourRigJudgeMutationTests(unittest.TestCase):
     @classmethod
     def contract(cls, contract_id):
         return next(c for c in contracts.PROMPT_CONTRACTS if c.id == contract_id)
+
+    def test_saved_selection_retrieval_passes_only_with_exact_original(self):
+        contract = self.contract('p1.memory.picture')
+        trace = {'calls':[
+            {'tool':'search_saved_items','status':'OK','result':{'matches':[
+                {'choice':1,'item_id':'synthetic-picture'}]}},
+            {'tool':'resolve_numbered_choice','status':'OK',
+             'arguments':{'choice':1,'selection_kind':'SAVED_ITEM'},
+             'result':{'status':'found','item_id':'synthetic-picture'}},
+        ]}
+        with tempfile.TemporaryDirectory() as directory:
+            original = Path(directory)/'original.png'
+            original.write_bytes(b'original fixture bytes')
+            fixtures = {'vinyl_path':str(original),'original_attachment_sha256':{
+                str(original.resolve()):hashlib.sha256(original.read_bytes()).hexdigest()}}
+            with patch.object(behavior_cert, 'CERT_FIXTURES', fixtures):
+                def judge(rows):
+                    return behavior_cert._judge_observation(contract, source='voice', reply='Here it is.',
+                        outbounds=rows, trace=trace, elapsed_ms=1, state_changes={},
+                        state_expectation_problems=[], ha_before={}, ha_after={}, ingress_result={'ok':True})
+                rows = [{'kind':'IMAGE','local_path':str(original)}]
+                self.assertEqual(judge(rows), [])
+                self.assertTrue(any('attachment' in p for p in judge([])))
+                original.write_bytes(b'wrong bytes at the same path')
+                self.assertTrue(any('bytes' in p for p in judge(rows)))
 
     def test_discovery_alone_never_satisfies_typo_reminder(self):
         contract = self.contract("p3.typo.reminder")

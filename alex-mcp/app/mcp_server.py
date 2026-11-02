@@ -145,7 +145,10 @@ def log_expense(description: str, actor: Actor, amount: float | None = None,
                 category: str | None = None, currency: str | None = None,
                 event_date_local: str | None = None, reference: str | None = None,
                 event_type: str = "Expense") -> dict:
-    """Record an expense or income. MYR is the default when the user states no currency; explicit SGD/S$ overrides it. Use null category/amount when genuinely unclear. Omit event_date_local unless the user or the receipt states a date/time; Alex stamps the message time automatically and never needs an invented clock time."""
+    """Record an expense or income. MYR is the default when the user states no currency; explicit SGD/S$ overrides it.
+    Supply a broad category when an ordinary purchase's product, service or merchant type establishes its purpose, even without an explicit category label (e.g. a cafe purchase is food). Respect an explicit user category. Do not infer transfer/repayment/gift/salary purpose from a merchant or person's name alone. Use null category/amount when genuinely unclear; never invent an amount. A needs_confirmation result is pending, not a completed expense.
+    Omit event_date_local unless the user or the receipt states a date/time; Alex stamps the message time automatically and never needs an invented clock time.
+    """
     return services.log_expense(actor, description, amount, category, currency, event_date_local, reference, event_type)
 
 

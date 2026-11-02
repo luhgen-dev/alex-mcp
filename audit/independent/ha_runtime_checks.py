@@ -153,10 +153,13 @@ def main():
     parser.add_argument('--only', action='append', default=[], help='Run only a named check (repeatable); compile always runs. This is not a full suite pass.')
     parser.add_argument('--offline-routing', action='store_true', help='Also audit every configured behavior contract and routing variant without provider calls')
     parser.add_argument('--live-provider', action='store_true', help='After successful selected checks, run real configured API providers against synthetic household fixtures')
+    parser.add_argument('--live-contract', action='append', default=[], help='Select a live prompt/conversation contract (repeatable); results are labelled targeted')
     parser.add_argument('--live-budget', type=float, default=1.0, help='Estimated provider spend stop threshold in USD (checked between cases)')
     args = parser.parse_args()
     if not re.fullmatch('[0-9a-f]{40}', args.commit):
         parser.error('commit must be a full immutable GitHub commit SHA')
+    if args.live_contract and not args.live_provider:
+        parser.error('live-contract requires live-provider')
     if not math.isfinite(args.live_budget) or not 0 < args.live_budget <= 5:
         parser.error('live-budget must be greater than zero and at most 5 USD')
     os.umask(0o077)
@@ -276,7 +279,7 @@ def main():
             spec = importlib.util.spec_from_file_location('alex_live_probe', checkout/'audit/independent/live_probe.py')
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
-            report['live_provider'] = module.run_provider(work, checkout, python, env, args.live_budget)
+            report['live_provider'] = module.run_provider(work, checkout, python, env, args.live_budget, args.live_contract)
             save()
             if report['live_provider']['status'] != 'PASS':
                 return 1
