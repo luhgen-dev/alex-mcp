@@ -107,7 +107,15 @@ def parse_saj(html, history_html, account):
     # Do not mix amounts from another account card or an unauthenticated page.
     due = money(_one(p.text, r'Amount Due\s*\(RM\)\s*([\d,.]+)'))
     deadline = date(_one(p.text, r'Pay Before\s+(\d{2} [A-Za-z]{3} \d{4})'))
-    bills = re.findall(r'(\d{2}/\d{2}/\d{4})\s+Bill\s+([A-Za-z0-9-]+)\s+-\s+RM\s*([\d,.]+)', history.text)
+    # SAJ repeats column labels inside responsive table cells. Accept both
+    # labelled cells and the compact desktop text while keeping each amount
+    # bound to an explicit Bill row, never a payment or adjacent transaction.
+    bills = re.findall(
+        r'(\d{2}/\d{2}/\d{4})\s+(?:Type of Transaction\s+)?Bill\s+'
+        r'(?:Bill No\.\s+)?([A-Za-z0-9-]+)\s+'
+        r'(?:Reference No\.\s+)?-\s+(?:Amount\s+)?RM\s*([\d,.]+)',
+        history.text,
+    )
     if not bills: raise PortalUnavailable('SAJ bill history could not be verified; no monthly bill was saved.')
     bills = [{'invoice_date': date(d), 'bill_reference': ref, 'invoice_amount': money(a)} for d, ref, a in bills]
     bills.sort(key=lambda x:x['invoice_date'], reverse=True)

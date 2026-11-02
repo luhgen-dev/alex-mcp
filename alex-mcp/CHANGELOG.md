@@ -1,3 +1,8 @@
+## 0.5.49 — SAJ bill-history compatibility
+
+- Read SAJ bill-history rows that repeat column labels inside responsive table cells. Keep invoice charges separate from payment entries and the dashboard outstanding balance.
+- Preserve exact account matching, on-demand retrieval and existing stored records. No new dependencies or configuration changes.
+
 ## 0.5.48 — grocery price records and household bills
 
 - Include the held Manjaku Online connector alongside the MYDIN update in 0.5.47.
