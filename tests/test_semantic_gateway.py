@@ -285,7 +285,8 @@ class SemanticGatewayTests(unittest.TestCase):
                 semantic_user_text="in 40 minutes",
             ))
 
-        self.assertEqual(captured["messages"][-1]["content"], "in 40 minutes")
+        self.assertEqual(captured["messages"][-1]["content"], "in abt fourty mins")
+        self.assertTrue(any("in 40 minutes" in m["content"] for m in captured["messages"] if m["role"] == "system"))
         history = db.recent_turns(current.conversation_id, 2)
         self.assertEqual(history[-2]["role"], "user")
         self.assertEqual(history[-2]["content"], "in abt fourty mins")

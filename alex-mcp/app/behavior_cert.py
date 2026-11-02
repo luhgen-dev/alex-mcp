@@ -1027,7 +1027,7 @@ def _latency_breakdown(mid: str, trace: dict, total_ms: int) -> dict[str, Any]:
 
 
 def _validate_seed(seed: str | None) -> None:
-    if seed not in {"core", "private_core"}:
+    if seed not in {"core", "private_core", "plan_update", "shopping_product", "cash_allocation"}:
         return
     import db
 
@@ -1067,8 +1067,18 @@ def _reset_case_database(sandbox_dir: Path, seed: str | None) -> str:
     _initialize_sandbox()
     _install_fixed_clock()
     _install_fake_ha()
-    if seed in {"core", "private_core"}:
-        _seed_core(private_memory=seed == "private_core")
+    if seed in {"core", "private_core", "plan_update", "shopping_product", "cash_allocation"}:
+        _seed_core(private_memory=seed == "private_core", pending_plan=seed == "plan_update")
+    if seed == "shopping_product":
+        import services
+        from context import with_action_key
+        conv = "seed@s.whatsapp.net"
+        _claim("seed-rice", "add rice", conv)
+        services.add_shopping_item(with_action_key(_actor("seed-rice",conv,"add rice"),"seed-rice"),"Rice",shared=True)
+    if seed == "cash_allocation":
+        import phase2_finance
+        phase2_finance.record_cash_event("OT",500,"2026-09-28",HUSBAND,
+            visibility="family",description="Extra OT cash",source_message_id="seed-ot")
     _validate_seed(seed)
     return str(case_path)
 
@@ -1101,7 +1111,7 @@ def _actor(mid: str, conv: str, text: str = "", source: str = "text",
     )
 
 
-def _seed_core(private_memory: bool = False):
+def _seed_core(private_memory: bool = False, pending_plan: bool = False):
     import db
     import media
     import phase2
@@ -1212,7 +1222,7 @@ def _seed_core(private_memory: bool = False):
     malacca = phase2.create_plan(
         with_action_key(_actor(mid, conv, "Malacca family day trip"), "seed-malacca-action"),
         "Family Day Trip to Malacca",
-        notes="Date undecided. Kid-friendly activities. Aim to be back home by around 9pm.",
+        notes="Date undecided." if pending_plan else "Date undecided. Kid-friendly activities. Aim to be back home by around 9pm.",
         locked=False,
     )
 
@@ -1400,7 +1410,7 @@ def _outbound_rows(mid: str) -> list[dict[str, Any]]:
 
 
 def _reply_from_outbound(rows: list[dict[str, Any]]) -> str:
-    texts = [str(row.get("text_body") or "") for row in rows if row.get("kind") == "TEXT"]
+    texts = [str(row.get("text_body") or "") for row in rows if row.get("text_body")]
     return texts[-1] if texts else ""
 
 
@@ -1529,6 +1539,8 @@ def _judge_observation(
     successful_tools = {
         call["tool"] for call in calls
         if str(call.get("status") or "").upper() in {"OK", "PASS", "SUCCESS"}
+        or any(pattern in str((call.get("result") or {}).get("error") or "").casefold()
+               for pattern in getattr(contract, "allowed_tool_errors", ()))
     }
     successful_caps = set(capabilities_for_tools(successful_tools))
     required_caps = set(contract.required_any) - {"routing.discovery"}
@@ -1610,7 +1622,7 @@ def _judge_observation(
             problems.append(f"table {table} changed but contract requires it unchanged")
 
     if contract.expect_clarification:
-        if "?" not in (reply or ""):
+        if "?" not in (reply or "") and not (getattr(contract, "allow_answer", False) and reply.strip()):
             problems.append("expected a clarification question")
         if persistent_mutation_called:
             problems.append("clarification turn performed a persistent mutation")

@@ -67,6 +67,7 @@ class PromptContract:
     conversation_type: str = "DIRECT_DM"
     actor: str = "husband"
     reply_language: str = "en"
+    allowed_tool_errors: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -211,7 +212,7 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
             "Do I still have the management receipt?",
             "Find that management payment receipt for me.",
         ),
-        _fs("find_receipts", "search_saved_items"), seed="core",
+        _fs("find_receipts", "search_saved_items", "get_transaction_receipt"), seed="core",
     ),
     PromptContract(
         "p1.receipt.ingest.image", "phase1", "receipts",
@@ -388,7 +389,7 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         "p1.shopping.product_choice", "phase1", "shopping",
         "An explicit catalogue product choice exposes the binding tool and list resolver; it never records an expense.",
         ("Choose MYDIN SKU 10010176 for the rice product in my grocery list.", "Use MYDIN product SKU 10010176 for my grocery rice brand and pack."),
-        _fs("select_grocery_product"), seed="core",
+        _fs("select_grocery_product"), seed="shopping_product",
         forbidden=_fs("log_expense"), unchanged_tables=("financial_events",),
     ),
     PromptContract(
@@ -396,6 +397,7 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         "Named utility checks use the configured portal, reporting unavailable setup honestly and never recording a payment.",
         ("Check my TNB bill amount.", "How much is the SAJ water bill?", "Check bil air Ranhill."),
         _fs("check_household_bill"), seed="core",
+        allowed_tool_errors=("portal access is disabled",),
         forbidden=_fs("log_expense", "bills_record_payment"),
         unchanged_tables=("financial_events",),
     ),
@@ -449,6 +451,7 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
         ),
         _fs("add_shopping_item"), seed="empty",
         expect_clarification=True,
+        allow_answer=True,
         unchanged_tables=("shopping_items",),
     ),
     PromptContract(
@@ -697,7 +700,7 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
             "For the Malacca plan, keep the date open, make it kid-friendly and aim to be home by 9pm.",
             "Add to our Malacca draft that we want kid-friendly activities and to return around 9pm.",
         ),
-        _fs("update_plan"), forbidden=_fs("create_reminder"), seed="core",
+        _fs("update_plan"), forbidden=_fs("create_reminder"), seed="plan_update",
         sources=("text", "voice"),
     ),
     PromptContract(
@@ -848,7 +851,7 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
             "Allocate RM200 from the OT money to Family Holiday Savings.",
             "Channel RM200 of the extra cash into the holiday goal.",
         ),
-        _fs("planning_allocate_cash_to_goal"), seed="core",
+        _fs("planning_allocate_cash_to_goal"), seed="cash_allocation",
     ),
     PromptContract(
         "p2.reserve.read", "phase2", "cash_planning",

@@ -148,6 +148,27 @@ class VoiceParityIngressTests(unittest.TestCase):
             rows = c.execute("SELECT media_id FROM saved_items").fetchall()
         self.assertEqual([r["media_id"] for r in rows], [mid])
 
+    def test_appointment_read_keeps_calendar_tools_when_reminder_name_matches(self):
+        self.claim("parity-dentist", "+60111111111", "Remind me of Dentist Appointment on 1 January 2030 at 3pm")
+        actor = replace(self.actor("parity-dentist", "+60111111111"),
+                        trusted_text="Remind me of Dentist Appointment on 1 January 2030 at 3pm", action_key="parity-dentist")
+        core.services.create_reminder(actor,"Dentist Appointment","2030-01-01T15:00:00+08:00")
+        result = self.run_voice("When is my dentist appointment?", [
+            {"tool":"get_agenda", "args":{"start_date":"2030-01-01","end_date":"2030-01-01"}},
+            {"content":"I found your reminder; no appointment has been recorded."},
+        ])
+        self.assertTrue(result["ok"])
+        with core.db.connect() as c:
+            trace = json.loads(c.execute("SELECT arguments_json FROM tool_audit WHERE source_message_id='parity-voice' AND tool_name='_turn_trace'").fetchone()[0])
+        self.assertTrue({"get_agenda", "get_agenda_range"} & set(trace["exposed_tools"]))
+
+    def test_agenda_relative_weekday_uses_actual_calendar(self):
+        self.claim("parity-calendar", "+60111111111", "What's on my agenda next Thursday?")
+        actor=replace(self.actor("parity-calendar", "+60111111111"),trusted_text="What's on my agenda next Thursday?")
+        with patch.object(core.runtime_clock,"today",return_value=datetime(2026,9,29).date()):
+            agenda=core.phase2.get_agenda(actor,"2026-10-02","2026-10-02")
+        self.assertEqual((agenda["start_date"],agenda["end_date"]),("2026-10-01","2026-10-01"))
+
     def test_tamil_pdf_request_delivers_valid_report(self):
         self.seed_receipt()
         result = self.run_voice("என்னோட செலவுகள் PDFல அனுப்பு", [

@@ -371,13 +371,14 @@ def resolve_plan_reference(actor: ActorContext, plan_id: str | None = None,
     supplied_name = str(plan_name or "").strip()
     if not supplied_id and not supplied_name:
         raise ValueError("provide plan_id or plan_name")
-    marks = ",".join("?" for _ in actor.allowed_spaces)
+    spaces = scope_policy.read_spaces(actor)
+    marks = ",".join("?" for _ in spaces)
     conn = connect()
     try:
         if supplied_id:
             row = conn.execute(
                 f"SELECT plan_id FROM plans WHERE plan_id=? AND space_id IN ({marks})",
-                [supplied_id] + list(actor.allowed_spaces),
+                [supplied_id] + list(spaces),
             ).fetchone()
             if not row:
                 raise PermissionError("plan not found in your accessible spaces")
@@ -386,8 +387,14 @@ def resolve_plan_reference(actor: ActorContext, plan_id: str | None = None,
             f"""SELECT plan_id,title,status FROM plans
                 WHERE LOWER(title)=LOWER(?) AND space_id IN ({marks})
                 ORDER BY status='CANCELLED',updated_at_utc DESC""",
-            [supplied_name] + list(actor.allowed_spaces),
+            [supplied_name] + list(spaces),
         ).fetchall()
+        if not rows and len(supplied_name) >= 3:
+            visible = conn.execute(
+                f"SELECT plan_id,title,status FROM plans WHERE space_id IN ({marks})", spaces,
+            ).fetchall()
+            rows = [r for r in visible if re.search(
+                r"(?<!\w)" + re.escape(supplied_name) + r"(?!\w)", r["title"], re.I)]
         active = [row for row in rows if row["status"] != "CANCELLED"]
         candidates = active or rows
         if not candidates:
@@ -1898,6 +1905,19 @@ def get_agenda_range(actor: ActorContext, phrase: str,
 
 def get_agenda(actor: ActorContext, start_date: str, end_date: str,
                include_plans: bool = True) -> dict:
+    # Ground a single current relative-weekday request in the server clock.
+    # Models occasionally pair the correct weekday with the wrong ISO date.
+    # Leave explicit dates, compound periods and ranges to their normal path.
+    current = str(getattr(actor, "trusted_text", "") or "")
+    weekdays = re.findall(
+        r"\b(?:next|coming)\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b",
+        current, re.I,
+    )
+    if len(weekdays) == 1 and not re.search(
+        r"\b(?:and|to|through|until|after|before)\b|\d{4}-\d{2}-\d{2}", current, re.I
+    ):
+        window = resolve_date_range(weekdays[0], actor.timezone)
+        start_date, end_date = window["start_date"], window["end_date"]
     start_utc = _to_utc(start_date + "T00:00:00", actor.timezone)
     end_utc = _to_utc(end_date + "T23:59:59", actor.timezone)
     agenda_spaces = scope_policy.read_spaces(actor)

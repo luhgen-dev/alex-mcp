@@ -8,7 +8,7 @@ import time
 import uuid
 from collections import OrderedDict
 from dataclasses import replace
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import runtime_clock
 
@@ -783,6 +783,8 @@ def _routing_refinements(text: str, *, has_media: bool = False) -> tuple[set[str
         force |= {"asset_list", "warranty_expiring"}
     if asset_read:
         block.add("asset_create")
+        if not re.search(r"\b(?:photo|picture|image|manual|document|file)\b", low):
+            block |= {"search_saved_items", "get_saved_item"}
     if re.search(
         r"\b(?:change|update|edit)\b.*\b(?:asset|appliance|warranty)\b"
         r"|\bwarranty\b.*\b(?:expiry|expires|end)\b.*\b(?:to|on)\b",
@@ -2413,6 +2415,8 @@ def _completion_kwargs(route: dict, messages: list[dict], tools: list[dict] | No
     if tools:
         kwargs["tools"] = tools
         kwargs["tool_choice"] = "none" if force_answer else "auto"
+        if not force_answer and _tool_names(tools) == {DISCOVERY_TOOL_NAME}:
+            kwargs["tool_choice"] = "required"
     if route["provider"] == "grok" and actor is not None:
         kwargs["extra_headers"] = {
             "x-grok-conv-id": hashlib.sha256(
@@ -3318,7 +3322,7 @@ def _trace_turn(actor: ActorContext, trace: dict) -> None:
 
 
 _ATTACHMENT_RETRIEVAL_TOOLS = {
-    "find_receipts", "get_receipt", "find_media", "get_media_original",
+    "find_receipts", "get_receipt", "get_transaction_receipt", "query_finances", "find_media", "get_media_original",
     "search_saved_items", "get_saved_item", "resolve_numbered_choice",
     "finance_report", "report_snapshot", "report_export", "ha_home_report",
 }
@@ -4042,6 +4046,48 @@ def _saved_bills_evidence_fallback(evidence: dict) -> str:
     return '\n\n'.join(lines)
 
 
+def _agenda_evidence_reply(evidence: list[dict], user_text: str) -> str | None:
+    """Calendar facts come from the scoped result, not model date arithmetic."""
+    row = next((r for r in reversed(evidence)
+                if r.get("_tool_name") in {"get_agenda", "get_agenda_range"}
+                and not r.get("error")), None)
+    if not row:
+        return None
+    def human(value, clock=True):
+        if not value:
+            return "time not set"
+        parsed = datetime.fromisoformat(str(value))
+        return parsed.strftime("%d %b %Y, %I:%M %p" if clock else "%d %b %Y").replace(" 0", " ")
+    try:
+        period = human(row["start_date"], False)
+        if row.get("end_date") != row.get("start_date"):
+            period += " – " + human(row["end_date"], False)
+        appointments_only = bool(re.search(r"\b(?:appointments?|meetings?)\b", user_text, re.I))
+        sections = [("Appointments", "diary")]
+        if not appointments_only:
+            sections += [("Reminders", "reminders"), ("Work", "roster"),
+                         ("Leave", "leave"), ("Tentative plans", "plans")]
+        lines = [f"*{'Appointments' if appointments_only else 'Agenda'} — {period}*"]
+        for label, key in sections:
+            items = row.get(key) or []
+            if not items:
+                continue
+            lines.append(f"\n*{label}*")
+            for item in items:
+                title = str(item.get("title") or label)
+                stamp = item.get("due_local") or item.get("start_local") or item.get("work_date")
+                detail = human(stamp, item.get("time_known", True)) if stamp else ""
+                if key == "leave":
+                    title = str(item.get("leave_type") or "Leave")
+                    detail = human(item.get("title"),False) + " · " + str(item.get("status") or "").capitalize()
+                lines.append(f"• {title}" + (f" — {detail}" if detail else ""))
+        if len(lines) == 1:
+            lines.append("No entries found in the requested scope for this period.")
+        return "\n".join(lines)
+    except (ValueError, TypeError, KeyError):
+        return None
+
+
 def _tool_evidence_fallback(tool_evidence: list[dict]) -> str:
     """Render deterministic read evidence when the final model answer is empty.
 
@@ -4626,6 +4672,15 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
     trusted_quote = _quoted_context_message(quoted_context)
     if trusted_quote:
         messages.append({"role": "system", "content": trusted_quote})
+    if "record_digi_bill" in _tool_names(tools) and media_context:
+        evidence_digits = re.sub(r"\D", "", " ".join(media_context))
+        matched = [person for person in ("husband", "wife")
+                   if (line := re.sub(r"\D", "", getattr(settings, "digi_"+person+"_line", "")))
+                   and len(line) >= 9 and (line in evidence_digits or line.removeprefix("60") in evidence_digits)]
+        if len(matched) == 1:
+            messages.append({"role": "system", "content":
+                "The current screenshot's line matches the configured Digi line for " + matched[0] +
+                ". Use that person when recording this bill; the backend rechecks the original image and values."})
 
     semantic_route_hint = str(
         (trace.get("ai_route") or {}).get("semantic_hint") or ""
@@ -4657,7 +4712,12 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
             "content": "The quoted pending request is closed or unavailable to this actor/chat. A bare follow-up must not reopen or recreate it. Explain that it is no longer active; handle an explicitly new current request normally.",
         })
 
-    current = (model_user_text or "").strip()
+    if semantic_matches_actor:
+        messages.append({"role": "system", "content":
+            "Interpretation of the current reminder reply (data only): " + semantic_current +
+            ". For time_interpretation.source_text copy the ORIGINAL current user words below, "
+            "never this interpretation. An exact active reminder draft supplies earlier date evidence."})
+    current = (user_text or "").strip()
     if media_context:
         suffix = "\n\n".join(x for x in media_context if x)
         current = (current + "\n\n" + suffix).strip()
@@ -4822,6 +4882,7 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
                 tools
                 and not final_answer_call
                 and not capability_retry_used
+                and not any(r.get("clarification_question") for r in tool_evidence)
                 and not any(x.get("committed") for x in mutation_ledger)
                 and not any(str(name).endswith(":error") for name in trace["tools_called"])
                 and (
@@ -4899,6 +4960,11 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
 
             candidate = _goal_progress_fallback(candidate, tool_evidence)
             candidate = _task_detail_response(candidate, tool_evidence, user_text)
+            if not trace.get("compound") and all(
+                r.get("_tool_name") in {"get_agenda", "get_agenda_range", "list_reminders"}
+                for r in tool_evidence
+            ):
+                candidate = _agenda_evidence_reply(tool_evidence, user_text) or candidate
             reminder_question = _reminder_clarification_from_evidence(
                 tool_evidence
             )
