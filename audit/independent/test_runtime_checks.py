@@ -40,11 +40,12 @@ class RuntimeRunnerTests(unittest.TestCase):
             checks.unpack(archive, self.root/'bad', self.commit)
 
     def test_failure_summary_retains_dotted_exceptions_and_skip_count(self):
-        command = [sys.executable, '-c', "print('ERROR: fixture'); print('sqlite3.OperationalError: missing synthetic table'); print('Ran 3 tests in 0.01s'); print('FAILED (errors=1, skipped=1)'); raise SystemExit(1)"]
+        command = [sys.executable, '-c', "print(\"test_container (Fixture.test_container) ... skipped 'HA image-only binary execution'\"); print('ERROR: fixture'); print('sqlite3.OperationalError: missing synthetic table'); print('Ran 3 tests in 0.01s'); print('FAILED (errors=1, skipped=1)'); raise SystemExit(1)"]
         result = checks.run(command, self.root, {'PATH':os.environ.get('PATH','')}, self.root/'test.log', 10)
         self.assertEqual(result['status'], 'FAIL')
         self.assertEqual(result['test_executions'], 3)
         self.assertEqual(result['skipped'], 1)
+        self.assertEqual(result['skip_messages'], ["test_container (Fixture.test_container) ... skipped 'HA image-only binary execution'"])
         self.assertIn('sqlite3.OperationalError: missing synthetic table', result['failure_messages'])
 
     def test_audio_package_install_targets_only_the_isolated_sysroot(self):

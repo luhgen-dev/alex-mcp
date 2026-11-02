@@ -1,41 +1,79 @@
 {
-  "commit": "4cfbbcf24ea5e48abbad26daeb5a5343a1a3c706",
-  "evidence": "Operator terminal screenshots 315227.jpg, 315229.jpg, 315231.jpg and subsequent pasted error output; full raw logs not retrieved into this workspace",
-  "private_report": "/config/alex-audit/runtime-7f2195a3/summary.json",
-  "production_changed": false,
-  "jobs": 64,
-  "passed_jobs": 58,
-  "failed_jobs": 6,
-  "passed_test_modules": 54,
-  "test_modules": 60,
-  "test_execution_count": null,
-  "skipped_count": null,
-  "passed_other_jobs": [
-    "compile",
-    "selftest",
-    "stress",
-    "catalog"
-  ],
-  "failed_modules": [
-    "test_behavior_cert",
-    "test_multilingual_voice",
-    "test_v044",
-    "test_v0537_prelive_hardening",
-    "test_v0538_reminder_report_reliability",
-    "test_voice_feature_parity"
-  ],
-  "observed_errors": [
-    "Sender is not configured as an Alex household user (leading text partially clipped)",
-    "KeyError: 'quoted'",
-    "KeyError: 'voice_pending'",
-    "sqlite3.OperationalError: no such table: alex_phase2_asset_documents",
-    "FileNotFoundError: [Errno 2] No such file or directory: 'ffmpeg'"
-  ],
-  "error_attribution": "OCR aggregates do not map every occurrence to a test. Schema and identity diagnoses are based on inspected fixture code; the revised complete run is required to confirm all six failures are resolved.",
-  "pending": [
-    "Revised full SDK test run including actual FFmpeg setup",
-    "Container build",
-    "Live provider and production delivery verification",
-    "Comprehensive feature certification and deployment"
+  "runs": [
+    {
+      "commit": "4cfbbcf24ea5e48abbad26daeb5a5343a1a3c706",
+      "evidence": "Operator terminal screenshots 315227.jpg, 315229.jpg, 315231.jpg and subsequent pasted error output; full raw logs not retrieved into this workspace",
+      "private_report": "/config/alex-audit/runtime-7f2195a3/summary.json",
+      "production_changed": false,
+      "jobs": 64,
+      "passed_jobs": 58,
+      "failed_jobs": 6,
+      "passed_test_modules": 54,
+      "test_modules": 60,
+      "test_execution_count": null,
+      "skipped_count": null,
+      "passed_other_jobs": [
+        "compile",
+        "selftest",
+        "stress",
+        "catalog"
+      ],
+      "failed_modules": [
+        "test_behavior_cert",
+        "test_multilingual_voice",
+        "test_v044",
+        "test_v0537_prelive_hardening",
+        "test_v0538_reminder_report_reliability",
+        "test_voice_feature_parity"
+      ],
+      "observed_errors": [
+        "Sender is not configured as an Alex household user (leading text partially clipped)",
+        "KeyError: 'quoted'",
+        "KeyError: 'voice_pending'",
+        "sqlite3.OperationalError: no such table: alex_phase2_asset_documents",
+        "FileNotFoundError: [Errno 2] No such file or directory: 'ffmpeg'"
+      ],
+      "error_attribution": "OCR aggregates do not map every occurrence to a test. Schema and identity diagnoses are based on inspected fixture code; the revised complete run is required to confirm all six failures are resolved.",
+      "pending": [
+        "Revised full SDK test run including actual FFmpeg setup",
+        "Container build",
+        "Live provider and production delivery verification",
+        "Comprehensive feature certification and deployment"
+      ]
+    },
+    {
+      "commit": "c1815adeb9f7ed0407d6a2a022de76db8969c67d",
+      "evidence": "Operator screenshots 315245.jpg, 315247.jpg, 315249.jpg; complete raw logs remain on HA",
+      "private_report": "Newest runtime directory under /config/alex-audit; screenshot basename is not transcribed with certainty",
+      "production_changed": false,
+      "jobs": 64,
+      "passed_jobs": 62,
+      "failed_jobs": 2,
+      "test_modules": 60,
+      "passed_test_modules": 58,
+      "test_execution_count": 1033,
+      "skipped_count": 2,
+      "failed_modules": [
+        "test_v0538_reminder_report_reliability",
+        "test_voice_feature_parity"
+      ],
+      "observed_errors": [
+        {
+          "test": "test_cached_export_refuses_visibility_change_and_repeat_exports_keep_records",
+          "error": "IndexError: list index out of range"
+        },
+        {
+          "test": "test_colloquial_reminder_creates_one_real_due_row",
+          "error": "AssertionError: not all scripted provider replies were consumed; create_reminder and final reply remained"
+        }
+      ],
+      "interpretation": "Seed actor lacked ingress trusted_text, reproducibly creating a private expense excluded from shared export. The voice script requested discovery although the recognized mutator is already exposed and fills the six-tool budget. Both fixtures are repaired; stricter scripted-provider assertions require a fresh full run.",
+      "pending": [
+        "Complete suite with repaired fixtures and stricter provider harness",
+        "Container/image-only checks",
+        "Live provider and phone delivery verification",
+        "Comprehensive feature certification and deployment"
+      ]
+    }
   ]
 }

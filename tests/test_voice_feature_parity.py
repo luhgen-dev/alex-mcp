@@ -263,7 +263,8 @@ class VoiceParityIngressTests(unittest.TestCase):
         fixed = datetime(2026, 11, 2, 12, 0, tzinfo=timezone.utc)
         with patch.object(core.runtime_clock, "now_utc", return_value=fixed):
             result = self.run_voice(phrase, [
-                {"tool": "discover_alex_tools", "args": {"intent": "remind me to take medicine in five minutes"}},
+                # The recognized imperative now offers create_reminder in the
+                # initial six-tool set. Discovery is only a spare-slot fallback.
                 {"tool": "create_reminder", "args": {"task": "Take medicine", "due_local": "2026-11-02T20:05:00+08:00",
                     "time_interpretation": {"source_text": phrase, "kind": "RELATIVE", "reference": "CURRENT_MESSAGE",
                                             "relative_minutes": 5, "needs_clarification": False}}},

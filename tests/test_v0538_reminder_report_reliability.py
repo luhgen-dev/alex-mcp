@@ -37,11 +37,20 @@ class V0538ReliabilityTests(unittest.TestCase):
 
     def test_cached_export_refuses_visibility_change_and_repeat_exports_keep_records(self):
         self.claim('export-expense', 'I spent 56.90 in Starbucks')
-        owner = with_action_key(self.actor('export-expense'), 'export-expense')
-        event = services.log_expense(owner, 'Export fixture coffee', 56.90, 'food')['event_id']
-        self.claim('query-finance', 'Show shared expenses')
-        reader = self.actor('query-finance')
-        mcp_server.query_finances(actor=reader, scope='family')
+        # Direct service calls need the same trusted metadata ingress supplies.
+        # Without it, the legacy backend fallback creates an owner-private row.
+        owner = replace(with_action_key(self.actor('export-expense'), 'export-expense'),
+                        trusted_text='I spent 56.90 in Starbucks')
+        logged = services.log_expense(owner, 'Export fixture coffee', 56.90, 'food')
+        self.assertEqual(logged['status'], 'logged')
+        self.assertEqual(logged['space'], 'FAMILY_SHARED')
+        event = logged['event_id']
+        core.AlexCoreTests.claim(self, 'query-finance', '+60222222222', 'Show shared expenses')
+        reader = replace(core.AlexCoreTests.actor(self, 'query-finance', '+60222222222'),
+                         trusted_text='Show shared expenses', read_scope='family')
+        shown = mcp_server.query_finances(actor=reader, scope='family')
+        self.assertEqual(shown['count'], 1)
+        self.assertEqual([r['event_id'] for r in shown['records']], [event])
         exports = [mcp_server.report_export(actor=reader, format='json') for _ in range(2)]
         for exported in exports:
             data = json.loads(Path(exported['_attachments'][0]['path']).read_text())
@@ -56,6 +65,9 @@ class V0538ReliabilityTests(unittest.TestCase):
             conn.execute("UPDATE inbound_messages SET quoted_message_id='expense-quote' WHERE message_id='move-private'")
         mover = replace(self.actor('move-private'), trusted_text='Actually save that to my private')
         finance_privacy.move_quoted_expense(mover)
+        with db.connect() as conn:
+            self.assertEqual(conn.execute('SELECT space_id FROM financial_events WHERE event_id=?',
+                                          (event,)).fetchone()[0], owner.private_space)
         with self.assertRaisesRegex(ValueError, 'Financial visibility changed'):
             mcp_server.report_export(actor=reader, format='json')
         mcp_server.query_finances(actor=reader, scope='family')

@@ -78,6 +78,8 @@ def run(command, cwd, env, log, timeout):
         result['test_executions'] = int(counts[1])
     skips = re.search(r'(?:OK|FAILED)\s*\([^\n]*skipped=(\d+)', content)
     result['skipped'] = int(skips[1]) if skips else 0
+    result['skip_messages'] = [line[:800] for line in content.splitlines()
+                               if re.search(r' \.\.\. skipped ', line)]
     result['failure_messages'] = [line[:800] for line in content.splitlines()
         if re.match(r'^(?:[\w.]*(?:Error|Exception):|FAIL:|ERROR:)', line)][:40]
     return result
@@ -206,6 +208,9 @@ def main():
         print('FAILURE_DETAILS', name, flush=True)
         for message in report['checks'][name]['failure_messages']:
             print(message, flush=True)
+    for name, result in report['checks'].items():
+        for message in result['skip_messages']:
+            print('SKIP_DETAILS', name, message, flush=True)
     print('PRIVATE_REPORT', work/'summary.json', flush=True)
     return 1 if failed else 0
 

@@ -6245,6 +6245,7 @@ class AlexCoreTests(unittest.TestCase):
 
         scripted = list(steps)
         exposure = exposed if exposed is not None else []
+        provider_errors = []
 
         class FakeCompletions:
             def __init__(self):
@@ -6259,13 +6260,16 @@ class AlexCoreTests(unittest.TestCase):
                 ]
                 exposure.append(names)
                 if not scripted:
-                    raise AssertionError("scripted provider ran out of replies")
-                step = scripted.pop(0)
+                    message = "scripted provider ran out of replies"
+                    provider_errors.append(message)
+                    raise AssertionError(message)
+                step = scripted[0]
                 if "tool" in step:
                     if step["tool"] not in names:
-                        raise AssertionError(
-                            f"{step['tool']} not exposed; got {names}"
-                        )
+                        message = f"{step['tool']} not exposed; got {names}"
+                        provider_errors.append(message)
+                        raise AssertionError(message)
+                    scripted.pop(0)
                     return FakeResponse(FakeMessage(calls=[
                         FakeCall(
                             f"v0513-call-{self.n}",
@@ -6273,6 +6277,7 @@ class AlexCoreTests(unittest.TestCase):
                             step.get("args") or {},
                         )
                     ]))
+                scripted.pop(0)
                 return FakeResponse(FakeMessage(content=step.get("content", "")))
 
         fake_client = type(
@@ -6286,8 +6291,22 @@ class AlexCoreTests(unittest.TestCase):
         with patch.object(brain, "_provider_routes", return_value=[route]), \
              patch.object(brain, "_client_for", return_value=fake_client):
             result = ingress.process(payload)
+        # Real provider failures are handled by brain; a broken fixture must
+        # still fail the test even when the last scripted reply was consumed.
+        self.assertFalse(provider_errors, "Scripted provider failed: " + "; ".join(provider_errors))
         self.assertFalse(scripted, "not all scripted provider replies were consumed")
         return result
+
+    def test_scripted_provider_assertion_survives_application_error_handling(self):
+        payload = {
+            'message_id': 'invalid-script', 'conversation_id': '60111111111@s.whatsapp.net',
+            'conversation_type': 'DIRECT_DM', 'sender_phone': '+60111111111',
+            'text': 'Show my expenses',
+        }
+        with self.assertRaisesRegex(AssertionError, 'fixture_missing_tool not exposed'):
+            self._v0513_process_with_scripted_provider(payload, [{'tool': 'fixture_missing_tool'}])
+        with db.connect() as conn:
+            self.assertEqual(conn.execute('SELECT COUNT(*) FROM financial_events').fetchone()[0], 0)
 
     def test_v0513_provider_boundary_coming_friday_unquoted_7pm(self):
         fixed = datetime(2026, 10, 3, 10, 13, tzinfo=timezone.utc)

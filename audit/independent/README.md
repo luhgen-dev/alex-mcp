@@ -40,9 +40,12 @@ for "private" also selects owner-private storage; a real SQLite test checks it.
 The false-denial detector
 also recognizes "cannot log" and "write access", and an exhausted recovery may
 not repeat an unsupported lack-of-capability claim. New SDK/ingress tests are
-written. The operator's first isolated SDK run reached the voice ingress module
-but its class setup failed because Terminal lacked FFmpeg, so that run does not
-certify voice ingress. Full rerun and actual phone acceptance remain pending.
+written. The second isolated SDK run executed voice ingress with real Ogg decoding
+and scripted provider responses; its new expense-to-private regression passed.
+One reminder test still failed because its script requested discovery before the
+now-directly-offered mutator. That script is repaired; the strengthened harness
+now preserves provider assertions through application error handling. Full rerun
+and actual provider/phone acceptance remain pending.
 
 **Quoted expense moved to private:** both captured corrections failed with
 "event not found in your accessible spaces". An explicit English move/save-to-private
@@ -74,7 +77,11 @@ retain valid JSON and the privacy generation rather than truncating that evidenc
 Real SQLite checks cover the interleaved commit, old and new cache formats,
 fresh scoped reads, and delayed delivery. An SDK regression also checks repeated
 exports: a remembered canonical report must not be nested as its own ledger.
-That SDK regression has not yet run; it is included in the pending HA rerun.
+That SDK regression ran and exposed an incomplete synthetic actor: without
+ingress's trusted text, its seed expense used the legacy private fallback.
+The fixture now sets trusted text, verifies the stored shared row before export,
+and exercises the spouse's report before/after the owner's private move. No
+application privacy boundary was widened. The corrected test awaits rerun.
 
 ## Feature-by-feature status
 
@@ -111,12 +118,12 @@ All seven packaged services were enumerated from `rootfs/etc/services.d`:
 | Worker | Evidence in this session |
 | --- | --- |
 | `node-bridge` → `connect.js` | Four local payload/FIFO contracts and syntax check; no paired bridge run. |
-| `python-ingress` → `ingress.py` | Source inspection only; MCP/provider dependencies prevent execution. |
+| `python-ingress` → `ingress.py` | Isolated SDK ingress checks now execute, including real Ogg decoding and quoted private moves; model/STT/transport responses are scripted. Full run still has two test failures described below. |
 | `python-outbox` → `outbox.py` | Real local durable queue states with transport adapter mocked; no WhatsApp delivery. |
-| `python-scheduler` → `scheduler.py` | Source inspection only; HA dependency unavailable. |
+| `python-scheduler` → `scheduler.py` | Core and reminder-lifecycle module checks pass in isolated HA testing; live due-time scheduling and actual delivery remain unverified. |
 | `python-ha-mobile` → `ha_mobile.py` | Inventoried; live worker/action verification outstanding. |
 | `python-grocery-prices` → `grocery_prices.py` | Local lease/revision/retry state tests with lookup mocked. |
-| `python-dot` → `dot_runtime.py` | Separate local DOT bridge/events/onboarding/startup tests partially pass; packaged startup checks skipped, HTTP module times out in this mismatched environment. Keep feature disabled. |
+| `python-dot` → `dot_runtime.py` | DOT modules passed in the first isolated HA run. Two image-only startup/socket checks are guarded by `ALEX_TEST_PACKAGED_RUNTIME`; current aggregate shows two skips and the next runner prints their names. No packaged binary or live bridge certification. Keep feature disabled. |
 
 Startup runs `init_db.py` and logs a warning rather than stopping when `selftest.py`
 fails. A running service is therefore not evidence that structural checks passed.
@@ -171,6 +178,21 @@ fails. A running service is therefore not evidence that structural checks passed
   and eight earlier backup-probe tests passed. Neither count certifies the app.
   No application assertion, schema requirement, or release gate was removed to
   address the six module failures. The revised complete SDK run remains pending.
+- Second operator-assisted HA run at `c1815adeb9f7ed0407d6a2a022de76db8969c67d`:
+  **62/64 jobs passed; 1,033 test executions; two skips**. Both remaining failing
+  modules report one failing test each: `test_v0538_reminder_report_reliability`
+  (cached export fixture, `IndexError`) and `test_voice_feature_parity` (unused
+  scripted provider responses). The synthetic-identity/schema problems and
+  missing FFmpeg are resolved. These counts include overlapping imported test
+  cases and are not 1,033 unique feature scenarios. Screenshots 315245/247/249
+  are operator evidence; complete logs remain on HA.
+  The corrected tests still assert persisted rows, exact records, private scope,
+  export content and reminder due time. The provider harness now records missing
+  tool/exhausted-reply assertions outside the application's exception handler,
+  so an invalid final scripted call cannot silently turn into a passing test.
+  A new negative regression proves that harness behavior. The application code
+  is unchanged since `c1815ade`; the complete suite must run with this stricter
+  harness before accepting the result. The runner also prints skipped test names.
 - Upstream CI run `41451020384` was observed failed with zero job steps executed.
   The prior release records a billing lock; this session has not independently
   verified the account-level billing cause.
