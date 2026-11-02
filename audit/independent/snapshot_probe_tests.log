@@ -1,0 +1,12 @@
+test_cli_failure_does_not_print_response_or_credentials (test_ha_snapshot_probe.SnapshotProbeTests.test_cli_failure_does_not_print_response_or_credentials) ... ok
+test_command_writes_private_filtered_report (test_ha_snapshot_probe.SnapshotProbeTests.test_command_writes_private_filtered_report) ... ok
+test_copied_wal_is_replayed (test_ha_snapshot_probe.SnapshotProbeTests.test_copied_wal_is_replayed) ... ok
+test_database_symlink_is_rejected (test_ha_snapshot_probe.SnapshotProbeTests.test_database_symlink_is_rejected) ... ok
+test_missing_database_fails_without_exporting_pairing (test_ha_snapshot_probe.SnapshotProbeTests.test_missing_database_fails_without_exporting_pairing) ... ok
+test_only_database_is_extracted_and_source_is_unchanged (test_ha_snapshot_probe.SnapshotProbeTests.test_only_database_is_extracted_and_source_is_unchanged) ... ok
+test_traversal_member_is_rejected (test_ha_snapshot_probe.SnapshotProbeTests.test_traversal_member_is_rejected) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 0.099s
+
+OK

@@ -158,6 +158,35 @@ and file behavior remain real. No stub SDK is used to make the suite pass.
 
 ## Genuine blockers and continuation
 
+### Operator-assisted backup inspection
+
+`ha_snapshot_probe.py` is a standalone standard-library diagnostic for use in
+the existing HA Terminal when direct remote control is unavailable. It uses
+`ha apps info` for a filtered current state/options fingerprint, hashes a local
+backup, and copies only the database/WAL to a temporary directory. It reads the
+copy with `mode=ro` (including copied WAL transactions), reports integrity/counts,
+and selects the two known expense amounts/merchant and nearby turns in the same
+conversation. This is retrospective evidence, not a live reproduction.
+
+The report stays on HA under `/config/alex-audit/snapshot-report.json`, mode 0600.
+It contains selected household conversation text: keep it private and never
+commit it. Known configured secrets, common credential patterns, URLs and phone
+numbers are filtered. No pairing files or original media are extracted/exported;
+original-media integrity and restore tests remain separate. The script makes no
+live database, configuration, pairing or release changes.
+
+```sh
+python3 audit/independent/ha_snapshot_probe.py --backup /backup/REPLACE_WITH_BACKUP_SLUG.tar
+python -m unittest discover -s audit/independent -p test_ha_snapshot_probe.py -v
+```
+
+The second command passes **seven additional standalone tests**, including copied
+WAL replay, source/archive preservation, scope of exported conversation data,
+credential filtering, permissions, path traversal and symlink rejection. These
+are separate from the 46-test repair suite above. They use synthetic archives.
+
+### Direct-access limitation
+
 The current shell cannot reach its network proxy; requests do not reach HA.
 Permission requests stall without an approval control visible to the user. The
 managed-environment status reports unrestricted network policy, but this does
