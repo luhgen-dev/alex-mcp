@@ -38,6 +38,8 @@ test_pool_spend_retry_and_overdraft_do_not_change_other_finances (test_planning_
 test_private_asset_reads_and_edits_are_isolated (test_planning_assets_independent.PlanningAssetTests.test_private_asset_reads_and_edits_are_isolated) ... ok
 test_private_goal_is_denied_to_spouse_and_group_by_id (test_planning_assets_independent.PlanningAssetTests.test_private_goal_is_denied_to_spouse_and_group_by_id) ... ok
 test_unknown_sender_cannot_resolve_actor (test_planning_assets_independent.PlanningAssetTests.test_unknown_sender_cannot_resolve_actor) ... ok
+test_model_cannot_replace_two_with_twenty (test_voice_time_independent.TamilReminderTimeTests.test_model_cannot_replace_two_with_twenty) ... ok
+test_standard_and_colloquial_two_store_the_same_due_time (test_voice_time_independent.TamilReminderTimeTests.test_standard_and_colloquial_two_store_the_same_due_time) ... ok
 test_grocery_add_retry_does_not_duplicate_item_job_or_history (test_workers_independent.WorkerStateTests.test_grocery_add_retry_does_not_duplicate_item_job_or_history) ... ok
 test_grocery_completion_after_purchase_is_discarded (test_workers_independent.WorkerStateTests.test_grocery_completion_after_purchase_is_discarded) ... ok
 test_grocery_completion_after_rename_is_discarded (test_workers_independent.WorkerStateTests.test_grocery_completion_after_rename_is_discarded) ... ok
@@ -46,6 +48,6 @@ test_outbox_corrupt_original_is_failed_before_transport (test_workers_independen
 test_outbox_transport_retry_preserves_message_identity (test_workers_independent.WorkerStateTests.test_outbox_transport_retry_preserves_message_identity) ... ok
 
 ----------------------------------------------------------------------
-Ran 46 tests in 0.917s
+Ran 48 tests in 0.664s
 
 OK

@@ -100,6 +100,28 @@ class SnapshotProbeTests(unittest.TestCase):
         report = probe.inspect_database(destination / 'alex_mcp.db')
         self.assertEqual(report['expenses'][0]['amount_minor'], 5960)
 
+    def test_audit_errors_zero_counts_and_routes_are_retained_and_redacted(self):
+        rows = [
+            ('error', 'correct_expense', {'event_id': 'expense'},
+             {'error': 'Denied synthetic-api-credential Bearer hidden-secret'}, 'ERROR'),
+            ('zero', 'query_finances', {}, {'count': 0, 'status': False}, 'OK'),
+            ('trace', '_turn_trace', {'exposed_tools': ['query_finances']},
+             {'routes': ['self_repair:capability_denial'], 'outcome': 'answered'}, 'OK'),
+        ]
+        for key, name, args, result, status in rows:
+            self.conn.execute('''INSERT INTO tool_audit(audit_id,action_key,source_message_id,user_id,
+                tool_name,arguments_json,result_json,status) VALUES(?,?,'text','u',?,?,?,?)''',
+                (key, key, name, json.dumps(args), json.dumps(result), status))
+        self.conn.commit()
+        report = probe.inspect_database(self.source, ['synthetic-api-credential'])
+        turn = next(t for t in report['turns'] if t['source'] == probe.alias('text'))
+        calls = {t['name']: t for t in turn['tools']}
+        self.assertEqual(calls['correct_expense']['arguments']['event_id'], probe.alias('expense'))
+        self.assertEqual(calls['correct_expense']['result']['error'], 'Denied [redacted] [redacted]')
+        self.assertEqual(calls['query_finances']['result'], {'count': '0', 'status': 'False'})
+        self.assertEqual(calls['_turn_trace']['routes'], ['self_repair:capability_denial'])
+        self.assertNotIn('hidden-secret', json.dumps(report))
+
     def test_traversal_member_is_rejected(self):
         archive = self.backup(extra=lambda tar: self.member(tar, '../escaped', b'no'))
         with self.assertRaisesRegex(ValueError, 'unsafe_archive_path'):

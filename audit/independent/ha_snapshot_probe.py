@@ -44,7 +44,7 @@ def sensitive_values(value):
 
 
 def clean(text, secrets=(), limit=1000):
-    value = str(text or '')
+    value = '' if text is None else str(text)
     for secret in sorted(set(secrets), key=len, reverse=True):
         value = value.replace(secret, '[redacted]')
     value = re.sub(r'(?i)\bbearer\s+\S+|\b(?:sk-|xai-|AIza)[A-Za-z0-9._-]{8,}', '[redacted]', value)
@@ -167,12 +167,17 @@ def inspect_database(path, secrets=()):
                 if call['tool_name'] == '_turn_trace':
                     tool.update(source=args.get('source'), quoted_context=args.get('quoted_context'),
                                 exposed_tools=[clean(x, secrets, 100) for x in (args.get('exposed_tools') or [])[:80]],
+                                routes=[clean(x, secrets, 160) for x in (outcome.get('routes') or [])[:80]],
                                 outcome=clean(outcome.get('outcome'), secrets, 100))
                 else:
                     tool['arguments'] = {k: clean(args[k], secrets, 200) for k in
                                          ('amount', 'category', 'currency', 'scope', 'search', 'intent') if k in args}
+                    if args.get('event_id'):
+                        tool['arguments']['event_id'] = alias(args['event_id'])
                     tool['result'] = {k: clean(outcome[k], secrets, 100) for k in
                                       ('status', 'count', 'event_id', 'old_event_id') if k in outcome}
+                    if 'error' in outcome:
+                        tool['result']['error'] = clean(outcome['error'], secrets, 500)
                     for key in ('event_id', 'old_event_id'):
                         if key in tool['result']:
                             tool['result'][key] = alias(tool['result'][key])

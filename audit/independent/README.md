@@ -93,14 +93,17 @@ fails. A running service is therefore not evidence that structural checks passed
 
 ## Exact automated evidence and its limits
 
-- [candidate.json](candidate.json), [candidate.log](candidate.log): **46 tests,
-  zero failures/errors/skips**. SHA-256 values bind the five changed runtime
+- [candidate.json](candidate.json), [candidate.log](candidate.log): **48 tests,
+  zero failures/errors/skips**. SHA-256 values bind the six changed runtime
   modules and the independent fixture/test files to the results.
-- [baseline.json](baseline.json), [baseline.log](baseline.log): the same 46 tests
-  against the original five runtime modules produce **35 failed assertions and
-  four errors, affecting 21 distinct test methods**. Subtest failures are counted
-  separately from test methods. The four errors are the malformed-JSON and three
-  numeric cases, not missing dependencies.
+- [baseline.json](baseline.json), [baseline.log](baseline.log): the same 48 tests
+  against the original six runtime modules produce **35 failed assertions and
+  five errors, affecting 22 distinct test methods**. Subtest failures are counted
+  separately from test methods. The errors are malformed JSON, three numeric
+  cases and rejected colloquial Tamil time evidence, not missing dependencies.
+  The runner selects all baseline modules before importing any, and checks
+  their loaded paths. Incremental replacement had cached candidate helper
+  functions in baseline dependants and initially masked the new time regression.
 - Local Python 3.12.14. Python compilation passed. Four existing Node contracts
   and bridge syntax passed. These are not a container build or a paired session.
 - Earlier isolated execution of 53 available test modules: six modules passed,
@@ -108,7 +111,7 @@ fails. A running service is therefore not evidence that structural checks passed
   `requests`; another encountered incompatible installed MCP APIs. Passing
   modules accounted for 54 test methods (52 passed, two packaged-runtime skips),
   including nine earlier independent tests. **Do not add this overlapping,
-  earlier count to the final 46-test result.**
+  earlier count to the final 48-test result.**
 - The installed MCP package is 1.29.0; the app pins 2.2.0. `requests`, `openai`,
   and `websocket-client` are unavailable. Dependency installation could not reach
   the package index. The full suite, structural/stress checks, current routing
@@ -180,10 +183,22 @@ python3 audit/independent/ha_snapshot_probe.py --backup /backup/REPLACE_WITH_BAC
 python -m unittest discover -s audit/independent -p test_ha_snapshot_probe.py -v
 ```
 
-The second command passes **seven additional standalone tests**, including copied
+The second command passes **eight additional standalone tests**, including copied
 WAL replay, source/archive preservation, scope of exported conversation data,
 credential filtering, permissions, path traversal and symlink rejection. These
-are separate from the 46-test repair suite above. They use synthetic archives.
+are separate from the 48-test repair suite above. They use synthetic archives.
+The collector retains redacted tool errors and routing decisions, hashes input
+event IDs, and preserves zero/false values instead of converting them to blanks.
+
+### Additional Tamil time evidence
+
+The numeric time validator now accepts the colloquial Tamil `ரெண்டு` as two,
+alongside `இரண்டு`. Two independent tests use constructed Tamil inputs and real
+isolated SQLite: both forms persist the same two-minute due time and explicit
+private scope; a model interpretation of twenty minutes is rejected without a
+write. The speech/transcription implementation is unchanged. These tests do not
+certify model tool exposure, voice ingress, reminder delivery, or resolution of
+the reported voice refusal. Those remain open production checks.
 
 ### Direct-access limitation
 
