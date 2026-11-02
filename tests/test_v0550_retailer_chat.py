@@ -85,6 +85,19 @@ class RetailerChatTests(unittest.TestCase):
         self.assertIn('12.34', reply)
         self.assertNotIn('999.99', reply)
 
+    def test_long_manjaku_sequence_survives_generic_price_and_bounded_history(self):
+        turns = ['Check Manjaku diaper prices', 'What about baby wipes?',
+                 'Diaper price', 'What about milk?', 'What about bottles?',
+                 'What about tissue?', 'What about lotion?', 'What about shampoo?']
+        for i, text in enumerate(turns):
+            reply, exposed = self.run_turn('long-manjaku-'+str(i), text, [
+                {'tool': 'search_manjaku_prices', 'args': {'query': 'mimora'}},
+                {'content': ''},
+            ])
+            self.assertIn('Manjaku Online', reply)
+            self.assertNotIn('search_mydin_prices', exposed[0])
+        self.mydin.assert_not_called()
+
     def test_model_never_fetches_fails_closed_at_call_limit(self):
         reply, _ = self.run_turn('no-fetch', 'Sardine price', [{'content': 'RM999.99'}]*4)
         self.assertIn('No live catalogue result', reply)

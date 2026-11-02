@@ -46,20 +46,34 @@ def context(user_text: str, prior_turns: list[dict] = ()) -> set[str]:
         return named
     followup = len(current) <= 180 and bool(_FOLLOW.search(current) or _PRICE.search(current) or named)
     if followup:
-        inherited = set(named)
-        for turn in reversed(prior_turns):
+        inherited = set()
+        can_carry = False
+        for turn in prior_turns:
+            previous = str(turn.get('content') or '').strip()
+            if turn.get('role') == 'assistant':
+                # Replies produced by render() retain the actual source even
+                # after the original store-naming turn leaves bounded history.
+                # This carries public search context only, never a price/write.
+                if can_carry:
+                    sources = set(re.findall(r'(?im)^(MYDIN|Manjaku) Online\b', previous))
+                    if sources:
+                        inherited = {source.casefold() for source in sources}
+                continue
             if turn.get('role') != 'user':
                 continue
-            previous = str(turn.get('content') or '').strip()
             if _OTHER.search(previous):
-                break
+                inherited, can_carry = set(), False
+                continue
             origin = _direct(previous)
-            if origin:
-                return inherited or origin
-            if not inherited:
-                inherited = set(re.findall(r'\b(?:mydin|manjaku)\b', previous.casefold()))
-            if not _FOLLOW.search(previous) and not re.fullmatch(r'(?i)(?:mydin|manjaku)[?!.]*', previous):
-                break
+            explicit = set(re.findall(r'\b(?:mydin|manjaku)\b', previous.casefold()))
+            can_carry = bool(origin or _FOLLOW.search(previous)
+                             or re.fullmatch(r'(?i)(?:mydin|manjaku)[?!.]*', previous))
+            if can_carry:
+                inherited = explicit or inherited or origin
+            else:
+                inherited = set()
+        if inherited:
+            return named or inherited
     return direct
 
 
