@@ -765,7 +765,14 @@ def _credential_options(provider: str, source: dict) -> dict:
     }
 
 
-def _sandbox_options(provider: str, creds: dict) -> dict:
+def _sandbox_options(provider: str, creds: dict, source: dict | None = None) -> dict:
+    # Preserve the configured API model choices, not household identities,
+    # portal credentials, pairing or production data paths.
+    model_options = {
+        name: str((source or {})[name]) for name in
+        ('gemini_model', 'gemini_lite_model', 'grok_model', 'openai_model', 'reasoning_effort')
+        if (source or {}).get(name)
+    }
     return {
         "ai_provider": provider,
         **creds,
@@ -776,6 +783,7 @@ def _sandbox_options(provider: str, creds: dict) -> dict:
         "timezone": "Asia/Kuala_Lumpur",
         "context_turns": 8,
         "reasoning_effort": "low",
+        **model_options,
         "monthly_ai_budget_usd": 0,
         "auto_grok_fallback_budget_usd": 0.50,
         "budget_safety_multiplier": 2.0,
@@ -2043,6 +2051,7 @@ LIVE_BENCHMARK_PRIORITY = frozenset({
     "p3.typo.reminder", "p3.language.tamil.reminder",
     "p3.language.tamil.memory",
 })
+LIVE_AUDIT_PRIORITY = frozenset({'p3.audit.tamil.expense', 'p3.audit.tamil.reminder'})
 
 
 def _benchmark_live_plan(
@@ -2098,7 +2107,8 @@ def _benchmark_live_plan(
         # Priority 0 = exact/manual-smoke regressions; 1 = cases where offline
         # routing explicitly says the model must prove discovery; 2 = remaining.
         priority = (
-            0 if contract.id in LIVE_BENCHMARK_PRIORITY
+            -1 if contract.id in LIVE_AUDIT_PRIORITY
+            else 0 if contract.id in LIVE_BENCHMARK_PRIORITY
             else 1 if contract.id in discovery_ids
             else 2
         )
@@ -2109,7 +2119,7 @@ def _benchmark_live_plan(
             adversarial_limit=live_adversarial_per_contract,
         )
 
-        if priority == 0:
+        if priority <= 0:
             # Two ordinary formulations + the bounded adversarial sample.
             catalog = [row for row in phrases if row[1] in {"catalog", "heldout"}][:2]
             adversarial = [row for row in phrases if row[1] == "adversarial"][
@@ -2153,6 +2163,19 @@ def _benchmark_live_plan(
     }
 
 
+def _live_acceptance_status(failures, budget_stopped, planned, executed, offline_failures=0):
+    """A diagnostic benchmark cannot certify skipped, impossible or empty work."""
+    if failures or offline_failures:
+        return 'FAIL'
+    if budget_stopped:
+        return 'INCOMPLETE_BUDGET'
+    if not planned:
+        return 'NOT_RUN'
+    if executed != planned:
+        return 'INCOMPLETE_EXECUTION'
+    return 'PASS'
+
+
 def live_certify(phase: str, provider: str, source_options: str | None,
                  hard_latency_ms: int, report_path: str | None,
                  max_live_cost_usd: float, heldout_path: str | None = None,
@@ -2167,7 +2190,7 @@ def live_certify(phase: str, provider: str, source_options: str | None,
     sandbox_dir = Path(sandbox.name)
     options_path = sandbox_dir / "options.json"
     options_path.write_text(
-        json.dumps(_sandbox_options(provider, creds), ensure_ascii=False),
+        json.dumps(_sandbox_options(provider, creds, source), ensure_ascii=False),
         encoding="utf-8",
     )
     try:
@@ -2289,9 +2312,9 @@ def live_certify(phase: str, provider: str, source_options: str | None,
     failures = [r for r in rows if r["status"] == "FAIL"]
     failures += [r for r in conversations if r["status"] == "FAIL"]
 
-    live_status = (
-        "FAIL" if failures else
-        ("INCOMPLETE_BUDGET" if budget_stopped else "PASS")
+    live_status = _live_acceptance_status(
+        failures, budget_stopped, len(prompt_plan) + len(conversation_plan),
+        len(rows) + len(conversations), plan_metadata.get('offline_failures') or 0,
     )
     domain_latency: dict[str, list[int]] = {}
     for row in rows:
@@ -2409,7 +2432,7 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--hard-latency-ms", type=int, default=20000)
     p.add_argument(
         "--max-live-cost-usd", type=float, default=0.25,
-        help="hard runner-level estimated provider spend cap for live certification; 0 disables",
+        help="estimated provider spend stop threshold checked between cases; an in-flight case can exceed it; 0 disables",
     )
     p.add_argument(
         "--heldout-corpus",

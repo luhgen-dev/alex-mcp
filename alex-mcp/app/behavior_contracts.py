@@ -1873,6 +1873,32 @@ PROMPT_CONTRACTS: tuple[PromptContract, ...] = (
 # tool-selection expectations, not a claim of phone delivery or model training.
 PROMPT_CONTRACTS += (
     PromptContract(
+        "p3.audit.tamil.expense", "phase3", "finance",
+        "Constructed colloquial Tamil expense commands must persist the exact stated cents; these are not verbatim production transcripts.",
+        (
+            "நான் ஸ்டார்பக்ஸ்ல 56.90 ரூபாய் ஸ்பெண்ட் பண்ணேன். என் லெட்ஜர்ல லாக் பண்ணு",
+            "Starbucksல 56.90 ரூபாய் செலவு பண்ணேன், இதை expenseஆ பதிவு பண்ணு",
+        ),
+        _fs("log_expense"), seed="empty", sources=("text", "voice"),
+        state_expectations=(StateExpectation("financial_events",
+            where=(("source_message_id", "$MID"),),
+            fields=(("amount_minor", 5690), ("currency", "MYR"),
+                    ("status", "ACTIVE"), ("space_id", "FAMILY_SHARED")), count=1, delta=1),),
+    ),
+    PromptContract(
+        "p3.audit.tamil.reminder", "phase3", "reminders",
+        "Constructed colloquial Tamil two-minute reminders must create the exact due row at the fixed certification clock.",
+        (
+            "எனக்கு ரெண்டு நிமிஷத்துல மருந்து எடுக்க ரிமைண்ட் பண்ணி",
+            "இன்னும் ரெண்டு நிமிஷத்துல மருந்து எடுக்க ரிமைண்ட் பண்ணுங்க",
+        ),
+        _fs("create_reminder"), seed="empty", sources=("text", "voice"),
+        state_expectations=(StateExpectation("reminders",
+            where=(("source_message_id", "$MID"),),
+            fields=(("status", "OPEN"), ("due_at_utc", "2026-09-29T02:02:00+00:00")),
+            count=1, delta=1),),
+    ),
+    PromptContract(
         "p3.repair.ear.list", "phase3", "discussion",
         "Ear history must be retrieved in its own domain; no saved-note or task substitution.",
         ("Alex, show us our discussions", "List our Ear sessions", "What discussions did we save?"),

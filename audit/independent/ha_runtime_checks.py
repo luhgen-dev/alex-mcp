@@ -6,6 +6,8 @@ dependencies; tests receive synthetic household options and no inherited credent
 """
 import argparse
 import json
+import importlib.util
+import math
 import os
 from pathlib import Path, PurePosixPath
 import re
@@ -149,9 +151,13 @@ def main():
     parser.add_argument('--reuse', type=Path, help='Reuse the SDK venv from a previous isolated runtime directory')
     parser.add_argument('--only', action='append', default=[], help='Run only a named check (repeatable); compile always runs. This is not a full suite pass.')
     parser.add_argument('--offline-routing', action='store_true', help='Also audit every configured behavior contract and routing variant without provider calls')
+    parser.add_argument('--live-provider', action='store_true', help='After successful selected checks, run real configured API providers against synthetic household fixtures')
+    parser.add_argument('--live-budget', type=float, default=1.0, help='Estimated provider spend stop threshold in USD (checked between cases)')
     args = parser.parse_args()
     if not re.fullmatch('[0-9a-f]{40}', args.commit):
         parser.error('commit must be a full immutable GitHub commit SHA')
+    if not math.isfinite(args.live_budget) or not 0 < args.live_budget <= 5:
+        parser.error('live-budget must be greater than zero and at most 5 USD')
     os.umask(0o077)
     base = Path('/config/alex-audit')
     base.mkdir(parents=True, exist_ok=True)
@@ -262,6 +268,17 @@ def main():
         if len(seen) > 30:
             print('ROUTING_MORE', len(seen)-30, 'additional distinct failures in', routing_path, flush=True)
     print('PRIVATE_REPORT', work/'summary.json', flush=True)
+    if args.live_provider:
+        if failed:
+            print('LIVE_BLOCKED selected checks must pass first', flush=True)
+        else:
+            spec = importlib.util.spec_from_file_location('alex_live_probe', checkout/'audit/independent/live_probe.py')
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            report['live_provider'] = module.run_provider(work, checkout, python, env, args.live_budget)
+            save()
+            if report['live_provider']['status'] != 'PASS':
+                return 1
     return 1 if failed else 0
 
 

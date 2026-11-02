@@ -60,7 +60,7 @@ def main():
                 module = importlib.import_module(name)
                 if Path(module.__file__).resolve() != overlay / (name + '.py'):
                     raise RuntimeError('baseline import did not use the selected module: ' + name)
-        for path in ('alex-mcp/app/brain.py', 'alex-mcp/app/ingress.py', 'alex-mcp/app/mcp_server.py', 'alex-mcp/app/db.py', 'alex-mcp/app/schema.sql'):
+        for path in ('alex-mcp/app/brain.py', 'alex-mcp/app/ingress.py', 'alex-mcp/app/mcp_server.py', 'alex-mcp/app/behavior_contracts.py', 'alex-mcp/app/db.py', 'alex-mcp/app/schema.sql'):
             hashes[path] = hashlib.sha256((ROOT / path).read_bytes()).hexdigest()
         for path in sorted((ROOT / 'tests').glob('*independent*.py')):
             hashes[str(path.relative_to(ROOT))] = hashlib.sha256(path.read_bytes()).hexdigest()

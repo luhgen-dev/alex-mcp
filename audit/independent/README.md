@@ -133,7 +133,7 @@ fails. A running service is therefore not evidence that structural checks passed
 
 ## Exact automated evidence and its limits
 
-- [candidate.json](candidate.json), [candidate.log](candidate.log): **64 tests,
+- [candidate.json](candidate.json), [candidate.log](candidate.log): **68 tests,
   zero failures/errors/skips**. SHA-256 values bind eight tested runtime modules,
   the independent fixture/test files, and the additional wiring/schema sources.
   The latter hashes do not certify execution of the SDK-dependent ingress/brain.
@@ -147,7 +147,7 @@ fails. A running service is therefore not evidence that structural checks passed
   functions in baseline dependants and initially masked the new time regression.
   Those historical baseline logs remain tied to their recorded test hashes at
   commit `959d419b843ab58974ff71c610fa653ab513fc3a`; they are not a comparison
-  of the expanded 64-test suite. The current runner refuses a baseline missing
+  of the expanded 68-test suite. The current runner refuses a baseline missing
   the new privacy module instead of silently importing candidate code.
 - Local Python 3.12.14. Python compilation passed. Four existing Node contracts
   and bridge syntax passed. These are not a container build or a paired session.
@@ -156,7 +156,7 @@ fails. A running service is therefore not evidence that structural checks passed
   `requests`; another encountered incompatible installed MCP APIs. Passing
   modules accounted for 54 test methods (52 passed, two packaged-runtime skips),
   including nine earlier independent tests. **Do not add this overlapping,
-  earlier count to the current 64-test result.**
+  earlier count to the current 68-test result.**
 - The installed MCP package is 1.29.0; the app pins 2.2.0. `requests`, `openai`,
   and `websocket-client` are unavailable. Dependency installation could not reach
   the package index in this executor. The subsequent HA Terminal run below used
@@ -215,6 +215,25 @@ fails. A running service is therefore not evidence that structural checks passed
   asserts that exact transcript was stored. It still does not certify live ASR.
   The next run targets these two edited modules and the broader offline routing
   matrix; it is explicitly not another complete unit-suite run.
+- Follow-up at `39be0ec31939c275377617833ce129ca7e76761c` passed **4/4 targeted
+  jobs, 29 test executions, zero skips**. Both corrected report and voice modules
+  passed. The offline matrix passed **174 contracts** (162 prompt, 12 conversation),
+  **33 conversation-step checks and 1,389 wording variants**, with all 151 MCP
+  tools registered, zero routing failures and zero discovery-dependent checks.
+  No external held-out phrases were supplied. Evidence: screenshot 315292;
+  full private report `/config/alex-audit/runtime-s2zt951h/summary.json`.
+  This clears the outstanding regression-module failure; it is not a claim that
+  a fresh full 64-job run or a live-provider/WhatsApp test passed.
+- Before running paid provider checks, the live certification status was repaired:
+  successful executed cases may not mask structurally missing capabilities,
+  an empty plan or unfinished execution. Four new independent regressions cover
+  those results and preserve configured API model choices while excluding
+  household options. The runner's five mechanics tests and three live-probe
+  isolation/redaction tests pass locally; the eight backup-probe tests also pass.
+  Two additional constructed Tamil contracts require exactly 5,690 stored cents
+  and a due time two minutes after the fixed clock. They are prioritized for
+  real-provider execution and are explicitly not verbatim production transcripts.
+  The expanded catalog and provider benchmark have not yet run on HA.
 - Upstream CI run `41451020384` was observed failed with zero job steps executed.
   The prior release records a billing lock; this session has not independently
   verified the account-level billing cause.
@@ -319,6 +338,18 @@ directly. Its local mechanics checks do not replace the pending SDK rerun.
 still runs. `--offline-routing` additionally checks all configured prompt and
 conversation contracts. Its `LIVE_REQUIRED` results remain unfinished, and
 known routing failures are printed with their contract and prompt for repair.
+
+`--live-provider` runs only after the selected checks pass. It reads Alex app
+options via `ha apps info`, copies only API-provider credentials and model names
+to a private temporary input, and deletes that input after execution. The child
+has no Supervisor token. The certification rig binds all state to a disposable
+synthetic database, simulates HA devices, and does not start a WhatsApp sender.
+The API provider and configured model choices are real; voice recognition remains
+a transcript fixture and physical delivery remains unverified. Configured
+ChatGPT session routing is reported as a separate unexercised path, if present.
+Progress is printed every 20 seconds; a run is limited to 30 minutes. The default
+US$1 threshold uses estimated cost checked between cases, so an in-flight case
+can exceed it. Budget-stopped or unfinished work is never reported as PASS.
 
 The current shell cannot reach its network proxy; requests do not reach HA.
 Permission requests stall without an approval control visible to the user. The
