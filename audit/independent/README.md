@@ -1,16 +1,16 @@
-# Independent audit checkpoint — incomplete, not a release certification
+# 0.5.55 repair release — production acceptance pending
 
 Baseline: upstream `17b37cd998b58b926e3ca00fd8f13d8a8bbcb070` (0.5.54, PR #70).
-Evidence collected 2026-11-02. This branch is a **draft repair candidate**. It has
-not been merged, installed, restarted, or verified as the running Alex app.
+Evidence collected 2026-11-02/03. Release **0.5.55** is prepared for the authorized
+update. It has not yet been verified as the running Alex app.
 An operator-assisted isolated SDK test run on HA Terminal has now completed;
 its partial result and limitations are recorded below.
 No household database, credentials or pairing files were changed. The operator
 restarted Terminal & SSH to cancel a malformed mobile paste, then restored its
 temporary Python installation. Alex and other household services kept running.
 A real API-provider benchmark completed 264 prompts and 24 conversations with
-three failures (estimated cost $0.32134125). Follow-up repairs await a targeted
-provider run. The speech/transcription implementation and production
+three failures (estimated cost $0.32134125). Follow-up repairs passed all 24 targeted
+provider prompts, with no failures (estimated cost $0.02664775). The speech/transcription implementation and production
 provider configuration are unchanged.
 
 The original assignment remains open. The attached screenshots are evidence of
@@ -295,7 +295,7 @@ A running service alone is not evidence that structural checks passed.
   rejected. Exact original-file count/path/bytes checks are unchanged. Three
   new focused methods pass; the complete 74-test focused suite passes. A full
   SDK judge regression for valid/missing/corrupt originals is written and awaits
-  the targeted HA run. Subsequent expense/totals evidence follows below.
+  the targeted HA run; it subsequently passed in screenshot 315330.
 - Screenshot 315328 confirms final provider status **FAIL**, 264 prompts, 24
   conversations, three failures, no budget stop, estimated cost **$0.32134125**.
   The expense call supplied amount 56.9 and description Starbucks without a
@@ -305,9 +305,25 @@ A running service alone is not evidence that structural checks passed.
   purchase while leaving unknown transfer purposes pending. It adds no merchant
   keyword rule and does not bypass backend review. New live contracts check a
   cafe purchase and an unknown person-to-person transfer; the existing Tamil
-  expense now also requires category `food`. These are real-provider acceptance
-  checks awaiting the targeted HA run, not claimed passes. Current focused
+  expense now also requires category `food`. These real-provider acceptance
+  checks subsequently passed in screenshot 315330. Current focused
   tests remain 74/74 passing; the 10 probe/runner mechanics tests pass separately.
+- Screenshot 315330 at `8cb4a9aefa903dfa0435664ac571d8994e1e6c9f`:
+  **5/5 targeted jobs pass, 53 test executions, zero skips**. The full offline
+  matrix passes **178 contracts / 1,423 variants**, with 151 tools and no failures.
+  All **24/24 targeted API-provider prompts pass**, zero failures and no budget
+  stop, estimated cost **$0.02664775**. This covers Tamil expenses, clear cafe
+  categories, unknown transfer purposes and original saved-picture retrieval.
+  It verifies the new SDK judge regression as well. These are targeted results,
+  not a new complete provider benchmark or actual phone/ASR acceptance.
+- The 0.5.55 release helper runs the full isolated suite/offline matrix before
+  creating and opening an Alex-only backup, then uses HA's normal update/build.
+  It checks installed version, started state and unchanged option hashes. Four
+  helper tests cover ordering and fail-closed release/configuration/backup checks.
+  It does not claim pairing or physical delivery verification from started state.
+  CI runs 41510368583/41510368629 failed; inspected test/container jobs have
+  runner_id 0 and no steps. Local Docker socket access is blocked by the execution
+  sandbox; separate packaged-image checks remain unexecuted. No checks disabled.
 - Upstream CI run `41451020384` was observed failed with zero job steps executed.
   The prior release records a billing lock; this session has not independently
   verified the account-level billing cause.

@@ -266,6 +266,49 @@
         "Packaged image build/startup/socket checks",
         "Production deployment and phone acceptance"
       ]
+    },
+    {
+      "commit": "8cb4a9aefa903dfa0435664ac571d8994e1e6c9f",
+      "evidence": "Operator screenshot 315330.jpg",
+      "private_report": "/config/alex-audit/runtime-h5kqo8sd/summary.json",
+      "production_changed": false,
+      "scope": "targeted",
+      "jobs": 5,
+      "failed_jobs": 0,
+      "test_execution_count": 53,
+      "skipped_count": 0,
+      "routing": {
+        "status": "PASS",
+        "contracts": 178,
+        "prompt_contracts": 166,
+        "conversation_contracts": 12,
+        "conversation_step_checks": 33,
+        "variant_checks_passed": 1423,
+        "failures": 0,
+        "mcp_tool_count": 151,
+        "tool_exposure_cap": 6
+      },
+      "live_provider": {
+        "status": "PASS",
+        "scope": "targeted",
+        "prompt_runs": 24,
+        "planned_prompt_runs": 24,
+        "conversation_runs": 0,
+        "failures": 0,
+        "budget_stopped": false,
+        "estimated_cost_usd": 0.02664775,
+        "contracts": [
+          "p3.audit.tamil.expense",
+          "p3.audit.expense.category",
+          "p3.audit.expense.unknown_purpose",
+          "p1.memory.picture"
+        ],
+        "limits": [
+          "Synthetic household and simulated HA; no WhatsApp sender",
+          "Voice transcript fixtures; actual ASR not certified",
+          "Configured ChatGPT session routing not exercised"
+        ]
+      }
     }
   ]
 }
