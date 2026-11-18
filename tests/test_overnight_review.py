@@ -102,6 +102,22 @@ class OvernightReviewTests(ConversationFixture):
         for malformed in ("{}", "[]", "truncated"):
             self.assertEqual(review._maintenance_error(malformed), "error")
 
+    def test_recovered_save_requires_persisted_item_successful_retry_and_delivery(self):
+        a = self.exchange("retry-save", "save note", "saved")
+        core.brain._audit(a, "save_item", {}, {"error":"input validation"}, False, 0, "old-attempt")
+        core.brain._audit(a, "save_item", {}, {"status":"saved"}, True, 0, "second-attempt")
+        with closing(core.db.connect()) as conn, conn:
+            conn.execute("UPDATE review_turns SET finding='tool',reviewed_on='2026-11-19'")
+            self.assertFalse(review._confirmed_save_retry(conn, a.source_message_id, a.user_id))
+            conn.execute("INSERT INTO saved_items(item_id,action_key,source_message_id,space_id,owner_id,title,content) "
+                         "VALUES ('retry-item','second-attempt',?,'FAMILY_SHARED',?,'synthetic','synthetic')",
+                         (a.source_message_id,a.user_id))
+        self.assertEqual(review.maintenance_queue(NIGHT)["cases"][0]["status"], "save recovered in original request")
+        self.assertIn("item and delivered reply are both confirmed", review.report(a.user_id))
+        with closing(core.db.connect()) as conn, conn:
+            conn.execute("UPDATE outbound_messages SET delivery_status='PENDING' WHERE source_message_id=?", (a.source_message_id,))
+            self.assertFalse(review._confirmed_save_retry(conn, a.source_message_id, a.user_id))
+
     def test_partial_bills_reproduced_and_next_turn_retry_uses_real_mcp(self):
         a = self.exchange(
             "pastbill", "Check my TNB and SAJ bills", "TNB RM22.", tools=[("check_household_bill", "tnb")]

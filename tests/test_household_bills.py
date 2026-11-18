@@ -103,6 +103,29 @@ class HouseholdBillTests(unittest.TestCase):
         self.assertEqual(out['bills'][0]['outstanding'],'0.00')
         self.assertFalse(out['bills'][0]['live'])
         self.assertIn({'provider':'digi','person':'wife'},out['missing'])
+    def test_owner_labels_and_unique_bill_line_select_one_canonical_account(self):
+        first = self.save()
+        for owner in (SETTINGS.husband_name, ' HUSBAND ', 'USR_HUSBAND', 'me', 'from_screenshot'):
+            with self.subTest(owner=owner):
+                result = bills.record_digi(self.a, owner, '2026-10-16', '454.72', outstanding='0.00', due_date='2026-11-15')
+                self.assertEqual(result['person'], 'husband')
+                self.assertEqual(result['record_id'], first['record_id'])
+        with db.connect() as conn:
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM household_bill_records").fetchone()[0], 1)
+
+    def test_ambiguous_and_third_party_bill_owners_do_not_create_a_record(self):
+        def record(person):
+            return bills.record_digi(self.a, person, '2026-10-16', '454.72')
+        self.assertEqual(record('not a household account')['status'], 'needs_clarification')
+        with db.connect() as conn:
+            conn.execute("UPDATE media_objects SET ocr_text='0123456789 and 0129876543'")
+        self.assertEqual(record('from_screenshot')['status'], 'needs_clarification')
+        with self.assertRaises(ValueError):
+            record('husband')
+        with db.connect() as conn:
+            conn.executescript(bills.SCHEMA)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM household_bill_records").fetchone()[0], 0)
+
     def test_wrong_line_unreadable_missing_media_and_sms_rejected(self):
         with self.assertRaises(ValueError): bills.record_digi(self.a,'wife','2026-10-16','454.72')
         with self.assertRaises(ValueError): self.save(readable=False)

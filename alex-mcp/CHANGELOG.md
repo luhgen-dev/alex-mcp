@@ -1,3 +1,7 @@
+## 0.5.59 — recognise Digi screenshot owners
+
+The Digi screenshot tool now accepts configured household names, normalised role labels and the authenticated sender’s own line. It can match a single configured mobile number on the image. Ambiguous or contradictory identification requires clarification before a bill can be recorded.
+
 ## 0.5.58 — identify the cause of tool failures
 
 The repair queue identifies tools from the shipped catalog and reports a fixed error category. Where the error uniquely matches a source guard, the queue identifies the source location for reproduction.
