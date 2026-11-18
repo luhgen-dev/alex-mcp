@@ -186,12 +186,56 @@ def refresh(actor, provider, include_pdf=False, analyse_pdf=False):
     finally: portal.close()
 
 
+def digi_person_value(value):
+    value = " ".join(str(value or "").strip().casefold().split())
+    if value in {"husband", "wife"}:
+        return value
+    if value in {"usr_husband", "my husband"}:
+        return "husband"
+    if value in {"usr_wife", "my wife"}:
+        return "wife"
+    if value in {"self", "me", "my", "mine", "myself"}:
+        return "self"
+    if value in {"", "unknown", "unspecified", "from_screenshot", "from screenshot"}:
+        return "from_screenshot"
+    settings = get_settings()
+    matches = [role for role in ("husband", "wife")
+               if str(getattr(settings, role + "_name")).strip().casefold() == value]
+    return matches[0] if len(matches) == 1 else "unclear"
+
+
+def _digi_line(value):
+    digits = re.sub(r"\D", "", str(value or ""))
+    return "60" + digits[1:] if digits.startswith("0") else digits
+
+
+def _named_digi_owners(actor, settings):
+    text = str(actor.trusted_text or "").casefold()
+    named = set()
+    for role in ("husband", "wife"):
+        labels = (role, str(getattr(settings, role + "_name")).strip().casefold())
+        if any(label and re.search(r"(?<!\w)" + re.escape(label) + r"(?!\w)", text) for label in labels):
+            named.add(role)
+    actor_role = {"USR_HUSBAND": "husband", "USR_WIFE": "wife"}.get(actor.user_id)
+    if not named and actor_role and re.search(r"\b(?:my|mine)\b", text):
+        named.add(actor_role)
+    return named
+
+
 def record_digi(actor, person, invoice_date, invoice_amount, outstanding=None, due_date=None,
                 readable=True, media_id=None, quoted_message_id=None):
     import services
     if readable is not True: raise ValueError('The screenshot is unclear. Ask for a clearer bill image or confirmation; no values saved.')
     if not actor.action_key: raise RuntimeError('missing deterministic action key')
-    account, _ = _configured_account('digi',person)
+    person = digi_person_value(person)
+    clarify_owner = {"status": "needs_clarification",
+                     "clarification_question": "Whose Digi bill is this? Please identify the owner of this screenshot."}
+    if person == "unclear":
+        return clarify_owner
+    if person == "self":
+        person = {"USR_HUSBAND": "husband", "USR_WIFE": "wife"}.get(actor.user_id)
+        if person is None:
+            return clarify_owner
     target = services.resolve_media_to_save(actor,quoted_message_id)
     if not target or (media_id and media_id != target):
         raise ValueError('Attach the Digi bill screenshot or reply to that exact image in this chat.')
@@ -203,19 +247,27 @@ def record_digi(actor, person, invoice_date, invoice_amount, outstanding=None, d
         evidence = str(media['ocr_text'] or '')
         if re.search(r'\b(?:sms|text message|2901)\b', evidence,re.I):
             raise ValueError('Use the Check Bill Details screen; SMS ingestion is not enabled.')
-        digits = re.sub(r'\D','',evidence)
-        explicit = str(actor.trusted_text or '').lower()
-        # A detected different mobile number must not be assigned to the requested person.
-        phones = re.findall(r'(?<!\d)(?:\+?60|0)1[0-9][\s-]?[0-9]{7,8}(?!\d)',evidence)
-        if phones and account.lstrip('+') not in digits and account[3:] not in digits:
-            raise ValueError('The screenshot number does not match the configured Digi line.')
-        line_visible = account.lstrip('+') in digits or account[3:] in digits
         settings = get_settings()
-        own_line = normalize_phone(actor.phone) == normalize_phone(getattr(settings, person+'_phone'))
-        label = str(getattr(settings, person+'_name')).strip().lower()
-        person_named = bool(re.search(r'\b'+re.escape(person)+r'\b',explicit) or (label and re.search(r'\b'+re.escape(label)+r'\b',explicit)) or (own_line and re.search(r'\b(?:my|mine)\b',explicit)))
-        if not line_visible and not person_named:
-            raise ValueError('The line number is unreadable. Reply to this image and identify whose Digi bill it is before saving.')
+        detected_lines = {_digi_line(value) for value in re.findall(
+            r"(?<!\d)(?:\+?60|0)1\d[ -]?\d{3,4}[ -]?\d{4}(?!\d)", evidence
+        )}
+        named = _named_digi_owners(actor, settings)
+        if person == "from_screenshot":
+            if detected_lines:
+                candidates = {role for role in ("husband", "wife")
+                              if _digi_line(getattr(settings, "digi_" + role + "_line")) in detected_lines}
+                if len(detected_lines) != 1 or len(candidates) != 1 or (named and named != candidates):
+                    return clarify_owner
+            else:
+                candidates = named
+            if len(candidates) != 1:
+                return clarify_owner
+            person = next(iter(candidates))
+        account, _ = _configured_account('digi', person)
+        if detected_lines and detected_lines != {_digi_line(account)}:
+            raise ValueError('The screenshot number does not match the configured Digi line.')
+        if (named and named != {person}) or (not detected_lines and named != {person}):
+            return clarify_owner
         services._verified_original_media_path(media)
         digest = media['sha256']
     finally: conn.close()

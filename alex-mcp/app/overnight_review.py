@@ -126,6 +126,40 @@ def _maintenance_error(result_json):
     return "error"
 
 
+def _bill_owner_replay(error_result, previous_owner):
+    """Validate the old tool input against the installed parser, without invoking a write."""
+    import household_bills
+
+    try:
+        result = json.loads(error_result or "{}")
+    except (TypeError, ValueError):
+        return None
+    old_message = "Digi supports only husband and wife; choose whose bill this is."
+    if not isinstance(result, dict) or old_message not in str(result.get("error") or ""):
+        return None
+    normalized = household_bills.digi_person_value(previous_owner)
+    return ("owner input passes current parser" if normalized != "unclear"
+            else "current parser requests owner clarification")
+
+
+def _confirmed_save_retry(conn, message_id, owner):
+    # Require a persisted item and a delivered final reply for the exact failed request.
+    result = conn.execute(
+        """SELECT 1 FROM saved_items s JOIN tool_audit ok ON ok.source_message_id=s.source_message_id
+           AND ok.user_id=s.owner_id AND ok.tool_name='save_item' AND ok.status='OK'
+           WHERE s.source_message_id=? AND s.owner_id=? AND EXISTS (
+             SELECT 1 FROM tool_audit fail WHERE fail.source_message_id=s.source_message_id
+             AND fail.user_id=s.owner_id AND fail.status='ERROR' AND fail.tool_name='save_item'
+             AND fail.rowid<ok.rowid) AND NOT EXISTS (
+             SELECT 1 FROM tool_audit a WHERE a.source_message_id=s.source_message_id
+             AND a.user_id=s.owner_id AND a.status='ERROR' AND (a.tool_name!='save_item' OR a.rowid>ok.rowid))
+           AND EXISTS (SELECT 1 FROM outbound_messages o WHERE o.source_message_id=s.source_message_id
+             AND o.delivery_status='SENT' AND COALESCE(o.context_kind,'')!='REVIEW_STATUS') LIMIT 1""",
+        (message_id, owner),
+    ).fetchone()
+    return bool(result)
+
+
 def maintenance_queue(now=None):
     """Summarize reviewed owner cases for the maintainer using only fixed labels."""
     from behavior_capabilities import TOOL_COVERAGE_EXEMPTIONS, TOOL_TO_CAPABILITIES
@@ -143,7 +177,9 @@ def maintenance_queue(now=None):
                       (r.assessment LIKE 'Learned which lookup worked when you rephrased.%' OR
                        r.assessment IN ('Applied your concise reply preference in this chat.',
                            'Cleared the concise reply preference in this chat.')) AS learned,
-                      a.tool_name,a.status,CASE WHEN a.status='ERROR' THEN a.result_json END AS error_json
+                      a.tool_name,a.status,CASE WHEN a.status='ERROR' THEN a.result_json END AS error_json,
+                      CASE WHEN a.tool_name='record_digi_bill' AND a.status='ERROR' AND json_valid(a.arguments_json)
+                           THEN json_extract(a.arguments_json,'$.person') END AS bill_owner
                FROM review_turns r LEFT JOIN tool_audit a
                  ON a.source_message_id=r.message_id AND a.user_id=r.owner_id
                  AND substr(a.tool_name,1,1)<>'_'
@@ -157,13 +193,21 @@ def maintenance_queue(now=None):
             if row["finding"] not in FINDINGS:
                 continue
             status = "local repair applied" if row["repair"] or row["learned"] else "investigate"
+            if row["finding"] == "tool" and row["tool_name"] == "save_item" and _confirmed_save_retry(conn, row["message_id"], owner):
+                status = "save recovered in original request"
             group = cases.setdefault(
                 row["message_id"], (row["reviewed_on"], row["finding"], status, set())
             )
             if row["tool_name"]:
                 tool = row["tool_name"] if row["tool_name"] in exposed_tools else "other tool"
                 outcome = _maintenance_error(row["error_json"]) if row["status"] == "ERROR" else "ok"
+                if tool == "record_digi_bill" and row["status"] == "ERROR":
+                    replay = _bill_owner_replay(row["error_json"], row["bill_owner"])
+                    if replay:
+                        outcome = replay
                 group[3].add(f"{tool} ({outcome})")
+                if status == "save recovered in original request":
+                    cases[row["message_id"]] = (group[0], group[1], status, group[3])
     totals = Counter((day, finding, status, tuple(sorted(tools))) for day, finding, status, tools in cases.values())
     return {
         "state": "reviewed" if last else "awaiting first review",
@@ -267,6 +311,25 @@ def report(owner, day=None):
             WHERE owner_id=? AND reviewed_on=? ORDER BY i.received_at_utc, i.rowid""",
             (owner, day),
         ).fetchall()
+        followups = {}
+        for row in rows:
+            if row["finding"] != "tool":
+                continue
+            mid = row["message_id"]
+            if _confirmed_save_retry(conn, mid, owner):
+                followups[mid] = "Alex retried the save. The item and delivered reply are both confirmed."
+                continue
+            for audit in conn.execute(
+                """SELECT result_json, CASE WHEN json_valid(arguments_json) THEN json_extract(arguments_json,'$.person') END
+                   FROM tool_audit WHERE source_message_id=? AND user_id=? AND tool_name='record_digi_bill' AND status='ERROR'""",
+                (mid, owner),
+            ):
+                outcome = _bill_owner_replay(audit[0], audit[1])
+                if outcome:
+                    followups[mid] = ("Alex now recognises the owner input that previously failed. The earlier bill was not re-entered."
+                                      if outcome == "owner input passes current parser" else
+                                      "Alex now asks whose Digi bill this is when the owner is unclear. The earlier bill was not re-entered.")
+                    break
     findings = [r for r in rows if r["finding"]]
     if not findings:
         return "There’s no diagnostic report for that review yet."
@@ -279,6 +342,9 @@ def report(owner, day=None):
         lines.append(f"• {excerpt}\n  {FINDINGS[row['finding']]}")
         if row["assessment"]:
             lines.append("  " + row["assessment"])
+        if row["message_id"] in followups:
+            lines.append("  " + followups[row["message_id"]])
+            continue
         if not row["repair"] and not (row["assessment"] or "").startswith(
             ("Learned which", "Applied your", "Cleared the")
         ):

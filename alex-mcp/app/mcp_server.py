@@ -35,6 +35,7 @@ import scope_policy
 import mydin_prices
 import manjaku_prices
 from config import get_settings
+from household_bills import digi_person_value
 
 mcp = MCPServer(
     "Alex Household Tools",
@@ -52,6 +53,11 @@ Actor = Annotated[ActorContext, Resolve(authenticated_actor)]
 UtilityProvider = Annotated[
     Literal['tnb', 'saj'],
     BeforeValidator(lambda value: value.strip().casefold() if isinstance(value, str) else value),
+]
+
+DigiBillOwner = Annotated[
+    Literal["husband", "wife", "self", "from_screenshot", "unclear"],
+    BeforeValidator(digi_person_value),
 ]
 
 # Keep this schema inline for the supported providers' function-calling APIs.
@@ -1645,11 +1651,11 @@ def check_household_bill(provider: UtilityProvider, actor: Actor, include_pdf: b
 
 
 @alex_tool()
-def record_digi_bill(person: str, invoice_date: str, invoice_amount: str, actor: Actor,
+def record_digi_bill(person: DigiBillOwner, invoice_date: str, invoice_amount: str, actor: Actor,
                      outstanding: str | None = None, due_date: str | None = None,
                      readable: bool = True, media_id: str | None = None,
                      quoted_message_id: str | None = None) -> dict:
-    """Save a readable current/quoted Digi Check Bill Details screenshot for husband or wife only. Read invoice_date (YYYY-MM-DD), invoice_amount (Current bill), outstanding (Total due), and due_date separately. Null for unreadable/absent balance/date; never guess. Verify whose number is shown against configured lines. This is a bill observation, NOT payment proof or an expense. Duplicate images do not duplicate bills. Do not ingest SMS."""
+    """Save a readable current/quoted Digi Check Bill Details screenshot. Use self for the sender’s own bill, or from_screenshot to match the configured mobile line when the owner is unspecified. Use unclear for someone outside the two household accounts. Read invoice_date (YYYY-MM-DD), invoice_amount (Current bill), outstanding (Total due), and due_date separately. Null for unreadable/absent balance/date; never guess. Verify whose number is shown against configured lines. This is a bill observation, NOT payment proof or an expense. Duplicate images do not duplicate bills. Do not ingest SMS."""
     import household_bills
     return household_bills.record_digi(actor, person, invoice_date, invoice_amount, outstanding, due_date, readable, media_id, quoted_message_id)
 
