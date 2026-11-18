@@ -1,3 +1,7 @@
+## 0.5.57 — maintenance for overnight findings
+
+The Home Assistant app now includes an owner-scoped repair queue for the past seven days. It shows failure categories, tool outcomes and locally applied repairs. Message text, tool arguments and household identifiers stay out of the queue.
+
 ## 0.5.56 — overnight conversation review
 
 Alex checks authenticated requests against delivery and tool evidence, investigates exceptions and samples, and can activate tested response checks or learn a successful lookup from a rephrase. The private Daily Brief offers one line when a report is available. The separate review worker keeps this work off the reminder scheduler. Existing household transactions are never replayed by a review.

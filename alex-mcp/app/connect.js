@@ -811,6 +811,7 @@ const UI_HTML = [
 '<div class="card"><h2>Semantic router — last 7 days</h2><div id="shadow">Checking…</div><p class="muted">Configuration → Semantic AI routing: <b>shadow</b> interprets and logs without changing replies; <b>live</b> uses the same structured interpretation while Alex\'s deterministic safety guards remain authoritative.</p></div>',
 '<div class="card"><h2>AI usage — last 24h</h2><div id="usage">Checking…</div><p class="muted">Local telemetry only. Refreshing this card does not call the AI provider.</p></div>',
 '<div class="card"><h2>Live certification</h2><div id="cert">Checking…</div><p><button id="certBtn" onclick="runCert()">Run live benchmark — max $3</button></p><p class="muted">Uses Alex\'s configured API keys, but all household state is synthetic and Home Assistant is mocked. No WhatsApp messages are sent.</p><p id="certReport" style="display:none"><a href="./certification-report" target="_blank" style="color:#8ab4f8">Open full benchmark report</a></p></div>',
+'<div class="card"><h2>Overnight review</h2><a href="./overnight-maintenance" style="color:#8ab4f8">Open repair queue</a></div>',
 '<div class="card"><h2>Core diagnostics</h2><div id="diag">Checking…</div></div>',
 '<script>',
 'async function load(){try{const r=await fetch("./status");const s=await r.json();',
@@ -877,6 +878,19 @@ function startPairingUi() {
     if (req.method === 'GET' && url.endsWith('/status')) {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(safeStatus()));
+      return;
+    }
+    if (req.method === 'GET' && url.endsWith('/overnight-maintenance')) {
+      try {
+        const result = await fetch('http://127.0.0.1:5001/overnight-maintenance');
+        if (!result.ok) throw new Error('Repair queue unavailable');
+        const summary = await result.json();
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+        res.end(JSON.stringify(summary, null, 2));
+      } catch {
+        res.writeHead(503, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+        res.end(JSON.stringify({ error: 'repair_queue_unavailable' }));
+      }
       return;
     }
     if (req.method === 'GET' && url.endsWith('/usage')) {
