@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import fcntl
 import hashlib
 import json
@@ -79,8 +80,56 @@ def notice_date(owner, day):
         return row[0]
 
 
+@lru_cache(maxsize=1)
+def _source_guards():
+    # Only fixed strings in our own raised exceptions can generate a source reference.
+    # Multiple guards with the same text are deliberately left unattributed.
+    guards = {}
+    for source in Path(__file__).parent.glob("*.py"):
+        for node in ast.walk(ast.parse(source.read_text(encoding="utf-8"))):
+            if not isinstance(node, ast.Raise) or not isinstance(node.exc, ast.Call) or not node.exc.args:
+                continue
+            message = node.exc.args[0]
+            if isinstance(message, ast.Constant) and isinstance(message.value, str) and len(message.value) >= 12:
+                key = message.value.casefold()
+                guards[key] = None if key in guards else f"{source.name}:{node.lineno}"
+    return guards
+
+
+def _maintenance_error(result_json):
+    try:
+        payload = json.loads(result_json or "{}")
+    except (ValueError, TypeError):
+        payload = {}
+    if not isinstance(payload, dict):
+        return "error"
+    if payload.get("status") == "needs_clarification":
+        return "clarification requested"
+    error = str(payload.get("error") or "")[:1000].casefold()
+    if not error:
+        return "error"
+    # Strip the known SDK wrapper. Never return raw exception messages or account data.
+    error = re.sub(r"^error (?:executing|calling) tool ['\"]?[a-z0-9_]+['\"]?:\s*", "", error).strip("'\" ")
+    guard = _source_guards().get(error)
+    if guard:
+        return f"error at {guard}"
+    for category, markers in (
+        ("authorization", ("permission", "not authorized", "not allowed", "access denied", "your accessible spaces")),
+        ("configuration", ("not configured", "not set up", "missing credential")),
+        ("input validation", ("validation error", "field required", "invalid input", "must be", "must include")),
+        ("ambiguous request", ("ambiguous", "more than one", "multiple matching", "clarify")),
+        ("no matching record", ("not found", "no match", "does not exist", "could not find")),
+        ("transport or provider", ("timed out", "timeout", "connection", "unavailable", "rate limit")),
+    ):
+        if any(marker in error for marker in markers):
+            return category
+    return "error"
+
+
 def maintenance_queue(now=None):
     """Summarize reviewed owner cases for the maintainer using only fixed labels."""
+    from behavior_capabilities import TOOL_COVERAGE_EXEMPTIONS, TOOL_TO_CAPABILITIES
+
     settings = get_settings()
     today = (now or runtime_clock.now_in(settings.timezone)).date()
     since = (today - timedelta(days=6)).isoformat()
@@ -94,7 +143,7 @@ def maintenance_queue(now=None):
                       (r.assessment LIKE 'Learned which lookup worked when you rephrased.%' OR
                        r.assessment IN ('Applied your concise reply preference in this chat.',
                            'Cleared the concise reply preference in this chat.')) AS learned,
-                      a.tool_name,a.status
+                      a.tool_name,a.status,CASE WHEN a.status='ERROR' THEN a.result_json END AS error_json
                FROM review_turns r LEFT JOIN tool_audit a
                  ON a.source_message_id=r.message_id AND a.user_id=r.owner_id
                  AND substr(a.tool_name,1,1)<>'_'
@@ -103,7 +152,7 @@ def maintenance_queue(now=None):
             (owner, since, today.isoformat()),
         )
         cases = {}
-        exposed_tools = rules.LOOKUP_TOOLS | {"check_household_bill"}
+        exposed_tools = TOOL_TO_CAPABILITIES.keys() | TOOL_COVERAGE_EXEMPTIONS
         for row in rows:
             if row["finding"] not in FINDINGS:
                 continue
@@ -113,7 +162,7 @@ def maintenance_queue(now=None):
             )
             if row["tool_name"]:
                 tool = row["tool_name"] if row["tool_name"] in exposed_tools else "other tool"
-                outcome = "error" if row["status"] == "ERROR" else "ok"
+                outcome = _maintenance_error(row["error_json"]) if row["status"] == "ERROR" else "ok"
                 group[3].add(f"{tool} ({outcome})")
     totals = Counter((day, finding, status, tuple(sorted(tools))) for day, finding, status, tools in cases.values())
     return {

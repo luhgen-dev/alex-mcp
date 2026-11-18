@@ -1,3 +1,7 @@
+## 0.5.58 — identify the cause of tool failures
+
+The repair queue identifies tools from the shipped catalog and reports a fixed error category. Where the error uniquely matches a source guard, the queue identifies the source location for reproduction.
+
 ## 0.5.57 — maintenance for overnight findings
 
 The Home Assistant app now includes an owner-scoped repair queue for the past seven days. It shows failure categories, tool outcomes and locally applied repairs. Message text, tool arguments and household identifiers stay out of the queue.

@@ -87,6 +87,21 @@ class OvernightReviewTests(ConversationFixture):
             conn.execute("INSERT OR REPLACE INTO review_enrollment VALUES('USR_HUSBAND',0)")
         self.assertEqual(review.maintenance_queue(NIGHT), {"state":"disabled","cases":[]})
 
+    def test_repair_queue_identifies_a_registered_tool_without_exposing_its_error_text(self):
+        self.exchange("receipt-scoped", "sensitive text", "sensitive reply", tools=[("get_receipt", "test")])
+        with closing(core.db.connect()) as conn, conn:
+            conn.execute("UPDATE review_turns SET finding='tool',reviewed_on='2026-11-19'")
+            conn.execute("UPDATE tool_audit SET status='ERROR',result_json=? WHERE source_message_id=?",
+                         (json.dumps({"error":"Error executing tool get_receipt: not found: PRIVATE_RECORD"}), "receipt-scoped"))
+        result = review.maintenance_queue(NIGHT)["cases"][0]
+        self.assertEqual(result["tools"], ["get_receipt (no matching record)"])
+        self.assertNotIn("PRIVATE", json.dumps(result))
+        self.assertEqual(review._maintenance_error('{"status":"needs_clarification"}'), "clarification requested")
+        known = next((msg, ref) for msg, ref in review._source_guards().items() if ref)
+        self.assertEqual(review._maintenance_error(json.dumps({"error": known[0]})), f"error at {known[1]}")
+        for malformed in ("{}", "[]", "truncated"):
+            self.assertEqual(review._maintenance_error(malformed), "error")
+
     def test_partial_bills_reproduced_and_next_turn_retry_uses_real_mcp(self):
         a = self.exchange(
             "pastbill", "Check my TNB and SAJ bills", "TNB RM22.", tools=[("check_household_bill", "tnb")]
