@@ -56,6 +56,8 @@ class Settings:
     # the ChatGPT plan model picks which tools the brain sees, keyword routing
     # stays as the automatic fallback. Needs chatgpt_plan_mode != off.
     ai_routing: str = "off"
+    overnight_review_enabled: bool = True
+    overnight_review_time: str = "03:00"
     daily_brief_enabled: bool = True
     mydin_prices_enabled: bool = True
     manjaku_prices_enabled: bool = True
@@ -165,6 +167,8 @@ def get_settings() -> Settings:
     if routing == "on":
         routing = "live"
     clean["ai_routing"] = routing if routing in {"off", "shadow", "live"} else "off"
+    review_time = str(clean.get("overnight_review_time", "03:00")).strip()
+    clean["overnight_review_time"] = review_time if __import__("re").fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", review_time) else "03:00"
     brief_time = str(clean.get("daily_brief_time", "04:30") or "04:30").strip()
     if not __import__("re").fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", brief_time):
         brief_time = "04:30"

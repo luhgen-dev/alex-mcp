@@ -7,6 +7,8 @@ from datetime import date, datetime, time, timezone
 from zoneinfo import ZoneInfo
 
 import db
+import overnight_review
+from config import get_settings
 import phase2
 import phase2_finance
 import phase2_work
@@ -263,6 +265,10 @@ def _build(actor: ActorContext, on_date: str | None = None) -> dict:
         for i, item in enumerate(waiting, 1):
             lines.append(f"{i}. ⏳ {item}")
 
+    diagnostic_date = overnight_review.notice_date(actor.user_id, day_text) if get_settings().overnight_review_enabled else None
+    if diagnostic_date:
+        lines.extend(["", overnight_review.NOTICE])
+
     summary = (
         f"{len(due_tasks)} task{'s' if len(due_tasks)!=1 else ''} due/overdue ({len(tasks)} open) · "
         f"{len(reminder_rows)} reminder{'s' if len(reminder_rows)!=1 else ''} · "
@@ -272,8 +278,9 @@ def _build(actor: ActorContext, on_date: str | None = None) -> dict:
     lines.extend(["", f"*Today at a glance:* {summary}", "", "React ✅ once you’ve seen this."])
     return {
         "date": day_text,
+        "diagnostic_date": diagnostic_date,
         "text": "\n".join(lines),
-        "actionable": bool(due_tasks or reminder_rows or due_bills or diary or waiting or work.get("configured")),
+        "actionable": bool(due_tasks or reminder_rows or due_bills or diary or waiting or work.get("configured") or diagnostic_date),
         "counts": {
             "tasks": len(due_tasks), "open_tasks": len(tasks), "reminders": len(reminder_rows),
             "bills": len(due_bills), "diary": len(diary), "waiting": len(waiting),
@@ -293,6 +300,8 @@ def create_or_get(actor: ActorContext, on_date: str | None = None, *, refresh: b
             (actor.user_id, payload["date"]),
         ).fetchone()
         if existing:
+            old_payload = json.loads(existing["payload_json"])
+            refresh = refresh or (overnight_review.NOTICE in payload["text"] and overnight_review.NOTICE not in old_payload["text"])
             if refresh:
                 conn.execute("UPDATE daily_briefs SET payload_json=? WHERE brief_id=?",
                              (json.dumps(payload, ensure_ascii=False, sort_keys=True), existing["brief_id"]))
@@ -300,7 +309,7 @@ def create_or_get(actor: ActorContext, on_date: str | None = None, *, refresh: b
             return {
                 "brief_id": existing["brief_id"],
                 "status": existing["status"],
-                **(payload if refresh else json.loads(existing["payload_json"])),
+                **(payload if refresh else old_payload),
             }
         brief_id = str(uuid.uuid4())
         conn.execute(

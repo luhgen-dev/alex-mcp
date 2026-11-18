@@ -26,6 +26,7 @@ import diagnostics
 import chatgpt_plan
 import shadow_router
 import daily_brief
+import overnight_review
 import listening
 from config import DATA_DIR, get_settings
 from text_normalization import normalize_intent_text
@@ -1910,13 +1911,15 @@ def process(payload: dict) -> dict:
         db.touch_inbound_processing(payload["message_id"])
         # Authenticate before any audio can leave the home server. The bridge
         # already gates group messages; enforce the same voice gate here too.
-        db.resolve_actor(payload["sender_phone"], payload["conversation_id"],
+        authenticated = db.resolve_actor(payload["sender_phone"], payload["conversation_id"],
                          payload.get("conversation_type", "DIRECT_DM"), payload["message_id"], [])
         if (payload.get("audio_data") and get_settings().voice_notes_enabled
                 and payload.get("conversation_type") == "GROUP"
                 and not (payload.get("alex_mentioned") or payload.get("reply_to_alex"))):
             db.finish_inbound(payload["message_id"], "Voice message not addressed to Alex")
             return {"ok": True, "ignored": True}
+        if get_settings().overnight_review_enabled:
+            overnight_review.register(authenticated)
         media_ids, media_lines, vision_parts = media.process_payload_media(payload)
         db.touch_inbound_processing(payload["message_id"])
         voice_authorized = bool(payload.get("audio_data") and get_settings().voice_notes_enabled and any(
@@ -2007,6 +2010,16 @@ def process(payload: dict) -> dict:
                     str(turn["trusted_text"] or "[Alex interaction]"),
                     turn["received_at_utc"],
                 )
+
+        if get_settings().overnight_review_enabled and (turn["trusted_text"] and
+                (not payload.get("audio_data") or voice_authorized)):
+            review_reply = overnight_review.handle(actor, payload.get("quoted_message_id"))
+            if review_reply is not None:
+                # Reports are private diagnostic material and do not enter ordinary conversation memory.
+                db.queue_outbound(actor.conversation_id, "TEXT", text=review_reply,
+                                  source_message_id=actor.source_message_id, context_kind="OVERNIGHT_REVIEW")
+                db.finish_inbound(actor.source_message_id, review_reply)
+                return {"ok": True, "overnight_review": True}
 
         brief_request = re.fullmatch(
             r"(?:please\s+)?(?:(?:show|give|send|refresh|regenerate)(?:\s+me)?\s+)?(?:(?:my|the|today's|todays)\s+)?daily brief(?:\s+(?:please|today))?[.!?]?",

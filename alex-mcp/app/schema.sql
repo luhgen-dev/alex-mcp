@@ -914,3 +914,54 @@ CREATE TABLE IF NOT EXISTS discussion_selection_sets (
  items_json TEXT NOT NULL, read_scope TEXT NOT NULL,
  created_at_utc TEXT NOT NULL, expires_at_utc TEXT NOT NULL
 );
+
+-- Ownership is bound at authenticated ingress, before any expensive work.
+CREATE TABLE IF NOT EXISTS review_turns (
+    message_id TEXT PRIMARY KEY REFERENCES inbound_messages(message_id) ON DELETE CASCADE,
+    owner_id TEXT NOT NULL REFERENCES users(user_id),
+    watch INTEGER NOT NULL DEFAULT 0,
+    reviewed_on TEXT,
+    finding TEXT,
+    assessment TEXT,
+    repair TEXT,
+    rephrased INTEGER NOT NULL DEFAULT 0,
+    sampled INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_outbound_source_review ON outbound_messages(source_message_id);
+CREATE INDEX IF NOT EXISTS idx_review_pending ON review_turns(reviewed_on,owner_id);
+CREATE TABLE IF NOT EXISTS review_rules (
+    owner_id TEXT NOT NULL REFERENCES users(user_id),
+    rule TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    PRIMARY KEY(owner_id,rule)
+);
+CREATE TABLE IF NOT EXISTS review_runs (
+    review_date TEXT PRIMARY KEY,
+    completed_at TEXT NOT NULL
+);
+
+-- A user may choose different reply presentation in a DM and the family group.
+CREATE TABLE IF NOT EXISTS review_preferences (
+    owner_id TEXT NOT NULL REFERENCES users(user_id),
+    conversation_id TEXT NOT NULL,
+    short_replies INTEGER NOT NULL,
+    PRIMARY KEY(owner_id,conversation_id)
+);
+
+-- Only discovery hints. The current request supplies every tool argument.
+CREATE TABLE IF NOT EXISTS review_lookup_hints (
+    hint_id INTEGER PRIMARY KEY,
+    owner_id TEXT NOT NULL REFERENCES users(user_id),
+    conversation_id TEXT NOT NULL,
+    read_scope TEXT NOT NULL,
+    words TEXT NOT NULL,
+    tool_name TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    UNIQUE(owner_id,conversation_id,read_scope,words)
+);
+
+CREATE TABLE IF NOT EXISTS review_enrollment (
+    owner_id TEXT PRIMARY KEY REFERENCES users(user_id),
+    enabled INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_review_watch ON review_turns(watch) WHERE watch=1;
