@@ -1,3 +1,7 @@
+## 0.5.60 — open the requested overnight report
+
+Natural requests for today’s diagnostics now open the owner’s private review. A completed review with zero findings gives its date and points to the most recent report with findings.
+
 ## 0.5.59 — recognise Digi screenshot owners
 
 The Digi screenshot tool now accepts configured household names, normalised role labels and the authenticated sender’s own line. It can match a single configured mobile number on the image. Ambiguous or contradictory identification requires clarification before a bill can be recorded.

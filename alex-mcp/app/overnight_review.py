@@ -21,7 +21,10 @@ from config import DATA_DIR, get_settings
 
 NOTICE = "You have a diagnostic report today. Would you like to review it?"
 REPORT = re.compile(
-    r"(?:(?:please )?(?:show|open|read|review)(?: me)? (?:my |the |today's )?)?diagnostic report[.!?]?"
+    r"(?:alex[, ]+)?(?:(?:can|could|would) you )?(?:please )?"
+    r"(?:(?:show|open|read|review)(?: me)? )?(?:(?:my|the) )?"
+    r"(?:(?P<today>today's) |latest )?diagnostics? report(?:s)?"
+    r"(?: (?P<for_today>(?:for )?today))?(?: please)?[.!?]?"
 )
 FINDINGS = {
     "no_final": "No delivered final answer was recorded.",
@@ -270,12 +273,12 @@ def handle(actor, quote_id=None):
                 ).fetchone()
             if row:
                 return report(actor.user_id, row[0])
-    if REPORT.fullmatch(text):
-        return (
-            report(actor.user_id)
-            if dm
-            else "Open your private chat with me and ask for your diagnostic report."
-        )
+    request = REPORT.fullmatch(text)
+    if request:
+        if not dm:
+            return "Open your private chat with me and ask for your diagnostic report."
+        day = runtime_clock.today(actor.timezone).isoformat() if request["today"] or request["for_today"] else None
+        return report(actor.user_id, day)
     remove_hint = re.fullmatch(r"undo lookup hint (\d{1,15})", text)
     if remove_hint and dm:
         with closing(db.connect()) as conn, conn:
@@ -311,6 +314,17 @@ def report(owner, day=None):
             WHERE owner_id=? AND reviewed_on=? ORDER BY i.received_at_utc, i.rowid""",
             (owner, day),
         ).fetchall()
+        if day and not any(row["finding"] for row in rows):
+            completed = conn.execute("SELECT 1 FROM review_runs WHERE review_date=?", (day,)).fetchone()
+            if completed and enrolled(conn, owner):
+                latest = conn.execute(
+                    "SELECT MAX(reviewed_on) FROM review_turns WHERE owner_id=? AND reviewed_on<? AND finding IS NOT NULL",
+                    (owner, day),
+                ).fetchone()[0]
+                reply = f"No new findings in your diagnostic review for {day}."
+                if latest:
+                    reply += f" Your latest report with findings is from {latest}. Say “show my latest diagnostic report” to open it."
+                return reply
         followups = {}
         for row in rows:
             if row["finding"] != "tool":
