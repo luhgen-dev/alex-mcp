@@ -3040,6 +3040,8 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {"status": "alive"})
         elif self.path == "/runtime-status":
             self._json(200, _read_runtime_status())
+        elif self.path == "/overnight-maintenance":
+            self._json(200, overnight_review.maintenance_queue())
         elif self.path == "/usage-summary":
             self._json(200, diagnostics.usage_summary(24))
         elif self.path == "/chatgpt-status":

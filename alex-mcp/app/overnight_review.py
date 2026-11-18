@@ -7,6 +7,7 @@ import hashlib
 import json
 import re
 import time
+from collections import Counter
 from contextlib import closing
 from datetime import timedelta, timezone
 from functools import lru_cache
@@ -76,6 +77,53 @@ def notice_date(owner, day):
             (owner, day, day, NOTICE),
         ).fetchone()
         return row[0]
+
+
+def maintenance_queue(now=None):
+    """Summarize reviewed owner cases for the maintainer using only fixed labels."""
+    settings = get_settings()
+    today = (now or runtime_clock.now_in(settings.timezone)).date()
+    since = (today - timedelta(days=6)).isoformat()
+    owner = "USR_HUSBAND"
+    with closing(db.connect()) as conn:
+        if not settings.overnight_review_enabled or not enrolled(conn, owner):
+            return {"state": "disabled", "cases": []}
+        last = conn.execute("SELECT MAX(review_date) FROM review_runs").fetchone()[0]
+        rows = conn.execute(
+            """SELECT r.message_id,r.finding,r.reviewed_on,r.repair,
+                      (r.assessment LIKE 'Learned which lookup worked when you rephrased.%' OR
+                       r.assessment IN ('Applied your concise reply preference in this chat.',
+                           'Cleared the concise reply preference in this chat.')) AS learned,
+                      a.tool_name,a.status
+               FROM review_turns r LEFT JOIN tool_audit a
+                 ON a.source_message_id=r.message_id AND a.user_id=r.owner_id
+                 AND substr(a.tool_name,1,1)<>'_'
+               WHERE r.owner_id=? AND r.reviewed_on BETWEEN ? AND ? AND r.finding IS NOT NULL
+               ORDER BY r.reviewed_on,r.message_id""",
+            (owner, since, today.isoformat()),
+        )
+        cases = {}
+        exposed_tools = rules.LOOKUP_TOOLS | {"check_household_bill"}
+        for row in rows:
+            if row["finding"] not in FINDINGS:
+                continue
+            status = "local repair applied" if row["repair"] or row["learned"] else "investigate"
+            group = cases.setdefault(
+                row["message_id"], (row["reviewed_on"], row["finding"], status, set())
+            )
+            if row["tool_name"]:
+                tool = row["tool_name"] if row["tool_name"] in exposed_tools else "other tool"
+                outcome = "error" if row["status"] == "ERROR" else "ok"
+                group[3].add(f"{tool} ({outcome})")
+    totals = Counter((day, finding, status, tuple(sorted(tools))) for day, finding, status, tools in cases.values())
+    return {
+        "state": "reviewed" if last else "awaiting first review",
+        "last_review": last,
+        "cases": [
+            {"day": day, "finding": finding, "status": status, "tools": list(tools), "count": count}
+            for (day, finding, status, tools), count in sorted(totals.items(), reverse=True)
+        ],
+    }
 
 
 def handle(actor, quote_id=None):

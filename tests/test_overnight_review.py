@@ -1,5 +1,6 @@
 """Exercise WhatsApp ingress, durable evidence, overnight decisions and the next real brain turn."""
 
+import json
 from contextlib import closing
 from datetime import datetime
 from unittest.mock import patch
@@ -57,6 +58,34 @@ class OvernightReviewTests(ConversationFixture):
 
     def nightly(self, reviewer=None):
         review.run_due(now=NIGHT, reviewer=reviewer or (lambda packet: ("ok", "")))
+
+    def test_maintenance_queue_contains_only_fixed_owner_evidence(self):
+        self.assertEqual(review.maintenance_queue(NIGHT)["state"], "awaiting first review")
+        self.exchange("private-message-id", "PRIVATE_NOTE", "PRIVATE_REPLY",
+                      tools=[("find_receipts", "PRIVATE_ARGUMENT"), ("SECRET_TOOL", "OTHER_SECRET")])
+        self.exchange("wife-only-id", "WIFE_PRIVATE", "WIFE_REPLY", spouse=True)
+        with closing(core.db.connect()) as conn, conn:
+            conn.execute("UPDATE review_turns SET finding='no_final',reviewed_on='2026-11-19',assessment='SECRET'")
+            conn.execute("INSERT INTO review_runs VALUES('2026-11-19','2026-11-19')")
+            conn.execute("INSERT OR REPLACE INTO review_enrollment VALUES('USR_WIFE',1)")
+            conn.execute("INSERT OR REPLACE INTO review_turns(message_id,owner_id,finding,reviewed_on) "
+                         "VALUES('wife-only-id','USR_WIFE','receipt_delivery','2026-11-19')")
+        result = review.maintenance_queue(NIGHT)
+        self.assertEqual(result["last_review"], "2026-11-19")
+        self.assertEqual(result["cases"], [
+            {"day":"2026-11-19","finding":"no_final","status":"investigate",
+             "tools":["find_receipts (ok)", "other tool (ok)"],"count":1}
+        ])
+        self.assertNotIn("SECRET", json.dumps(result))
+        with closing(core.db.connect()) as conn, conn:
+            conn.execute("UPDATE review_turns SET repair='empty_promise' WHERE owner_id='USR_HUSBAND'")
+        self.assertEqual(review.maintenance_queue(NIGHT)["cases"][0]["status"], "local repair applied")
+        with closing(core.db.connect()) as conn, conn:
+            conn.execute("UPDATE review_turns SET reviewed_on='2026-11-01'")
+        self.assertEqual(review.maintenance_queue(NIGHT)["cases"], [])
+        with closing(core.db.connect()) as conn, conn:
+            conn.execute("INSERT OR REPLACE INTO review_enrollment VALUES('USR_HUSBAND',0)")
+        self.assertEqual(review.maintenance_queue(NIGHT), {"state":"disabled","cases":[]})
 
     def test_partial_bills_reproduced_and_next_turn_retry_uses_real_mcp(self):
         a = self.exchange(
