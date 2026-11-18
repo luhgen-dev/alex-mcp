@@ -198,6 +198,26 @@ class OvernightReviewTests(ConversationFixture):
         review.run_due(now=NIGHT.replace(day=20), reviewer=lambda p: ("ok", ""))
         self.assertFalse(review.active_rules(owner.user_id))
 
+    def test_dated_diagnostics_from_brief_uses_private_review(self):
+        owner = self.exchange("old-note", "Synthetic lookup", "working on it")
+        with closing(core.db.connect()) as conn, conn:
+            conn.execute("UPDATE review_turns SET reviewed_on='2026-11-18',finding='no_final' WHERE message_id='old-note'")
+            conn.execute("INSERT INTO review_runs VALUES ('2026-11-19','2026-11-19')")
+        question = "Show me the diagnostics report for today?"
+        with patch.object(review.runtime_clock, "today", return_value=NIGHT.date()):
+            self.assertIsNotNone(review.handle(replace(owner, trusted_text=question)))
+            reply = core.ingress.process(self.payload("report-today", question, quoted_message_id="synthetic-brief"))
+            self.assertTrue(reply.get("overnight_review"))
+            with closing(core.db.connect()) as conn:
+                body = conn.execute("SELECT text_body FROM outbound_messages WHERE source_message_id='report-today'").fetchone()[0]
+            self.assertIn("No new findings", body)
+            self.assertIn("2026-11-19", body)
+            self.assertIn("2026-11-18", body)
+            self.assertNotIn("Synthetic lookup", body)
+            self.assertIn("2026-11-18", review.handle(replace(owner, trusted_text="Show my latest diagnostic report")))
+            self.assertIn("private chat", review.handle(replace(owner, trusted_text=question, conversation_type="GROUP")))
+            self.assertIsNone(review.handle(replace(owner, trusted_text="Show me the goals report for today?")))
+
     def test_feedback_is_acknowledged_and_applied_only_in_this_owners_chat(self):
         self.assertTrue(
             core.ingress.process(self.payload("style", "Next time, keep your replies short"))[
