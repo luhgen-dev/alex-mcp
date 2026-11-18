@@ -202,6 +202,18 @@ Numbered results are continuation objects, not fresh searches. Natural retrieval
 
 Emoji remain a privacy shortcut on the raw trusted command, but they are removed before semantic/model interpretation. They therefore select private scope without becoming query subject matter (for example, a cake emoji in an expense query does not mean "cake expenses"). Dependency/configuration failures are also distinct from scope misses, so an unconfigured roster must not create a bogus offer to search private records.
 
+### Overnight conversation review (0.5.56)
+
+The add-on runs a review at 03:00 in its configured local timezone. Change `overnight_review_time` or disable `overnight_review_enabled` in the add-on configuration. Incoming authenticated conversations for the primary owner are enrolled by default. Another household member can opt in from their own DM with “enable overnight review”. “Disable overnight review” stops future review for that member. The first run can also use up to two days of older primary-owner turns with authenticated tool records.
+
+Alex compares each eligible request with delivery status, attachments and tool evidence. It flags unfinished work, partial utility results, missing original receipts, repeated requests and suggestions. An overdue direct lookup can receive one status update after 15 minutes. Delivery means the WhatsApp bridge reported a send. A missing entry cannot prove what appeared on the phone. Messages that never reached Alex's database cannot be reconstructed here.
+
+The independent review reads flagged exchanges and a stable 4% sample of others through an already configured OpenAI route. It gets a limited excerpt of the owner's exchange and selected result fields, with no tools. The monthly budget guard applies. When this route is unavailable, the local checks continue and the report identifies the limitation. A future request can use a repair after the local evaluator reproduces the issue and checks the revised response against sample successful and negative requests. The initial repairs cover multi-utility checks, original receipt delivery and lookups that ended with an empty promise. These policies update locally. Code changes, new capabilities and changes to access or recipients require separate engineering review.
+
+You can give ordinary feedback such as “Next time if a bill fails, send me the available bill and tell me which one failed” or “Next time, keep your replies short”. A successful rephrasing after a failed read can teach Alex a lookup preference. A lookup hint applies only in the same user's chat and read scope, and only if normal routing already offers the tool. Each fresh request supplies its own arguments. No household action is replayed overnight. A scoped receipt or payment correction still uses Alex's ordinary authenticated path.
+
+When findings are available, the owner's Daily Brief says “You have a diagnostic report today. Would you like to review it?” Reply “yes” to that brief or ask “show my diagnostic report” in your DM. The report shows what was observed, any repair enabled and how to undo it. Unsupported changes are recorded for investigation. The reviewer cannot deploy newly written code.
+
 ### User-reported errors / diagnostic flight recorder (0.5.37)
 
 Behavioural bug reports are deterministic and never delegated to the model.

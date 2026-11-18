@@ -1,3 +1,7 @@
+## 0.5.56 — overnight conversation review
+
+Alex checks authenticated requests against delivery and tool evidence, investigates exceptions and samples, and can activate tested response checks or learn a successful lookup from a rephrase. The private Daily Brief offers one line when a report is available. The separate review worker keeps this work off the reminder scheduler. Existing household transactions are never replayed by a review.
+
 ## 0.5.55 — audited voice, finance privacy and original-file repairs
 
 - Retain required tools for colloquial Tamil expense/reminder requests and classify clear purchases without unnecessary category questions; unknown transfer purposes remain pending.

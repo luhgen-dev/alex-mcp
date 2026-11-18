@@ -1,4 +1,10 @@
 configuration:
+  overnight_review_enabled:
+    name: Overnight conversation review
+    description: Check authored conversations and report findings in the owner's private Daily Brief.
+  overnight_review_time:
+    name: Overnight review time
+    description: Local time to start reviewing the previous day's conversations.
   grocery_background_prices:
     name: Quiet background grocery pricing
     description: Queue retailer lookups after list changes. Plain lists hide prices; ask for prices/totals to see saved estimates. Ambiguous products require a choice.

@@ -27,6 +27,8 @@ import phase2_intent
 import scope_policy
 import conversation_state
 import retailer_chat
+import overnight_review
+import review_rules
 import learned_memory
 from text_normalization import normalize_intent_text
 import multilingual_intent
@@ -4642,6 +4644,28 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
             or _HYPOTHETICAL_ACTION_RE.search(normalize_intent_text(user_text))
             or (invalid_pending_quote and not _trusted_mutation_requested(user_text))):
         tools = [spec for spec in tools if not _is_mutating_tool(spec["function"]["name"])]
+    # Learned checks are closed, local response policies. They never supply a
+    # tool argument, recipient, identity, permission or free-form instruction.
+    current_review_rules = set()
+    review_basis = str(actor.trusted_text or user_text)
+    eligible = review_rules.applicable(review_basis)
+    if (settings.overnight_review_enabled and eligible and not (media_context or vision_parts or quoted_context)
+            and not trace["compound"] and not _negated_only_request(review_basis)
+            and not _HYPOTHETICAL_ACTION_RE.search(normalize_intent_text(review_basis))):
+        current_review_rules = overnight_review.active_rules(actor.user_id) & eligible
+    priority = set()
+    if "utility_coverage" in current_review_rules:
+        priority.add("check_household_bill")
+    if "receipt_delivery" in current_review_rules:
+        priority.update({"find_receipts", "get_receipt"})
+    if priority:
+        priority_specs = await _tool_specs_for_names(priority)
+        tools = (priority_specs + [spec for spec in tools if spec["function"]["name"] not in priority])[:TOOL_EXPOSURE_MAX]
+    learned_lookup = None
+    if (settings.overnight_review_enabled and not (media_context or vision_parts or quoted_context)
+            and not _trusted_mutation_requested(review_basis) and not _negated_only_request(review_basis)):
+        learned_lookup = overnight_review.lookup_hint(actor, review_basis, _tool_names(tools))
+    review_retry_used = False
     trace["exposed_tools"] = [x["function"]["name"] for x in tools] if tools else []
     routes = _apply_circuit_breaker(_provider_routes(
         settings, user_text=user_text, tools=tools,
@@ -4663,6 +4687,11 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
         {"role": "system", "content": _runtime_context(actor, model_user_text)},
         {"role": "system", "content": conversation_state.INSTRUCTIONS},
     ]
+    if learned_lookup:
+        messages.append({"role": "system", "content": "A previous rephrasing of this lookup succeeded with " +
+                         learned_lookup + ". Consider that tool if it fits the current request. Derive all arguments from this turn."})
+    if settings.overnight_review_enabled and overnight_review.response_preference(actor.user_id, actor.conversation_id):
+        messages.append({"role": "system", "content": "The user prefers short answers in this chat. Include every requested result and any necessary clarification."})
     if catalogue_stores:
         messages.append({'role': 'system', 'content':
             'This is a public catalogue lookup for ' + ', '.join(sorted(catalogue_stores)) +
@@ -4872,6 +4901,22 @@ async def respond(actor: ActorContext, user_text: str, media_context: list[str] 
 
         if not calls:
             raw_candidate = _content_text(msg.content).strip()
+            if current_review_rules:
+                bill_reply = _utility_bill_evidence_fallback(tool_evidence)
+                providers = {x.get("provider") for x in tool_evidence if x.get("_tool_name") == "check_household_bill"}
+                if "utility_coverage" in current_review_rules and bill_reply:
+                    raw_candidate = bill_reply
+                issue = review_rules.evaluate(review_basis, raw_candidate, providers, bool(attachments))
+                if issue and issue.rule in current_review_rules:
+                    if not final_answer_call and not review_retry_used and not mutation_ledger:
+                        review_retry_used = True
+                        # This extra round can only use already authorized read tools
+                        # and the ordinary scoped utility lookup for a new bill request.
+                        tools = [spec for spec in tools if spec["function"]["name"] in READ_ONLY_TOOLS]
+                        if tools:
+                            messages.append({"role": "system", "content": issue.instruction})
+                            continue
+                    raw_candidate = ((bill_reply + "\n\n") if bill_reply and issue.rule == "utility_coverage" else "") + issue.fallback
             if catalogue_stores:
                 catalogue_reply = retailer_chat.render(tool_evidence)
                 if not catalogue_reply and not final_answer_call:
